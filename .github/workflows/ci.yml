@@ -82,6 +82,7 @@ jobs:
       run_build:  ${{ needs.changes.outputs.code == 'true' }}
       run_unit:   ${{ needs.changes.outputs.code == 'true' }}
       run_e2e:    ${{ needs.changes.outputs.e2e == 'true' }}
+      run_windows_smoke: ${{ needs.changes.outputs.code == 'true' }}
 
   # 唯一"必过检查"聚合门（#3）。reusable 的 lane 会按改动条件 skip，
   # 直接把条件 job 设必过很脆；改为只把本 gate 设为 branch protection 的必过检查。

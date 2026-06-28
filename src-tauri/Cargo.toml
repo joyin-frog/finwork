@@ -27,3 +27,8 @@ tauri-plugin-fs = "2"
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
+
+# Windows:用 Job Object 把内置 next-server 子进程绑定到 KILL_ON_JOB_CLOSE,父进程(本 app)无论正常退出
+# 还是崩溃/被强杀,OS 关闭 job 句柄时一并杀掉子进程,避免残留 node 占内存/端口(见 lib.rs)。
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_JobObjects"] }
