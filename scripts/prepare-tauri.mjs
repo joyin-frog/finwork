@@ -1,5 +1,6 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rgPath } from "@vscode/ripgrep";
@@ -115,6 +116,27 @@ if (existsSync(rgPath)) {
 await rm(nodeResourceDir, { recursive: true, force: true });
 await mkdir(nodeResourceDir, { recursive: true });
 await cp(process.execPath, path.join(nodeResourceDir, nodeBinaryName));
+
+// 校验内嵌 Node 能加载 node:sqlite —— 用与运行期 `node server.js`(lib.rs,无 --experimental-sqlite)
+// 完全一致的方式探测刚拷进去的二进制。打进过旧的 Node(node:sqlite 仍需 flag 或缺失)会让用户机上每个
+// 碰 DB 的路由 500,而零依赖的 /api/health 仍 200 → UI 出来但一点就「网络错误」。这里在打包期直接拦掉,
+// 不靠硬编码版本号(经验式探测,避免 node:sqlite 解禁版本边界判断错)。
+const bundledNode = path.join(nodeResourceDir, nodeBinaryName);
+const sqliteProbe = spawnSync(
+  bundledNode,
+  ["-e", "new (require('node:sqlite').DatabaseSync)(':memory:').close()"],
+  { encoding: "utf-8" }
+);
+if (sqliteProbe.status !== 0) {
+  const detail = (sqliteProbe.stderr || sqliteProbe.stdout || sqliteProbe.error?.message || "").trim().slice(0, 500);
+  throw new Error(
+    `prepare-tauri: 内嵌 Node(${process.version})无法加载 node:sqlite —— 该版本不被支持。\n` +
+      "  运行期用裸 `node server.js`(无 --experimental-sqlite),需要 node:sqlite 已稳定可用的 Node 版本;\n" +
+      "  否则打包产物会出现「UI 能开但一点就网络错误」。请用更新的 Node 重新打包。\n" +
+      `  探测输出:${detail}`
+  );
+}
+console.log(`prepare-tauri: 内嵌 Node ${process.version} 已通过 node:sqlite 可用性校验。`);
 
 await rm(placeholderDistDir, { recursive: true, force: true });
 await mkdir(placeholderDistDir, { recursive: true });

@@ -1,5 +1,7 @@
+use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -89,6 +91,17 @@ fn start_next_server(app: &mut tauri::App, port: u16) -> Result<(), Box<dyn std:
   } else {
     "node".into()
   };
+  // 子进程 stdout/stderr 重定向到 <appData>/finance-agent/logs/next-server.log,与 JS 端
+  // server-<date>.log 同目录。此前丢进 Stdio::null() → 所有 console.* 诊断信息全丢,打包态线上
+  // 故障无从查起(用户只看到「网络错误」)。每次启动 truncate:只留当前这次运行,既便于「复现后把
+  // 文件发来定位」又不会无限增长。打不开文件则回退 null(best-effort,绝不阻塞启动)。
+  let (stdout_cfg, stderr_cfg) = match open_next_server_log(app) {
+    Some(file) => match file.try_clone() {
+      Ok(clone) => (Stdio::from(file), Stdio::from(clone)),
+      Err(_) => (Stdio::from(file), Stdio::null()),
+    },
+    None => (Stdio::null(), Stdio::null()),
+  };
   let mut command = Command::new(node_command);
   command
     .arg("server.js")
@@ -97,13 +110,13 @@ fn start_next_server(app: &mut tauri::App, port: u16) -> Result<(), Box<dyn std:
     .env("PORT", port.to_string())
     .env("FINANCE_AGENT_PROJECT_ROOT", &server_dir)
     .env("FINANCE_AGENT_BUNDLED_PLUGIN_DIR", bundled_plugin_dir)
-    .stdout(Stdio::null())
-    .stderr(Stdio::null());
+    .stdout(stdout_cfg)
+    .stderr(stderr_cfg);
 
   // Windows:node 是控制台程序,GUI 应用(windows_subsystem="windows")里直接 spawn 会给它弹一个
   // 独立控制台黑窗(Windows Terminal 标签标题取 node 的 process.title = "next-server (vX.Y.Z)"),
   // 盖在真正的 app 窗前 → 用户只看到「黑屏 next-server 窗口」。CREATE_NO_WINDOW(0x0800_0000)
-  // 抑制该窗口;stdout/stderr 已 null,无输出丢失。仅 Windows 需要,其它平台无此问题。
+  // 抑制该窗口;stdout/stderr 已重定向到 next-server.log(见上),不再丢输出。仅 Windows 需要,其它平台无此问题。
   #[cfg(windows)]
   {
     use std::os::windows::process::CommandExt;
@@ -143,6 +156,42 @@ fn start_next_server(app: &mut tauri::App, port: u16) -> Result<(), Box<dyn std:
   let state = app.state::<ServerProcess>();
   *state.0.lock().expect("server process lock poisoned") = Some(child);
   Ok(())
+}
+
+/// next-server 子进程日志文件(<appData>/finance-agent/logs/next-server.log)。
+/// 每次启动 truncate(File::create)。打开失败返回 None → 调用方回退 Stdio::null()。
+fn open_next_server_log(app: &tauri::App) -> Option<File> {
+  let dir = app_data_root(app)?.join("finance-agent").join("logs");
+  std::fs::create_dir_all(&dir).ok()?;
+  File::create(dir.join("next-server.log")).ok()
+}
+
+/// 复刻 JS 端 paths.ts::getDefaultAppDataRoot 的平台默认根,确保原生日志与 JS 日志落同一目录。
+/// 故意不走 Tauri app_data_dir()(那会带 bundle identifier 子目录,与 JS 的 finance-agent 不一致)。
+fn app_data_root(app: &tauri::App) -> Option<PathBuf> {
+  let home = app.path().home_dir().ok();
+  #[cfg(windows)]
+  {
+    if let Ok(appdata) = std::env::var("APPDATA") {
+      if !appdata.is_empty() {
+        return Some(PathBuf::from(appdata));
+      }
+    }
+    return home.map(|h| h.join("AppData").join("Roaming"));
+  }
+  #[cfg(target_os = "macos")]
+  {
+    return home.map(|h| h.join("Library").join("Application Support"));
+  }
+  #[cfg(all(unix, not(target_os = "macos")))]
+  {
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+      if !xdg.is_empty() {
+        return Some(PathBuf::from(xdg));
+      }
+    }
+    return home.map(|h| h.join(".local").join("share"));
+  }
 }
 
 fn desktop_server_port() -> u16 {
