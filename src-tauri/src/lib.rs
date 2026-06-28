@@ -14,12 +14,16 @@ pub fn run() {
   tauri::Builder::default()
     .manage(ServerProcess(Mutex::new(None)))
     .setup(|app| {
-      let url = if cfg!(debug_assertions) {
-        "http://127.0.0.1:3000".to_string()
+      let is_release = !cfg!(debug_assertions);
+      // 端口只解析一次,setup 与下面的就绪轮询线程复用同一个值。生产态探测空闲端口(见
+      // resolve_server_port):上次 app 崩溃/异常退出残留的 next-server 子进程仍占着固定端口时,
+      // 新实例不再 listen EADDRINUSE 起不来(此前表现为整体"网络错误")。
+      let server_port = if is_release { resolve_server_port() } else { 3000 };
+      let url = if is_release {
+        start_next_server(app, server_port)?;
+        format!("http://127.0.0.1:{server_port}")
       } else {
-        let port = desktop_server_port();
-        start_next_server(app, port)?;
-        format!("http://127.0.0.1:{port}")
+        "http://127.0.0.1:3000".to_string()
       };
 
       if cfg!(debug_assertions) {
@@ -38,7 +42,6 @@ pub fn run() {
       // 生产态:先把窗口加载到内置 loading 占位页(数据 URL,瞬时可见),等内置 Next 服务真正
       // 就绪后再 navigate 到真实地址,消除"服务没起来就加载 → 白屏/连接错误页"。
       // 开发态:Next 由 beforeDevCommand 先起好,直接加载真实地址即可。
-      let is_release = !cfg!(debug_assertions);
       let initial_url = if is_release { SPLASH_URL.to_string() } else { url.clone() };
 
       let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(initial_url.parse()?))
@@ -56,7 +59,7 @@ pub fn run() {
       let window = builder.build()?;
 
       if is_release {
-        let port = desktop_server_port();
+        let port = server_port;
         let win = window.clone();
         let real_url = url.clone();
         std::thread::spawn(move || {
@@ -194,11 +197,25 @@ fn app_data_root(app: &tauri::App) -> Option<PathBuf> {
   }
 }
 
-fn desktop_server_port() -> u16 {
-  std::env::var("FINANCE_AGENT_DESKTOP_PORT")
-    .ok()
-    .and_then(|value| value.parse::<u16>().ok())
-    .unwrap_or(39211)
+/// 解析内置 next-server 要监听的端口。env `FINANCE_AGENT_DESKTOP_PORT` 显式指定时直接用(尊重配置);
+/// 否则从默认端口起探测一个**当前空闲**的端口——绑定成功即空闲(随即释放),避免上次残留的 next-server
+/// 子进程仍占着固定端口时,新实例 `listen EADDRINUSE` 起不来(此前表现为整体"网络错误")。
+/// 注意:必须只调一次、结果复用;重复调用可能因竞态返回不同端口。
+fn resolve_server_port() -> u16 {
+  const DEFAULT_PORT: u16 = 39211;
+  if let Ok(value) = std::env::var("FINANCE_AGENT_DESKTOP_PORT") {
+    if let Ok(port) = value.parse::<u16>() {
+      return port;
+    }
+  }
+  for offset in 0..64u16 {
+    let port = DEFAULT_PORT + offset;
+    // 绑定成功 = 端口空闲;TcpListener 临时值在本条件求值结束即 drop,端口随之释放,供 node 接管。
+    if std::net::TcpListener::bind(("127.0.0.1", port)).is_ok() {
+      return port;
+    }
+  }
+  DEFAULT_PORT
 }
 
 // 内置 loading 占位页:纯 CSS 旋转指示器,无外部资源/脚本。
