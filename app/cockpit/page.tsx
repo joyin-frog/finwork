@@ -1,0 +1,101 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowReloadHorizontalIcon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/ui/button";
+import { DragHandle } from "@/app/shared/window-controls";
+import { SidebarToggle } from "@/app/shared/sidebar-toggle";
+import { getCalendarContext, type CalendarContext } from "@/lib/domain/tax-calendar";
+import type { CockpitSummary } from "./types";
+import { BusinessMetricsCard } from "./business-metrics-card";
+import { CashObligationsCard } from "./cash-obligations-card";
+import { ComplianceStrip } from "./compliance-strip";
+import { FinanceCalendarCard } from "./finance-calendar-card";
+import { MetricStrip } from "./metric-strip";
+import { QuickActionsCard } from "./quick-actions-card";
+import { TodosCard } from "./todos-card";
+
+function TodayDate() {
+  const [dateStr, setDateStr] = useState("");
+  useEffect(() => {
+    setDateStr(new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" }));
+  }, []);
+  return <span className="text-body text-muted-foreground">{dateStr}</span>;
+}
+
+export default function CockpitPage() {
+  const [summary, setSummary] = useState<CockpitSummary | null>(null);
+  const [calendar, setCalendar] = useState<CalendarContext | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchSummary = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/cockpit/summary");
+      const json = await res.json();
+      if (json.ok) setSummary(json.data);
+      else setError(json.error || "加载失败");
+    } catch {
+      setError("网络错误");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setCalendar(getCalendarContext(new Date()));
+    fetchSummary();
+  }, [fetchSummary]);
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <header className="relative flex items-center gap-3 pr-5 h-11 border-b border-border shrink-0">
+        <DragHandle />
+        <SidebarToggle />
+        <h1 className="text-title">总览</h1>
+        <TodayDate />
+        <div className="ml-auto">
+          <Button variant="ghost" size="icon" onClick={fetchSummary} aria-label="刷新数据">
+            <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} className={loading ? "animate-spin" : ""} />
+          </Button>
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-auto p-6 flex flex-col gap-6">
+        {error ? (
+          <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
+            <p>{error}</p>
+            <Button variant="outline" size="sm" onClick={fetchSummary}>重试</Button>
+          </div>
+        ) : (
+          <>
+            <MetricStrip calendar={calendar} summary={summary} />
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* 头条(P1):合同收付总览——日常一眼看「钱怎么进出」;经营分析/快捷操作随后 */}
+              <div className="lg:col-span-2 flex flex-col gap-4">
+                <CashObligationsCard obligations={summary?.obligations ?? []} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <BusinessMetricsCard business={summary?.business ?? null} />
+                  <QuickActionsCard />
+                </div>
+              </div>
+
+              {/* 右列:该做什么 + 合规时间节点 */}
+              <div className="flex flex-col gap-4">
+                <TodosCard todos={summary?.todos ?? null} />
+                <FinanceCalendarCard calendar={calendar} />
+              </div>
+            </div>
+
+            {/* 薪税 / 发票 / 报销:周期性合规,降权为一行细条 */}
+            <ComplianceStrip payroll={summary?.payroll ?? null} invoices={summary?.invoices ?? null} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,4 @@
+employee,expense_date,invoice_no,category,amount
+张敏,2026-05-12,INV-001,交通,380
+李哲,2026-05-14,INV-002,招待,1680
+王岚,2026-05-15,INV-001,办公,260

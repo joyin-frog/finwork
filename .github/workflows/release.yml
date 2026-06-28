@@ -1,0 +1,204 @@
+name: Release
+
+# 打 tag(如 v1.0.0)即触发:自动构建 macOS(Apple Silicon + Intel)与 Windows 安装包,
+# 产物上传到 GitHub Release(草稿)。
+# 签名/公证:配置好 GitHub Secrets 后(见 docs/runbook-signed-release.md)自动启用;
+# 未配 secrets 时跳过签名步骤,仍可产出未签名包,CI 不 fail。
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  pretest:
+    name: Pretest (full verify)
+    uses: ./.github/workflows/ci-verify.yml
+
+  build:
+    needs: pretest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14 # Apple Silicon (arm64) → .dmg
+            node_arch: arm64
+            rust_target: aarch64-apple-darwin
+            py_triple: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+            macos: true
+          - platform: macos-14 # Intel (x64):在 arm64 runner 上交叉编译(避开稀缺的 macos-13)→ .dmg
+            node_arch: x64
+            rust_target: x86_64-apple-darwin
+            py_triple: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+            macos: true
+          - platform: windows-latest # Windows (x64) → .exe (nsis) / .msi
+            node_arch: x64
+            rust_target: x86_64-pc-windows-msvc
+            py_triple: x86_64-pc-windows-msvc-shared
+            args: ""
+            macos: false
+    runs-on: ${{ matrix.platform }}
+    env:
+      # secrets 不能用于 if: 条件(GitHub 限制,会致 startup_failure)→ job 级映射成布尔旗标供 if 判存在,且不泄露密钥值。
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_APPLE_ID: ${{ secrets.APPLE_ID != '' }}
+      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 交叉编译 x64 mac 包:在 arm64 runner 上用 Rosetta 跑 x64 Node/npm,
+      # 让 next build / @vscode/ripgrep / 内嵌 node 等原生件都解析成 x64,匹配目标架构。
+      - name: Ensure Rosetta (x64-on-arm64)
+        if: matrix.platform == 'macos-14' && matrix.node_arch == 'x64'
+        run: sudo softwareupdate --install-rosetta --agree-to-license || true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          architecture: ${{ matrix.node_arch }}
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      # C 方案:把 Python 运行时归档随安装包发(首启解压、免 GitHub 下载)。放到 workers/,
+      # prepare-tauri 会把 workers/ 拷进 next-server,getBundledPythonArchive() 生产态解析到它。
+      - name: Bundle Python runtime archive
+        shell: bash
+        run: |
+          PY_TAG=20240814
+          PY_VER=3.12.5
+          URL="https://github.com/indygreg/python-build-standalone/releases/download/${PY_TAG}/cpython-${PY_VER}+${PY_TAG}-${{ matrix.py_triple }}-install_only.tar.gz"
+          echo "Fetching $URL"
+          curl -fSL "$URL" -o workers/python-runtime.tar.gz
+          ls -la workers/python-runtime.tar.gz
+
+      # macOS 代码签名:将 Developer ID Application 证书导入临时 keychain。
+      # 全部步骤 gated on APPLE_CERTIFICATE secret 存在;未配置则跳过(不 fail)。
+      - name: Import Apple Developer ID certificate (macOS)
+        if: matrix.macos == true && env.HAS_APPLE_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # 创建临时 keychain,避免污染系统 keychain
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # 写入 base64 编码的 .p12 并导入
+          echo "$APPLE_CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      # tauri-action 会执行 tauri.conf 的 beforeBuildCommand(npm run build && npm run tauri:prepare)
+      # 再编译 Rust + 打包,并把 dmg/nsis 产物(含签名后的 latest.json)挂到 GitHub Release。
+      #
+      # Updater 签名:tauri-action 在构建时读取 TAURI_SIGNING_PRIVATE_KEY 对更新包签名,
+      # 并将签名写入 latest.json — 客户端更新器用 tauri.conf.json 的 pubkey 验证。
+      # 未配置时跳过签名(tauri-action 的默认行为);latest.json 仍会上传但不含签名。
+      #
+      # macOS 公证:APPLE_SIGNING_IDENTITY 存在时 tauri-action 自动调用 codesign;
+      # 本工作流在 tauri-action 后再额外执行 notarytool + stapler(见下方步骤)。
+      - name: Build & release (Tauri)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater 私钥签名:有值则给更新包签名并写入 latest.json;无值则跳过(tauri-action 默认)。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Updater pubkey 构建期注入(prepare-tauri.mjs § A 读取此 env 写入 tauri.conf.json)
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+          # macOS Developer ID 代码签名身份(格式:"Developer ID Application: Name (TeamID)")
+          # 存在时 tauri-action 自动对 .app 调用 codesign。
+          # 仅当证书确实导入(HAS_APPLE_CERT)才传签名身份;否则用 '-' 走 ad-hoc 签名(无需证书/keychain,不致 codesign 失败;分发 UX 同未签名:首开需右键→打开)。
+          APPLE_SIGNING_IDENTITY: ${{ env.HAS_APPLE_CERT == 'true' && secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          # 遥测编译期内置(§17.3):Rust option_env! 在编译时读取这两个环境变量并烧进原生二进制。
+          # 在 repo Settings → Secrets 中配置:TELEMETRY_ENDPOINT / TELEMETRY_TOKEN。
+          # 未配置时 option_env! 返回 None → unwrap_or("") → 空串 → reporter no-op,安全。
+          # 轮换:更新 secret + 发新 tag 即可替换烧入值,无需改代码。
+          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
+          TELEMETRY_TOKEN: ${{ secrets.TELEMETRY_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Finance Agent ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+          # tauri-action v0 自动将 latest.json 上传到 Release,
+          # 其中包含版本号、各平台包下载 URL、签名(若 TAURI_SIGNING_PRIVATE_KEY 已配置)。
+          # updater endpoint 指向:
+          #   https://github.com/joyin-frog/finwork/releases/latest/download/latest.json
+
+      # macOS 公证 + stapler(tauri build 完成后)。
+      # gated on APPLE_ID secret 存在;未配置则跳过整块,CI 不 fail。
+      # 公证要求:已签名的 .dmg(上一步 APPLE_SIGNING_IDENTITY 须已配置)。
+      - name: Notarize & staple macOS .dmg
+        if: matrix.macos == true && env.HAS_APPLE_CERT == 'true' && env.HAS_APPLE_ID == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          # 查找 tauri-action 输出的 .dmg(通常在 src-tauri/target/<target>/release/bundle/dmg/)
+          DMG_PATH=$(find src-tauri/target/"$RUST_TARGET"/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -z "$DMG_PATH" ]; then
+            echo "[WARN] 未找到 .dmg 产物,跳过公证"
+            exit 0
+          fi
+          echo "公证: $DMG_PATH"
+          # 提交公证并等待结果(Apple 服务端处理,通常 1–5 分钟)
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          # 将公证票据钉入 .dmg(用户机器离线也能通过 Gatekeeper)
+          xcrun stapler staple "$DMG_PATH"
+          echo "公证 + staple 完成: $DMG_PATH"
+
+      # 清理临时 keychain(macOS,无论后续步骤是否成功)
+      - name: Cleanup keychain (macOS)
+        if: matrix.macos == true && always()
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          if security list-keychains | grep -q "$KEYCHAIN_PATH"; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+
+      # ── Windows 代码签名(脚手架占位) ──────────────────────────────────────────
+      # 配置 WINDOWS_CERT + WINDOWS_CERT_PASSWORD secrets 后启用。
+      # 推荐工具:signtool.exe(Windows SDK);或使用 tauri-action 的 TAURI_PRIVATE_KEY_PATH。
+      # 当前为占位步骤:secrets 不存在时跳过,不 fail CI。
+      - name: Windows code signing (placeholder — configure WINDOWS_CERT to enable)
+        if: matrix.macos == false && env.HAS_WINDOWS_CERT == 'true'
+        env:
+          WINDOWS_CERT: ${{ secrets.WINDOWS_CERT }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          # TODO: 导入证书并用 signtool 对 .exe/.msi 签名
+          # 参考:https://learn.microsoft.com/en-us/windows/win32/seccrypto/signtool
+          echo "Windows signing placeholder — implement when WINDOWS_CERT is configured"

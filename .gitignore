@@ -1,0 +1,43 @@
+.next/
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/resources/
+src-tauri/dist/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+.claude/
+.env
+.env.local
+.env.*.local
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+data/uploads/
+data/generated/
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/local-settings.json
+.codegraph/
+excel/
+test-results/
+playwright-report/
+.loop-sandbox/
+agent-skills/skills/*/output/
+workers/output/
+# updater signing key (本地可选文件;私钥永远不提交,公钥用此文件或 TAURI_SIGNING_PUBLIC_KEY env 注入)
+src-tauri/updater-pubkey.txt
+# Tauri 签名私钥(绝不提交)
+src-tauri/*.key
+src-tauri/*.key.pub
+# vendor SDK dump(常自带 demo 凭据,别提交;金蝶 SDK 的 conf.ini 曾误入历史,被 gitleaks 揪出)
+docs/SDK_*/
+# 凭据型配置文件(如金蝶 conf.ini 里的 X-KDApi-AppSec)
+**/conf.ini
+# 内部规划文档不进公开仓库(本地另有备份)
+plans/
+

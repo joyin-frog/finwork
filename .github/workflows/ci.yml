@@ -1,0 +1,84 @@
+name: CI
+
+# PR 或手动触发；push main 不自动跑（沿用现状，省额度）。
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一 PR 连推自动取消进行中的旧 run。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Changed Areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      e2e:  ${{ steps.filter.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 1 }
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-verify.yml'
+              - 'scripts/ci-cancel-aware.sh'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig*.json'
+              - 'next.config.ts'
+              - 'eslint.config.mjs'
+              - 'postcss.config.mjs'
+              - 'tailwind.config.ts'
+              - 'instrumentation.ts'
+              - 'components.json'
+              - 'playwright.config.ts'
+              - 'requirements.txt'
+              - 'app/**'
+              - 'lib/**'
+              - 'components/**'
+              - 'hooks/**'
+              - 'agent-skills/**'
+              - 'excel/**'
+              - 'workers/**'
+              - 'tests/**'
+              - 'e2e/**'
+              - 'data/**'
+              - 'scripts/**'
+            e2e:
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-verify.yml'
+              - 'scripts/ci-cancel-aware.sh'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'next.config.ts'
+              - 'instrumentation.ts'
+              - 'playwright.config.ts'
+              - 'requirements.txt'
+              - 'app/**'
+              - 'lib/**'
+              - 'components/**'
+              - 'hooks/**'
+              - 'agent-skills/**'
+              - 'excel/**'
+              - 'workers/**'
+              - 'e2e/**'
+
+  verify:
+    name: Verify
+    needs: changes
+    uses: ./.github/workflows/ci-verify.yml
+    with:
+      run_checks: ${{ needs.changes.outputs.code == 'true' }}
+      run_build:  ${{ needs.changes.outputs.code == 'true' }}
+      run_unit:   ${{ needs.changes.outputs.code == 'true' }}
+      run_e2e:    ${{ needs.changes.outputs.e2e == 'true' }}

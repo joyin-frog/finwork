@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Finance Agent · Architecture</title>
+<meta name="viewport" content="width=1240" />
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #0f172a;
+    --muted: #475569;
+    --line: #94a3b8;
+
+    --fe: #2563eb;
+    --fe-soft: #dbeafe;
+    --fe-ink: #1e3a8a;
+
+    --be: #059669;
+    --be-soft: #d1fae5;
+    --be-ink: #064e3b;
+
+    --data: #d97706;
+    --data-soft: #fed7aa;
+    --data-ink: #7c2d12;
+
+    --ext: #64748b;
+    --ext-soft: #e2e8f0;
+    --ext-ink: #1f2937;
+
+    --agent: #7c3aed;
+    --agent-soft: #ede9fe;
+    --agent-ink: #4c1d95;
+
+    --tip-bg: #0f172a;
+    --tip-fg: #f8fafc;
+    --border-strong: #cbd5e1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1220;
+      --fg: #e2e8f0;
+      --muted: #94a3b8;
+      --line: #64748b;
+
+      --fe: #60a5fa;
+      --fe-soft: #1e3a8a;
+      --fe-ink: #dbeafe;
+
+      --be: #34d399;
+      --be-soft: #064e3b;
+      --be-ink: #d1fae5;
+
+      --data: #fbbf24;
+      --data-soft: #78350f;
+      --data-ink: #fde68a;
+
+      --ext: #94a3b8;
+      --ext-soft: #1f2937;
+      --ext-ink: #e2e8f0;
+
+      --agent: #a78bfa;
+      --agent-soft: #4c1d95;
+      --agent-ink: #ede9fe;
+
+      --tip-bg: #f8fafc;
+      --tip-fg: #0f172a;
+      --border-strong: #334155;
+    }
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .page {
+    width: 1200px;
+    margin: 0 auto;
+    padding: 24px 0 56px;
+  }
+  header.hero {
+    padding: 0 24px 16px;
+  }
+  header.hero h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+  header.hero p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 14px 24px 4px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .legend .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend .swatch {
+    width: 12px; height: 12px; border-radius: 3px;
+    border: 1px solid var(--border-strong);
+  }
+  .legend .swatch.fe   { background: var(--fe-soft); }
+  .legend .swatch.be   { background: var(--be-soft); }
+  .legend .swatch.data { background: var(--data-soft); }
+  .legend .swatch.ext  { background: var(--ext-soft); }
+  .legend .swatch.agent{ background: var(--agent-soft); }
+  .legend .dashed {
+    width: 18px; height: 0;
+    border-top: 1.5px dashed var(--line);
+  }
+
+  .tip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--tip-bg);
+    color: var(--tip-fg);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    max-width: 320px;
+    line-height: 1.45;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+    opacity: 0;
+    transition: opacity 120ms ease;
+    z-index: 50;
+  }
+  .tip.show { opacity: 1; }
+
+  svg.diagram {
+    display: block;
+    width: 1200px;
+    height: auto;
+  }
+
+  svg .module {
+    cursor: pointer;
+    transition: transform 120ms ease, filter 120ms ease;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  svg .module:hover {
+    filter: brightness(1.04) drop-shadow(0 4px 10px rgba(0,0,0,0.12));
+  }
+  svg text {
+    font-family: inherit;
+    fill: var(--fg);
+  }
+  svg .label-title { font-size: 14px; font-weight: 500; }
+  svg .label-sub   { font-size: 12px; font-weight: 400; fill: var(--muted); }
+  svg .edge-label  { font-size: 11px; font-weight: 500; fill: var(--muted); }
+  svg .boundary-title {
+    font-size: 12px;
+    font-weight: 600;
+    fill: var(--muted);
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+  }
+
+  footer.foot {
+    padding: 20px 24px 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  footer.foot code {
+    background: var(--ext-soft);
+    color: var(--ext-ink);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11.5px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <h1>Finance Agent · 系统架构</h1>
+    <p>Next.js App Router + Claude Agent SDK + 本地 SQLite + Python Worker，单机部署的财务工作台。点击任意模块查看一句话职责。</p>
+  </header>
+
+  <div class="legend">
+    <span class="chip"><span class="swatch fe"></span>前端 UI</span>
+    <span class="chip"><span class="swatch be"></span>后端 / API</span>
+    <span class="chip"><span class="swatch agent"></span>Agent / Harness</span>
+    <span class="chip"><span class="swatch data"></span>数据 / 存储</span>
+    <span class="chip"><span class="swatch ext"></span>外部服务</span>
+    <span class="chip"><span class="dashed"></span>容器 / 系统边界 (虚线)</span>
+    <span class="chip">→ 数据流 (标注协议)</span>
+  </div>
+
+  <svg class="diagram" viewBox="0 0 1200 1620" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Finance Agent architecture">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/>
+      </marker>
+      <marker id="arrow-agent" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--agent)"/>
+      </marker>
+    </defs>
+
+    <!-- =================== BOUNDARY 1 :  Tauri Desktop Shell ================== -->
+    <rect x="20" y="20" width="1160" height="1500" rx="18" ry="18"
+          fill="none" stroke="var(--line)" stroke-width="1.5"
+          stroke-dasharray="8 6"/>
+    <text class="boundary-title" x="40" y="44">Tauri 2 Desktop Shell · 本机进程 (macOS / Windows)</text>
+
+    <!-- =================== BOUNDARY 2 :  Browser / Webview UI ================ -->
+    <rect x="40" y="64" width="1120" height="260" rx="14" ry="14"
+          fill="none" stroke="var(--fe)" stroke-width="1.5"
+          stroke-dasharray="6 5" opacity="0.85"/>
+    <text class="boundary-title" x="60" y="86" fill="var(--fe)">Next.js App Router · 前端 UI 层 (app/)</text>
+
+    <g class="module" data-tip="驾驶舱首页：展示总览指标、最近会话、待办。数据来自 /api/cockpit/summary。">
+      <rect x="72" y="108" width="200" height="86" rx="12" ry="12"
+            fill="var(--fe-soft)" stroke="var(--fe)" stroke-width="1.5"/>
+      <text class="label-title" x="172" y="146" text-anchor="middle" fill="var(--fe-ink)">/cockpit 驾驶舱</text>
+      <text class="label-sub"   x="172" y="166" text-anchor="middle">KPI · 最近 · 待办</text>
+    </g>
+
+    <g class="module" data-tip="主工作台：会话即任务。左侧最近对话、中间消息+Agent 时间线、右侧本地文件栏。子路由 /chat/new、/chat/recent。">
+      <rect x="292" y="108" width="220" height="86" rx="12" ry="12"
+            fill="var(--fe-soft)" stroke="var(--fe)" stroke-width="1.5"/>
+      <text class="label-title" x="402" y="146" text-anchor="middle" fill="var(--fe-ink)">/chat 对话工作台</text>
+      <text class="label-sub"   x="402" y="166" text-anchor="middle">消息流 · Agent 时间线 · 文件栏</text>
+    </g>
+
+    <g class="module" data-tip="知识库：双栏布局，本地文件上传、向量检索、预览、自动分类。Agent 检索增强（RAG）入口。">
+      <rect x="532" y="108" width="200" height="86" rx="12" ry="12"
+            fill="var(--fe-soft)" stroke="var(--fe)" stroke-width="1.5"/>
+      <text class="label-title" x="632" y="146" text-anchor="middle" fill="var(--fe-ink)">/knowledge 知识库</text>
+      <text class="label-sub"   x="632" y="166" text-anchor="middle">上传 · 检索 · 预览 · 分类</text>
+    </g>
+
+    <g class="module" data-tip="配置中心多标签：general / model / skills / appearance / knowledge。模型 API、技能开关、主题、知识库参数。写入本机 local-settings.json。">
+      <rect x="752" y="108" width="180" height="86" rx="12" ry="12"
+            fill="var(--fe-soft)" stroke="var(--fe)" stroke-width="1.5"/>
+      <text class="label-title" x="842" y="146" text-anchor="middle" fill="var(--fe-ink)">/config/* 配置中心</text>
+      <text class="label-sub"   x="842" y="166" text-anchor="middle">model · skills · 外观</text>
+    </g>
+
+    <g class="module" data-tip="文件预览侧栏：PDF / Excel / DOCX / 图片本地预览，与生成产物双向联动。">
+      <rect x="952" y="108" width="176" height="86" rx="12" ry="12"
+            fill="var(--fe-soft)" stroke="var(--fe)" stroke-width="1.5"/>
+      <text class="label-title" x="1040" y="146" text-anchor="middle" fill="var(--fe-ink)">/preview 文件预览</text>
+      <text class="label-sub"   x="1040" y="166" text-anchor="middle">PDF · Excel · DOCX</text>
+    </g>
+
+    <g class="module" data-tip="工作流子页：报销、薪税、分析的快捷入口，沿用 chat 的会话上下文与文件栈；/debug-excel 为开发者调试页。">
+      <rect x="72" y="216" width="1056" height="64" rx="10" ry="10"
+            fill="var(--fe-soft)" stroke="var(--fe)" stroke-width="1.2" opacity="0.85"/>
+      <text class="label-title" x="600" y="244" text-anchor="middle" fill="var(--fe-ink)">/work/* 工作流子页 · /debug-excel 开发者调试</text>
+      <text class="label-sub"   x="600" y="264" text-anchor="middle">/work/reimbursement 报销 · /work/tax 薪税 · /work/analysis 财务分析</text>
+    </g>
+
+    <!-- =================== BOUNDARY 3 :  API Layer ============================ -->
+    <rect x="40" y="348" width="1120" height="232" rx="14" ry="14"
+          fill="none" stroke="var(--be)" stroke-width="1.5"
+          stroke-dasharray="6 5" opacity="0.85"/>
+    <text class="boundary-title" x="60" y="370" fill="var(--be)">Next.js Route Handlers · 本地 HTTP API (app/api/, Node runtime)</text>
+
+    <g class="module" data-tip="Agent 主入口：SSE 流式返回 text/system/tool 事件；可选 WebSocket sidecar 支持 AskUserQuestion 真实问答。调用 lib/agent/claude-adapter。">
+      <rect x="72" y="392" width="200" height="92" rx="12" ry="12"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.5"/>
+      <text class="label-title" x="172" y="428" text-anchor="middle" fill="var(--be-ink)">/api/agent/query</text>
+      <text class="label-sub"   x="172" y="448" text-anchor="middle">SSE · WS sidecar</text>
+      <text class="label-sub"   x="172" y="466" text-anchor="middle">Claude Agent SDK</text>
+    </g>
+
+    <g class="module" data-tip="对话与文件 API：/api/chat 最近会话、/api/chat/attachments 附件上传、/api/files/[id]/[...] 文件下载。">
+      <rect x="292" y="392" width="220" height="92" rx="12" ry="12"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.5"/>
+      <text class="label-title" x="402" y="428" text-anchor="middle" fill="var(--be-ink)">/api/chat · /api/files</text>
+      <text class="label-sub"   x="402" y="448" text-anchor="middle">最近对话 · 附件</text>
+      <text class="label-sub"   x="402" y="466" text-anchor="middle">conversation 文件栈</text>
+    </g>
+
+    <g class="module" data-tip="知识库 API：documents CRUD、按 id 取文件、search 检索（向量 + BM25 + 重排）。">
+      <rect x="532" y="392" width="200" height="92" rx="12" ry="12"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.5"/>
+      <text class="label-title" x="632" y="428" text-anchor="middle" fill="var(--be-ink)">/api/knowledge/*</text>
+      <text class="label-sub"   x="632" y="448" text-anchor="middle">documents · search</text>
+      <text class="label-sub"   x="632" y="466" text-anchor="middle">向量 + BM25 + 重排</text>
+    </g>
+
+    <g class="module" data-tip="驾驶舱 + 分析 API：/api/cockpit/summary 聚合 KPI；/api/analysis/summary 财务分析摘要。绕过 LLM 直接走规则。">
+      <rect x="752" y="392" width="180" height="92" rx="12" ry="12"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.5"/>
+      <text class="label-title" x="842" y="428" text-anchor="middle" fill="var(--be-ink)">cockpit · analysis</text>
+      <text class="label-sub"   x="842" y="448" text-anchor="middle">/api/cockpit/summary</text>
+      <text class="label-sub"   x="842" y="466" text-anchor="middle">/api/analysis/summary</text>
+    </g>
+
+    <g class="module" data-tip="技能与设置 API：/api/skills CRUD、/api/settings/claude 模型与 Key、/api/settings/appearance 主题。写入本机 local-settings.json。">
+      <rect x="952" y="392" width="176" height="92" rx="12" ry="12"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.5"/>
+      <text class="label-title" x="1040" y="428" text-anchor="middle" fill="var(--be-ink)">/api/skills · settings</text>
+      <text class="label-sub"   x="1040" y="448" text-anchor="middle">skill 开关</text>
+      <text class="label-sub"   x="1040" y="466" text-anchor="middle">Claude 配置</text>
+    </g>
+
+    <g class="module" data-tip="可观测性 API：/api/metrics/tools 工具调用计数与耗时、/api/metrics/traces SDK trace 日志。给驾驶舱与开发者用。">
+      <rect x="72" y="500" width="260" height="64" rx="10" ry="10"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.2" opacity="0.9"/>
+      <text class="label-title" x="202" y="528" text-anchor="middle" fill="var(--be-ink)">/api/metrics/* 可观测性</text>
+      <text class="label-sub"   x="202" y="548" text-anchor="middle">tools · traces</text>
+    </g>
+
+    <g class="module" data-tip="Tauri 原生集成：/api/open-with/apps 列出能打开此文件的应用、/api/open-with/icon 取应用图标。前端右键『打开方式…』调用。">
+      <rect x="352" y="500" width="260" height="64" rx="10" ry="10"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.2" opacity="0.9"/>
+      <text class="label-title" x="482" y="528" text-anchor="middle" fill="var(--be-ink)">/api/open-with/* 系统集成</text>
+      <text class="label-sub"   x="482" y="548" text-anchor="middle">apps · icon (Tauri)</text>
+    </g>
+
+    <g class="module" data-tip="开发者调试：/api/debug-excel 解析任意 Excel 看结构；配合 /debug-excel 页面用。">
+      <rect x="632" y="500" width="200" height="64" rx="10" ry="10"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.2" opacity="0.9"/>
+      <text class="label-title" x="732" y="528" text-anchor="middle" fill="var(--be-ink)">/api/debug-excel</text>
+      <text class="label-sub"   x="732" y="548" text-anchor="middle">开发者调试</text>
+    </g>
+
+    <g class="module" data-tip="演示数据 API：/api/demo 一键塞入会话与文件，方便冷启动体验。">
+      <rect x="852" y="500" width="200" height="64" rx="10" ry="10"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.2" opacity="0.9"/>
+      <text class="label-title" x="952" y="528" text-anchor="middle" fill="var(--be-ink)">/api/demo</text>
+      <text class="label-sub"   x="952" y="548" text-anchor="middle">演示数据种子</text>
+    </g>
+
+    <!-- =================== BOUNDARY 4 :  Agent Harness ======================== -->
+    <rect x="40" y="604" width="1120" height="400" rx="14" ry="14"
+          fill="none" stroke="var(--agent)" stroke-width="1.5"
+          stroke-dasharray="6 5" opacity="0.9"/>
+    <text class="boundary-title" x="60" y="626" fill="var(--agent)">Agent Harness · Claude Agent SDK 编排层 (lib/agent/)</text>
+
+    <g class="module" data-tip="意图路由：lib/agent/router.ts。用 Claude Haiku 先做轻量分类，决定是否进入完整 turn、走哪条 skill。降低主模型 token 消耗。">
+      <rect x="72" y="648" width="220" height="96" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.6"/>
+      <text class="label-title" x="182" y="684" text-anchor="middle" fill="var(--agent-ink)">Intent Router</text>
+      <text class="label-sub"   x="182" y="704" text-anchor="middle">Claude Haiku 4.5</text>
+      <text class="label-sub"   x="182" y="722" text-anchor="middle">轻量分类 · 省 token</text>
+    </g>
+
+    <g class="module" data-tip="claude-adapter：会话编排核心。装配 system prompt、skill、hooks、MCP server，再以 SDK query() 跑一次完整 turn，支持 session resume 与 SSE 事件分流。">
+      <rect x="312" y="648" width="240" height="96" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.6"/>
+      <text class="label-title" x="432" y="684" text-anchor="middle" fill="var(--agent-ink)">claude-adapter</text>
+      <text class="label-sub"   x="432" y="704" text-anchor="middle">会话编排 · session resume</text>
+      <text class="label-sub"   x="432" y="722" text-anchor="middle">SSE 事件分流</text>
+    </g>
+
+    <g class="module" data-tip="System Prompt 构建器：把启用的本地 skill、RAG preamble、记忆条目拼成 Agent 的世界观。">
+      <rect x="572" y="648" width="240" height="96" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="692" y="684" text-anchor="middle" fill="var(--agent-ink)">system-prompt</text>
+      <text class="label-sub"   x="692" y="704" text-anchor="middle">skill 注入</text>
+      <text class="label-sub"   x="692" y="722" text-anchor="middle">RAG preamble · memory</text>
+    </g>
+
+    <g class="module" data-tip="Hooks 链：before/after 钩子。路径安全、风险确认、AskUserQuestion 转写、耗时统计。Harness 的护栏。lib/agent/hooks/。">
+      <rect x="832" y="648" width="240" height="96" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="952" y="684" text-anchor="middle" fill="var(--agent-ink)">Hooks Chain</text>
+      <text class="label-sub"   x="952" y="704" text-anchor="middle">path-safety · risk-confirm</text>
+      <text class="label-sub"   x="952" y="722" text-anchor="middle">ask-user · timing</text>
+    </g>
+
+    <g class="module" data-tip="Subagent Runner：把子任务下放到独立 turn 跑，隔离上下文窗口；支持串行/并行；MCP 子代理工具暴露给主 Agent 调用。">
+      <rect x="72" y="772" width="240" height="84" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="192" y="804" text-anchor="middle" fill="var(--agent-ink)">Subagent Runner</text>
+      <text class="label-sub"   x="192" y="824" text-anchor="middle">runSubagent(s)Parallel</text>
+      <text class="label-sub"   x="192" y="842" text-anchor="middle">mcp__subagent</text>
+    </g>
+
+    <g class="module" data-tip="工具注册表：lib/agent/tools/registry.ts。组装 SDK 内置 + 核心 MCP + 金蝶 MCP + skill 工具，并决定 allowedTools 白名单。">
+      <rect x="332" y="772" width="220" height="84" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="442" y="804" text-anchor="middle" fill="var(--agent-ink)">Tool Registry</text>
+      <text class="label-sub"   x="442" y="824" text-anchor="middle">finance · kingdee · skills</text>
+      <text class="label-sub"   x="442" y="842" text-anchor="middle">allowed-tools 白名单</text>
+    </g>
+
+    <g class="module" data-tip="Finance MCP Server：把 Python worker、知识库检索、记忆读写、子代理统一暴露为 MCP 工具。lib/agent/mcp-tools/。">
+      <rect x="572" y="772" width="240" height="84" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="692" y="804" text-anchor="middle" fill="var(--agent-ink)">Finance MCP Server</text>
+      <text class="label-sub"   x="692" y="824" text-anchor="middle">run_python · inspect_excel</text>
+      <text class="label-sub"   x="692" y="842" text-anchor="middle">knowledge · memory · subagent</text>
+    </g>
+
+    <g class="module" data-tip="Kingdee MCP Server：lib/agent/mcp-tools/kingdee-tools.ts。export_kingdee_draft 生成金蝶 K/3 Cloud 凭证草稿 JSON；第一版 mock 模式。">
+      <rect x="832" y="772" width="240" height="84" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="952" y="804" text-anchor="middle" fill="var(--agent-ink)">Kingdee MCP Server</text>
+      <text class="label-sub"   x="952" y="824" text-anchor="middle">export_kingdee_draft</text>
+      <text class="label-sub"   x="952" y="842" text-anchor="middle">K/3 Cloud 凭证草稿</text>
+    </g>
+
+    <g class="module" data-tip="本地 Skill 包：skills/*，每个含 skill.md + config.json。配置中心可启用/停用，启用项注入 system prompt。">
+      <rect x="72" y="876" width="320" height="108" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="232" y="908" text-anchor="middle" fill="var(--agent-ink)">Local Skill Packs (skills/*)</text>
+      <text class="label-sub"   x="232" y="930" text-anchor="middle">excel-finance · reimbursement-check</text>
+      <text class="label-sub"   x="232" y="948" text-anchor="middle">payroll-calc · finance-analysis</text>
+      <text class="label-sub"   x="232" y="966" text-anchor="middle">kingdee-draft</text>
+    </g>
+
+    <g class="module" data-tip="知识库 Pipeline：lib/knowledge/。parsers → chunker → embedding (bge-small-zh-v1.5) → 向量+BM25 检索 → reranker → 自动分类。给 Agent 提供 RAG 上下文。">
+      <rect x="412" y="876" width="360" height="108" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="592" y="908" text-anchor="middle" fill="var(--agent-ink)">Knowledge Pipeline (lib/knowledge/)</text>
+      <text class="label-sub"   x="592" y="930" text-anchor="middle">parsers · chunker · embedding</text>
+      <text class="label-sub"   x="592" y="948" text-anchor="middle">vector-store · reranker · retriever</text>
+      <text class="label-sub"   x="592" y="966" text-anchor="middle">category · auto-extractor</text>
+    </g>
+
+    <g class="module" data-tip="Memory Store：lib/memory/。auto-extractor 从对话抽取事实，写入 SQLite memory 表，下次 prompt 时回灌为长期记忆。">
+      <rect x="792" y="876" width="280" height="108" rx="12" ry="12"
+            fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
+      <text class="label-title" x="932" y="908" text-anchor="middle" fill="var(--agent-ink)">Memory Store (lib/memory/)</text>
+      <text class="label-sub"   x="932" y="930" text-anchor="middle">auto-extractor</text>
+      <text class="label-sub"   x="932" y="948" text-anchor="middle">SQLite memory 表</text>
+      <text class="label-sub"   x="932" y="966" text-anchor="middle">下次 prompt 回灌</text>
+    </g>
+
+    <!-- =================== BOUNDARY 5 :  Data Layer ========================== -->
+    <rect x="40" y="1024" width="780" height="200" rx="14" ry="14"
+          fill="none" stroke="var(--data)" stroke-width="1.5"
+          stroke-dasharray="6 5" opacity="0.85"/>
+    <text class="boundary-title" x="60" y="1046" fill="var(--data)">本机数据层 · 用户应用数据目录</text>
+
+    <g class="module" data-tip="SQLite：会话、消息、文件、技能快照、记忆、知识库元数据、工具指标。data/finance-agent.db (WAL 模式)。">
+      <rect x="72" y="1068" width="220" height="128" rx="12" ry="12"
+            fill="var(--data-soft)" stroke="var(--data)" stroke-width="1.5"/>
+      <text class="label-title" x="182" y="1106" text-anchor="middle" fill="var(--data-ink)">SQLite</text>
+      <text class="label-sub"   x="182" y="1126" text-anchor="middle">conversations · messages</text>
+      <text class="label-sub"   x="182" y="1144" text-anchor="middle">files · memory · skills</text>
+      <text class="label-sub"   x="182" y="1162" text-anchor="middle">metrics · knowledge_meta</text>
+      <text class="label-sub"   x="182" y="1180" text-anchor="middle">finance-agent.db (WAL)</text>
+    </g>
+
+    <g class="module" data-tip="向量索引：@xenova/transformers 加载 bge-small-zh-v1.5 (中文优化)，本地索引文件。models/Xenova/bge-small-zh-v1.5。">
+      <rect x="312" y="1068" width="220" height="128" rx="12" ry="12"
+            fill="var(--data-soft)" stroke="var(--data)" stroke-width="1.5"/>
+      <text class="label-title" x="422" y="1106" text-anchor="middle" fill="var(--data-ink)">Vector Index</text>
+      <text class="label-sub"   x="422" y="1126" text-anchor="middle">bge-small-zh-v1.5</text>
+      <text class="label-sub"   x="422" y="1144" text-anchor="middle">@xenova/transformers</text>
+      <text class="label-sub"   x="422" y="1162" text-anchor="middle">本地索引</text>
+      <text class="label-sub"   x="422" y="1180" text-anchor="middle">models/Xenova/</text>
+    </g>
+
+    <g class="module" data-tip="文件存储：每个 conversation 一目录，存放上传与生成的 Excel/PDF/CSV。路径由 lib/runtime/paths.ts 在 AppDataDir 下解析。">
+      <rect x="552" y="1068" width="240" height="128" rx="12" ry="12"
+            fill="var(--data-soft)" stroke="var(--data)" stroke-width="1.5"/>
+      <text class="label-title" x="672" y="1106" text-anchor="middle" fill="var(--data-ink)">Conversation Files</text>
+      <text class="label-sub"   x="672" y="1126" text-anchor="middle">&lt;AppDataDir&gt;/files/&lt;id&gt;/</text>
+      <text class="label-sub"   x="672" y="1144" text-anchor="middle">上传 + 生成产物</text>
+      <text class="label-sub"   x="672" y="1162" text-anchor="middle">unique-name 去重</text>
+      <text class="label-sub"   x="672" y="1180" text-anchor="middle">paths.ts 解析</text>
+    </g>
+
+    <!-- =================== BOUNDARY 6 :  Python Worker ======================== -->
+    <rect x="840" y="1024" width="320" height="200" rx="14" ry="14"
+          fill="none" stroke="var(--be)" stroke-width="1.5"
+          stroke-dasharray="6 5" opacity="0.75"/>
+    <text class="boundary-title" x="860" y="1046" fill="var(--be)">Python Sidecar (workers/)</text>
+
+    <g class="module" data-tip="finance_worker.py：openpyxl + pandas + pdfplumber。Excel inspect/生成、PDF 解析、复杂分析。通过 stdin/stdout JSON-RPC 与 Node 桥接，venv 在 workers/.venv/。">
+      <rect x="864" y="1068" width="272" height="128" rx="12" ry="12"
+            fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.5"/>
+      <text class="label-title" x="1000" y="1106" text-anchor="middle" fill="var(--be-ink)">finance_worker.py</text>
+      <text class="label-sub"   x="1000" y="1126" text-anchor="middle">openpyxl · pandas</text>
+      <text class="label-sub"   x="1000" y="1144" text-anchor="middle">pdfplumber</text>
+      <text class="label-sub"   x="1000" y="1162" text-anchor="middle">stdin / stdout 桥接</text>
+      <text class="label-sub"   x="1000" y="1180" text-anchor="middle">workers/.venv/</text>
+    </g>
+
+    <!-- =================== BOUNDARY 7 :  External Services ==================== -->
+    <rect x="40" y="1256" width="1120" height="240" rx="14" ry="14"
+          fill="none" stroke="var(--ext)" stroke-width="1.5"
+          stroke-dasharray="6 5" opacity="0.85"/>
+    <text class="boundary-title" x="60" y="1278" fill="var(--ext)">外部服务 (网络出口)</text>
+
+    <g class="module" data-tip="Claude API：通过 @anthropic-ai/claude-agent-sdk 的 query()。本机配置 API URL / Key，启用 prompt cache。未配置时回落到本地 mock agent。">
+      <rect x="72" y="1300" width="320" height="172" rx="12" ry="12"
+            fill="var(--ext-soft)" stroke="var(--ext)" stroke-width="1.5"/>
+      <text class="label-title" x="232" y="1342" text-anchor="middle" fill="var(--ext-ink)">Claude API</text>
+      <text class="label-sub"   x="232" y="1362" text-anchor="middle">@anthropic-ai/claude-agent-sdk</text>
+      <text class="label-sub"   x="232" y="1380" text-anchor="middle">Opus / Sonnet · 主 turn</text>
+      <text class="label-sub"   x="232" y="1398" text-anchor="middle">Haiku 4.5 · Router 分类</text>
+      <text class="label-sub"   x="232" y="1416" text-anchor="middle">sessionId · resume · prompt cache</text>
+      <text class="label-sub"   x="232" y="1434" text-anchor="middle">未配置时 → 本地 mock</text>
+    </g>
+
+    <g class="module" data-tip="金蝶 K/3 Cloud API：lib/integrations/accounting-adapter.ts 预留 REST 接口；MCP 工具 export_kingdee_draft 第一版只生成导出草稿 JSON，不直接落账。">
+      <rect x="412" y="1300" width="320" height="172" rx="12" ry="12"
+            fill="var(--ext-soft)" stroke="var(--ext)" stroke-width="1.5"/>
+      <text class="label-title" x="572" y="1342" text-anchor="middle" fill="var(--ext-ink)">金蝶 K/3 Cloud API</text>
+      <text class="label-sub"   x="572" y="1362" text-anchor="middle">accounting-adapter</text>
+      <text class="label-sub"   x="572" y="1380" text-anchor="middle">export_kingdee_draft (MCP)</text>
+      <text class="label-sub"   x="572" y="1398" text-anchor="middle">第一版仅导出草稿 JSON</text>
+      <text class="label-sub"   x="572" y="1416" text-anchor="middle">不直接落账</text>
+      <text class="label-sub"   x="572" y="1434" text-anchor="middle">REST (预留)</text>
+    </g>
+
+    <g class="module" data-tip="WebSocket Sidecar (可选)：scripts/agent-ws-server.ts。让 AskUserQuestion 走真实问/答流，不被 SSE 降级成文本。端口 FINANCE_AGENT_WS_PORT 默认 3761。">
+      <rect x="752" y="1300" width="376" height="172" rx="12" ry="12"
+            fill="var(--ext-soft)" stroke="var(--ext)" stroke-width="1.5"/>
+      <text class="label-title" x="940" y="1342" text-anchor="middle" fill="var(--ext-ink)">WS Sidecar</text>
+      <text class="label-sub"   x="940" y="1362" text-anchor="middle">scripts/agent-ws-server.ts</text>
+      <text class="label-sub"   x="940" y="1380" text-anchor="middle">ws://localhost:3761</text>
+      <text class="label-sub"   x="940" y="1398" text-anchor="middle">AskUserQuestion 真实问答</text>
+      <text class="label-sub"   x="940" y="1416" text-anchor="middle">FINANCE_AGENT_WS_PORT</text>
+      <text class="label-sub"   x="940" y="1434" text-anchor="middle">可选进程</text>
+    </g>
+
+    <!-- =================== EDGES ============================================== -->
+    <g stroke="var(--line)" stroke-width="1.5" fill="none">
+      <path d="M 360,194 C 360,300 172,300 172,392" marker-end="url(#arrow)"/>
+      <path d="M 402,194 L 402,392" marker-end="url(#arrow)"/>
+      <path d="M 632,194 L 632,392" marker-end="url(#arrow)"/>
+      <path d="M 172,194 C 172,320 842,320 842,392" marker-end="url(#arrow)"/>
+      <path d="M 842,194 C 842,300 1040,300 1040,392" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="270" y="290" text-anchor="middle">SSE · WS</text>
+      <text x="430" y="296" text-anchor="start">REST · JSON</text>
+      <text x="652" y="296" text-anchor="start">REST</text>
+      <text x="500" y="334" text-anchor="middle">REST</text>
+      <text x="958" y="296" text-anchor="middle">REST</text>
+    </g>
+
+    <g stroke="var(--agent)" stroke-width="1.6" fill="none">
+      <path d="M 172,484 C 172,580 182,580 182,648" marker-end="url(#arrow-agent)"/>
+      <path d="M 292,696 L 312,696" marker-end="url(#arrow-agent)"/>
+    </g>
+    <g class="edge-label">
+      <text x="196" y="600" text-anchor="start" fill="var(--agent)">调用 SDK</text>
+    </g>
+
+    <g stroke="var(--agent)" stroke-width="1.4" fill="none">
+      <path d="M 552,696 L 572,696" marker-end="url(#arrow-agent)"/>
+      <path d="M 812,696 L 832,696" marker-end="url(#arrow-agent)"/>
+    </g>
+
+    <g stroke="var(--agent)" stroke-width="1.4" fill="none">
+      <path d="M 432,744 C 432,760 192,760 192,772" marker-end="url(#arrow-agent)"/>
+      <path d="M 432,744 L 442,772" marker-end="url(#arrow-agent)"/>
+      <path d="M 432,744 C 432,760 692,760 692,772" marker-end="url(#arrow-agent)"/>
+      <path d="M 432,744 C 432,760 952,760 952,772" marker-end="url(#arrow-agent)"/>
+    </g>
+
+    <g stroke="var(--agent)" stroke-width="1.3" fill="none">
+      <path d="M 442,856 C 442,866 232,866 232,876" marker-end="url(#arrow-agent)"/>
+      <path d="M 442,856 C 442,866 592,866 592,876" marker-end="url(#arrow-agent)"/>
+      <path d="M 692,856 C 692,866 932,866 932,876" marker-end="url(#arrow-agent)"/>
+    </g>
+
+    <g stroke="var(--line)" stroke-width="1.5" fill="none">
+      <path d="M 812,814 C 920,814 1000,950 1000,1068" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="1024" y="990" text-anchor="end">stdio · JSON-RPC</text>
+    </g>
+
+    <g stroke="var(--line)" stroke-width="1.5" fill="none">
+      <path d="M 932,984 C 932,1020 182,1020 182,1068" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="540" y="1010" text-anchor="middle">SQL · memory 表</text>
+    </g>
+
+    <g stroke="var(--line)" stroke-width="1.5" fill="none">
+      <path d="M 592,984 L 422,1068" marker-end="url(#arrow)"/>
+      <path d="M 540,984 L 230,1068" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="520" y="1024" text-anchor="middle">embedding 写入</text>
+      <text x="340" y="1044" text-anchor="middle">SQL · 元数据</text>
+    </g>
+
+    <g stroke="var(--line)" stroke-width="1.5" fill="none">
+      <path d="M 402,484 C 402,900 672,900 672,1068" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="540" y="890" text-anchor="middle">本地 FS</text>
+    </g>
+
+    <g stroke="var(--line)" stroke-width="1.5" fill="none">
+      <path d="M 864,1128 L 792,1128" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="828" y="1118" text-anchor="middle">生成产物落盘</text>
+    </g>
+
+    <g stroke="var(--line)" stroke-width="1.5" fill="none">
+      <path d="M 182,744 C 182,1220 232,1220 232,1300" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="60" y="1200" text-anchor="start">HTTPS · SSE</text>
+    </g>
+
+    <g stroke="var(--line)" stroke-width="1.5" fill="none">
+      <path d="M 952,856 C 952,1200 572,1200 572,1300" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="780" y="1196" text-anchor="middle">REST (草稿导出)</text>
+    </g>
+
+    <g stroke="var(--line)" stroke-width="1.5" fill="none" stroke-dasharray="5 4">
+      <path d="M 272,438 C 1100,438 940,1220 940,1300" marker-end="url(#arrow)"/>
+    </g>
+    <g class="edge-label">
+      <text x="1130" y="900" text-anchor="end">可选 WS 通道</text>
+    </g>
+
+  </svg>
+
+  <footer class="foot">
+    Agent / Harness 设计理念：<br/>
+    1) Agent 负责理解、拆步骤、解释结果；确定性动作（报销/薪税/金蝶/Excel 生成）一定下沉到工具。<br/>
+    2) Harness 通过 <code>system-prompt + skills + hooks + allowed-tools</code> 给 Agent 装上世界观和护栏：路径沙箱、风险确认、AskUserQuestion 转写、耗时打点都在 hooks 链里。<br/>
+    3) Router 先用 Haiku 做轻量分类，再交给主模型跑完整 turn；长上下文用 <code>session_id + resume</code> 续接；子任务用 Subagent Runner 隔离上下文窗口。<br/>
+    4) 跨会话事实用 Memory Store 自动抽取 → SQLite → 下次 prompt 回灌。<br/>
+    5) 一切默认本机：SQLite、文件、向量索引、Python worker 都跑在 Tauri 进程里；外网出口只有 Claude API、金蝶 API 与可选的本机 WS sidecar。
+  </footer>
+
+</div>
+
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  var tip = document.getElementById("tip");
+  var modules = document.querySelectorAll("svg .module");
+  function show(e, text) {
+    tip.textContent = text;
+    tip.classList.add("show");
+    move(e);
+  }
+  function move(e) {
+    var pad = 14;
+    var x = e.clientX + pad;
+    var y = e.clientY + pad;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var rect = tip.getBoundingClientRect();
+    if (x + rect.width  > vw - 8) x = e.clientX - rect.width  - pad;
+    if (y + rect.height > vh - 8) y = e.clientY - rect.height - pad;
+    tip.style.left = x + "px";
+    tip.style.top  = y + "px";
+  }
+  function hide() { tip.classList.remove("show"); }
+
+  modules.forEach(function (g) {
+    var text = g.getAttribute("data-tip") || "";
+    g.addEventListener("mouseenter", function (e) { show(e, text); });
+    g.addEventListener("mousemove",  move);
+    g.addEventListener("mouseleave", hide);
+    g.addEventListener("click", function (e) {
+      show(e, text);
+      setTimeout(hide, 2600);
+    });
+  });
+})();
+</script>
+</body>
+</html>
