@@ -156,9 +156,43 @@ fn start_next_server(app: &mut tauri::App, port: u16) -> Result<(), Box<dyn std:
 
   let child = command.spawn()?;
 
+  // Windows:把子进程绑进 KILL_ON_JOB_CLOSE 的 Job Object。CloseRequested 时已显式 kill(见 on_window_event),
+  // 但崩溃/被强杀/异常退出兜不住 → 残留 node 占内存(端口已靠动态选避开)。Job Object 让父进程一旦消失(含崩溃),
+  // OS 关闭 job 句柄即连带杀掉子进程,彻底回收。仅 Windows 需要。
+  #[cfg(windows)]
+  confine_child_to_job(&child);
+
   let state = app.state::<ServerProcess>();
   *state.0.lock().expect("server process lock poisoned") = Some(child);
   Ok(())
+}
+
+/// 把子进程绑到一个 KILL_ON_JOB_CLOSE 的 Job Object:父进程(本 app)退出/崩溃时,OS 关闭最后一个 job 句柄,
+/// 触发该限制 → job 内所有进程(即内置 next-server)被一并终止。故意不关闭 job 句柄,让它随本进程生命周期存活。
+#[cfg(windows)]
+fn confine_child_to_job(child: &Child) {
+  use std::os::windows::io::AsRawHandle;
+  use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+  };
+  unsafe {
+    let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+    if job.is_null() {
+      return;
+    }
+    let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    SetInformationJobObject(
+      job,
+      JobObjectExtendedLimitInformation,
+      &info as *const _ as *const core::ffi::c_void,
+      std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+    );
+    AssignProcessToJobObject(job, child.as_raw_handle() as _);
+    // 不 CloseHandle(job):句柄是裸指针、无 Drop,随本进程存活保持打开;进程退出时 OS 自动关闭并触发杀子进程。
+  }
 }
 
 /// next-server 子进程日志文件(<appData>/finance-agent/logs/next-server.log)。
