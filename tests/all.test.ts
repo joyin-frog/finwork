@@ -294,4 +294,7 @@ void (async () => {
   const { searchQueriesTestPromise } = await import("./search-queries.test.ts");
   await searchQueriesTestPromise;
 
+  const { workerUtf8StdioTestPromise } = await import("./worker-utf8-stdio.test.ts");
+  await workerUtf8StdioTestPromise;
+
 })();
