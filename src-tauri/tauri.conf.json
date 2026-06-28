@@ -1,0 +1,64 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Finance Agent",
+  "version": "0.1.4",
+  "identifier": "com.gyro.financeagent",
+  "build": {
+    "frontendDist": "dist",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm run dev -- --port 3000",
+    "beforeBuildCommand": "npm run build && npm run tauri:prepare"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: asset:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:",
+      "devCsp": "default-src 'self'; img-src 'self' data: asset: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; connect-src 'self' ws: http://localhost:3000; font-src 'self' data:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    },
+    "windows": [
+      {
+        "create": false,
+        "title": "Finance Agent",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 1024,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": {
+      "resources/node": "node",
+      "resources/next-server": "next-server"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/joyin-frog/finwork/releases/latest/download/latest.json"
+      ],
+      "pubkey": "NEEDS_TAURI_SIGNING_PUBLIC_KEY_SEE_RUNBOOK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

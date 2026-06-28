@@ -1,0 +1,974 @@
+/* streaming cursor blink */
+@keyframes cursorBlink {
+  50% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--text);
+  vertical-align: text-bottom;
+  animation: cursorBlink 0.8s step-end infinite;
+}
+
+.composer-send-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--primary);
+  border-radius: 50%;
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.composer-send-button:disabled {
+  opacity: 0.42;
+}
+
+.composer-send-button:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.composer-send-button.stop {
+  color: var(--text);
+  background: transparent;
+  border-color: transparent;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.attachment-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* 输入框附件卡片:边框卡 + 图标 + 名字(过长省略)+ 类型标签 + 关闭。 */
+.attachment-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  padding: 6px 24px 6px 8px; /* 右留位给关闭按钮 */
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font-size: var(--font-caption);
+}
+
+.attachment-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.attachment-chip-main:hover .attachment-chip-name {
+  color: var(--primary);
+}
+
+.attachment-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+}
+
+/* 全局基础尺寸(其它处的 FileTypeIcon 也用),勿改 */
+.file-type-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.attachment-chip-icon img:not(.file-type-icon) {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.attachment-chip .file-type-icon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.attachment-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  text-align: left;
+}
+
+.attachment-chip-name {
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.attachment-chip-type {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.attachment-chip-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.attachment-chip-close:hover {
+  background: var(--control-hover);
+  color: var(--text);
+}
+
+.scroll-to-bottom-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text);
+  pointer-events: auto;
+}
+
+.scroll-to-bottom-button:hover {
+  background: var(--control-hover);
+}
+
+.mention-popup {
+  position: absolute;
+  /* 定位祖先是 composer 的 px-4(1rem)内边距里的包裹层,左右各外扩 1rem 抵消 padding,
+     使弹窗与下方输入框外框等宽对齐。 */
+  left: -1rem;
+  right: -1rem;
+  bottom: calc(100% + 14px);
+  max-height: 300px;        /* 文件多时封顶 + 右侧滚动条,不再撑成一长条 */
+  overflow: hidden auto;
+  padding: 4px;             /* 让 hover 高亮成圆角内嵌块 */
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.mention-popup button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-small); /* 原继承 body(14px)偏大,降到 13px */
+  text-align: left;
+}
+
+.mention-popup button.selected,
+.mention-popup button:hover {
+  background: var(--accent);                 /* 背景 */
+  box-shadow: inset 0 0 0 1px var(--border); /* 边框(inset,不挤布局) */
+}
+
+.mention-popup span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-popup small,
+.mention-empty {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.mention-empty {
+  padding: 12px;
+}
+
+.context-sidebar {
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--surface-2);
+  border-left: 1px solid var(--border);
+  scrollbar-width: none;
+}
+
+.context-sidebar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.context-card {
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--surface-hover);
+}
+
+.context-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.context-card-head p,
+.context-card-head h2 {
+  margin: 0;
+}
+
+.context-card-head p {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.context-card-head h2 {
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.context-meta {
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.context-meta span {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.file-browser {
+  display: grid;
+  gap: 18px;
+}
+
+.preview-sidebar {
+  border-left: 0;
+  padding: 0;
+  background: transparent;  /* 顶部留白透出主内容底色,卡片像浮起 */
+  overflow: visible;        /* 放行卡片投影(顶 / 左)与圆角 */
+}
+
+/* 停靠态浮起卡片(对话页 / 资料页共用,经组件 docked 入参挂在 shell 上):
+   上下各留一道缝脱离标题栏 / 底边 → 四角圆角 + 左描边 + 柔影;左右贴边(右贴窗口、左贴分隔,
+   不留白以保表格可视区)。上下缝用 margin + height: calc 一起收掉,避免撑出容器。
+   独立 /preview 整页不传 docked、保持满铺。 */
+.preview-page-shell.is-docked {
+  height: calc(100% - 16px);
+  margin-top: 8px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  border-left: 1px solid var(--border);
+  box-shadow: var(--elevation-2);
+  overflow: hidden;          /* 裁住四角圆角 */
+}
+
+/* 全屏放大:去掉卡壳,铺满主内容卡片边到边(避免卡中卡 + 缝隙) */
+.preview-page-shell.is-docked.is-maximized {
+  height: 100%;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-radius: 0;
+  border-left: 0;
+  box-shadow: none;
+}
+
+/* 预览列「卡片框」:用在资料页 / 对话文件页的预览列容器上。那两页的预览列里可能是文件预览、
+   也可能是空态(选择文档预览)/ 无法预览 / 元数据 / 搜索结果,统统包进同一张卡——所以卡放在列容器上,
+   不放在 FilePreviewPage 上(对话页预览列只有 FilePreviewPage,空态在它内部,仍走 .is-docked)。
+   视觉与 .is-docked 一致;作为 row 的 flex 子项,高度靠 stretch + 上下 margin 自适应,不写 height。 */
+.preview-card-frame {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  border-left: 1px solid var(--border);
+  box-shadow: var(--elevation-2);
+  overflow: hidden;
+}
+
+/* 全屏放大:同样去掉卡壳铺满 */
+.preview-card-frame.is-maximized {
+  margin: 0;
+  border-radius: 0;
+  border-left: 0;
+  box-shadow: none;
+}
+
+.preview-page-shell {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  /* 必须显式约束列:只写 rows 时隐式列是 auto,会被宽表格撑到 max-content、超出面板被裁掉
+     (看着超宽却没横向滚动条)。minmax(0,1fr) 把列钉死在容器宽,内层 overflow 才能正常滚动。 */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+}
+
+.preview-page-head {
+  padding: 0;
+}
+
+.preview-head-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);  /* 白色标题区,下方 border-bottom 为分隔横线,紧接灰色表格区 */
+}
+
+.preview-head-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-open-button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.preview-open-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.preview-open-button:hover {
+  border-color: var(--border);
+  background: var(--control-hover);
+}
+
+.preview-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+
+.preview-meta-row span {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.preview-page-body {
+  grid-row: -2 / -1; /* 永远占最后的 1fr 轨道:meta-row 非图片时不渲染(只剩 head+body),
+                        别让 body 落到第 2 个 auto 轨道而塌成内容高,否则预览不撑满、下方全白 */
+  min-height: 0;
+  min-width: 0; /* grid item 默认 min-width:auto=内容宽,缺它则宽表格撑破约束、内层 overflow 失效 */
+  overflow: auto;
+  padding: 16px;
+  border-radius: 0;
+  background: var(--surface);
+}
+
+.preview-empty-state,
+.preview-status {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--text-2);
+}
+
+.preview-download-card {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.preview-download-name {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.preview-download-btn {
+  display: inline-block;
+  padding: 8px 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-hover, var(--surface));
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.preview-download-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--focus-border);
+}
+
+.preview-status.error {
+  color: #f2a4a4;
+}
+
+.preview-status.warning {
+  min-height: 0;
+  display: block;
+  margin-bottom: 14px;
+  color: #f1d18a;
+  text-align: left;
+}
+
+.preview-empty-state strong {
+  color: var(--text);
+}
+
+.preview-text-stage {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 18px;
+}
+
+.preview-text-page {
+  width: min(860px, 100%);
+  min-height: min(960px, calc(100vh - 260px));
+  padding: 40px 48px;
+  background: var(--doc-paper-bg);
+  box-shadow: var(--doc-shadow);
+}
+
+.preview-text-block {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--doc-paper-text);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.docx-preview-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0 18px;
+  min-height: min(1120px, calc(100vh - 260px));
+  overflow-y: auto;
+}
+
+.docx-preview-container .docx-page {
+  width: min(860px, 100%);
+  margin-bottom: 18px;
+  padding: 56px 64px;
+  border-radius: 12px;
+  background: var(--doc-paper-bg);
+  color: var(--doc-paper-text);
+  font-size: 16px;
+  line-height: 1.85;
+  word-break: break-word;
+  box-shadow: var(--doc-shadow);
+}
+
+.docx-preview-container .docx-page h1,
+.docx-preview-container .docx-page h2,
+.docx-preview-container .docx-page h3,
+.docx-preview-container .docx-page h4 {
+  margin: 0 0 18px;
+  color: var(--doc-paper-heading);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.docx-preview-container .docx-page p,
+.docx-preview-container .docx-page ul,
+.docx-preview-container .docx-page ol,
+.docx-preview-container .docx-page table {
+  margin: 0 0 18px;
+}
+
+.docx-preview-container .docx-page table {
+  border-collapse: collapse;
+}
+
+.docx-preview-container .docx-page td,
+.docx-preview-container .docx-page th {
+  padding: 8px 10px;
+  border: 1px solid var(--doc-grid-line);
+  vertical-align: top;
+}
+
+.preview-image-stage {
+  display: grid;
+  place-items: center;
+}
+
+.preview-image-stage img {
+  max-width: 100%;
+  max-height: min(72vh, 920px);
+  border-radius: 12px;
+}
+
+.preview-pdf-toolbar button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+}
+
+.preview-pdf-toolbar button:hover {
+  border-color: var(--border);
+  background: var(--control-hover);
+}
+
+.preview-excel-stage {
+  display: flex;
+  justify-content: flex-start;
+  align-items: stretch; /* page 撑满 stage 高度,填满右侧预览区(空白处铺网格底,像真表格);溢出由内层 grid-scroll 滚动 */
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.preview-excel {
+  display: grid;
+  gap: 0;
+  /* 填满 body 高度:公式栏定高 → 表格占剩余 → sheet 标签置底(Office 式);
+     grid-scroll 为唯一竖向滚动条,body 不再叠外层滚动条(双滚动条根因)。 */
+  height: calc(100% + 32px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* 抵消 .preview-page-body 的 16px padding,表格贴满预览区(文档类预览仍保留留白) */
+  margin: -16px;
+}
+
+.preview-excel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.preview-excel-file-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  max-width: min(320px, 38vw);
+  padding: 0 16px;
+  border-radius: 12px;
+  background: var(--control-bg);
+  color: var(--text);
+}
+
+.preview-excel-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 620;
+}
+
+.preview-excel-file-badge {
+  color: rgba(245, 242, 238, 0.56);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* 置底的工作表标签(Office 式):紧凑、扁平,顶部一条线与表格分隔 */
+.preview-excel-sheet-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 4px 8px;
+  border-top: 1px solid var(--doc-grid-line);
+  background: var(--doc-grid-bg);
+  scrollbar-width: none;
+}
+
+.preview-excel-sheet-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.preview-excel-sheet-tabs button {
+  flex-shrink: 0;
+  min-height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.preview-excel-sheet-tabs button:hover {
+  background: var(--control-hover);
+  color: var(--text);
+}
+
+.preview-excel-sheet-tabs button.active {
+  background: var(--doc-paper-bg);
+  color: var(--preview-accent, var(--text));
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.preview-excel-formula-bar {
+  display: grid;
+  grid-template-columns: 76px 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--doc-grid-line);
+  background: var(--doc-grid-bg);
+}
+
+.preview-excel-name-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.18));
+  background: var(--doc-paper-bg, rgba(255, 255, 255, 0.06));
+  color: var(--doc-paper-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.preview-excel-fx {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  font-style: italic;
+}
+
+.preview-excel-formula-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--doc-paper-text);
+  font-size: 13px;
+  font-weight: 400;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.preview-excel-page {
+  width: 100%;
+  height: 100%; /* 撑满 stage 可用高度,内层 grid-scroll 在此高度内滚动(单一竖向条) */
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--doc-grid-bg);
+}
+
+.preview-excel-grid-scroll {
+  flex: 1;
+  min-height: 0; /* 撑满 page 剩余高度,内容溢出在此内部滚动(唯一竖向条,不与 body 双滚) */
+  overflow-x: auto;
+  overflow-y: auto;
+  background: var(--doc-grid-bg);
+}
+
+.preview-excel-grid {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--doc-paper-bg);
+}
+
+.preview-excel-row-index-col {
+  width: 64px;
+}
+
+.preview-excel-corner,
+.preview-excel-column-header,
+.preview-excel-row-header {
+  position: sticky;
+  z-index: 2;
+  background: var(--doc-grid-bg);
+  color: var(--doc-paper-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* 搜索命中→跳转目标行:持续高亮(直到换命中/换文档),不闪一下就没。
+   - 数据格用 inset box-shadow 叠一层主色 tint:覆盖在单元格内联底色之上、不替换它(红行也能看出高亮);
+   - 行号格直接给主色块,作为"当前命中行"的稳定标记;
+   - 落点时一次性脉冲一下边框,提示"跳到这"。 */
+.preview-excel-row-flash > td {
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--preview-accent, var(--primary)) 14%, transparent);
+}
+.preview-excel-row-flash > .preview-excel-row-header {
+  background: var(--preview-accent, var(--primary));
+  color: var(--primary-foreground);
+}
+@keyframes preview-excel-row-land {
+  0% { box-shadow: inset 0 0 0 2px var(--preview-accent, var(--primary)), inset 0 0 0 9999px color-mix(in srgb, var(--preview-accent, var(--primary)) 30%, transparent); }
+  100% { box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--preview-accent, var(--primary)) 14%, transparent); }
+}
+.preview-excel-row-flash > td {
+  animation: preview-excel-row-land 1.2s ease-out;
+}
+
+.preview-excel-corner,
+.preview-excel-column-header {
+  top: 0;
+}
+
+.preview-excel-corner {
+  left: 0;
+  z-index: 4;
+  min-width: 64px;
+  border-right: 1px solid var(--doc-grid-line);
+  border-bottom: 1px solid var(--doc-grid-line);
+}
+
+.preview-excel-column-header {
+  min-width: 120px;
+  padding: 4px 8px;
+  border-right: 1px solid var(--doc-grid-line);
+  border-bottom: 1px solid var(--doc-grid-line);
+}
+
+.preview-excel-row-header {
+  left: 0;
+  z-index: 3;
+  min-width: 64px;
+  padding: 3px 8px;
+  border-right: 1px solid var(--doc-grid-line);
+  border-bottom: 1px solid var(--doc-grid-line);
+}
+
+/* 真实感:选中单元格所在的「行号格 + 列头」激活态(像 Excel/WPS 高亮当前行/列) */
+.preview-excel-column-header.is-active,
+.preview-excel-row-header.is-active {
+  background: color-mix(in srgb, var(--preview-accent, var(--primary)) 16%, var(--doc-grid-bg));
+  color: var(--preview-accent, var(--primary));
+  font-weight: 700;
+}
+
+/* AC3: 紧凑密度 + 默认单行省略号 + 数字右对齐 + tabular-nums */
+.preview-excel-cell {
+  min-width: 96px;
+  padding: 2px 8px;
+  border-right: 1px solid var(--doc-grid-line);
+  border-bottom: 1px solid var(--doc-grid-line);
+  color: var(--doc-paper-text);
+  font-size: 13px;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--doc-paper-bg);
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-excel-cell:hover {
+  background: color-mix(in srgb, var(--doc-paper-bg) 90%, var(--doc-grid-line) 10%);
+}
+
+/* 点选中的单元格:Excel 式主色描边环(inset box-shadow,不挤布局、盖在底色/边框之上)。 */
+.preview-excel-cell.is-selected {
+  box-shadow: inset 0 0 0 2px var(--preview-accent, var(--primary));
+  position: relative;
+  z-index: 1;
+}
+
+.preview-excel-cell span {
+  display: block;
+  min-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-pdf {
+  display: grid;
+  gap: 16px;
+}
+
+.preview-pdf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--doc-paper-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.preview-pdf-canvas {
+  overflow: auto;
+}
+
+.preview-pdf-canvas .react-pdf__Page {
+  margin: 0 auto;
+}
+
+.preview-pdf-native {
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.preview-pdf-iframe {
+  width: 100%;
+  min-height: 72vh;
+  border: 0;
+  background: white;
+}
+
+.file-group h3 {
+  margin: 0 0 10px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.sidebar-file {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--surface-hover);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+
+.sidebar-file:hover {
+  border-color: rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.sidebar-file strong,
+.sidebar-file small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-file strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sidebar-file small,
+.file-empty {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.file-empty {
+  margin: 0;
+}
+
+/* ── 对话内查找高亮(CSS Custom Highlight API) ── */
+::highlight(find-all)    { background: color-mix(in srgb, var(--primary) 22%, transparent); }
+::highlight(find-active) { background: color-mix(in srgb, var(--primary) 45%, transparent); }
+
