@@ -80,6 +80,12 @@ await mkdir(serverResourceDir, { recursive: true });
 await cp(standaloneDir, serverResourceDir, { recursive: true });
 await mkdir(path.join(serverResourceDir, ".next"), { recursive: true });
 await cp(staticDir, path.join(serverResourceDir, ".next", "static"), { recursive: true });
+// Next `output: standalone` 在 Windows 上 nft 文件追踪偶发不全(构建日志的 "Failed to copy traced
+// files … ENOENT mkdir …\\C:\\Users\\…"):依赖被解析成绝对/特殊路径,拷进 .next/standalone 失败,
+// 连带漏拷 .next/server/chunks/*.js → 运行期 require('./chunks/XXXX.js') MODULE_NOT_FOUND → 每个
+// SSR/路由 500、前端只见"网络错误"。用完整的 .next/server 覆盖 standalone 的不全子集,确保 server
+// chunk 齐全(同一次 build 的产物,叠加是超集,安全)。
+await cp(path.join(nextDir, "server"), path.join(serverResourceDir, ".next", "server"), { recursive: true });
 // SDK 原生 skill 的内置 plugin:生产态 getBundledPluginRoot() = next-server/agent-skills。
 await cp(agentSkillsDir, path.join(serverResourceDir, "agent-skills"), { recursive: true });
 // 系统提示静态前缀(A 段):生产态 getBundledSystemPromptPath() = next-server/lib/agent/SYSTEM_PROMPT.md。
