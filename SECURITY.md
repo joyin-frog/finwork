@@ -25,9 +25,6 @@
 
 **请勿**在 public issue 中披露漏洞细节，以免在修复落地前被恶意利用。
 
-**备用联系**：如无法使用 GitHub Advisory，可发邮件至维护者安全邮箱：
-`<security contact email — 维护者填>`
-
 ---
 
 ## 财务数据敏感性 / Financial Data Sensitivity

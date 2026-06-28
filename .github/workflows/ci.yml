@@ -82,3 +82,27 @@ jobs:
       run_build:  ${{ needs.changes.outputs.code == 'true' }}
       run_unit:   ${{ needs.changes.outputs.code == 'true' }}
       run_e2e:    ${{ needs.changes.outputs.e2e == 'true' }}
+
+  # 唯一"必过检查"聚合门（#3）。reusable 的 lane 会按改动条件 skip，
+  # 直接把条件 job 设必过很脆；改为只把本 gate 设为 branch protection 的必过检查。
+  # verify 是 reusable 调用方，其 result 已聚合内部所有 lane（任一 lane 失败→verify 失败）。
+  ci-gate:
+    name: CI Gate
+    needs: [changes, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require CI jobs to pass
+        run: |
+          set -euo pipefail
+          fail=0
+          for nv in "Detect Changed Areas=${{ needs.changes.result }}" "Verify=${{ needs.verify.result }}"; do
+            name="${nv%%=*}"; res="${nv##*=}"
+            echo "$name: $res"
+            if [ "$res" != "success" ] && [ "$res" != "skipped" ]; then
+              echo "::error::$name 未通过 (result=$res)"; fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "✅ 所有必需 job 通过"
