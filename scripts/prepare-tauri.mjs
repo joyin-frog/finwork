@@ -1,9 +1,12 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rgPath } from "@vscode/ripgrep";
+
+const localRequire = createRequire(import.meta.url);
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tauriConfPath = path.join(root, "src-tauri", "tauri.conf.json");
@@ -117,6 +120,33 @@ if (existsSync(rgPath)) {
   await cp(rgPath, path.join(binResourceDir, rgExe));
 } else {
   console.warn(`⚠ 未找到 ripgrep 二进制(${rgPath});知识库搜索在产物中将不可用。`);
+}
+
+// 内置 @anthropic-ai/claude-agent-sdk 的原生 CLI 二进制到 bin/。SDK 默认从按平台的 optionalDependencies
+// 包(claude-agent-sdk-<plat>-<arch>)解析该二进制,但 Next standalone 不会 trace 这个动态解析的可选平台包
+// → 打包后聊天报 "Native CLI binary for <plat>-<arch> not found"。这里在打包机(= 目标平台)上从平台包拷出
+// 二进制,运行期经 getBundledClaudeCliPath() + options.pathToClaudeCodeExecutable 显式喂给 SDK。
+// 找不到即 fail 构建——杜绝再悄悄发一个"装上但聊天必报网络错误"的包。
+{
+  const sdkPlatformPkg = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;
+  const destBinName = process.platform === "win32" ? "claude.exe" : "claude";
+  let sdkBinSrc = null;
+  try {
+    const pkgDir = path.dirname(localRequire.resolve(`${sdkPlatformPkg}/package.json`));
+    const entries = await readdir(pkgDir);
+    const found = entries.find((f) => f === "claude" || f === "claude.exe");
+    if (found) sdkBinSrc = path.join(pkgDir, found);
+  } catch { /* 平台包未安装 */ }
+  if (sdkBinSrc && existsSync(sdkBinSrc)) {
+    await cp(sdkBinSrc, path.join(binResourceDir, destBinName));
+    console.log(`prepare-tauri: 内置 SDK 原生 CLI ${sdkPlatformPkg} → bin/${destBinName}`);
+  } else {
+    throw new Error(
+      `prepare-tauri: 找不到 claude-agent-sdk 原生 CLI(${sdkPlatformPkg} 的 claude/claude.exe)。\n` +
+        `  Next standalone 不 trace 该平台可选包 → 打包后聊天必报 "Native CLI binary for ${process.platform}-${process.arch} not found"。\n` +
+        "  确认 npm ci 未用 --omit=optional,且在目标平台机器上打包(打包机平台/架构须与目标一致)。"
+    );
+  }
 }
 
 await rm(nodeResourceDir, { recursive: true, force: true });

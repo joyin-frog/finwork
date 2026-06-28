@@ -133,6 +133,20 @@ export function getConventionsPath() {
   return process.env.FINANCE_AGENT_CONVENTIONS_PATH ?? path.join(getAppDataDir(), "conventions.json");
 }
 
+/**
+ * @anthropic-ai/claude-agent-sdk 的原生 CLI 二进制(claude / claude.exe)。
+ * SDK 默认从按平台的 optionalDependencies 包(claude-agent-sdk-<plat>-<arch>)解析该二进制,但 Next
+ * standalone 打包不会 trace 这个动态解析的可选平台包 → 打包态报 "Native CLI binary for win32-x64 not
+ * found"。prepare-tauri 把该二进制拷进 bin/,这里解析它并经 options.pathToClaudeCodeExecutable 显式喂给
+ * SDK(SDK 文档给的逃生口)。开发态返回 null → 让 SDK 自行解析已装好的平台包。
+ */
+export function getBundledClaudeCliPath(): string | null {
+  if (process.env.FINANCE_AGENT_CLAUDE_CLI_PATH) return process.env.FINANCE_AGENT_CLAUDE_CLI_PATH;
+  const exe = process.platform === "win32" ? "claude.exe" : "claude";
+  const bundled = path.join(getProjectRoot(), "bin", exe);
+  return fs.existsSync(bundled) ? bundled : null;
+}
+
 function getDefaultAppDataRoot() {
   if (process.platform === "win32") {
     return process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
