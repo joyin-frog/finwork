@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="1024" height="1024">
+  <!-- 财务助手 logo · 终版:纯白圆角底 + 蓝色渐变柱(间距18,顶浅底深) + 倾斜星环
+       (实心环带:外椭圆减上移内椭圆 = 后窄前宽·丝滑;rotate -14 = 左低右高)+ 垂直居中。
+       外层 scale 0.80:留 macOS 图标透明安全边,Dock 里与别的 App 同等大小、不贴边。
+       此 SVG 为全套图标母版,改这里后重跑 tauri icon。 -->
+  <defs>
+    <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#63A4FA"/><stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7DB1F5"/><stop offset="1" stop-color="#2F76EA"/>
+    </linearGradient>
+    <clipPath id="lowClip"><rect x="0" y="58" width="100" height="42"/></clipPath>
+  </defs>
+
+  <!-- macOS 图标安全区:整体缩到 80% 居中,四周留透明边 -->
+  <g transform="translate(50 50) scale(0.80) translate(-50 -50)">
+    <!-- 纯白圆角底(无边线) -->
+    <rect x="0" y="0" width="100" height="100" rx="26" fill="#ffffff"/>
+
+    <g transform="translate(0 7.73) translate(50 47) scale(1.16) translate(-50 -47)">
+      <!-- 星环·后缘 -->
+      <path d="M 8 58 A 42 15 0 1 0 92 58 A 42 15 0 1 0 8 58 Z M 13.5 55 A 36.5 9 0 1 0 86.5 55 A 36.5 9 0 1 0 13.5 55 Z"
+            fill-rule="evenodd" fill="url(#ringGrad)" transform="rotate(-14 50 58)"/>
+      <!-- 柱状(间距18:中心 32/50/68) -->
+      <rect x="25.5" y="33.96" width="13" height="29.04" rx="6.5" fill="url(#barGrad)"/>
+      <rect x="43.5" y="23.40" width="13" height="39.60" rx="6.5" fill="url(#barGrad)"/>
+      <rect x="61.5" y="12.84" width="13" height="50.16" rx="6.5" fill="url(#barGrad)"/>
+      <!-- 星环·前缘 -->
+      <g clip-path="url(#lowClip)">
+        <path d="M 8 58 A 42 15 0 1 0 92 58 A 42 15 0 1 0 8 58 Z M 13.5 55 A 36.5 9 0 1 0 86.5 55 A 36.5 9 0 1 0 13.5 55 Z"
+              fill-rule="evenodd" fill="url(#ringGrad)" transform="rotate(-14 50 58)"/>
+      </g>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 3,
+  "installId": "11111111-1111-4111-8111-111111111111",
+  "appVersion": "0.1.2",
+  "platform": { "os": "darwin", "arch": "arm64" },
+  "reportedAt": 1718841600000,
+  "window": { "from": 1718236800000, "to": 1718841600000 },
+  "traces": [
+    {
+      "traceId": "aaaa3333-3333-4333-8333-333333333333",
+      "conversationId": "cccc3333-3333-4333-8333-333333333333",
+      "startedAt": 1718800000000,
+      "totalMs": 3120,
+      "status": "ok",
+      "roleMode": "analyst",
+      "modelUsed": "claude-sonnet-4-6",
+      "routerPath": "fast",
+      "numTurns": 2,
+      "llmCallCount": 1,
+      "toolCallCount": 3,
+      "inputTokens": 900,
+      "outputTokens": 600,
+      "cacheReadTokens": 128,
+      "cacheCreationTokens": 0,
+      "totalCostUsd": 0.0091,
+      "errorMessage": null,
+      "modelUsageJson": "{\"claude-sonnet-4-6\":{\"in\":900,\"out\":600}}",
+      "spans": [
+        { "spanType": "router", "name": "route", "startedAt": 1718800000000, "durationMs": 11, "tokens": null, "error": null }
+      ]
+    }
+  ],
+  "appErrors": [
+    {
+      "ts": 1718805000000,
+      "kind": "render",
+      "source": "/chat",
+      "message": "Cannot read properties of undefined (reading 'map')",
+      "stack": null,
+      "appVersion": "0.1.2",
+      "fingerprint": "ab12cd34",
+      "count": 2
+    }
+  ],
+  "feedback": [
+    {
+      "feedbackId": "fb-3001",
+      "ts": 1718806500000,
+      "signal": "user_rating",
+      "traceId": "aaaa3333-3333-4333-8333-333333333333",
+      "conversationId": null,
+      "value": 1,
+      "label": "thumbs_up",
+      "roleMode": "analyst",
+      "routerPath": "fast",
+      "modelUsed": "claude-sonnet-4-6",
+      "appVersion": "0.1.2"
+    },
+    {
+      "feedbackId": "fb-3002",
+      "ts": 1718806600000,
+      "signal": "user_rating",
+      "traceId": null,
+      "conversationId": null,
+      "value": -1,
+      "label": "thumbs_down",
+      "roleMode": null,
+      "routerPath": null,
+      "modelUsed": null,
+      "appVersion": "0.1.2"
+    }
+  ]
+}

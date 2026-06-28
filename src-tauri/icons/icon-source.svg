@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="1024" height="1024">
+  <!-- 财务助手 logo · 方案② 轨道底座(白底):白色圆角底座 + 蓝色柱状 + 倾斜轨道环 + 地面投影。
+       源自 logo.html 的 base("onWhite");此 SVG 为全套图标的母版,改图标改这里后重跑 tauri icon。 -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef2f8"/>
+    </linearGradient>
+    <clipPath id="low58"><rect x="0" y="58" width="100" height="42"/></clipPath>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.8"/></filter>
+  </defs>
+
+  <!-- 白色圆角底座(border-radius 26%)+ 极淡描边,保证在浅色背景/标签页上仍有边界 -->
+  <rect x="0" y="0" width="100" height="100" rx="26" fill="url(#tile)"/>
+  <rect x="0.6" y="0.6" width="98.8" height="98.8" rx="25.5" fill="none" stroke="#0f172a" stroke-opacity="0.06" stroke-width="1.2"/>
+
+  <!-- 轨道环·后缘(绕到柱子背后) -->
+  <ellipse cx="50" cy="58" rx="37" ry="12.5" fill="none" stroke="#5AA0F2" stroke-width="4" transform="rotate(-7 50 58)"/>
+  <!-- 地面投影 -->
+  <ellipse cx="50" cy="65" rx="28" ry="4.5" fill="#000000" opacity="0.16" filter="url(#soft)"/>
+  <!-- 柱状(蓝) -->
+  <rect x="31.5" y="41" width="9" height="22" rx="4.5" fill="#3B82F6"/>
+  <rect x="45.5" y="33" width="9" height="30" rx="4.5" fill="#3B82F6"/>
+  <rect x="59.5" y="25" width="9" height="38" rx="4.5" fill="#3B82F6"/>
+  <!-- 轨道环·前缘(clip 到下半,压住柱脚) -->
+  <g clip-path="url(#low58)">
+    <ellipse cx="50" cy="58" rx="37" ry="12.5" fill="none" stroke="#5AA0F2" stroke-width="4" transform="rotate(-7 50 58)"/>
+  </g>
+</svg>

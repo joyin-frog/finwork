@@ -1,0 +1,5 @@
+{
+  "name": "finance-skills",
+  "version": "0.1.0",
+  "description": "小财会内置技能:文档处理(PDF 等)与财务业务流程,经 SDK 原生渐进加载。"
+}

@@ -1,0 +1,535 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    /* 字体走 :root 间接量(下方 :root 定义实际栈),这样运行时可覆盖 --font-sans/--font-mono(dev 调试台用);
+       不像内联那样把 geist 栈写死进工具类。中文回退在 :root 的栈里。 */
+    --font-sans: var(--font-sans);
+    --font-mono: var(--font-mono);
+    --font-heading: var(--font-geist-sans);
+    --color-sidebar: var(--sidebar);
+    --color-tone-alarm: var(--tone-alarm);
+    --color-tone-warn: var(--tone-warn);
+    --color-tone-notice: var(--tone-notice);
+    --color-tone-ok: var(--tone-ok);
+    --color-tone-neutral: var(--tone-neutral);
+    --color-tone-skill: var(--tone-skill);
+    --color-tone-payroll: var(--tone-payroll);
+    --color-tone-invoice: var(--tone-invoice);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* 排版字阶(重要性分层):每层带 字号·字重·行距·字间距,生成 text-* 工具类(Tailwind v4)。
+   与 .md-content 共用同一套(var(--text-*) 仍解析);详见 docs/spec/spec-typography-spacing-system.md。
+   注:下方 :root 里旧的 --text-* 尺寸同值并存,收尾阶段去重。 */
+@theme {
+  --text-figure: 1.875rem;
+  --text-figure--line-height: 1.1;
+  --text-figure--font-weight: 600;
+  --text-figure--letter-spacing: -0.01em;
+
+  --text-display: 1.5rem;
+  --text-display--line-height: 1.15;
+  --text-display--font-weight: 600;
+  --text-display--letter-spacing: -0.015em;
+
+  --text-h1: 1.25rem;
+  --text-h1--line-height: 1.25;
+  --text-h1--font-weight: 600;
+  --text-h1--letter-spacing: -0.01em;
+
+  --text-h2: 1.125rem;
+  --text-h2--line-height: 1.3;
+  --text-h2--font-weight: 600;
+  --text-h2--letter-spacing: -0.005em;
+
+  --text-title: 1rem;
+  --text-title--line-height: 1.35;
+  --text-title--font-weight: 600;
+
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.6;
+  --text-body--font-weight: 400;
+
+  --text-small: 0.8125rem;
+  --text-small--line-height: 1.3;
+  --text-small--font-weight: 500;
+
+  --text-meta: 0.75rem;
+  --text-meta--line-height: 1.45;
+  --text-meta--font-weight: 400;
+
+  --text-caption: 0.6875rem;
+  --text-caption--line-height: 1.4;
+  --text-caption--font-weight: 500;
+  --text-caption--letter-spacing: 0.02em;
+}
+
+:root {
+    /* ════ 可调设计 token(亮)—— 调试台 /dev/theme 导出对应这一节,导入时整段替换 ════ */
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.21 0 0);
+    --primary: oklch(0.546 0.215 262.9);
+    --primary-foreground: oklch(0.97 0 0);
+    --ring: oklch(0.655 0 0);
+    --card: oklch(1 0 0);
+    --sidebar: oklch(0.96 0 224 / 0.1);
+    --muted: oklch(0.96 0 0.9);
+    --accent: oklch(0.95 0 0.5);
+    --border: oklch(0.95 0 0);
+    --radius: 0.7rem;
+    --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    --font-mono: var(--font-jetbrains), "SF Mono", Consolas, monospace;
+
+    /* ════ 派生 / 固定 token —— 语义色 / tone / chart / sidebar 子项 / 纸面层;一般不在调试台调 ════ */
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.55 0.16 27);
+    --input: oklch(0.922 0 0);
+    /* Tone system — 状态色(主角,语义固定):红报警/橙警告/黄提醒/绿正常/蓝中性/紫AI。
+       实色做图标/色点/边条;10% wash 做芯片底(暗色 16%)。同状态同色可重复。 */
+    --tone-alarm: oklch(0.55 0.15 27);
+    --tone-warn: oklch(0.60 0.12 48);
+    --tone-notice: oklch(0.66 0.10 85);
+    --tone-ok: oklch(0.55 0.11 150);
+    --tone-neutral: oklch(0.50 0.11 248);
+    /* 搭配色(辅助,低一档饱和):只做模块识别,用在无状态语义的位置。 */
+    --tone-skill: oklch(0.56 0.095 125);
+    --tone-payroll: oklch(0.56 0.10 355);
+    --tone-invoice: oklch(0.57 0.10 330);
+    /* —— Elevation 高度阶(语义,非尺寸):一处定浓淡,全站协同;light/dark 各一套 —— */
+    /* 1 raised 纸面微升(卡片) · 2 overlay 浮层(菜单/下拉/气泡) · 3 modal 模态(弹窗/抽屉/大面板) */
+    --elevation-1: 0 1px 3px 0 oklch(0.16 0.018 253 / 4%), 0 1px 2px -1px oklch(0.16 0.018 253 / 6%);
+    --elevation-2: 0 4px 16px -4px oklch(0.16 0.018 253 / 10%), 0 2px 6px -3px oklch(0.16 0.018 253 / 8%);
+    --elevation-3: 0 12px 36px -6px oklch(0.16 0.018 253 / 16%), 0 6px 16px -8px oklch(0.16 0.018 253 / 12%);
+    /* inset:主内容大卡片浮在侧栏背板上,只向左投影(其余三边贴窗口,投了也看不见) */
+    --elevation-inset: -8px 0 24px -10px oklch(0.16 0.018 253 / 12%), -2px 0 6px -3px oklch(0.16 0.018 253 / 8%);
+    --card-lift: var(--elevation-1);  /* 卡片沿用 1 档,旧名保留兼容 */
+    --card-ring: oklch(0 0 0 / 5%);   /* 卡片描边色(黑@5%);dev 可调浓度 */
+}
+
+.dark {
+    /* ════ 可调设计 token(暗)—— 调试台「暗」模式导出对应这一节 ════ */
+    --background: oklch(0.25 0 0);
+    --foreground: oklch(0.95 0 0);
+    --primary: oklch(0.62 0.19 262.9);
+    --primary-foreground: oklch(0.915 0 0);
+    --ring: oklch(0.5 0 0);
+    --card: oklch(0.3 0 0 / 0.5);
+    --sidebar: oklch(0.275 0 0.5);
+    --muted: oklch(0.4 0 0);
+    --accent: oklch(0.35 0 0 / 50%);
+    --border: oklch(1 0 0 / 5%);
+
+    /* ════ 派生 / 固定 token(暗)════ */
+    /* Elevation 暗色:Tailwind 内置阴影在深底上几乎不可见,故每档单独加深以保住层级感 */
+    --elevation-1: 0 1px 3px 0 oklch(0 0 0 / 30%), 0 1px 2px -1px oklch(0 0 0 / 50%);
+    --elevation-2: 0 4px 16px -4px oklch(0 0 0 / 55%), 0 2px 6px -3px oklch(0 0 0 / 45%);
+    --elevation-3: 0 14px 40px -6px oklch(0 0 0 / 65%), 0 6px 16px -8px oklch(0 0 0 / 55%);
+    --elevation-inset: -10px 0 28px -8px oklch(0 0 0 / 55%), -2px 0 6px -3px oklch(0 0 0 / 45%);
+    /* --card-lift 经 :root 别名 var(--elevation-1),此处覆盖 elevation-1 即随之变,无需重复 */
+    --card-ring: oklch(0.975 0 0 / 5%);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.274 0.006 286.033);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.68 0.14 25);
+    --input: oklch(1 0 0 / 15%);
+    --tone-alarm: oklch(0.70 0.14 25);
+    --tone-warn: oklch(0.72 0.12 50);
+    --tone-notice: oklch(0.76 0.10 85);
+    --tone-ok: oklch(0.72 0.11 150);
+    --tone-neutral: oklch(0.72 0.10 248);
+    --tone-skill: oklch(0.72 0.095 125);
+    --tone-payroll: oklch(0.72 0.10 355);
+    --tone-invoice: oklch(0.72 0.10 330);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Bridge tokens for preview.css (legacy document renderer — not migrated) */
+:root {
+  --text: var(--foreground);
+  --text-2: var(--muted-foreground);
+  --surface: var(--card);
+  --surface-2: var(--muted);
+  --surface-hover: var(--accent);
+  --control-bg: var(--muted);
+  --control-hover: var(--accent);
+  --focus-border: var(--ring);
+  --popover-bg: var(--popover);
+  --shadow-lg: var(--elevation-3);   /* 旧名:并入 modal 高度档,preview.css / skill-center 共用一处 */
+  --font-caption: 0.6875rem;
+  /* 文档/表格预览 token:统一 alias 语义 token,风格一致 + 自动日夜模式(不再单独维护 .dark 覆盖)。 */
+  --doc-paper-bg: var(--card);
+  --doc-paper-text: var(--card-foreground);
+  --doc-paper-heading: var(--foreground);
+  --doc-negative: oklch(0.52 0.18 26);   /* 负数/赤字红(会计);file-preview 负值单元格用 */
+  --doc-grid-bg: var(--muted);
+  --doc-grid-line: var(--border);
+  --doc-shadow: 0 2px 16px oklch(0 0 0 / 8%);
+}
+
+/* ---------- markdown 行距 token（.md-content 用）----------
+   字号/字重/字间距已统一到上方 @theme 的 --text-* 字阶层(figure/display/h1/h2/title/body/small/meta/caption):
+   既生成 text-* 工具类,也以同名 :root 变量供 var(--text-*) 取用,故此处不再重复定义字号。
+   本块仅保留 markdown 段落行距旋钮。 */
+:root {
+  --lh-tight: 1.35;
+  --lh-snug:  1.5;
+  --lh-body:  1.85;
+}
+
+.dark {
+  /* --shadow-lg 经 :root 别名 var(--elevation-3),暗色由上面 .dark 的 elevation-3 覆盖,无需重复 */
+  /* doc-paper/grid 已 alias 语义 token,随 .dark 的 card/muted/border 自动适配,无需在此覆盖 */
+  --doc-negative: oklch(0.70 0.18 26);   /* 暗色纸上提亮的赤字红 */
+  --doc-shadow: 0 2px 16px oklch(0 0 0 / 40%);
+}
+
+/* Thinking pulse animation for chat assistant turn */
+@keyframes think-breathe {
+  0%, 100% { transform: scale(0.6); opacity: 0; }
+  50% { transform: scale(1); opacity: 0.22; }
+}
+
+.think-pulse {
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  position: relative;
+  flex: 0 0 8px;
+}
+
+.think-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  background: var(--primary);
+  opacity: 0.18;
+  animation: think-breathe 1.6s ease-in-out infinite;
+}
+
+.think-pulse.done {
+  background: var(--muted-foreground);
+}
+
+.think-pulse.done::after {
+  animation: none;
+  opacity: 0.12;
+  background: var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .think-pulse::after { animation: none; opacity: 0.18; }
+}
+
+/* Rotate chevron inside open details */
+details[open] > summary .details-chevron {
+  transform: rotate(90deg); /* ChevronRight:闭合朝右 → 展开转 90° 朝下 */
+}
+
+/* ---------- 统一 markdown 渲染（chat 气泡 + 答案；自管排版，不依赖 @tailwindcss/typography）----------
+   气泡与答案完全共用这套（已删 fa-answer 衬线层）；尺寸/间距全用上面的 --text-*/--lh-* token。
+   颜色跟随主题变量（foreground/muted/border/primary），明暗自动。 */
+.md-content {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  color: var(--foreground);
+}
+/* 正文字号兜底:上面的 .md-content 基规则在构建里被丢了(font-size 没生效,正文回落到
+   preflight 16px);用双类提高优先级、独立成条,确保正文走 --text-body(14px)token。 */
+.md-content.md-content {
+  font-size: var(--text-body);
+  font-weight: var(--text-body--font-weight);
+  line-height: var(--lh-body);
+}
+/* 容器内首尾元素不带外边距：避免单行气泡/答案被段距撑高 */
+.md-content > :first-child { margin-top: 0; }
+.md-content > :last-child { margin-bottom: 0; }
+
+.md-content p      { margin: 0.6em 0; }
+.md-content strong { font-weight: 600; }
+.md-content em     { font-style: italic; }
+.md-content a      { color: var(--primary); }   /* 渲染器按文件/外链覆盖，此为兜底 */
+
+.md-content h1, .md-content h2, .md-content h3, .md-content h4 {
+  font-weight: 600; line-height: var(--lh-tight); letter-spacing: -0.01em;
+}
+.md-content h1     { font-size: var(--text-h1);    margin: 1em 0 0.4em; }
+.md-content h2     { font-size: var(--text-h2);    margin: 0.9em 0 0.35em; }
+.md-content h3, .md-content h4 { font-size: var(--text-title); margin: 0.8em 0 0.3em; }
+
+.md-content ul     { list-style: disc;    padding-left: 1.4em; margin: 0.5em 0; }
+.md-content ol     { list-style: decimal; padding-left: 1.5em; margin: 0.5em 0; }
+.md-content li     { margin: 0.25em 0; }
+.md-content li > ul, .md-content li > ol { margin: 0.25em 0; }
+
+.md-content blockquote {
+  border-left: 2px solid var(--primary); padding-left: 0.8em;
+  margin: 0.6em 0; color: var(--muted-foreground);
+  font-size: var(--text-small); /* 注/引用比正文小一档(13) */
+}
+.md-content hr     { border: 0; border-top: 1px solid var(--border); margin: 0.9em 0; }
+
+/* 行内代码：浅灰 chip 底、等宽、无反引号 */
+.md-content :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  background: var(--muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 400;
+}
+.md-content :not(pre) > code::before,
+.md-content :not(pre) > code::after { content: none; }
+
+/* 代码块：有框、可滚、软换行（气泡窄）。CodeBlock 组件只渲染裸 <pre>，全靠这里上样式 */
+.md-content pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  line-height: var(--lh-snug);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.7em 0.8em;
+  margin: 0.6em 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.md-content pre code { background: none; padding: 0; font-size: inherit; }
+/* hljs 主题(atom-one)经 html:not(.dark)/html.dark 作用域注入,特异性压过上面的 reset,会给
+   code 自带 1em padding + 主题底色(#fafafa/#282c34),叠在 pre 的 padding+底上 → 一圈色差的缝。
+   这里用 !important 只保留主题“配色”、去掉它的盒子(padding/背景),代码块只剩 pre 一层框、无缝。 */
+.md-content pre code.hljs { background: none !important; padding: 0 !important; }
+
+/* 表格：只横线、铺满、无竖线/无表头底色（更关注文字）。外层 TableBlock 加复制按钮。 */
+.md-content table {
+  width: 100%; border-collapse: collapse;
+  font-size: var(--text-body); margin: 0; /* 间距由外层 wrapper 给 */
+}
+.md-content th, .md-content td {
+  border: none; border-bottom: 1px solid var(--border);
+  /* 统一左对齐:!important 盖掉 remark-gfm 按列对齐标记(:--- / ---:)生成的内联 text-align,
+     避免同一表格里数字列右对齐、文字列左对齐的混排。 */
+  padding: 0.5em 0.9em 0.5em 0; text-align: left !important; vertical-align: top;
+}
+.md-content th:last-child, .md-content td:last-child { padding-right: 0; }
+.md-content thead th { font-weight: 600; color: var(--foreground); border-bottom: 1.5px solid var(--border); }
+
+/* Send button breathing pulse — active when not disabled */
+@keyframes btn-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--primary) l c h / 0); }
+  55% { box-shadow: 0 0 0 7px oklch(from var(--primary) l c h / 14%); }
+}
+
+html button.composer-send-button:not(:disabled) {
+  animation: btn-breathe 2.6s ease-in-out infinite;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+html button.composer-send-button:not(:disabled):hover {
+  animation: none;
+  transform: scale(1.1);
+  box-shadow: 0 0 14px oklch(from var(--primary) l c h / 35%);
+}
+html button.composer-send-button:not(:disabled):active {
+  animation: none;
+  transform: scale(0.93);
+}
+/* 停止按钮不呼吸:呼吸光环是「召唤点击」的发送态信号,挂在停止键上等于持续催用户中断生成,语义反了。
+   只去掉自发呼吸;hover 放大 / 按下回弹保留(transition 缓动仍继承自上面的发送态规则)。 */
+html button.composer-send-button.stop {
+  animation: none;
+}
+
+/* ---------- Tone system utilities ----------
+   容器上设 --tone(如 style={{ "--tone": "var(--tone-warn)" }}),再组合下列类。 */
+.fa-toned { background: oklch(from var(--tone) l c h / 10%); color: var(--tone); }
+.dark .fa-toned { background: oklch(from var(--tone) l c h / 16%); }
+.fa-tone-edge {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--tone);
+}
+.fa-tone-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 500;
+  white-space: nowrap;
+  background: oklch(from var(--tone) l c h / 10%);
+  color: oklch(from var(--tone) calc(l - 0.12) c h);
+}
+.fa-tone-pill::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 999px;
+  background: var(--tone);
+  flex-shrink: 0;
+}
+.dark .fa-tone-pill {
+  background: oklch(from var(--tone) l c h / 16%);
+  color: oklch(from var(--tone) calc(l + 0.07) calc(c - 0.03) h);
+}
+.fa-tone-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 999px;
+  background: var(--tone);
+  flex-shrink: 0;
+}
+
+/* ---------- Dynamic micro-motion ---------- */
+/* AI 思考脉冲点(紫):单独使用,不配文字不配展开按钮;done 后变灰停止 */
+.fa-pulse {
+  position: relative;
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+.fa-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  background: var(--primary);
+  opacity: 0.18;
+  animation: fa-think-breathe 1.6s ease-in-out infinite;
+}
+.fa-pulse.done { background: var(--muted-foreground); opacity: 0.6; }
+.fa-pulse.done::after { animation: none; opacity: 0; }
+
+/* 紧急待办红点扩散脉冲 */
+.fa-dot-pulse { animation: fa-dot-pulse 2s ease-in-out infinite; }
+
+@keyframes fa-think-breathe { 0%, 100% { transform: scale(0.6); opacity: 0; } 50% { transform: scale(1); opacity: 0.22; } }
+@keyframes fa-dot-pulse { 0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--tone-alarm) l c h / 35%); } 55% { box-shadow: 0 0 0 5px oklch(from var(--tone-alarm) l c h / 0%); } }
+
+/* 正在执行步骤的文字「走光」:一道高亮从左到右循环扫过文字(逐字变亮) */
+.fa-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 0%,
+    var(--muted-foreground) 35%,
+    var(--primary) 50%,
+    var(--muted-foreground) 65%,
+    var(--muted-foreground) 100%
+  );
+  background-size: 220% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: fa-shimmer 1.6s linear infinite;
+}
+@keyframes fa-shimmer { 0% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
+
+/* 思考/处理中的星芒图标:8 条射线 scaleY 呼吸 + 逐条延迟,描边走主色。
+   --fa-spark-speed 控制呼吸快慢(A 思考慢、B 处理快一档)。 */
+.fa-spark .ray {
+  stroke: var(--primary);
+  stroke-width: 4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  transform-origin: 15px 15px;
+  transform: scaleY(0.4);
+  animation: fa-spark-pulse var(--fa-spark-speed, 1.4s) ease-in-out infinite;
+}
+@keyframes fa-spark-pulse {
+  0%, 100% { transform: scaleY(0.4); opacity: 0.55; }
+  50%      { transform: scaleY(1);   opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fa-dot-pulse, .fa-spark .ray { animation: none; }
+  .fa-spark .ray { transform: scaleY(0.7); opacity: 0.8; }
+  .fa-pulse::after { animation: none; opacity: 0.18; }
+  .fa-shimmer-text { animation: none; color: var(--foreground); -webkit-text-fill-color: var(--foreground); }
+}
+
+/* 全站滚动条:细、淡、圆角。内容溢出才出现(overflow:auto 默认)。
+   默认隐形(thumb 透明),有滚动意图时才浮现——<html>.fa-scrolling 由 ScrollbarFade
+   在 scroll 事件时加上、停下 ~1.2s 后移除;直接 hover 到滚动条上(想抓拖)也显形。
+   thumb 用 2px 透明边 + background-clip:padding-box,使可见宽度约 8px。
+   用纯 rgba 变量(不依赖 oklch relative color,兼容 macOS WKWebView/旧 WebKit)。 */
+:root { --sb-thumb: rgba(0, 0, 0, 0.28); --sb-thumb-hover: rgba(0, 0, 0, 0.44); }
+.dark { --sb-thumb: rgba(255, 255, 255, 0.30); --sb-thumb-hover: rgba(255, 255, 255, 0.48); }
+/* 只用 ::-webkit-scrollbar(Chromium + WKWebView 都支持):
+   关键——不要同时写标准 scrollbar-width/scrollbar-color,否则现代 Chromium 会忽略本伪元素、退回默认黑条。 */
+/* 可见 thumb 粗细 = width - 2×border(border 是透明留白)。12 - 2×2 = 8px。 */
+::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
+::-webkit-scrollbar-track { background: transparent; }
+/* 默认透明(藏起来);transition 让浮现/淡出平滑。
+   注意:::-webkit-scrollbar-thumb 的 transition 在 WebKit 上有效。 */
+::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.3s ease;
+}
+/* 只有「正在被滚动的那个容器自己」(.fa-scrolling,由 ScrollbarFade 按元素加)才显形;
+   注意是元素自身伪元素(无空格),不是后代——否则一个容器滚动会把别处滚动条一起点亮。
+   停下后无论鼠标在哪都淡出。hover 仅在「已显形(正在滚动 / 拖动)」时加深,不单独把隐藏
+   的条勾出来;拖动滚动条本身持续触发 scroll,fa-scrolling 不掉,抓拖期间始终可见。 */
+.fa-scrolling::-webkit-scrollbar-thumb { background-color: var(--sb-thumb); }
+.fa-scrolling::-webkit-scrollbar-thumb:hover { background-color: var(--sb-thumb-hover); }
+::-webkit-scrollbar-corner { background: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  ::-webkit-scrollbar-thumb { transition: none; }
+}

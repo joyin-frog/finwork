@@ -1,0 +1,108 @@
+name: CI
+
+# PR 或手动触发；push main 不自动跑（沿用现状，省额度）。
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一 PR 连推自动取消进行中的旧 run。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Changed Areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      e2e:  ${{ steps.filter.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 1 }
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-verify.yml'
+              - 'scripts/ci-cancel-aware.sh'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig*.json'
+              - 'next.config.ts'
+              - 'eslint.config.mjs'
+              - 'postcss.config.mjs'
+              - 'tailwind.config.ts'
+              - 'instrumentation.ts'
+              - 'components.json'
+              - 'playwright.config.ts'
+              - 'requirements.txt'
+              - 'app/**'
+              - 'lib/**'
+              - 'components/**'
+              - 'hooks/**'
+              - 'agent-skills/**'
+              - 'excel/**'
+              - 'workers/**'
+              - 'tests/**'
+              - 'e2e/**'
+              - 'data/**'
+              - 'scripts/**'
+            e2e:
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-verify.yml'
+              - 'scripts/ci-cancel-aware.sh'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'next.config.ts'
+              - 'instrumentation.ts'
+              - 'playwright.config.ts'
+              - 'requirements.txt'
+              - 'app/**'
+              - 'lib/**'
+              - 'components/**'
+              - 'hooks/**'
+              - 'agent-skills/**'
+              - 'excel/**'
+              - 'workers/**'
+              - 'e2e/**'
+
+  verify:
+    name: Verify
+    needs: changes
+    uses: ./.github/workflows/ci-verify.yml
+    with:
+      run_checks: ${{ needs.changes.outputs.code == 'true' }}
+      run_build:  ${{ needs.changes.outputs.code == 'true' }}
+      run_unit:   ${{ needs.changes.outputs.code == 'true' }}
+      run_e2e:    ${{ needs.changes.outputs.e2e == 'true' }}
+
+  # 唯一"必过检查"聚合门（#3）。reusable 的 lane 会按改动条件 skip，
+  # 直接把条件 job 设必过很脆；改为只把本 gate 设为 branch protection 的必过检查。
+  # verify 是 reusable 调用方，其 result 已聚合内部所有 lane（任一 lane 失败→verify 失败）。
+  ci-gate:
+    name: CI Gate
+    needs: [changes, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require CI jobs to pass
+        run: |
+          set -euo pipefail
+          fail=0
+          for nv in "Detect Changed Areas=${{ needs.changes.result }}" "Verify=${{ needs.verify.result }}"; do
+            name="${nv%%=*}"; res="${nv##*=}"
+            echo "$name: $res"
+            if [ "$res" != "success" ] && [ "$res" != "skipped" ]; then
+              echo "::error::$name 未通过 (result=$res)"; fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "✅ 所有必需 job 通过"
