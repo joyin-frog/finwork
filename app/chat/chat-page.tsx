@@ -770,7 +770,7 @@ export default function ChatPage({
             }}
           >
             {/* 标题栏只跨聊天列,不再横跨预览:预览开时这两个按钮正好落在卡片左缘,预览关时回到最右。 */}
-            <header className="relative flex items-center justify-between gap-3 pr-5 h-11 border-b border-border shrink-0">
+            <header className="relative flex items-center justify-between gap-3 pr-5 h-11 shrink-0">
               <DragHandle />
               <SidebarToggle />
               <h1 data-tauri-drag-region className="flex-1 min-w-0 text-title truncate">{displayTitle}</h1>

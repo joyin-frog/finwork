@@ -472,7 +472,7 @@ function FilesPageContent() {
         <div className={cn("flex flex-col flex-1 min-w-[280px] overflow-hidden", maximized && "hidden")}>
 
           {/* Topbar —— 只跨列表列,不横跨预览:预览卡浮在右侧、脱离标题栏。窄列时各项不换行,真放不下横向滚动(不露滚动条)。 */}
-          <header className="relative flex items-center gap-3 pr-5 h-11 border-b border-border shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <DragHandle />
             <SidebarToggle />
             <ResourceTabs active="files" />
