@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { assertNoCrash, dismissGate } from "./helpers";
 
 // 遥测设置 journey(§17):
