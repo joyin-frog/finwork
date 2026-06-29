@@ -33,6 +33,8 @@ export const test = base.extend({
       },
       [FIRSTRUN_READY, FIRSTRUN_KEY_PROMPTED],
     );
+    // Playwright fixture 的 `use` 形参不是 React Hook;react-hooks 规则在此误报。
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(page);
   },
 });
