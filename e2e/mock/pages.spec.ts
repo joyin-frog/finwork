@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { assertNoCrash, dismissGate } from "./helpers";
 
 // Tier-1:非 agent journey,确定性、无需 mock 工具。验证各页 UI → API → DB/ripgrep 渲染不崩。

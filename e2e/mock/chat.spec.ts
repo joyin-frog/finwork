@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { assertNoCrash, dismissGate, sendChat } from "./helpers";
 
 // Tier-2:agent 类 journey,由确定性 mock Agent 驱动(FINANCE_AGENT_MOCK_AGENT=1)。
@@ -32,8 +32,8 @@ test("chat: 富 markdown 排版渲染不塌 + 外链地球图标", async ({ page
   await expect(answer.getByText("收入")).toBeVisible();
   await expect(answer.locator("pre")).toBeVisible();                // 代码块
   await expect(answer.getByText("行内代码")).toBeVisible();          // 行内代码 chip
-  // 外链:绿色文本 + 地球图标(svg),角色为 link
-  const link = answer.getByRole("link", { name: /openai\.github\.io/ });
+  // 外链:绿色文本 + 地球图标(svg),角色为 link(用中性域名,避开身份脱敏过滤器)
+  const link = answer.getByRole("link", { name: /example\.com/ });
   await expect(link).toBeVisible();
   await expect(link.locator("svg")).toBeVisible();                  // 🌐 地球标识
   // 金额列在 markdown 里标了右对齐,CSS 应强制为左对齐
