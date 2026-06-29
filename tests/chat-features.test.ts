@@ -172,8 +172,8 @@ function main() {
     "agent route should persist agent events"
   );
   assert.ok(
-    !agentRouteContent.includes('type: "thinking"'),
-    "agent route should NOT persist thinking events (thinking no longer surfaced)"
+    agentRouteContent.includes('type: "thinking"') && agentRouteContent.includes("redact(filterIdentity"),
+    "agent route should surface thinking events, scrubbed via identity + PII filtering"
   );
   assert.ok(
     chatContent.includes("fileNameFromStoragePath") && chatContent.includes("previewFile"),
