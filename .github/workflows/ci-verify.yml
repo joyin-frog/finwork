@@ -7,6 +7,7 @@ on:
       run_build:  { type: boolean, default: true }   # next build（全 runtime）
       run_unit:   { type: boolean, default: true }   # 单测 + golden eval
       run_e2e:    { type: boolean, default: true }   # playwright mock e2e
+      run_windows_smoke: { type: boolean, default: true }  # Windows 打包态运行时 smoke（见 windows_smoke job）
 
 permissions:
   contents: read
@@ -64,6 +65,42 @@ jobs:
           workers/.venv/bin/python -m pip install -r requirements.txt
       - run: bash scripts/ci-cancel-aware.sh npm test
       - run: bash scripts/ci-cancel-aware.sh npm run eval:golden:ci
+
+  windows_smoke:
+    if: inputs.run_windows_smoke
+    name: Windows packaged smoke
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: x86_64-pc-windows-msvc }
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Cache Next build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextcache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**/*.{ts,tsx,js,jsx,css}', 'lib/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}') }}
+          restore-keys: |
+            nextcache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nextcache-${{ runner.os }}-
+      # 组装「用户机上真正跑的那份」next-server：next build → prepare-tauri（拷内嵌 node / SDK 原生 CLI /
+      # ripgrep / 完整 .next/server 覆盖；并跑打包期硬校验：node:sqlite 可用、SDK 二进制存在）。
+      - run: npm run build
+      - run: npm run tauri:prepare
+      # 校验 Rust 外壳在 Windows 能编译（含 KILL_ON_JOB_CLOSE 的 Job Object FFI，mac 上被 cfg 隔离编不到）。
+      - name: Cargo check (Windows shell, incl. Job Object FFI)
+        working-directory: src-tauri
+        run: cargo check
+      # 启动组装好的 next-server，打一圈路由，扫描有无「漏 chunk / 平台二进制缺失 / stdio 编码」等致命签名。
+      - name: Packaged runtime smoke
+        run: node scripts/windows-smoke.mjs
 
   e2e:
     if: inputs.run_e2e

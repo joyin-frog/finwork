@@ -27,6 +27,7 @@ import { cancelPendingQuestions, createPendingQuestion } from "@/lib/agent/pendi
 import type { AgentQuestion } from "@/lib/agent/claude-adapter";
 import { redact } from "@/lib/safety/pii";
 import { sanitizeTurnEvents } from "@/lib/agent/persist-hygiene";
+import { appendServerLog } from "@/lib/runtime/server-log";
 
 export async function POST(request: Request) {
   const traceId = randomUUID();
@@ -144,6 +145,9 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[agent-query] failed", { traceId, durationMs: Date.now() - startedAt, error: message });
+    // 原始错误落盘:前端只会看到 humanize 后的「网络不稳定…」,真因(401/404/超时/网关地址错等)
+    // 需在 server-<date>.log 留底才查得到。best-effort,不 await。
+    void appendServerLog(`[agent-query] failed traceId=${traceId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     // 出错也保留已完成的部分(非流式路径同样不该整回合归零);拿不到 collector 才只记错误 trace。
     const collector = (error as { __collector?: AgentTurnCollector }).__collector;
     if (collector) {
@@ -396,6 +400,8 @@ function createStreamingResponse(params: {
       } catch (error) {
         cancelPendingQuestions(traceId);
         const msg = error instanceof Error ? error.message : String(error);
+        // 流式聊天的真实失败路径:前端只收到 redact 后的 incomplete/error 文案,原始错误在这里落盘留底。
+        void appendServerLog(`[agent-query/stream] failed traceId=${traceId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         const collector = (error as { __collector?: AgentTurnCollector }).__collector;
         if (collector) {
           // 出错也保留已完成的部分:落库(消息+中间事件+文件)并发 incomplete,让前端立刻展示、可「继续」。

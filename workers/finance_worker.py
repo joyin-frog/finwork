@@ -423,7 +423,20 @@ def cmd_selfcheck():
     }, ensure_ascii=False))
 
 
+def _force_utf8_stdio():
+    """把 stdin/stdout/stderr 统一改成 UTF-8。Windows 中文系统默认 cp936/GBK:Node 按 UTF-8 把
+    code 写进 stdin → sys.stdin.read() 误解码出游离代理(\\udcXX)→ exec/print 报 "surrogates not
+    allowed"。在读 stdin / 任何 print 之前调用。与 run-python.ts 的 PYTHONUTF8=1 双保险:即便 worker
+    被直接运行/测试(没设那个 env)也正确。"""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass  # 非常规流(如已被替换为 StringIO)忽略
+
+
 def main():
+    _force_utf8_stdio()
     if len(sys.argv) >= 2 and sys.argv[1] == "--selfcheck":
         cmd_selfcheck()
         return
