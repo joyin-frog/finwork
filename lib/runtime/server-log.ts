@@ -1,7 +1,8 @@
 // 服务端错误/事件落地到磁盘日志,解决"Application error: server-side exception + Digest"无处可查的问题。
-// 打包态 Tauri 把 node 子进程的 stdout/stderr 丢弃了(见 src-tauri/src/lib.rs),控制台报错的
-// "see the server logs" 根本没落地;这里把错误连同 digest 写进 <appData>/logs/server-<date>.log,
-// 用户把该文件发来即可定位。所有写入都是 best-effort,绝不抛(日志失败不能拖垮请求)。
+// 这里把错误连同 digest 写进 <appData>/finance-agent/logs/server-<date>.log,用户把该文件发来即可定位。
+// 补充:node 子进程的 stdout/stderr 已由 Tauri 重定向到同目录的 next-server.log(见 src-tauri/src/lib.rs),
+// 两者互补——本文件存结构化的 server error + digest,next-server.log 存原始 console.*/SDK stderr。
+// 所有写入都是 best-effort,绝不抛(日志失败不能拖垮请求)。
 
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";

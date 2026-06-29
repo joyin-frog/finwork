@@ -1,8 +1,12 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rgPath } from "@vscode/ripgrep";
+
+const localRequire = createRequire(import.meta.url);
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tauriConfPath = path.join(root, "src-tauri", "tauri.conf.json");
@@ -79,6 +83,12 @@ await mkdir(serverResourceDir, { recursive: true });
 await cp(standaloneDir, serverResourceDir, { recursive: true });
 await mkdir(path.join(serverResourceDir, ".next"), { recursive: true });
 await cp(staticDir, path.join(serverResourceDir, ".next", "static"), { recursive: true });
+// Next `output: standalone` 在 Windows 上 nft 文件追踪偶发不全(构建日志的 "Failed to copy traced
+// files … ENOENT mkdir …\\C:\\Users\\…"):依赖被解析成绝对/特殊路径,拷进 .next/standalone 失败,
+// 连带漏拷 .next/server/chunks/*.js → 运行期 require('./chunks/XXXX.js') MODULE_NOT_FOUND → 每个
+// SSR/路由 500、前端只见"网络错误"。用完整的 .next/server 覆盖 standalone 的不全子集,确保 server
+// chunk 齐全(同一次 build 的产物,叠加是超集,安全)。
+await cp(path.join(nextDir, "server"), path.join(serverResourceDir, ".next", "server"), { recursive: true });
 // SDK 原生 skill 的内置 plugin:生产态 getBundledPluginRoot() = next-server/agent-skills。
 await cp(agentSkillsDir, path.join(serverResourceDir, "agent-skills"), { recursive: true });
 // 系统提示静态前缀(A 段):生产态 getBundledSystemPromptPath() = next-server/lib/agent/SYSTEM_PROMPT.md。
@@ -112,9 +122,57 @@ if (existsSync(rgPath)) {
   console.warn(`⚠ 未找到 ripgrep 二进制(${rgPath});知识库搜索在产物中将不可用。`);
 }
 
+// 内置 @anthropic-ai/claude-agent-sdk 的原生 CLI 二进制到 bin/。SDK 默认从按平台的 optionalDependencies
+// 包(claude-agent-sdk-<plat>-<arch>)解析该二进制,但 Next standalone 不会 trace 这个动态解析的可选平台包
+// → 打包后聊天报 "Native CLI binary for <plat>-<arch> not found"。这里在打包机(= 目标平台)上从平台包拷出
+// 二进制,运行期经 getBundledClaudeCliPath() + options.pathToClaudeCodeExecutable 显式喂给 SDK。
+// 找不到即 fail 构建——杜绝再悄悄发一个"装上但聊天必报网络错误"的包。
+{
+  const sdkPlatformPkg = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;
+  const destBinName = process.platform === "win32" ? "claude.exe" : "claude";
+  let sdkBinSrc = null;
+  try {
+    const pkgDir = path.dirname(localRequire.resolve(`${sdkPlatformPkg}/package.json`));
+    const entries = await readdir(pkgDir);
+    const found = entries.find((f) => f === "claude" || f === "claude.exe");
+    if (found) sdkBinSrc = path.join(pkgDir, found);
+  } catch { /* 平台包未安装 */ }
+  if (sdkBinSrc && existsSync(sdkBinSrc)) {
+    await cp(sdkBinSrc, path.join(binResourceDir, destBinName));
+    console.log(`prepare-tauri: 内置 SDK 原生 CLI ${sdkPlatformPkg} → bin/${destBinName}`);
+  } else {
+    throw new Error(
+      `prepare-tauri: 找不到 claude-agent-sdk 原生 CLI(${sdkPlatformPkg} 的 claude/claude.exe)。\n` +
+        `  Next standalone 不 trace 该平台可选包 → 打包后聊天必报 "Native CLI binary for ${process.platform}-${process.arch} not found"。\n` +
+        "  确认 npm ci 未用 --omit=optional,且在目标平台机器上打包(打包机平台/架构须与目标一致)。"
+    );
+  }
+}
+
 await rm(nodeResourceDir, { recursive: true, force: true });
 await mkdir(nodeResourceDir, { recursive: true });
 await cp(process.execPath, path.join(nodeResourceDir, nodeBinaryName));
+
+// 校验内嵌 Node 能加载 node:sqlite —— 用与运行期 `node server.js`(lib.rs,无 --experimental-sqlite)
+// 完全一致的方式探测刚拷进去的二进制。打进过旧的 Node(node:sqlite 仍需 flag 或缺失)会让用户机上每个
+// 碰 DB 的路由 500,而零依赖的 /api/health 仍 200 → UI 出来但一点就「网络错误」。这里在打包期直接拦掉,
+// 不靠硬编码版本号(经验式探测,避免 node:sqlite 解禁版本边界判断错)。
+const bundledNode = path.join(nodeResourceDir, nodeBinaryName);
+const sqliteProbe = spawnSync(
+  bundledNode,
+  ["-e", "new (require('node:sqlite').DatabaseSync)(':memory:').close()"],
+  { encoding: "utf-8" }
+);
+if (sqliteProbe.status !== 0) {
+  const detail = (sqliteProbe.stderr || sqliteProbe.stdout || sqliteProbe.error?.message || "").trim().slice(0, 500);
+  throw new Error(
+    `prepare-tauri: 内嵌 Node(${process.version})无法加载 node:sqlite —— 该版本不被支持。\n` +
+      "  运行期用裸 `node server.js`(无 --experimental-sqlite),需要 node:sqlite 已稳定可用的 Node 版本;\n" +
+      "  否则打包产物会出现「UI 能开但一点就网络错误」。请用更新的 Node 重新打包。\n" +
+      `  探测输出:${detail}`
+  );
+}
+console.log(`prepare-tauri: 内嵌 Node ${process.version} 已通过 node:sqlite 可用性校验。`);
 
 await rm(placeholderDistDir, { recursive: true, force: true });
 await mkdir(placeholderDistDir, { recursive: true });
