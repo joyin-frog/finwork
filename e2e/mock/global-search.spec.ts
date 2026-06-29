@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { assertNoCrash, dismissGate } from "./helpers";
 
 // 首启 doctor/配置 gate 在 idle 后才弹——每次点击前清一次

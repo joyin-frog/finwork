@@ -52,7 +52,7 @@ export default function CockpitPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <header className="relative flex items-center gap-3 pr-5 h-11 border-b border-border shrink-0">
+      <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0">
         <DragHandle />
         <SidebarToggle />
         <h1 className="text-title">总览</h1>

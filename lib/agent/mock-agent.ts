@@ -84,6 +84,34 @@ export async function runMockAgent(
     return done();
   }
 
+  // ── journey: 计算回执卡(tax_calculator 返 CalcReceipt → 通用回执卡片下钻)──
+  // 放在宽口径"报销|…|税"之前,让"增值税"专走带 structuredContent 的回执链路。
+  if (/增值税|算税|税额/i.test(text)) {
+    await say("我来算一下这笔增值税。");
+    emitEvent({ type: "tool_use", id: "mock-tax-1", name: "tax_calculator", input: { type: "vat", amount: 100000 } });
+    await sleep(delay);
+    emitEvent({
+      type: "tool_result",
+      toolUseId: "mock-tax-1",
+      name: "tax_calculator",
+      content: "不含税价 100000.00 元，税率 13%，销项税额 13000.00 元。",
+      durationMs: 8,
+      structured: {
+        value: 13000,
+        unit: "CNY",
+        rounding: "half_up",
+        steps: [
+          { label: "销项税额", expr: "100000.00 × 13% = 13000.00", inputs: {}, subtotal: 13000 },
+        ],
+        source: [],
+        basis: { caliberVersion: "tax-config@2025.1", settlementStatus: "draft", asOf: "2025-06" },
+        caveats: ["税率取自当期合法税率集，如政策调整请在设置中更新口径后重算。"],
+      },
+    });
+    await say("销项税额 13000.00 元，明细见上方回执卡片。");
+    return done();
+  }
+
   // ── journey: 工具卡(确定性工具调用 + 结果渲染)──────────────────────────
   if (/报销|对账|核对|校验|薪|工资|税/i.test(text)) {
     await say("我来核对一下数据。");
@@ -152,7 +180,10 @@ export async function runMockAgent(
         '    print("hi")',
         "```",
         "",
-        "参考:https://openai.github.io/openai-agents-python/streaming/",
+        // URL 前留空格:GFM 扩展自动链接只在 URL 前是空白或 *_~( 时才成链,紧贴冒号不会成链。
+        // 用中性域名:身份脱敏过滤器会把 openai/anthropic 等厂商名替换成「(内部信息,不便透露)」,
+        // 那会破坏 URL(混入中文/括号 → 不再自动成链),故 e2e 样例避开厂商名。
+        "参考: https://example.com/agents-streaming/",
       ].join("\n")
     );
     return done();

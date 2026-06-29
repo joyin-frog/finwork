@@ -529,6 +529,12 @@ html button.composer-send-button.stop {
    的条勾出来;拖动滚动条本身持续触发 scroll,fa-scrolling 不掉,抓拖期间始终可见。 */
 .fa-scrolling::-webkit-scrollbar-thumb { background-color: var(--sb-thumb); }
 .fa-scrolling::-webkit-scrollbar-thumb:hover { background-color: var(--sb-thumb-hover); }
+/* 横向条常显:Windows / overlay 环境下鼠标用户无 Shift 横滚习惯,横向溢出无法被发现。
+   -webkit-appearance:none 强制横向条走「经典占位条」(非 overlay,始终占 12px 并显形);
+   只作用横向,竖向 thumb 不动,仍走 .fa-scrolling 淡入淡出。 */
+::-webkit-scrollbar:horizontal { -webkit-appearance: none; }
+::-webkit-scrollbar-thumb:horizontal { background-color: var(--sb-thumb); }
+::-webkit-scrollbar-thumb:horizontal:hover { background-color: var(--sb-thumb-hover); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 /* Windows 自绘标题栏:右上角让出三键(最小化/最大化/关闭,46px×3≈138px)的位置,
