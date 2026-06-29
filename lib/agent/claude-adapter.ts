@@ -5,7 +5,7 @@ import path from "node:path";
 import type { SDKUserMessage, SDKMessage, SDKAssistantMessage, SDKPartialAssistantMessage, SDKResultSuccess, SDKCompactBoundaryMessage, ModelUsage } from "@anthropic-ai/claude-agent-sdk";
 import { isEnabled } from "@/lib/runtime/flags";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
-import { getProjectRoot, getPythonBinDir, getPythonVenvRoot } from "@/lib/runtime/paths";
+import { getProjectRoot, getPythonBinDir, getPythonVenvRoot, getBundledClaudeCliPath } from "@/lib/runtime/paths";
 import { buildFinanceMcpServers } from "./mcp-tools";
 import { ALLOWED_TOOLS, BUILTIN_TOOLS } from "./tools/registry";
 import { getSkillPluginConfig } from "./skill-plugin";
@@ -242,6 +242,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   });
   const systemPrompt = isEnabled("PROMPT_CACHE_ENABLED") ? systemPromptParts : systemPromptParts.join("\n");
 
+  const claudeCliPath = getBundledClaudeCliPath();
   const options: Record<string, unknown> = {
     abortController,
     cwd: getProjectRoot(),
@@ -282,6 +283,9 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     ...(runOptions.claudeSessionId && !runOptions.resumeSession
       ? { sessionId: runOptions.claudeSessionId }
       : {}),
+    // 打包态显式指向内置的原生 CLI 二进制(prepare-tauri 拷入 bin/);否则 standalone 没带平台包,
+    // SDK 会报 "Native CLI binary for <plat> not found"。开发态为 null → 不传,SDK 自行解析平台包。
+    ...(claudeCliPath ? { pathToClaudeCodeExecutable: claudeCliPath } : {}),
   };
 
   const pickedMessages = pickPromptMessages(messages, { resumeSession: Boolean(runOptions.resumeSession), retried: false });

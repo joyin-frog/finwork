@@ -14,6 +14,16 @@ export async function register() {
       // cold_boot≈ = 从 Node 进程启动到本钩子(Next bootstrap)的耗时,约等于打包态"白屏阶段"的
       // 主成本(④ Node+Next 冷启)。用来量化决定是否值得做 P1(服务常驻)。
       await appendServerLog(`[startup] next-server 已启动 pid=${process.pid} platform=${process.platform} node=${process.version} cold_boot≈${Math.round(process.uptime() * 1000)}ms`);
+      // 运行时自检:node:sqlite 可用性。打包进过旧的 Node 时它不可用 → 每个碰 DB 的路由(cockpit/聊天落库)
+      // 500,而零依赖的 /api/health 仍 200(UI 出来但一点就「网络错误」)。落盘让这一根因一眼可查。
+      let sqliteStatus = "ok";
+      try {
+        const sqlite = await import("node:sqlite");
+        new sqlite.DatabaseSync(":memory:").close();
+      } catch (e) {
+        sqliteStatus = `UNAVAILABLE (${e instanceof Error ? e.message : String(e)})`;
+      }
+      await appendServerLog(`[preflight] node:sqlite=${sqliteStatus}`);
     } catch { /* best-effort */ }
   }
 }
