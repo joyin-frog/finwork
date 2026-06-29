@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 import { getProjectRoot, getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
 import { getAppSetting } from "@/lib/db/sqlite";
 import { loadTaxRates } from "@/lib/db/finance-store";
+import { makeCalcReceipt, type CalcReceipt } from "@/lib/domain/receipt";
+import { redact } from "@/lib/safety/pii";
 
 import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
@@ -108,15 +110,40 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
       }
       // 税额计算逻辑在 tax-incentive skill 的固定脚本 tax_calc.py(可直接调;parity 见 selftest_tax_calc.py)
       const script = path.join(getBundledPluginRoot(), "skills", "tax-incentive", "scripts", "tax_calc.py");
+      type PyTaxResult = {
+        value: number;
+        caliberVersion: string;
+        steps: Array<{ label: string; expr: string; subtotal: number }>;
+      };
       let text: string;
+      let pyResult: PyTaxResult | undefined;
       try {
         const out = execFileSync(getPythonPath(), [script], { input: JSON.stringify(args), encoding: "utf-8" });
-        text = (JSON.parse(out) as { text?: string }).text ?? "参数不完整，请提供对应税种的计算参数。";
+        const parsed = JSON.parse(out) as { text?: string; result?: PyTaxResult };
+        text = parsed.text ?? "参数不完整，请提供对应税种的计算参数。";
+        pyResult = parsed.result;
       } catch (e) {
         text = `税额计算脚本执行失败：${e instanceof Error ? e.message : String(e)}`;
       }
 
-      return { content: [{ type: "text" as const, text }] };
+      // 功能3: CalcReceipt 直接消费 Python 返回的结构化数值 — TS 不再重算税额（单一真相）
+      const now = new Date();
+      const asOf = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      let receipt: CalcReceipt | undefined;
+      if (pyResult) {
+        receipt = makeCalcReceipt({
+          value: pyResult.value,
+          steps: pyResult.steps.map((s) => ({ label: s.label, expr: s.expr, inputs: {}, subtotal: s.subtotal })),
+          source: [],
+          basis: { caliberVersion: pyResult.caliberVersion, settlementStatus: "draft", asOf },
+          rounding: "half_up",
+        });
+      }
+
+      return {
+        content: [{ type: "text" as const, text: redact(text) }],
+        ...(receipt ? { structuredContent: receipt } : {})
+      };
     }
   );
 
