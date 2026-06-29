@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppNav } from "@/app/shared/app-nav";
 import { GlobalShortcuts } from "@/app/shared/global-shortcuts";
 import { IsMacProvider } from "@/app/shared/use-is-mac";
-import { useDetectPlatform } from "@/app/shared/window-controls";
+import { useDetectPlatform, WindowControls } from "@/app/shared/window-controls";
 import { FirstRunGate } from "@/app/shared/first-run-gate";
 import { useNavState } from "@/app/shared/nav-state";
 import { cn } from "@/lib/utils";
@@ -114,6 +114,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           跳转到主内容
         </a>
+        <WindowControls />
         <Suspense fallback={null}>
           <AppNav active={active} chatActive={chatActive} />
         </Suspense>
