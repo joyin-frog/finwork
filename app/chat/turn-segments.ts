@@ -78,9 +78,9 @@ export function buildTurnSegments(timeline: SegmentTimelineItem[]): TurnSegments
     processItems = timeline;
   }
 
-  // ask_user 走专门的交互卡片渲染,不进过程段。
+  // ask_user 走专门的交互卡片渲染、thinking 走专门的「思考过程」折叠块,都不进过程段。
   const filtered = processItems.filter(
-    (t) => t.event.type !== "ask_user" && t.event.type !== "ask_user_answered"
+    (t) => t.event.type !== "ask_user" && t.event.type !== "ask_user_answered" && t.event.type !== "thinking"
   );
 
   if (!filtered.length) return { processSegments: [], answerText };
@@ -110,4 +110,39 @@ export function buildTurnSegments(timeline: SegmentTimelineItem[]): TurnSegments
   flushTools();
 
   return { processSegments: segments, answerText };
+}
+
+/**
+ * 按时序拼接本回合所有 thinking 事件的文本(供「思考过程」折叠块展示)。
+ * 跳过空白段;无 thinking 返回 ""。空行分隔多段,保留各段内部换行。
+ */
+/**
+ * 「思考」头部的纯状态:决定显示「正在思考(实时计时)」还是「已思考(定格时长)」、是否渲染/可展开。
+ * - 思考进行中 = 回合活跃且尚未产出任何工具/答案(产出一旦开始即视为思考结束)。
+ * - ms:进行中用实时 liveMs;结束用定格/持久化 durationMs。
+ * - 渲染条件:有思考原文,或正处于思考态(后者覆盖"刚起手还没出原文"的瞬间)。
+ */
+export function thinkingViewState(opts: {
+  isActive: boolean;
+  hasOutput: boolean;
+  hasText: boolean;
+  durationMs: number | undefined;
+  liveMs: number;
+}): { render: boolean; label: string; ms: number | undefined; expandable: boolean; active: boolean } {
+  const active = opts.isActive && !opts.hasOutput;
+  return {
+    render: opts.hasText || active,
+    label: active ? "正在思考" : "已思考",
+    ms: active ? opts.liveMs : opts.durationMs,
+    expandable: opts.hasText,
+    active,
+  };
+}
+
+export function extractThinkingText(timeline: SegmentTimelineItem[]): string {
+  return timeline
+    .filter((t) => t.event.type === "thinking")
+    .map((t) => (typeof t.event.content === "string" ? t.event.content.trim() : ""))
+    .filter(Boolean)
+    .join("\n\n");
 }

@@ -453,7 +453,14 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
             chunks.push(block.text);
             runOptions.onChunk?.(block.text);
           }
-          // thinking 块不收不推(同上)
+          // thinking 块:整块上报(不收 stream_event 的 thinking_delta 增量,避免重复 + 跨片模型名漏过滤)。
+          // 是否对外展示/如何脱敏由上层(route)按安全红线处理;此处只负责把完整思考文本透出。
+          if (block.type === "thinking" && "thinking" in block) {
+            const thinkingText = (block as { thinking?: unknown }).thinking;
+            if (typeof thinkingText === "string" && thinkingText.trim()) {
+              runOptions.onThinking?.(thinkingText);
+            }
+          }
           if (block.type === "tool_use" && "name" in block) {
             const toolUseBlock = block as { id?: string; name: string; input?: unknown };
             toolTracker.trackToolUse(toolUseBlock);

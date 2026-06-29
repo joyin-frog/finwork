@@ -61,6 +61,7 @@ export type AskUserQuestionPayload = {
 export type AgentEvent =
   | { type: "system"; subtype?: string; message: string }
   | { type: "text"; content: string }
+  | { type: "thinking"; content: string }
   | { type: "tool_use"; id?: string; name: string; input?: unknown }
   | { type: "tool_result"; toolUseId?: string; name?: string; content?: string; isError?: boolean; durationMs?: number; structured?: unknown }
   | { type: "ask_user"; questionId: string; question: AskUserQuestionPayload }
