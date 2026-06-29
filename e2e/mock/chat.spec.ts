@@ -54,6 +54,30 @@ test("chat: 富 markdown 排版渲染不塌 + 外链地球图标", async ({ page
   await expect(answer.locator("td").filter({ hasText: "123" })).toHaveCSS("text-align", "left");
 });
 
+test("chat: 代码块语言标签 + 复制全文 + 思考折叠块", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+  await sendChat(page, "给我一段排版样例");
+  const answer = page.locator(".md-content").last();
+
+  // #1 代码块语言标签:从 ```python 提取的语言名随代码块呈现
+  await expect(answer.getByText("python", { exact: true })).toBeVisible();
+
+  // #3 思考折叠块:回合结束后头部为「已思考」(非旧「思考过程」)→ 展开 → 思考原文出现(经 route 脱敏后落库)
+  const thinking = page.getByText(/^已思考/);
+  await expect(thinking).toBeVisible();
+  await expect(page.getByText("思考过程", { exact: true })).toHaveCount(0); // 旧文案已不存在
+  await thinking.click();
+  await expect(page.getByText("我先把标题、列表、表格和代码块组织好")).toBeVisible();
+
+  // #2 复制全文:按钮存在,点击后切到「已复制」态(clipboard 写入成功才会切)
+  const copyBtn = page.getByRole("button", { name: "复制全文" }).last();
+  await expect(copyBtn).toBeVisible();
+  await copyBtn.click();
+  await expect(page.getByRole("button", { name: "已复制" }).last()).toBeVisible();
+
+  await assertNoCrash(page);
+});
+
 test("chat: ask_user 面板 → 选项 → 继续提交", async ({ page }) => {
   await page.goto("/chat/new", { waitUntil: "domcontentloaded" });
   await dismissGate(page);

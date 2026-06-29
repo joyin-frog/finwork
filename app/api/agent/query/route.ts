@@ -201,6 +201,11 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
   // 身份出站过滤(安全红线·机制兜底):流式逐 chunk 过滤,collector 与下发都用过滤后文本,
   // 最终正文也以过滤后的拼接为准(覆盖 SDK 原始 content),让 prompt 里的"别透露模型"不再是唯一防线。
   const idFilter = createStreamingIdentityFilter();
+  // 思考计时:从回合起算到「首个产出」(首条答案 chunk 或首个工具调用)= 模型动手前的思考时长,
+  // 持久化成 thinking_duration,供「已思考 X」展示(进行中的实时计时由前端跑)。
+  const runStart = Date.now();
+  let thinkingSeen = false;
+  let firstOutputAt: number | undefined;
   const data = await runClaudeAgent(agentMessages, {
     claudeSessionId,
     resumeSession: Boolean(existingClaudeSessionId),
@@ -212,13 +217,28 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     signal: params.signal,
     resolveUserQuestion: params.resolveUserQuestion,
     onChunk: (text) => {
+      if (firstOutputAt == null) firstOutputAt = Date.now();
       const safe = idFilter.push(text);
       if (!safe) return;
       collector.collectedChunks.push(safe);
       coalesceTextIntoEvents(collector.collectedEvents, safe);
       params.emitChunk?.(safe);
     },
-    onAgentEvent: (event) => { collector.collectedEvents.push(event); params.emitAgentEvent?.(event); },
+    // 思考过程整块上报:按安全红线脱敏(身份过滤 + PII)后,作为 thinking 事件落库 + 下发,前端收进「思考」折叠块。
+    // 整块到达(非增量)→ filterIdentity 看到完整文本,不会有跨片模型名漏过滤。空白块跳过。
+    onThinking: (text) => {
+      thinkingSeen = true;
+      const safe = redact(filterIdentity(text)).trim();
+      if (!safe) return;
+      const event = { type: "thinking", content: safe };
+      collector.collectedEvents.push(event);
+      params.emitAgentEvent?.(event);
+    },
+    onAgentEvent: (event) => {
+      if (firstOutputAt == null && (event as { type?: string }).type === "tool_use") firstOutputAt = Date.now();
+      collector.collectedEvents.push(event);
+      params.emitAgentEvent?.(event);
+    },
   }).catch((err: unknown) => {
     // collector 随抛异常会丢 → 挂到错误上,让上层出错收尾把"已做的部分"(部分正文/中间事件)落库,
     // 否则一抛异常整回合归零(见红线:出错不该把已完成的工作冲掉)。
@@ -231,6 +251,11 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     collector.collectedChunks.push(tail);
     coalesceTextIntoEvents(collector.collectedEvents, tail);
     params.emitChunk?.(tail);
+  }
+  // 思考时长落库(有思考才记):回合起到首个产出。供前端「已思考 X」与重载后展示。
+  if (thinkingSeen) {
+    const thinkingMs = Math.max(0, (firstOutputAt ?? Date.now()) - runStart);
+    collector.collectedEvents.push({ type: "system", subtype: "thinking_duration", message: String(thinkingMs) });
   }
   // 最终正文以"过滤后的拼接"为准;无流式增量时(模型只回最终)回退到过滤 SDK 原始 content。
   const filteredContent = collector.collectedChunks.join("") || filterIdentity(data.content ?? "");

@@ -494,6 +494,8 @@ html button.composer-send-button.stop {
   0%, 100% { transform: scaleY(0.4); opacity: 0.55; }
   50%      { transform: scaleY(1);   opacity: 1; }
 }
+/* 静态星芒:思考已结束时(如「思考过程」折叠块头部)用定格的舒展星形,不再呼吸,避免误读成「还在思考」。 */
+.fa-spark-static .ray { animation: none; transform: scaleY(0.75); opacity: 0.85; }
 
 @media (prefers-reduced-motion: reduce) {
   .fa-dot-pulse, .fa-spark .ray { animation: none; }
