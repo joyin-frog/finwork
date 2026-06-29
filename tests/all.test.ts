@@ -312,4 +312,40 @@ void (async () => {
   const { searchQueriesTestPromise } = await import("./search-queries.test.ts");
   await searchQueriesTestPromise;
 
+  const { workerUtf8StdioTestPromise } = await import("./worker-utf8-stdio.test.ts");
+  await workerUtf8StdioTestPromise;
+
+  const { semaphoreTestPromise } = await import("./semaphore.test.ts");
+  await semaphoreTestPromise;
+
+  const { idempotencyTestPromise } = await import("./idempotency.test.ts");
+  await idempotencyTestPromise;
+
+  const { withApiErrorTestPromise } = await import("./with-api-error.test.ts");
+  await withApiErrorTestPromise;
+
+  const { accountingAdapterTestPromise } = await import("./accounting-adapter.test.ts");
+  await accountingAdapterTestPromise;
+
+  const { cleanupTestPromise } = await import("./cleanup.test.ts");
+  await cleanupTestPromise;
+
+  const { financeFileLinksTestPromise } = await import("./finance-file-links.test.ts");
+  await financeFileLinksTestPromise;
+
+  const { telemetryFeatureTestPromise } = await import("./telemetry-feature.test.ts");
+  await telemetryFeatureTestPromise;
+
+  const { smallUtilsTestPromise } = await import("./small-utils.test.ts");
+  await smallUtilsTestPromise;
+
+  const { mcpToolHandlersTestPromise } = await import("./mcp-tool-handlers.test.ts");
+  await mcpToolHandlersTestPromise;
+
+  const { runPythonToolTestPromise } = await import("./run-python-tool.test.ts");
+  await runPythonToolTestPromise;
+
+  const { subagentRunnerTestPromise } = await import("./subagent-runner.test.ts");
+  await subagentRunnerTestPromise;
+
 })();

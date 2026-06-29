@@ -180,7 +180,10 @@ export async function runMockAgent(
         '    print("hi")',
         "```",
         "",
-        "参考:https://openai.github.io/openai-agents-python/streaming/",
+        // URL 前留空格:GFM 扩展自动链接只在 URL 前是空白或 *_~( 时才成链,紧贴冒号不会成链。
+        // 用中性域名:身份脱敏过滤器会把 openai/anthropic 等厂商名替换成「(内部信息,不便透露)」,
+        // 那会破坏 URL(混入中文/括号 → 不再自动成链),故 e2e 样例避开厂商名。
+        "参考: https://example.com/agents-streaming/",
       ].join("\n")
     );
     return done();

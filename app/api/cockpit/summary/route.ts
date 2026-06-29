@@ -5,6 +5,7 @@ import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveCockpitTodos } from "@/lib/domain/cockpit-todos";
 import { deriveCashObligations, obligationsInMonth, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
 import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
+import { appendServerLog } from "@/lib/runtime/server-log";
 
 function parseMeta(s: string): DocMetadata | null {
   try {
@@ -43,6 +44,8 @@ export async function GET() {
     return NextResponse.json({ ok: true, data });
   } catch (error) {
     console.error("[cockpit/summary] error:", error);
+    // 总览页一坏就只显示「网络错误」(前端 catch 兜底),真因(多半是 DB/node:sqlite)需落盘才查得到。
+    void appendServerLog(`[cockpit/summary] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "加载失败" },
       { status: 500 }
