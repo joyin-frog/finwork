@@ -96,7 +96,7 @@ export default function SkillCenter({
         className="flex flex-col w-full max-w-3xl h-[82vh] max-h-[700px] bg-popover rounded-xl ring-1 ring-foreground/10 shadow-[var(--shadow-lg)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-      <header className="relative flex items-center gap-3 pr-5 h-11 border-b border-border shrink-0">
+      <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0">
         <DragHandle />
         <SidebarToggle />
         <h1 className="text-title font-semibold">设置</h1>
