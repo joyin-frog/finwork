@@ -197,7 +197,11 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   return (
     <motion.aside
-      className="flex flex-col h-full bg-sidebar overflow-hidden shrink-0"
+      className={cn(
+        "flex flex-col bg-sidebar overflow-hidden shrink-0",
+        // 展开时做成浮起卡片:四周留 4px 缝 + 圆角 + 描边 + 1 档柔影;折叠(width→0)时全部去掉,避免露出碎片。
+        !collapsed && "m-1 rounded-xl border border-border shadow-[var(--elevation-1)]"
+      )}
       animate={{ width: collapsed ? 0 : 240 }}
       transition={SPRING_DEFAULT}
     >
