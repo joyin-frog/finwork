@@ -13,6 +13,7 @@ void (async () => {
 
   await import("./feature-flags.test.ts");
   await import("./chat-features.test.ts");
+  await import("./code-language.test.ts");
   await import("./chat-panel-state.test.ts");
   await import("./chat-preview-selection.test.ts");
   await import("./composer-tips.test.ts");

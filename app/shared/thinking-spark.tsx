@@ -9,10 +9,10 @@
  */
 const RAY_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
 
-export function ThinkingSpark({ size = 18, speed = "1.4s" }: { size?: number; speed?: string }) {
+export function ThinkingSpark({ size = 18, speed = "1.4s", animated = true }: { size?: number; speed?: string; animated?: boolean }) {
   return (
     <svg
-      className="fa-spark"
+      className={animated ? "fa-spark" : "fa-spark fa-spark-static"}
       width={size}
       height={size}
       viewBox="0 0 30 30"
