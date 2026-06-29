@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { dismissGate, sendChat } from "./helpers";
 
 // Tier-2 mock e2e:对话内查找(Cmd+F 浮窗)journey。
