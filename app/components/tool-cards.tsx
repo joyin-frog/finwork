@@ -11,6 +11,7 @@ import {
   type VoucherDraftCardData,
   type VoucherValidationCardData
 } from "./kingdee-card-data";
+import { ReceiptCard, parseCalcReceiptStructured } from "./receipt-card";
 
 /** 已实现专属卡片的财务工具列表(裸名)。与下方 ToolResultCard 分发逻辑保持一致。 */
 export const TOOLS_WITH_RESULT_CARD = [
@@ -40,6 +41,10 @@ export function ToolResultCard({ name, structured }: { name: string; structured:
   } else if (bare === "validate_kingdee_voucher") {
     const data = parseVoucherValidationStructured(structured);
     card = data ? <VoucherValidationCard data={data} /> : null;
+  } else {
+    // 通用兜底:任何带 CalcReceipt 形状结构化结果的工具(如 tax_calculator)渲染可下钻回执卡片。
+    const receipt = parseCalcReceiptStructured(structured);
+    card = receipt ? <ReceiptCard receipt={receipt} /> : null;
   }
   return card ? <div className="px-1 pb-1">{card}</div> : null;
 }
