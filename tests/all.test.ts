@@ -209,6 +209,24 @@ void (async () => {
   const { businessMetricsTestPromise } = await import("./business-metrics.test.ts");
   await businessMetricsTestPromise;
 
+  const { moneyTestPromise } = await import("./money.test.ts");
+  await moneyTestPromise;
+
+  const { receiptTestPromise } = await import("./receipt.test.ts");
+  await receiptTestPromise;
+
+  const { taxCumulativeF2TestPromise } = await import("./tax-cumulative-f2.test.ts");
+  await taxCumulativeF2TestPromise;
+
+  const { reconciliationReceiptTestPromise } = await import("./reconciliation-receipt.test.ts");
+  await reconciliationReceiptTestPromise;
+
+  const { reimbursementReceiptTestPromise } = await import("./reimbursement-receipt.test.ts");
+  await reimbursementReceiptTestPromise;
+
+  const { financeToolsF3TestPromise } = await import("./finance-tools-f3.test.ts");
+  await financeToolsF3TestPromise;
+
   const { cashObligationsTestPromise } = await import("./cash-obligations.test.ts");
   await cashObligationsTestPromise;
 

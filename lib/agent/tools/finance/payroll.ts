@@ -15,6 +15,7 @@ import { backupDatabase, getDb } from "@/lib/db/sqlite";
 import { withIdempotency } from "@/lib/agent/tools/idempotency";
 import { checkSumConsistent, checkMoneyPrecision, collectNumericIssues } from "@/lib/safety/numeric-check";
 import { getDatabasePath } from "@/lib/runtime/paths";
+import { redact } from "@/lib/safety/pii";
 import { z } from "zod/v4";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,6 +82,11 @@ export function createPayrollTools(sdk: Sdk) {
       const failures: string[] = [];
       const numericWarnings: string[] = [];
 
+      // 功能3: 提前读取本期已存在记录的内部状态，供 settlementStatus 接线使用
+      const existingRecords = listPayrollRecords(args.year, args.month);
+      const existingStatusMap = new Map(existingRecords.map((r) => [r.employeeName, r.status]));
+      const asOf = `${args.year}-${String(args.month).padStart(2, "0")}`;
+
       for (const emp of args.employees) {
         try {
           let prior: PriorCumulative;
@@ -110,6 +116,12 @@ export function createPayrollTools(sdk: Sdk) {
             }
           }
 
+          // 功能3: 读取 payroll_records 的真实状态透传给 calculateCumulativePayroll
+          // confirmed 记录映射为 "closed"（确认后重算），新记录或草稿映射为 "draft"
+          const existingStatus = existingStatusMap.get(emp.employeeName);
+          const settlementStatus: "draft" | "closed" | "filed" =
+            existingStatus === "confirmed" ? "closed" : "draft";
+
           const result = calculateCumulativePayroll(
             {
               employeeName: emp.employeeName,
@@ -118,7 +130,10 @@ export function createPayrollTools(sdk: Sdk) {
               housingFund: emp.housingFund,
               specialDeduction: emp.specialDeduction,
               monthsEmployed,
-              prior
+              prior,
+              settlementStatus,
+              asOf,
+              source: [{ ref: `payroll-${asOf}`, recordCount: 1 }],
             },
             taxConfig
           );
@@ -173,7 +188,7 @@ export function createPayrollTools(sdk: Sdk) {
       }
 
       return {
-        content: [{ type: "text" as const, text: lines.join("\n") }],
+        content: [{ type: "text" as const, text: redact(lines.join("\n")) }],
         structuredContent: { results, failures, coldStarts, totalNetPay, totalTax, taxConfigVersion: taxConfig.version },
         ...(results.length === 0 && failures.length > 0 ? { isError: true as const } : {})
       };
