@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
-import { getProjectRoot, getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
+import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
 import { getAppSetting } from "@/lib/db/sqlite";
 import { loadTaxRates } from "@/lib/db/finance-store";
 import { makeCalcReceipt, type CalcReceipt } from "@/lib/domain/receipt";
@@ -159,5 +159,6 @@ function resolveExpensePolicyPath(): { policyPath: string; isExample: boolean } 
   if (configured && configured.trim() && fs.existsSync(configured.trim())) {
     return { policyPath: configured.trim(), isExample: false };
   }
-  return { policyPath: path.join(getProjectRoot(), "docs", "报销管理制度.txt"), isExample: true };
+  // 回退到随 app 打包的示例制度（agent-skills 会进 Tauri resources；docs/ 不会，故不能放 docs）
+  return { policyPath: path.join(getBundledPluginRoot(), "skills", "reimbursement-check", "示例报销制度.md"), isExample: true };
 }
