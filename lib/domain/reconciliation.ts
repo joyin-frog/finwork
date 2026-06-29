@@ -4,6 +4,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
+import { makeCalcReceipt, type CalcReceipt, type CalcStep, type CalcSource } from "./receipt";
 
 export type ReconDirection = "in" | "out";
 
@@ -54,6 +55,8 @@ export type ReconResult = {
     /** 三类未达项全空才算账银两平 */
     balanced: boolean;
   };
+  /** 功能2: 可追溯计算回执；每笔勾对为一步，source 带行数，草稿标注需人工确认 */
+  receipt: CalcReceipt;
 };
 
 export type ReconOptions = {
@@ -62,6 +65,70 @@ export type ReconOptions = {
 };
 
 const SCRIPT = path.join(getBundledPluginRoot(), "skills", "finance-analysis", "scripts", "reconciliation.py");
+
+/**
+ * 功能2: 从对账结果构造 CalcReceipt。
+ * - steps: 每笔勾对一步（银行行 ↔ 账面行 + 差额），带原始行号。
+ * - source: bank/book 行数。
+ * - asOf: 取所有输入中最晚日期的年月。
+ * - settlementStatus 固定 "draft"（对账结果需人工确认，不是终值）。
+ */
+function buildReconReceipt(
+  result: Omit<ReconResult, "receipt">,
+  bankInput: ReconInputRow[],
+  bookInput: ReconInputRow[]
+): CalcReceipt {
+  const steps: CalcStep[] = result.matched.map((match) => ({
+    label: `银行[${match.bank.index}]↔账面[${match.book.index}]`,
+    expr: `${match.bank.direction} ¥${match.bank.amount} @ ${match.bank.date} = ${match.book.direction} ¥${match.book.amount} @ ${match.book.date}`,
+    inputs: {
+      bankIndex: match.bank.index,
+      bankDate: match.bank.date,
+      bankAmount: match.bank.amount,
+      bookIndex: match.book.index,
+      bookDate: match.book.date,
+      bookAmount: match.book.amount,
+      dateDiffDays: match.dateDiffDays,
+    },
+    subtotal: match.bank.amount,
+  }));
+
+  const source: CalcSource[] = [
+    { ref: "bank", recordCount: bankInput.length },
+    { ref: "book", recordCount: bookInput.length },
+  ];
+
+  // asOf: 取所有输入日期中最晚的年月；无输入时用当月
+  const allDates = [...bankInput, ...bookInput]
+    .map((r) => r.date)
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+  const now = new Date();
+  const asOf =
+    allDates.length > 0
+      ? allDates[allDates.length - 1].slice(0, 7)
+      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const caveats: string[] = [];
+  if (!result.summary.balanced) {
+    caveats.push(
+      `账银未两平：银行有账无 ${result.bankOnly.length} 笔、账有银行无 ${result.bookOnly.length} 笔、疑似拆合并 ${result.needsReview.length} 组，需人工核对`
+    );
+  }
+
+  return makeCalcReceipt({
+    value: result.summary.matchedTotal,
+    steps,
+    source,
+    basis: {
+      caliberVersion: "reconciliation-v1",
+      settlementStatus: "draft",
+      asOf,
+    },
+    rounding: "half_up",
+    ...(caveats.length > 0 ? { caveats } : {}),
+  });
+}
 
 export function reconcileBankStatement(
   bankInput: ReconInputRow[],
@@ -77,8 +144,10 @@ export function reconcileBankStatement(
   } catch (e) {
     throw new Error(`对账脚本执行失败:${e instanceof Error ? e.message : String(e)}`);
   }
-  const parsed = JSON.parse(out) as { result?: ReconResult; error?: string };
+  const parsed = JSON.parse(out) as { result?: Omit<ReconResult, "receipt">; error?: string };
   if (parsed.error) throw new Error(parsed.error);
   if (!parsed.result) throw new Error("对账脚本无输出");
-  return parsed.result;
+  const result = parsed.result;
+  const receipt = buildReconReceipt(result, bankInput, bookInput);
+  return { ...result, receipt };
 }

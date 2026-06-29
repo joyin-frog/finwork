@@ -8,18 +8,16 @@ export async function assertNoCrash(page: Page) {
 }
 
 /**
- * 首启环境自检是模态浮层(mock 模式没接 python 运行时,必弹出)。它异步出现,过早查会漏,
- * 漏掉就会拦截后续点击。这里确定性地等它出现再「暂时跳过」关掉,并等浮层消失。
+ * 首启环境自检浮层已由 fixtures.ts 通过 mock /api/settings/doctor 从源头关掉(组件就绪 + key 已配置
+ * → FirstRunGate.runSelfCheck 提前返回、浮层不弹)。故此处不再"等 8s 再点暂时跳过"地赛跑。
+ * 保留为即时兜底:万一极端情况下浮层仍在,立刻点掉,绝不阻塞(isVisible 不等待)。
+ * 调用点无需改动;新写的用例已不需要再调它。
  */
 export async function dismissGate(page: Page) {
   const skip = page.getByRole("button", { name: "暂时跳过" });
-  try {
-    await skip.waitFor({ state: "visible", timeout: 8_000 });
-  } catch {
-    return; // 没弹出(已被跳过/不该出现)——直接继续
+  if (await skip.isVisible().catch(() => false)) {
+    await skip.click().catch(() => {});
   }
-  await skip.click();
-  await skip.waitFor({ state: "hidden", timeout: 8_000 }).catch(() => {});
 }
 
 /**
@@ -31,10 +29,15 @@ export async function sendChat(page: Page, prompt: string): Promise<number> {
   await dismissGate(page);
   const box = page.getByLabel("输入消息");
   await expect(box).toBeVisible();
-  await box.click();
-  await box.pressSequentially(prompt, { delay: 5 }); // 真实键入,可靠提交 React 草稿态
   const sendBtn = page.getByRole("button", { name: "发送" });
-  await expect(sendBtn).toBeEnabled();
+  // React 组合框 hydration 完成后才挂上 onChange:过早键入会丢字、发送键一直 disabled。
+  // 重试"清空→键入→确认发送键可点",直到组合框真正可交互——不依赖固定等待(更稳)。
+  await expect(async () => {
+    await box.click();
+    await box.fill("");
+    await box.pressSequentially(prompt, { delay: 5 }); // 真实键入,可靠提交 React 草稿态
+    await expect(sendBtn).toBeEnabled({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
   const respPromise = page.waitForResponse((r) => r.url().includes("/api/agent/query"), { timeout: 60_000 });
   await sendBtn.click();
   const resp = await respPromise;
