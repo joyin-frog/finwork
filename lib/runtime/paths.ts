@@ -20,6 +20,10 @@ export function getDatabasePath() {
   return process.env.FINANCE_AGENT_DB_PATH ?? path.join(getAppDataDir(), "finance-agent.db");
 }
 
+export function getLogsDir() {
+  return path.join(getAppDataDir(), "logs");
+}
+
 export function getSettingsPath() {
   return process.env.FINANCE_AGENT_SETTINGS_PATH ?? path.join(getAppDataDir(), "local-settings.json");
 }
