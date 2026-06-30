@@ -103,6 +103,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useUsage } from "./use-usage";
+import { UsageRing } from "./usage-ring";
 import { cn } from "@/lib/utils";
 import type { PluggableList } from "unified";
 
@@ -199,6 +201,11 @@ export default function ChatPage({
   const [turnKey, setTurnKey] = useState<string | null>(null);
   const turn = stream.getTurn(turnKey);
   const loading = turn?.status === "streaming";
+  // 用量进度环:挂载/轮询取数;回合从"进行中"落定后刷新一次,数字及时跟上。
+  const { usage, refetch: refetchUsage } = useUsage();
+  useEffect(() => {
+    if (!loading) refetchUsage();
+  }, [loading, refetchUsage]);
   const activeTimeline: TimelineItem[] = turn?.timeline ?? [];
   // 待答的 ask_user → 吸附在输入框上方的浮层;已答的在时间线里以紧凑摘要呈现
   const pendingAsk = useMemo(() => {
@@ -959,25 +966,28 @@ export default function ChatPage({
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    {loading ? (
-                      <button className="composer-send-button stop" type="button" aria-label="停止生成" onClick={stopGeneration}>
-                        <HugeiconsIcon icon={StopIcon} size={16} />
-                      </button>
-                    ) : (
-                      <ShortcutHint label="发送" combo="enter" side="top">
-                        {/* span 承接 hover:disabled 按钮不发指针事件,穿透到外层后 tooltip 仍可见 */}
-                        <span className="inline-flex">
-                          <button
-                            className="composer-send-button disabled:pointer-events-none"
-                            disabled={!draft.trim() && !attachments.length && !referencedAttachments.length}
-                            type="submit"
-                            aria-label="发送"
-                          >
-                            <HugeiconsIcon icon={ArrowUp02Icon} size={18} />
-                          </button>
-                        </span>
-                      </ShortcutHint>
-                    )}
+                    <div className="flex items-center gap-1">
+                      <UsageRing usage={usage} />
+                      {loading ? (
+                        <button className="composer-send-button stop" type="button" aria-label="停止生成" onClick={stopGeneration}>
+                          <HugeiconsIcon icon={StopIcon} size={16} />
+                        </button>
+                      ) : (
+                        <ShortcutHint label="发送" combo="enter" side="top">
+                          {/* span 承接 hover:disabled 按钮不发指针事件,穿透到外层后 tooltip 仍可见 */}
+                          <span className="inline-flex">
+                            <button
+                              className="composer-send-button disabled:pointer-events-none"
+                              disabled={!draft.trim() && !attachments.length && !referencedAttachments.length}
+                              type="submit"
+                              aria-label="发送"
+                            >
+                              <HugeiconsIcon icon={ArrowUp02Icon} size={18} />
+                            </button>
+                          </span>
+                        </ShortcutHint>
+                      )}
+                    </div>
                   </div>
                 </form>
                 )}
@@ -1156,6 +1166,14 @@ function AssistantTurn({
     const raw = ev ? (ev.payload as { message?: string }).message : undefined;
     return raw && raw.trim() ? raw.trim().slice(0, 2000) : null;
   }, [message]);
+  // 用量超限:服务端落库 subtype="usage_blocked" 的 system 事件并把提示文案作为正文。
+  // 重载/done 后取自 message.agentEvents(权威),直播瞬间兜底扫 timeline。命中则正文走红字。
+  const usageBlockedMessage = useMemo(() => {
+    const ev = (message.agentEvents ?? []).find((e) => (e.payload as { subtype?: string } | undefined)?.subtype === "usage_blocked");
+    if (ev) return (ev.payload as { message?: string }).message ?? null;
+    const live = timeline.find((t) => t.event.type === "system" && (t.event as { subtype?: string }).subtype === "usage_blocked");
+    return live ? ((live.event as { message?: string }).message ?? null) : null;
+  }, [message, timeline]);
   // C3 溯源:仅报销流程返回非空;机械事实打底,口径叙述仍由模型写在正文。
   const reimbursementProvenance = useMemo(() => buildReimbursementProvenance(timeline), [timeline]);
   const lastSegIdx = processSegments.length - 1;
@@ -1273,6 +1291,10 @@ function AssistantTurn({
       {/* 答案正文:占位态(还没产出)不渲染;answerText=最后一段无工具的 text,否则回退 message.content。
           流式期间文本已进过程段时不回退 message.content(避免与过程块里中间文本重复)。 */}
       {(() => {
+        // 用量超限:正文用红字渲染拦截提示(不弹窗、不加框),不再走普通 markdown 正文。
+        if (usageBlockedMessage) {
+          return <div className="text-body whitespace-pre-wrap text-[color:var(--tone-alarm)]">{usageBlockedMessage}</div>;
+        }
         if (isActive && message.content === "...") return null;
         const hasTextSegments = timeline.some((t) => t.event.type === "text");
         const displayContent = answerText || (hasTextSegments && isActive ? "" : getDisplayContent(message));

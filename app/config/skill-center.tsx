@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { BotIcon, BrainIcon, ComputerSettingsIcon, PaintBoardIcon, Search01Icon, ConfigurationIcon, Cancel01Icon, Building01Icon } from "@hugeicons/core-free-icons";
+import { BotIcon, BrainIcon, ComputerSettingsIcon, PaintBoardIcon, Search01Icon, ConfigurationIcon, Cancel01Icon, Building01Icon, BarChartIcon } from "@hugeicons/core-free-icons";
 import type { PublicClaudeSettings } from "@/lib/settings/claude-settings";
 import { AppearanceSettings } from "./appearance/appearance-settings";
 import { MemorySettings } from "./memory/memory-settings";
@@ -12,6 +12,7 @@ import { UpdaterSettings } from "./general/updater-settings";
 import { ModelSettings } from "./model/model-settings";
 import { EnvironmentSettings } from "./environment/environment-settings";
 import { ProfileSettings } from "./profile/profile-settings";
+import { UsageSettings } from "./usage/usage-settings";
 import { Input } from "@/components/ui/input";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
@@ -24,6 +25,7 @@ const tabs = [
   { key: "model", label: "模型", icon: BotIcon },
   { key: "memory", label: "记忆", icon: BrainIcon },
   { key: "profile", label: "画像", icon: Building01Icon },
+  { key: "usage", label: "用量", icon: BarChartIcon },
   { key: "environment", label: "环境", icon: ComputerSettingsIcon },
 ] as const;
 
@@ -178,6 +180,7 @@ export default function SkillCenter({
             )}
             {activeTab === "memory" && <MemorySettings />}
             {activeTab === "profile" && <ProfileSettings />}
+            {activeTab === "usage" && <UsageSettings />}
             {activeTab === "environment" && <EnvironmentSettings />}
           </div>
         </main>

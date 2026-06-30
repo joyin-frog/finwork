@@ -22,6 +22,8 @@ import { sanitizeFileName, uniqueFilePath } from "@/lib/files/unique-name";
 import { cleanupUnfinalizedFiles, recordNewGeneratedFiles, snapshotGeneratedFiles } from "@/lib/chat/generated-files";
 import { filterIdentity, createStreamingIdentityFilter } from "@/lib/safety/identity-filter";
 import { pickAgentModel, runRouter } from "@/lib/agent/router";
+import { getUsageStatus } from "@/lib/usage/store";
+import { buildBlockedNotice, type BlockedNotice } from "@/lib/usage/quota";
 import { generateConversationTitle } from "@/lib/agent/conversation-title";
 import { cancelPendingQuestions, createPendingQuestion } from "@/lib/agent/pending-questions";
 import type { AgentQuestion } from "@/lib/agent/claude-adapter";
@@ -105,6 +107,26 @@ export async function POST(request: Request) {
   if (outputDir) mkdirSync(outputDir, { recursive: true });
   const beforeGenerate = snapshotGeneratedFiles(conversationId);
   const useStreaming = shouldUseStreaming(request);
+
+  // --- 用量配额拦截:在 router/agent 之前,任何 LLM 花费前 ---
+  if (isEnabled("USAGE_LIMIT_ENABLED") && lastUserContent) {
+    const usage = getUsageStatus({
+      now: Date.now(),
+      roles: {
+        routerModel: "routerModel" in settings ? settings.routerModel : "",
+        mainModel: "mainModel" in settings ? settings.mainModel : "",
+        subagentModel: settings.subagentModel ?? "",
+      },
+      // 放行即把(过期则重锚的)窗口起点写回,使紧随其后的本回合 trace 落在窗口内。
+      // 命中拦截时窗口必为活动态,重锚为 no-op,落库无副作用。
+      persist: true,
+    });
+    const notice = buildBlockedNotice(usage);
+    if (notice) {
+      log.info("usage blocked", { traceId, window: notice.window, resetAt: notice.resetAt });
+      return buildUsageBlockedResponse({ notice, conversationId, traceId, useStreaming });
+    }
+  }
 
   // --- Router ---
   const routerResult = isEnabled("ROUTER_ENABLED") && lastUserContent
@@ -461,6 +483,54 @@ function createStreamingResponse(params: {
 
 function modelLabel(routerResult?: Awaited<ReturnType<typeof runRouter>>) {
   return routerResult?.decision?.mainModelTier ?? "main";
+}
+
+/** 用量超限:把红字提示作为本回合 assistant 回复落库(+usage_blocked 事件供前端红字渲染),
+ * 用户消息已在 route 顶部入库,这里补齐 assistant 侧,使"对话内提示超限"在刷新后仍在。 */
+function persistBlockedNotice(conversationId: number | undefined, notice: BlockedNotice, traceId: string): void {
+  if (!conversationId) return;
+  // 走共用收尾出口 insertAssistantTurn(assistant 落库唯一处,见 AC5 守卫);
+  // usage_blocked 不在 sanitizeTurnEvents 的丢弃名单,会被保留,供前端红字渲染。
+  const collector: AgentTurnCollector = {
+    collectedChunks: [notice.message],
+    collectedEvents: [
+      { type: "system", subtype: "usage_blocked", message: notice.message, resetAt: notice.resetAt, window: notice.window },
+    ],
+  };
+  insertAssistantTurn(conversationId, notice.message, collector, traceId);
+}
+
+/** 拦截响应:落库提示后,按流式/非流式返回 blocked 事件(不跑 router/agent)。 */
+function buildUsageBlockedResponse(params: {
+  notice: BlockedNotice;
+  conversationId: number | undefined;
+  traceId: string;
+  useStreaming: boolean;
+}) {
+  const { notice, conversationId, traceId, useStreaming } = params;
+  persistBlockedNotice(conversationId, notice, traceId);
+  const conversation = conversationId ? getChatConversation(conversationId) : null;
+
+  if (!useStreaming) {
+    // content 带上提示文案;红字渲染由前端识别已落库的 usage_blocked 事件驱动(见 AssistantTurn)。
+    return NextResponse.json({
+      ok: true,
+      data: { blocked: true, content: notice.message, message: notice.message, resetAt: notice.resetAt, window: notice.window, conversationId, conversation },
+    });
+  }
+
+  // 流式:拦截无 LLM 产出,直接 meta→done。done 携带已落库会话(含 usage_blocked 事件),
+  // 前端 done 后用 mergeFinalMessages 重建消息,AssistantTurn 据此把正文渲染成红字。
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      const enqueue = (o: Record<string, unknown>) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(o)}\n\n`));
+      if (conversationId) enqueue({ type: "meta", conversationId });
+      enqueue({ type: "done", conversationId, conversation });
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" } });
 }
 
 /** 观测保真:有真实 usage 时记真实模型 id(modelUsage 的键),否则回落到分层名(cheap/错误路径无 usage)。 */
