@@ -533,8 +533,8 @@ html button.composer-send-button.stop {
 
 /* Windows 自绘标题栏:右上角让出三键(最小化/最大化/关闭,46px×3≈138px)的位置,
    避免页面标题栏 / 预览卡标题右侧内容被盖。仅 Windows(data-platform 由 useDetectPlatform 设)。 */
-:root[data-platform="windows"] header.h-11 { padding-right: 9rem; }
-:root[data-platform="windows"] .preview-head-card { padding-right: 9rem; }
+:root[data-platform="windows"] header.h-11 { padding-right: 7rem; }
+:root[data-platform="windows"] .preview-head-card { padding-right: 7rem; }
 @media (prefers-reduced-motion: reduce) {
   ::-webkit-scrollbar-thumb { transition: none; }
 }
