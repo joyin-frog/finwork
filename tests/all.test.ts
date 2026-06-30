@@ -257,6 +257,9 @@ void (async () => {
   const { apiBoundariesTestPromise } = await import("./api-boundaries.test.ts");
   await apiBoundariesTestPromise;
 
+  const { localRequestTestPromise } = await import("./local-request.test.ts");
+  await localRequestTestPromise;
+
   const { secretStoreTestPromise } = await import("./secret-store.test.ts");
   await secretStoreTestPromise;
 
