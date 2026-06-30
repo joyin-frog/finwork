@@ -8,7 +8,7 @@
  * 运行命令(mock 模式,无需 Key):
  *   npx playwright test e2e/mock/excel-preview-screenshot.spec.ts
  */
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { dismissGate } from "./helpers";
 import path from "node:path";
 import fs from "node:fs";

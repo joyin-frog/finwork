@@ -304,49 +304,33 @@
 }
 
 /* 停靠态浮起卡片(对话页 / 资料页共用,经组件 docked 入参挂在 shell 上):
-   上下各留一道缝脱离标题栏 / 底边 → 四角圆角 + 左描边 + 柔影;左右贴边(右贴窗口、左贴分隔,
-   不留白以保表格可视区)。上下缝用 margin + height: calc 一起收掉,避免撑出容器。
-   独立 /preview 整页不传 docked、保持满铺。 */
+   与左侧栏卡片一致 —— 四周留 4px 缝 + 整圈描边 + 12px 圆角 + 1 档柔影,浮在平铺主区上。
+   上下缝用 margin + height: calc 一起收掉,避免撑出容器。独立 /preview 整页不传 docked、保持满铺。 */
 .preview-page-shell.is-docked {
-  height: calc(100% - 16px);
-  margin-top: 8px;
-  margin-bottom: 8px;
+  height: calc(100% - 8px);
+  margin: 4px;
   border-radius: 12px;
-  border-left: 1px solid var(--border);
-  box-shadow: var(--elevation-2);
+  border: 1px solid var(--border);
+  box-shadow: var(--elevation-1);
   overflow: hidden;          /* 裁住四角圆角 */
 }
 
-/* 全屏放大:去掉卡壳,铺满主内容卡片边到边(避免卡中卡 + 缝隙) */
-.preview-page-shell.is-docked.is-maximized {
-  height: 100%;
-  margin-top: 0;
-  margin-bottom: 0;
-  border-radius: 0;
-  border-left: 0;
-  box-shadow: none;
-}
+/* 全屏放大:新设计下主区是平铺底层,放大态仍保持浮起卡片(圆角 + 缝 + 整圈描边),不再去卡壳。
+   宽度由 JS(maximizeSidebar)把预览列撑到内容区满宽,这里无需覆盖 .is-docked。 */
 
 /* 预览列「卡片框」:用在资料页 / 对话文件页的预览列容器上。那两页的预览列里可能是文件预览、
    也可能是空态(选择文档预览)/ 无法预览 / 元数据 / 搜索结果,统统包进同一张卡——所以卡放在列容器上,
    不放在 FilePreviewPage 上(对话页预览列只有 FilePreviewPage,空态在它内部,仍走 .is-docked)。
    视觉与 .is-docked 一致;作为 row 的 flex 子项,高度靠 stretch + 上下 margin 自适应,不写 height。 */
 .preview-card-frame {
-  margin-top: 8px;
-  margin-bottom: 8px;
+  margin: 4px;
   border-radius: 12px;
-  border-left: 1px solid var(--border);
-  box-shadow: var(--elevation-2);
+  border: 1px solid var(--border);
+  box-shadow: var(--elevation-1);
   overflow: hidden;
 }
 
-/* 全屏放大:同样去掉卡壳铺满 */
-.preview-card-frame.is-maximized {
-  margin: 0;
-  border-radius: 0;
-  border-left: 0;
-  box-shadow: none;
-}
+/* 全屏放大:同上,保持浮起卡片;宽度由 JS 撑满,不在此去卡壳。 */
 
 .preview-page-shell {
   height: 100%;
