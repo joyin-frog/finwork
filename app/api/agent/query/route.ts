@@ -28,13 +28,16 @@ import type { AgentQuestion } from "@/lib/agent/claude-adapter";
 import { redact } from "@/lib/safety/pii";
 import { sanitizeTurnEvents } from "@/lib/agent/persist-hygiene";
 import { appendServerLog } from "@/lib/runtime/server-log";
+import { createLogger } from "@/lib/runtime/logger";
+
+const log = createLogger("agent-query");
 
 export async function POST(request: Request) {
   const traceId = randomUUID();
   const startedAt = Date.now();
   const settings = await readClaudeSettings().catch(() => ({ roleMode: "tech" as const, subagentModel: undefined as string | undefined }));
   const roleMode = settings.roleMode;
-  console.info("[agent-query] request start", { traceId });
+  log.info("request start", { traceId });
 
   let messages: AgentMessage[];
   let conversationId: number | undefined;
@@ -55,13 +58,13 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[agent-query] parse failed", { traceId, error: message });
+    log.error("parse failed", { traceId, error });
     return NextResponse.json({ ok: false, error: `请求解析失败: ${message}` }, { status: 400 });
   }
 
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
   const lastUserContent = lastUserMessage?.content.trim() ?? "";
-  console.info("[agent-query] payload parsed", { traceId, conversationId: conversationId ?? null, messageCount: messages.length, attachmentCount: attachments.length });
+  log.info("payload parsed", { traceId, conversationId: conversationId ?? null, messageCount: messages.length, attachmentCount: attachments.length });
 
   let conversation = conversationId ? getChatConversation(conversationId) : null;
   if (lastUserContent) {
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
       const shortTitle = generateShortTitle(lastUserContent);
       conversationId = createChatConversation(shortTitle);
       conversation = getChatConversation(conversationId);
-      console.info("[agent-query] conversation created", { traceId, conversationId, title: shortTitle });
+      log.info("conversation created", { traceId, conversationId, title: shortTitle });
     }
     const messageId = insertChatMessage(conversationId, "user", lastUserContent);
     for (const att of attachments) {
@@ -88,7 +91,7 @@ export async function POST(request: Request) {
   let existingClaudeSessionId = conversation?.claudeSessionId ?? null;
   if (isEnabled("SESSION_LIVENESS_CHECK_ENABLED") && existingClaudeSessionId && conversation?.claudeSessionUpdatedAt) {
     if (Date.now() - new Date(conversation.claudeSessionUpdatedAt).getTime() > SESSION_MAX_AGE_MS) {
-      console.info("[agent-query] session stale", { traceId, conversationId });
+      log.info("session stale", { traceId, conversationId });
       existingClaudeSessionId = null;
     }
   }
@@ -107,7 +110,7 @@ export async function POST(request: Request) {
   const routerResult = isEnabled("ROUTER_ENABLED") && lastUserContent
     ? await runRouter(lastUserContent, messages, traceId)
     : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
-  console.info("[agent-query] router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
+  log.info("router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
   writeSpan({
     traceId, spanType: "router", name: "router",
     startedAt: Date.now() - routerResult.latencyMs,
@@ -118,7 +121,7 @@ export async function POST(request: Request) {
 
   // --- Run agent ---
   try {
-    console.info("[agent-query] agent start", { traceId, conversationId, claudeSessionId, streaming: useStreaming });
+    log.info("agent start", { traceId, conversationId, claudeSessionId, streaming: useStreaming });
 
     const turnParams: AgentTurnParams = {
       traceId, agentMessages, claudeSessionId, existingClaudeSessionId,
@@ -140,11 +143,11 @@ export async function POST(request: Request) {
     const { result, collector } = await runAgentTurn(turnParams);
     const { generatedAttachments } = persistAgentTurn({ ...persistParams, result, collector });
     if (conversationId) void improveConversationTitle(conversationId).catch(() => {});
-    console.info("[agent-query] done", { traceId, durationMs: Date.now() - startedAt });
+    log.info("done", { traceId, durationMs: Date.now() - startedAt });
     return NextResponse.json({ ok: true, data: { ...result, conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[agent-query] failed", { traceId, durationMs: Date.now() - startedAt, error: message });
+    log.error("failed", { traceId, durationMs: Date.now() - startedAt, error });
     // 原始错误落盘:前端只会看到 humanize 后的「网络不稳定…」,真因(401/404/超时/网关地址错等)
     // 需在 server-<date>.log 留底才查得到。best-effort,不 await。
     void appendServerLog(`[agent-query] failed traceId=${traceId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
@@ -482,7 +485,7 @@ async function parseMultipartRequest(request: Request, traceId: string) {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!conversationId && lastUser?.content.trim()) {
       conversationId = createChatConversation(generateShortTitle(lastUser.content.trim()));
-      console.info("[agent-query] conversation created for files", { traceId, conversationId });
+      log.info("conversation created for files", { traceId, conversationId });
     }
     if (conversationId) {
       const uploadDir = path.join(getConversationFilesDir(conversationId), "upload");
@@ -539,7 +542,7 @@ async function improveConversationTitle(conversationId: number): Promise<string 
     }
     return null;
   } catch (err) {
-    console.error("[title] gen failed", err);
+    log.error("title generation failed", { conversationId, error: err });
     return null;
   }
 }
