@@ -161,6 +161,9 @@ void (async () => {
   const { serverLogTestPromise } = await import("./server-log.test.ts");
   await serverLogTestPromise;
 
+  const { loggerTestPromise } = await import("./logger.test.ts");
+  await loggerTestPromise;
+
   await import("./tool-renderers.test.ts");
 
   const { payrollCardTestPromise } = await import("./payroll-card.test.ts");
@@ -330,6 +333,12 @@ void (async () => {
 
   const { cleanupTestPromise } = await import("./cleanup.test.ts");
   await cleanupTestPromise;
+
+  const { retentionTestPromise } = await import("./retention.test.ts");
+  await retentionTestPromise;
+
+  const { diagnosticsExportTestPromise } = await import("./diagnostics-export.test.ts");
+  await diagnosticsExportTestPromise;
 
   const { financeFileLinksTestPromise } = await import("./finance-file-links.test.ts");
   await financeFileLinksTestPromise;
