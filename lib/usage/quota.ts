@@ -46,8 +46,13 @@ export type WindowUsage = {
   resetAt: number;
 };
 
-/** 模型名归档:命中 router 槽 → 快档;其余(含未知/对不上任何槽)→ 推理(贵)档。偏保守。 */
+/**
+ * 模型名归档:命中 router 槽 → 快档;其余(含未知/对不上任何槽)→ 推理(贵)档。偏保守。
+ * 推理槽优先:模型若也命中主/subagent 槽(同一模型多槽共享、或子串误命中),一律推理档,
+ * 避免把主 agent 的 token 误乘 FAST_WEIGHT 而少算配额、迟拦。
+ */
 export function classifyTier(model: string, roles: RoleModels): "fast" | "reasoning" {
+  if (matchesSlot(model, roles.mainModel) || matchesSlot(model, roles.subagentModel)) return "reasoning";
   return matchesSlot(model, roles.routerModel) ? "fast" : "reasoning";
 }
 

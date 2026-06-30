@@ -86,6 +86,22 @@ export const usageStoreTestPromise = (async () => {
     try { (await import("node:fs")).unlinkSync(tmp3); } catch { /* ok */ }
   }
 
+  // ── T5: 周窗口刚滚动、5h 仍活动 → 不漏 5h 窗内用量(P1 回归) ──
+  {
+    const tmp5 = `/tmp/usage-store-rollover-${process.pid}-${Date.now()}.db`;
+    const db = initializeFinanceDatabase(openFinanceDatabase(tmp5), tmp5);
+    // 5h 窗 1 小时前开、仍活动;周窗已过期 → getUsageStatus 内部重锚为 now。
+    db.prepare("INSERT INTO app_settings(key,value) VALUES(?,?)").run("usage.window_start_5h", String(now - 60 * 60 * 1000));
+    db.prepare("INSERT INTO app_settings(key,value) VALUES(?,?)").run("usage.window_start_week", String(now - WEEK_MS - 1000));
+    // 30 分钟前的 trace:落在 5h 窗内,但在重锚后的周起点(now)之前。
+    insertTrace(db, "in5h-prerollover", now - 30 * 60 * 1000, opus(123));
+    const r = getUsageStatus({ now, roles, persist: false, db });
+    equal(r.fivehour.used, 123, "T5 FAIL: 5h 窗内 trace 不应因周窗滚动而被漏算");
+    equal(r.week.used, 0, "T5 FAIL: 周窗刚重锚,用量应为 0");
+    db.close();
+    try { (await import("node:fs")).unlinkSync(tmp5); } catch { /* ok */ }
+  }
+
   delete process.env.FINANCE_AGENT_DB_PATH;
   try { (await import("node:fs")).unlinkSync(tmpPath); } catch { /* ok */ }
   console.log("usage-store tests passed");
