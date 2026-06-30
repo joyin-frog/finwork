@@ -8,6 +8,12 @@ void (async () => {
   const { observabilityTestPromise } = await import("./observability.test.ts");
   await observabilityTestPromise;
 
+  const { usageQuotaTestPromise } = await import("./usage-quota.test.ts");
+  await usageQuotaTestPromise;
+
+  const { usageStoreTestPromise } = await import("./usage-store.test.ts");
+  await usageStoreTestPromise;
+
   const { designComplianceTestPromise } = await import("./design-compliance.test.ts");
   await designComplianceTestPromise;
 
