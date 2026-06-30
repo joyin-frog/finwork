@@ -130,8 +130,7 @@ export function initializeFinanceDatabase(db = openFinanceDatabase(), dbPath?: s
   return db;
 }
 
-export function insertAuditLog(eventType: string, payload: unknown) {
-  const db = getDb();
+export function insertAuditLog(eventType: string, payload: unknown, db: DatabaseSync = getDb()) {
   const statement = db.prepare("INSERT INTO audit_logs (event_type, payload) VALUES (?, ?)");
   const result = statement.run(eventType, JSON.stringify(payload));
   return Number(result.lastInsertRowid);

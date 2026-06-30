@@ -19,7 +19,8 @@ export const runPythonToolTestPromise = (async () => {
         return { name: _n };
       },
     };
-    createRunPythonTool(sdk, outputDir);
+    const traceId = "trace-run-python-test";
+    createRunPythonTool(sdk, outputDir, traceId);
     assert.ok(handler, "run_python 应注册");
 
     // ── 1. 正常执行:stdout 被捕获回灌 ───────────────────────────────────
@@ -37,7 +38,9 @@ export const runPythonToolTestPromise = (async () => {
     // ── 3. 运行期异常:退出码非 0 → isError,且回传错误信息 ───────────────
     const err = await handler!({ code: 'raise ValueError("boom-rp")' });
     assert.ok(err.isError, "抛异常的代码应标记 isError");
-    assert.ok(err.content.map((c) => c.text).join("").includes("boom-rp"), "错误信息应包含异常文案");
+    const errorText = err.content.map((c) => c.text).join("");
+    assert.ok(errorText.includes("boom-rp"), "错误信息应包含异常文案");
+    assert.ok(errorText.includes(`[trace_id=${traceId}]`), "Python failure output should include the agent traceId");
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }
