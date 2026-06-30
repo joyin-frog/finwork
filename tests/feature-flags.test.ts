@@ -23,6 +23,7 @@ test("DEFAULTS are all true", () => {
   ok(isEnabled("TOOL_IDEMPOTENCY_ENABLED"));
   ok(isEnabled("SDK_RETRY_ENABLED"));
   ok(isEnabled("SESSION_LIVENESS_CHECK_ENABLED"));
+  ok(isEnabled("USAGE_LIMIT_ENABLED"));
 });
 
 test("isEnabled returns false for unknown flag", () => {
@@ -82,7 +83,7 @@ test("readFeatureFlags: non-boolean values are treated as false", () => {
 test("initFlags with empty overrides preserves all defaults", () => {
   initFlags({});
   const flags = allFlags();
-  equal(Object.keys(flags).length, 7);
+  equal(Object.keys(flags).length, 8);
   for (const v of Object.values(flags)) {
     equal(v, true);
   }

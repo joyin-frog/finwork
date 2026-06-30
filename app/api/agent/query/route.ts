@@ -489,13 +489,15 @@ function modelLabel(routerResult?: Awaited<ReturnType<typeof runRouter>>) {
  * 用户消息已在 route 顶部入库,这里补齐 assistant 侧,使"对话内提示超限"在刷新后仍在。 */
 function persistBlockedNotice(conversationId: number | undefined, notice: BlockedNotice, traceId: string): void {
   if (!conversationId) return;
-  const messageId = insertChatMessage(conversationId, "assistant", notice.message);
-  insertChatAgentEvent(
-    messageId,
-    "system",
-    { type: "system", subtype: "usage_blocked", message: notice.message, resetAt: notice.resetAt, window: notice.window },
-    traceId,
-  );
+  // 走共用收尾出口 insertAssistantTurn(assistant 落库唯一处,见 AC5 守卫);
+  // usage_blocked 不在 sanitizeTurnEvents 的丢弃名单,会被保留,供前端红字渲染。
+  const collector: AgentTurnCollector = {
+    collectedChunks: [notice.message],
+    collectedEvents: [
+      { type: "system", subtype: "usage_blocked", message: notice.message, resetAt: notice.resetAt, window: notice.window },
+    ],
+  };
+  insertAssistantTurn(conversationId, notice.message, collector, traceId);
 }
 
 /** 拦截响应:落库提示后,按流式/非流式返回 blocked 事件(不跑 router/agent)。 */

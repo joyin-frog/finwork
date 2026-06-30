@@ -31,6 +31,10 @@ export const usageQuotaTestPromise = (async () => {
     equal(classifyTier("some-unknown-gateway-model", roles), "reasoning", "T1 FAIL: 未知模型应落推理(贵)档");
     // router 槽为空时绝不误判为快档(偏保守)
     equal(classifyTier("anything", { routerModel: "", mainModel: "x" }), "reasoning", "T1 FAIL: 空 router 槽不应命中快档");
+    // 推理槽优先(P2):同一模型既填 router 又填主槽 → 推理档,不误乘 FAST_WEIGHT
+    equal(classifyTier("claude-opus-4-8", { routerModel: "claude-opus-4-8", mainModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 多槽共享模型应推理档");
+    // 推理槽优先于 router 子串误命中:router='claude' 子串会命中 opus,但主槽全名应把它拉回推理档
+    equal(classifyTier("claude-opus-4-8", { routerModel: "claude", mainModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 推理槽应优先于 router 子串命中");
   }
 
   // ── T2: 成本加权(token 类型比例 + 推理档基准 1.0) ──────────────

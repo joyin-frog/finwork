@@ -6,6 +6,7 @@ import { getDb } from "@/lib/db/sqlite";
 import {
   computeUsage,
   nextWindowStart,
+  FIVE_HOUR_MS,
   WEEK_MS,
   type RoleModels,
   type UsageResult,
@@ -72,9 +73,12 @@ export function getUsageStatus(args: {
   const storedStart5h = readStoredStart(db, KEY_5H);
   const storedStartWeek = readStoredStart(db, KEY_WEEK);
 
-  // 周窗口是更早的边界:从它的(重锚后)起点起加载,足以覆盖两个窗口。
+  // 从两窗口(重锚后)起点的更早者起加载。通常是周窗口更早;但当周窗口刚滚动、5h 仍活动时
+  // (例:5h 窗在 7 天重置前一小时新开),周起点会变成 now,只按它加载会漏掉 5h 窗内的 trace,
+  // 致 5h 用量算少、放行本应被拦的请求。取 min 兜住这种错位。
+  const start5hResolved = nextWindowStart(storedStart5h, args.now, FIVE_HOUR_MS);
   const weekStartResolved = nextWindowStart(storedStartWeek, args.now, WEEK_MS);
-  const traces = loadRecentUsageTraces(weekStartResolved, db);
+  const traces = loadRecentUsageTraces(Math.min(start5hResolved, weekStartResolved), db);
 
   const result = computeUsage({ traces, now: args.now, storedStart5h, storedStartWeek, roles: args.roles });
 
