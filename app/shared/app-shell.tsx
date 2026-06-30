@@ -10,13 +10,10 @@ import { GlobalShortcuts } from "@/app/shared/global-shortcuts";
 import { IsMacProvider } from "@/app/shared/use-is-mac";
 import { useDetectPlatform, WindowControls } from "@/app/shared/window-controls";
 import { FirstRunGate } from "@/app/shared/first-run-gate";
-import { useNavState } from "@/app/shared/nav-state";
-import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { resolvedTheme } = useTheme();
-  const { collapsed } = useNavState();
   useDetectPlatform();
 
   // 启动触发遥测上报:fire-and-forget,失败静默,节流由 reporter 内部保证(每天最多一次)。
@@ -106,8 +103,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <IsMacProvider>
     <TooltipProvider delayDuration={300}>
-      {/* 背板用侧栏色,主区做成内嵌的大圆角卡片(浮在背板上),四周留 8px 间隙。 */}
-      <div className="flex h-screen overflow-hidden bg-sidebar">
+      {/* 背板用主内容底色;侧栏做成浮起的圆角卡片(见 app-nav),主区平铺为底层。 */}
+      <div className="flex h-screen overflow-hidden bg-background">
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background focus:border focus:rounded-md focus:text-sm"
@@ -121,11 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main
           id="main-content"
           tabIndex={-1}
-          className={cn(
-            "flex-1 min-w-0 overflow-auto bg-background",
-            // 上/右/下贴窗口;仅展开时左侧留间隙+圆角+边框+柔影(卡片浮在侧栏背板上)。折叠时全铺满(由 macOS 窗口圆角兜底)。
-            !collapsed && "ml-1 rounded-l-xl border-l border-border shadow-[var(--elevation-inset)]"
-          )}
+          className="flex-1 min-w-0 overflow-auto bg-background"
         >
           <FirstRunGate>{children}</FirstRunGate>
         </main>
