@@ -330,6 +330,8 @@ def cmd_run():
         with contextlib.redirect_stdout(captured_stdout):
             exec(code, namespace)
     except Exception:
+        trace_id = os.environ.get("FINANCE_AGENT_TRACE_ID") or "?"
+        sys.stderr.write(f"[trace_id={trace_id}] ")
         traceback.print_exc(file=sys.stderr)
         raise
 

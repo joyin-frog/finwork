@@ -2,12 +2,15 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { getProjectRoot, getPythonPath } from "@/lib/runtime/paths";
+import { createLogger } from "@/lib/runtime/logger";
 import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
 
 type Sdk = SdkLike;
 
-export function createRunPythonTool(sdk: Sdk, outputDir: string) {
+const log = createLogger("run-python");
+
+export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: string) {
   // 本工具工厂每回合(每次 runClaudeAgent → buildFinanceMcpServers)只创建一次,此刻 outputDir 里
   // 的文件 = 「本回合开始前」就有的产物(往次回合留下的)。把这份基线随每次 run_python 调用传给
   // worker,让防覆盖守卫只版本化这些"上一版",而本回合内新建的文件(哪怕跨多次调用)一律覆盖,
@@ -41,7 +44,8 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string) {
       // 而每次调用的临时目录都不同且旧目录会被删除,导致最终 save 落到失效路径、产物丢失。
       mkdirSync(outputDir, { recursive: true });
 
-      console.info("[run_python] executing", {
+      log.info("executing", {
+        traceId,
         pythonPath,
         workerPath,
         outputDir,
@@ -54,6 +58,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string) {
         env: {
           ...process.env,
           FINANCE_AGENT_OUTPUT_DIR: outputDir,
+          FINANCE_AGENT_TRACE_ID: traceId ?? "",
           // 本回合开始前已有的产物文件名(供 worker 防覆盖守卫判断"哪些算上一版");
           // 本回合内新建的不在此列 → 守卫不会给它们加 _v2,跨多次调用也覆盖同一文件。
           FINANCE_AGENT_TURN_BEFORE: JSON.stringify(turnBeforeFiles),
@@ -89,7 +94,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string) {
 
       child.on("close", (code: number | null) => {
         if (code !== 0) {
-          console.error("[run_python] failed", { exitCode: code, stderr: stderr.slice(0, 500) });
+          log.error("failed", { traceId, exitCode: code, stderr: stderr.slice(0, 500) });
           resolve({
             content: [{
               type: "text" as const,
@@ -100,7 +105,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string) {
           return;
         }
 
-        console.info("[run_python] success", { stdoutLength: stdout.length });
+        log.info("success", { traceId, stdoutLength: stdout.length });
 
         const stderrNote = stderr.trim() ? `\n\nstderr 警告:\n${stderr.slice(0, 4000)}` : "";
 
@@ -134,7 +139,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string) {
       });
 
       child.on("error", (err: Error) => {
-        console.error("[run_python] spawn error", { error: err.message });
+        log.error("spawn error", { traceId, error: err });
         resolve({
           content: [{ type: "text" as const, text: `无法启动 Python: ${err.message}` }],
           isError: true
@@ -143,7 +148,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string) {
 
       // Pipe the code to Python's stdin (handle potential EPIPE)
       child.stdin.on("error", (err: Error) => {
-        console.error("[run_python] stdin error", { error: err.message });
+        log.error("stdin error", { traceId, error: err });
       });
       child.stdin.end(args.code);
     })

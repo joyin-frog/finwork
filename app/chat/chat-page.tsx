@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Children, isValidElement, memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -21,6 +21,7 @@ import {
   ChevronRightIcon,
   Copy01Icon,
   Tick02Icon,
+  RefreshIcon,
 } from "@hugeicons/core-free-icons";
 import { useRouter } from "next/navigation";
 import type { StoredAgentEvent, StoredChatAttachment } from "@/lib/db/sqlite";
@@ -59,7 +60,7 @@ import type {
   GeneratedAttachment,
   Conversation,
 } from "@/app/chat/chat-types";
-import { buildTurnSegments } from "@/app/chat/turn-segments";
+import { buildTurnSegments, extractThinkingText, thinkingViewState } from "@/app/chat/turn-segments";
 import type { ProcessSegment } from "@/app/chat/turn-segments";
 import { buildReimbursementProvenance } from "@/app/chat/provenance";
 import { ProvenancePanel } from "@/app/chat/provenance-panel";
@@ -94,6 +95,7 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ThinkingSpark } from "@/app/shared/thinking-spark";
 import { remarkFinanceFileLinks } from "@/lib/remark/finance-file-links";
+import { parseCodeLanguage } from "@/app/chat/code-language";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -1100,6 +1102,8 @@ function AssistantTurn({
     });
   })();
   const { processSegments, answerText } = useMemo(() => buildTurnSegments(timeline), [timeline]);
+  // 思考过程原文(按序拼接全部 thinking 事件);走专门的折叠块,不混进过程段/答案。
+  const thinkingText = useMemo(() => extractThinkingText(timeline), [timeline]);
   const askUserItems = useMemo(() => timeline.filter(
     (t): t is TimelineItem & { event: Extract<AgentEvent, { type: "ask_user" }> } => t.event.type === "ask_user"
   ), [timeline]);
@@ -1127,6 +1131,19 @@ function AssistantTurn({
     return Number.isFinite(v) && v > 0 ? v : null;
   }, [message]);
   const processedLabel = `已处理 ${toolStepCount} 步${turnDurationMs != null ? ` · 用时 ${formatDuration(turnDurationMs)}` : ""}`;
+  // 思考时长(回合起→首个产出):持久化在 agentEvents 的 thinking_duration,供「已思考 X」与重载展示。
+  const thinkingDurationMs = useMemo(() => {
+    const ev = (message.agentEvents ?? []).find(
+      (e) => (e.payload as { subtype?: string } | undefined)?.subtype === "thinking_duration"
+    );
+    const v = ev ? Number((ev.payload as { message?: string }).message) : NaN;
+    return Number.isFinite(v) && v >= 0 ? v : undefined;
+  }, [message]);
+  // 是否已开始产出(任一工具/答案文本):产出一旦开始即视为思考结束。
+  const hasOutput = useMemo(
+    () => timeline.some((t) => t.event.type === "tool_use" || t.event.type === "tool_result" || t.event.type === "text"),
+    [timeline]
+  );
   // 本回合是否未完成(出错收尾落库时标的 turn_incomplete):仅在最新一条且非进行中时给「继续」入口。
   const isIncomplete = useMemo(
     () => (message.agentEvents ?? []).some((e) => (e.payload as { subtype?: string } | undefined)?.subtype === "turn_incomplete"),
@@ -1146,6 +1163,20 @@ function AssistantTurn({
   // F2: 反馈状态
   const [reasonPickerOpen, setReasonPickerOpen] = useState(false);
   const [customReason, setCustomReason] = useState("");
+  // 复制整条回答(纯文本):复用反馈操作区,与代码块/表格局部复制对齐的交互。
+  const [answerCopied, setAnswerCopied] = useState(false);
+  async function copyAnswer() {
+    const text = getDisplayContent(message);
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setAnswerCopied(true);
+      toast.success("已复制全文");
+      setTimeout(() => setAnswerCopied(false), 1500);
+    } catch {
+      toast.error("复制失败,请重试");
+    }
+  }
 
   // 过程块展开偏好:流式期间强制展开看实时进度;结束后默认折叠成一行摘要,
   // 用户手动切换才持久化(对所有模式一致,roleMode 不再影响展示)。
@@ -1165,6 +1196,8 @@ function AssistantTurn({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* 思考折叠块:排在最前(贴合时间线起点)。进行中=正在思考+实时计时;结束=已思考+定格时长。 */}
+      <ThinkingBlock text={thinkingText} isActive={isActive} hasOutput={hasOutput} durationMs={thinkingDurationMs} />
       {/* 过程块只在有工具步骤时显示(纯文字回合不显示空块);块内只列动作步骤,不含中间叙述文字。 */}
       {toolStepCount > 0 ? (
         <>
@@ -1223,8 +1256,6 @@ function AssistantTurn({
           </div>
           )}
         </details>
-        {/* 过程块与正文之间的分隔线(markdown 风格横线) */}
-        <hr className="my-1 border-border" />
         </>
       ) : null}
       {askUserItems.map((item) => {
@@ -1252,15 +1283,11 @@ function AssistantTurn({
           </div>
         );
       })()}
-      {/* 「还活着」跟随星芒:本轮未结束且当前没有工具在跑(纯思考空档 / 答案流式)→ 在内容最底常驻一个动的星芒,
-          随产出增长一直贴底;有工具在跑时星芒在那一行(ToolCallStep),这里不重复。彻底消除「像卡住」。 */}
-      {isActive && !anyToolRunning ? (
-        // 起手(还没任何产出)= 图标 + 「正在思考」文案;之后的处理空档只留图标在动(文案太啰嗦)。
-        <div className="flex items-center gap-2 py-0.5" role="status" aria-label="正在思考">
+      {/* 「还活着」跟随星芒:已开始产出、回合未结束且没有工具在跑(答案流式 / 处理空档)→ 底部常驻一个动的星芒。
+          起手的纯思考阶段(还没产出)由顶部「正在思考」折叠块负责,这里只补产出后的处理空档,避免重复。 */}
+      {isActive && !anyToolRunning && hasOutput ? (
+        <div className="flex items-center gap-2 py-0.5" role="status" aria-label="处理中">
           <ThinkingSpark size={18} />
-          {message.content === "..." && processSegments.length === 0 ? (
-            <span className="fa-shimmer-text">正在思考</span>
-          ) : null}
         </div>
       ) : null}
       {reimbursementProvenance ? <ProvenancePanel provenance={reimbursementProvenance} /> : null}
@@ -1284,11 +1311,35 @@ function AssistantTurn({
         </div>
       ) : null}
       {isIncomplete && !isActive ? (
-        <TurnError error={incompleteError} onRetry={isLatest ? onContinue : undefined} />
+        <TurnError error={incompleteError} />
       ) : null}
       {message.id != null && !isActive ? (
         <div className="group">
           <div className="flex items-center gap-1 mt-1">
+            {/* 未完成回合的「重试」并入操作行(常驻,不随 hover 隐藏——出错恢复是主动作);其余操作仍 hover 浮现。 */}
+            {isIncomplete && isLatest && onContinue ? (
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 rounded text-meta text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
+                aria-label="重试"
+                onClick={onContinue}
+              >
+                <HugeiconsIcon icon={RefreshIcon} size={13} />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors",
+                answerCopied
+                  ? "text-[color:var(--tone-ok)] bg-[color:var(--tone-ok)]/10"
+                  : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted"
+              )}
+              aria-label={answerCopied ? "已复制" : "复制全文"}
+              onClick={copyAnswer}
+            >
+              <HugeiconsIcon icon={answerCopied ? Tick02Icon : Copy01Icon} size={13} />
+            </button>
             <button
               type="button"
               className={cn(
@@ -1388,10 +1439,71 @@ async function openExternalUrl(href: string) {
   window.open(href, "_blank", "noopener,noreferrer");
 }
 
-/** 代码块:复用 .md-content pre 样式,叠加右上角复制按钮(hover 浮现)。 */
+/** 从 ReactMarkdown 传入 <pre> 的子 <code class="language-xxx"> 上取语言名(取不到返回 null)。
+ *  纯解析逻辑在 parseCodeLanguage(已单测),这里只做拿 className 的 React 胶水。 */
+function extractCodeLanguage(children: React.ReactNode): string | null {
+  const first = Children.toArray(children)[0];
+  if (!isValidElement(first)) return null;
+  return parseCodeLanguage((first.props as { className?: string }).className);
+}
+
+/** 运行中实时跳秒(与工具步骤同款):从 startedAt 起每秒刷新,startedAt 清空即停。 */
+function useLiveElapsed(startedAt?: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (startedAt == null) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  return startedAt == null ? 0 : Math.max(0, now - startedAt);
+}
+
+/** 「思考」折叠块:排在最前。进行中=「正在思考 + 实时计时」(星芒呼吸);结束=「已思考 + 定格时长」(星芒定格)。
+ *  展开交互与工具步骤一致:chevron 紧跟标签、不在最右;只有拿到思考原文时才可展开。 */
+function ThinkingBlock({ text, isActive, hasOutput, durationMs }: { text: string; isActive: boolean; hasOutput: boolean; durationMs?: number }) {
+  const [open, setOpen] = useState(false);
+  // 思考开始时刻:首次进入"思考态"时记一次,供进行中实时计时;结束后改用定格/持久化时长。
+  const startRef = useRef<number | null>(null);
+  const active = isActive && !hasOutput;
+  if (active && startRef.current == null) startRef.current = Date.now();
+  const liveMs = useLiveElapsed(active ? startRef.current ?? undefined : undefined);
+
+  const view = thinkingViewState({ isActive, hasOutput, hasText: Boolean(text), durationMs, liveMs });
+  if (!view.render) return null;
+
+  const timer = view.ms != null && view.ms >= 1000 ? formatDuration(view.ms) : null;
+  const spark = <ThinkingSpark size={14} animated={view.active} />;
+  const label = (
+    <span className={cn("truncate", view.active ? "fa-shimmer-text" : "text-muted-foreground")}>
+      {view.label}{timer ? ` ${timer}` : ""}
+    </span>
+  );
+
+  // 无思考原文(如纯思考的起手瞬间)→ 不可展开,平铺一行。
+  if (!view.expandable) {
+    return <div className="flex items-center gap-2 py-1 text-small">{spark}{label}</div>;
+  }
+  // 有原文 → 可展开;chevron 紧跟标签(不撑到最右),旋转交互与工具一致。
+  return (
+    <details className="overflow-hidden text-small" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary className="flex items-center gap-2 cursor-pointer py-1 list-none">
+        {spark}
+        {label}
+        <HugeiconsIcon icon={ChevronRightIcon} size={14} className="details-chevron transition-transform shrink-0 text-muted-foreground/70" />
+      </summary>
+      {open ? (
+        <div className="pt-1 whitespace-pre-wrap text-small leading-relaxed text-muted-foreground">{text}</div>
+      ) : null}
+    </details>
+  );
+}
+
+/** 代码块:复用 .md-content pre 样式,右上角 hover 浮现「语言名 + 复制」。 */
 function CodeBlock({ children }: { children?: React.ReactNode }) {
   const ref = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
+  const language = extractCodeLanguage(children);
   async function copy() {
     const text = ref.current?.textContent ?? "";
     if (!text) return;
@@ -1405,14 +1517,19 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
   }
   return (
     <div className="relative group">
-      <button
-        type="button"
-        onClick={copy}
-        className="absolute right-1.5 top-1.5 z-10 inline-flex items-center justify-center rounded p-1 bg-muted/80 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted hover:text-foreground cursor-pointer"
-        aria-label={copied ? "已复制" : "复制代码"}
-      >
-        <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} size={13} />
-      </button>
+      <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {language ? (
+          <span className="font-mono text-caption uppercase tracking-wide text-muted-foreground select-none">{language}</span>
+        ) : null}
+        <button
+          type="button"
+          onClick={copy}
+          className="inline-flex items-center justify-center rounded p-1 bg-muted/80 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+          aria-label={copied ? "已复制" : "复制代码"}
+        >
+          <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} size={13} />
+        </button>
+      </div>
       <pre ref={ref}>{children}</pre>
     </div>
   );
@@ -1477,7 +1594,10 @@ const MarkdownMessage = memo(function MarkdownMessage({
 
   // 先把模型手写的文件链接(可能含空格/括号,会让 CommonMark 把整段降级成字面文本)规整成
   // 干净的 finance-file:// 链接,再交给 ReactMarkdown 解析。
-  const normalizedContent = useMemo(() => normalizeModelFileLinks(content), [content]);
+  // useDeferredValue:流式期把内容降到低优先级再解析,避免每个 token 都重解析整棵 markdown 树
+  // 阻塞打字/滚动(高负载下跳过中间态,最终文本一定会渲染)。结构不变 → 表格/列表/代码块零回归风险。
+  const deferredContent = useDeferredValue(content);
+  const normalizedContent = useMemo(() => normalizeModelFileLinks(deferredContent), [deferredContent]);
 
   const remarkPlugins: PluggableList = useMemo(
     () => [remarkGfm, [remarkFinanceFileLinks, linkableFiles]] as PluggableList,

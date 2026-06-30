@@ -153,6 +153,8 @@ export async function runMockAgent(
 
   // ── journey: 富 markdown 排版样例(验证自管 .md-content 渲染:标题/列表/表格/代码/引用/外链)──
   if (/排版|样例|markdown|渲染/i.test(text)) {
+    // 思考过程(走「思考过程」折叠块):整块上报,经 route 脱敏后落库 + 下发。
+    runOptions.onThinking?.("我先把标题、列表、表格和代码块组织好,再给一段结论。");
     await say(
       [
         "# 一级标题",
