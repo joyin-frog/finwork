@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SDKUserMessage, SDKMessage, SDKAssistantMessage, SDKPartialAssistantMessage, SDKResultSuccess, SDKCompactBoundaryMessage, ModelUsage } from "@anthropic-ai/claude-agent-sdk";
 import { isEnabled } from "@/lib/runtime/flags";
+import { createLogger } from "@/lib/runtime/logger";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
 import { getProjectRoot, getPythonBinDir, getPythonVenvRoot, getBundledClaudeCliPath } from "@/lib/runtime/paths";
 import { buildFinanceMcpServers } from "./mcp-tools";
@@ -27,6 +28,8 @@ import { ensureConventionsMigrated } from "@/lib/memory/migrate-conventions";
 import { readCompanyProfile } from "@/lib/profile/file-store";
 import { writeSpan } from "@/lib/observability/spans";
 import { listRecentNegativeReasons } from "@/lib/db/sqlite";
+
+const log = createLogger("claude-agent");
 
 export type AgentMessage = {
   role: "user" | "assistant";
@@ -111,8 +114,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   const settings = await readClaudeSettings();
   const startedAt = Date.now();
 
-  console.info("[claude-agent] start", {
-    requestId,
+  log.info("start", {
+    traceId: requestId,
     messageCount: messages.length,
     attachmentCount: runOptions.attachments?.length ?? 0,
     hasApiKey: Boolean(settings.apiKey.trim()),
@@ -173,20 +176,20 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   // 慢网关上多步/多工具财务任务常 >5min,原 5min 硬超时会把复杂任务掐成空响应(golden 认证实测 complex 多条空串)。
   // 放宽到 10min:财务任务宁可慢、不可半途空手而归。简单/cheap 路径本就秒级,不受影响。
   const timeout = setTimeout(() => {
-    console.error("[claude-agent] timeout", { requestId, claudeSessionId });
+    log.error("timeout", { traceId: requestId, claudeSessionId });
     abortController.abort();
   }, 600_000);
 
   const outputDir = runOptions.outputDir ?? path.join(tmpdir(), `finance-agent-output-${requestId}`);
   mkdirSync(outputDir, { recursive: true });
 
-  const mcpServers = await buildFinanceMcpServers(sdk, outputDir);
+  const mcpServers = await buildFinanceMcpServers(sdk, outputDir, requestId);
   // 静态工具全集(含 Bash/Write 供 skill 脚本);不再按 skill 收敛,高风险工具经确认门兜底。
   const allowedTools = ALLOWED_TOOLS;
   const skillPlugin = getSkillPluginConfig();
 
   const memoryStartedAt = Date.now();
-  await ensureConventionsMigrated().catch((e) => console.warn("[claude-adapter] migration warn:", e));
+  await ensureConventionsMigrated().catch((error) => log.warn("migration warn", { traceId: requestId, error }));
   const memoryMarkdown = await readMemoryMarkdown();
   const companyProfile = await readCompanyProfile().catch(() => ({}));
   writeSpan({
@@ -209,7 +212,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     createPathSafetyHook(),
     createRiskConfirmHook(),
     createTimingHook((name, durationMs, isError) => {
-      console.info("[claude-agent] tool done", { name, durationMs, isError });
+      log.info("tool done", { traceId: requestId, name, durationMs, isError });
     }),
   ];
 
@@ -269,9 +272,9 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       // 其余 stderr(路由/鉴权/网关等真问题)仍按 error。
       if (runOptions.resumeSession && /no conversation found/i.test(text)) {
         staleSessionStderrSeen = true;
-        console.warn("[claude-agent] stderr(会话已过期,将用新会话重试)", { requestId, data: text.slice(0, 300) });
+        log.warn("stderr(会话已过期,将用新会话重试)", { traceId: requestId, data: text.slice(0, 300) });
       } else {
-        console.error("[claude-agent] stderr", { requestId, data: text.slice(0, 300) });
+        log.error("stderr", { traceId: requestId, data: text.slice(0, 300) });
       }
     },
     ...(runOptions.modelOverride || settings.mainModel || settings.model
@@ -309,7 +312,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       })) {
         throw error;
       }
-      console.warn("[claude-agent] session resume failed, retrying", { requestId, claudeSessionId, error: msg });
+      log.warn("session resume failed, retrying", { traceId: requestId, claudeSessionId, error: msg });
       sessionRetried = true;
       // 生成新 sessionId 避免复用失效 id
       const newSessionId = randomUUID();
@@ -363,7 +366,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       result: resolved.content ?? "",
       isError: resolved.isError,
       durationMs: resolved.durationMs,
-    }).catch(console.error);
+    }).catch((error) => log.error("tool span write failed", { traceId: requestId, error }));
   };
 
   const llmStartedAt = Date.now();
@@ -391,9 +394,9 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
           resultError = `Claude 回合以「${errRes.subtype}」结束(未正常完成)`;
           // 若由 resume 失效引发(stderr 已识别):良性、会重试 → warn;其余结果失败按 error。
           if (staleSessionStderrSeen) {
-            console.warn("[claude-agent] result(会话过期,将重试)", { requestId, subtype: errRes.subtype });
+            log.warn("result(会话过期,将重试)", { traceId: requestId, subtype: errRes.subtype });
           } else {
-            console.error("[claude-agent] result error", { requestId, subtype: errRes.subtype });
+            log.error("result error", { traceId: requestId, subtype: errRes.subtype });
           }
         }
       }
@@ -446,14 +449,21 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
         if (assistantMsg.error) {
           // 模型回合自带错误码(authentication_failed / billing_error / rate_limit / max_output_tokens 等)
           resultError = `模型返回错误:${assistantMsg.error}`;
-          console.error("[claude-agent] assistant error", { requestId, error: assistantMsg.error });
+          log.error("assistant error", { traceId: requestId, error: assistantMsg.error });
         }
         for (const block of assistantMsg.message.content) {
           if (block.type === "text" && "text" in block && block.text && !streamedText) {
             chunks.push(block.text);
             runOptions.onChunk?.(block.text);
           }
-          // thinking 块不收不推(同上)
+          // thinking 块:整块上报(不收 stream_event 的 thinking_delta 增量,避免重复 + 跨片模型名漏过滤)。
+          // 是否对外展示/如何脱敏由上层(route)按安全红线处理;此处只负责把完整思考文本透出。
+          if (block.type === "thinking" && "thinking" in block) {
+            const thinkingText = (block as { thinking?: unknown }).thinking;
+            if (typeof thinkingText === "string" && thinkingText.trim()) {
+              runOptions.onThinking?.(thinkingText);
+            }
+          }
           if (block.type === "tool_use" && "name" in block) {
             const toolUseBlock = block as { id?: string; name: string; input?: unknown };
             toolTracker.trackToolUse(toolUseBlock);
@@ -481,8 +491,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       }
     }
   } catch (error) {
-    console.error("[claude-agent] failed", {
-      requestId, durationMs: Date.now() - startedAt,
+    log.error("failed", {
+      traceId: requestId, durationMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),
     });
     throw error;
@@ -512,8 +522,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   }
 
   const content = result || chunks.join("\n").trim() || resultError || "Claude Agent 已执行，但没有返回文本结果。";
-  console.info("[claude-agent] done", {
-    requestId,
+  log.info("done", {
+    traceId: requestId,
     durationMs: Date.now() - startedAt,
     claudeSessionId,
     contentLength: content.length,
