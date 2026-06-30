@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { cn } from "@/lib/utils";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { MinusSignIcon, Square01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/ui/button";
 
 /**
  * 把所在 header 容器标记为 Tauri 窗口拖拽区:空白/间隙处可拖动 + 双击最大化/还原。
- * Tauri 以「鼠标按下的精确目标」判定拖拽区,故子元素(按钮等)点击命中自身、不触发拖拽,
- * 不影响任何交互。比旧的「absolute inset-0 + z-index:-1 覆盖层」可靠(那层被父背景挡住、收不到事件)。
+ * Tauri 以「鼠标按下的精确目标」判定拖拽区,故子元素(按钮等)点击命中自身、不触发拖拽。
  */
 export function DragHandle() {
   const ref = useRef<HTMLSpanElement>(null);
@@ -37,90 +38,33 @@ export function useIsWindowsApp() {
   const [isWin, setIsWin] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const inTauri = "__TAURI_INTERNALS__" in window;
-    const onWin = /Win/i.test(navigator.userAgent);
-    setIsWin(inTauri && onWin);
+    setIsWin("__TAURI_INTERNALS__" in window && /Win/i.test(navigator.userAgent));
   }, []);
   return isWin;
 }
 
-function CaptionButton({
-  label,
-  onClick,
-  danger,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-8 w-[46px] items-center justify-center text-foreground/70 transition-colors",
-        danger ? "hover:bg-[var(--tone-alarm)] hover:text-white" : "hover:bg-foreground/10 hover:text-foreground"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 /**
  * Windows 自绘窗口控制(最小化 / 最大化-还原 / 关闭),固定窗口右上角。
- * 仅 Windows+Tauri 渲染(mac 用系统红绿灯、linux 保留原生框、web 无)。窗口无边框由 lib.rs 设定;
- * 缩放靠 tao 保留的 WS_THICKFRAME(窗口边缘),拖动 / 双击最大化靠各页 header 的 data-tauri-drag-region。
+ * 仅 Windows+Tauri 渲染(mac 用系统红绿灯、linux 保留原生框、web 无)。
+ * 复用项目标准 <Button variant="ghost" size="icon"> + Hugeicons,确保与各页 header 的图标按钮
+ * (如总览页刷新键)同尺寸/同圆角/同 hover;top-2 使其垂直居中于 h-11 标题栏,与那些按钮对齐。
+ * 拖动 / 双击最大化靠各页 header 的 data-tauri-drag-region;窗口 API 权限见 capabilities(remote.urls 含生产动态端口)。
  */
 export function WindowControls() {
   const isWin = useIsWindowsApp();
-  const [maxed, setMaxed] = useState(false);
-
-  useEffect(() => {
-    if (!isWin) return;
-    const win = getCurrentWindow();
-    let unlisten: (() => void) | undefined;
-    void win.isMaximized().then(setMaxed);
-    void win
-      .onResized(() => {
-        void win.isMaximized().then(setMaxed);
-      })
-      .then((u) => {
-        unlisten = u;
-      });
-    return () => unlisten?.();
-  }, [isWin]);
-
   if (!isWin) return null;
-
   const win = getCurrentWindow();
   return (
-    <div className="fixed right-0 top-0 z-[60] flex h-8 select-none" role="group" aria-label="窗口控制">
-      <CaptionButton label="最小化" onClick={() => void win.minimize()}>
-        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
-          <line x1="0" y1="5.5" x2="10" y2="5.5" stroke="currentColor" />
-        </svg>
-      </CaptionButton>
-      <CaptionButton label={maxed ? "向下还原" : "最大化"} onClick={() => void win.toggleMaximize()}>
-        {maxed ? (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" aria-hidden>
-            <rect x="0.5" y="2.5" width="6" height="6" />
-            <path d="M2.5 2.5 V0.5 H9.5 V7.5 H6.5" />
-          </svg>
-        ) : (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" aria-hidden>
-            <rect x="0.5" y="0.5" width="9" height="9" />
-          </svg>
-        )}
-      </CaptionButton>
-      <CaptionButton label="关闭" danger onClick={() => void win.close()}>
-        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" aria-hidden>
-          <path d="M0.5 0.5 L9.5 9.5 M9.5 0.5 L0.5 9.5" />
-        </svg>
-      </CaptionButton>
+    <div className="fixed right-2 top-2 z-[60] flex items-center gap-0.5" role="group" aria-label="窗口控制">
+      <Button variant="ghost" size="icon" aria-label="最小化" onClick={() => void win.minimize()}>
+        <HugeiconsIcon icon={MinusSignIcon} size={16} />
+      </Button>
+      <Button variant="ghost" size="icon" aria-label="最大化 / 还原" onClick={() => void win.toggleMaximize()}>
+        <HugeiconsIcon icon={Square01Icon} size={16} />
+      </Button>
+      <Button variant="ghost" size="icon" aria-label="关闭" onClick={() => void win.close()}>
+        <HugeiconsIcon icon={Cancel01Icon} size={16} />
+      </Button>
     </div>
   );
 }
