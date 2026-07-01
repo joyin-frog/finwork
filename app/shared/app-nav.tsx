@@ -305,23 +305,26 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           <div className="flex flex-col gap-0.5 px-2 py-2 shrink-0">
             {/* 与上方对话列表隔一条发丝线 */}
             <div className="mx-1 mb-1 border-t border-border" />
-            {/* 用户头像行:左侧头像+名字,右侧保留「设置」齿轮图标;整行点击打开设置。 */}
-            <Link
-              href="/config"
-              onClick={() => trackFeature("nav.config")}
-              aria-current={active === "config" ? "page" : undefined}
-              aria-label="设置"
-              className={cn(
-                "group flex items-center gap-2 rounded-md pl-1.5 pr-1 min-h-[40px] transition-colors",
-                active === "config" ? "bg-primary/10" : "hover:bg-accent"
-              )}
-            >
-              <UserAvatar name={userName} avatar={userAvatar} size="default" />
-              <span className="flex-1 min-w-0 truncate text-small text-foreground">{userName || "用户"}</span>
-              <span className="shrink-0 p-1 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden>
-                <HugeiconsIcon icon={Settings02Icon} size={16} />
-              </span>
-            </Link>
+            {/* 用户头像行:左侧头像+名字,右侧保留「设置」齿轮图标;整行点击打开设置。
+                hover 提示带上设置快捷键(mod+,),与顶部其它入口一致。 */}
+            <ShortcutHint label="设置" combo="mod+," side="right">
+              <Link
+                href="/config"
+                onClick={() => trackFeature("nav.config")}
+                aria-current={active === "config" ? "page" : undefined}
+                aria-label="设置"
+                className={cn(
+                  "group flex items-center gap-2 rounded-md pl-1.5 pr-1 min-h-[40px] transition-colors",
+                  active === "config" ? "bg-primary/10" : "hover:bg-accent"
+                )}
+              >
+                <UserAvatar name={userName} avatar={userAvatar} size="default" />
+                <span className="flex-1 min-w-0 truncate text-small text-foreground">{userName || "用户"}</span>
+                <span className="shrink-0 p-1 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden>
+                  <HugeiconsIcon icon={Settings02Icon} size={16} />
+                </span>
+              </Link>
+            </ShortcutHint>
           </div>
         </>
       )}
