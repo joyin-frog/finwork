@@ -12,6 +12,7 @@ const DEFAULTS: Record<string, boolean> = {
   TOOL_IDEMPOTENCY_ENABLED: true,         // [defined, not wired] — feature not implemented
   SDK_RETRY_ENABLED: true,                // [defined, not wired] — feature not implemented
   SESSION_LIVENESS_CHECK_ENABLED: true,   // [wired] app/api/agent/query/route.ts:84
+  USAGE_LIMIT_ENABLED: true,              // [wired] app/api/agent/query/route.ts — 用量配额拦截(默认开)
 };
 
 let _flags: Record<string, boolean> = { ...DEFAULTS };

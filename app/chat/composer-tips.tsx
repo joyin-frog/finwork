@@ -11,8 +11,9 @@ import { pickTipIndex } from "@/app/chat/tip-picker";
 const KEY_CHAR = "rounded bg-muted px-1 py-0.5 font-mono text-foreground/80";
 
 export const COMPOSER_TIPS: ReactNode[] = [
-  <>输入 <span className={KEY_CHAR}>/</span> 快速加文件</>,
+  <>输入 <span className={KEY_CHAR}>/</span> 引用技能</>,
   <>输入 <span className={KEY_CHAR}>@</span> 引用已有文件</>,
+  <>开「深度思考」解决复杂推理问题</>,
   <>拖文件到窗口也能上传</>,
   <>点生成的文件可直接预览</>,
   <>对话里的文件可加入知识库</>,

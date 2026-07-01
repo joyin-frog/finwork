@@ -11,7 +11,9 @@ import type {
   Conversation,
   GeneratedAttachment,
   Message,
-  ReferencedFile
+  ReferencedFile,
+  SkillRef,
+  ModelTier
 } from "@/app/chat/chat-types";
 
 /** 与 chat-page 本地 TimelineItem 同构(event 用严格 AgentEvent 联合,便于 ask_user 等窄化)。 */
@@ -61,6 +63,10 @@ export type StartTurnParams = {
   requestMessages: Message[];
   attachments: ChatAttachment[];
   referencedAttachments: ReferencedFile[];
+  /** 本条消息引用的技能(可选);发给后端作为"优先使用这些技能"的提示。 */
+  referencedSkills?: SkillRef[];
+  /** 本条消息的推理强度档位(可选,默认 auto)。 */
+  modelTier?: ModelTier;
 };
 
 // ——— 纯 reducer:把单个流式事件并入回合态(便于单测,逻辑与原 chat-page 内联回调一致) ———
@@ -220,6 +226,8 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
         conversationId: params.conversationId,
         attachments: params.attachments,
         referencedAttachments: params.referencedAttachments,
+        referencedSkills: params.referencedSkills,
+        modelTier: params.modelTier,
         signal: controller.signal
       });
 
