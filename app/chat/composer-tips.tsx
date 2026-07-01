@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Idea01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { pickTipIndex } from "@/app/chat/tip-picker";
+import { ThinkingSpark } from "@/app/shared/thinking-spark";
 
 // 新会话空状态的轮换小技巧池:每条都对应真实功能(红线 4:不画饼,查不到的不写)。
 // key 字符(/ @)走内联柔和 mono、无边框——去掉旧版「代码编辑器快捷键图例」的工具感。
@@ -29,7 +28,7 @@ export const COMPOSER_TIPS: ReactNode[] = [
 let lastTipIndex = -1;
 
 /**
- * 新会话空状态的一条安静轮换提示:细线灯泡图标 + 一句话。
+ * 新会话空状态的一条安静轮换提示:静态星芒图标 + 一句话。
  * 随机挑选放在挂载后(客户端),与 SSR 首屏一致渲染占位以避免注水不一致,再淡入真正选中的那条。
  */
 export function ComposerTip() {
@@ -49,7 +48,7 @@ export function ComposerTip() {
       )}
       aria-hidden={index === null}
     >
-      <HugeiconsIcon icon={Idea01Icon} size={14} className="shrink-0 text-muted-foreground/50" />
+      <ThinkingSpark size={14} animated={false} />
       <span>{COMPOSER_TIPS[index ?? 0]}</span>
     </div>
   );

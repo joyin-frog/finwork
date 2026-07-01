@@ -3,7 +3,9 @@
   "version": "0.1.4",
   "private": true,
   "scripts": {
+    "predev": "node scripts/link-worktree-node-modules.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/link-worktree-node-modules.mjs",
     "build": "next build",
     "start": "next start",
     "tauri": "tauri",

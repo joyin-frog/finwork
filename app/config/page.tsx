@@ -1,9 +1,10 @@
 import SkillCenter from "@/app/config/skill-center";
 import { readPublicClaudeSettings } from "@/lib/settings/claude-settings";
+import { CONFIG_TAB_KEYS } from "@/app/config/tabs";
 
 export const dynamic = "force-dynamic";
 
-const validTabs = new Set(["appearance", "model", "knowledge", "general", "memory", "environment", "profile"]);
+const validTabs = new Set<string>(CONFIG_TAB_KEYS);
 
 export default async function ConfigPage({
   searchParams,

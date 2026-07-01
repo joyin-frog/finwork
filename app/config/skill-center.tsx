@@ -3,33 +3,24 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { BotIcon, BrainIcon, ComputerSettingsIcon, PaintBoardIcon, Search01Icon, ConfigurationIcon, Cancel01Icon, Building01Icon, BarChartIcon } from "@hugeicons/core-free-icons";
+import { Search01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import type { PublicClaudeSettings } from "@/lib/settings/claude-settings";
+import { CONFIG_TABS, type ConfigTabKey } from "@/app/config/tabs";
 import { AppearanceSettings } from "./appearance/appearance-settings";
 import { MemorySettings } from "./memory/memory-settings";
 import { GeneralSettings } from "./general/general-settings";
-import { UpdaterSettings } from "./general/updater-settings";
 import { ModelSettings } from "./model/model-settings";
-import { EnvironmentSettings } from "./environment/environment-settings";
+import { AboutSettings } from "./about/about-settings";
 import { ProfileSettings } from "./profile/profile-settings";
 import { UsageSettings } from "./usage/usage-settings";
 import { Input } from "@/components/ui/input";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
+import { useUserIdentity } from "@/app/shared/user-identity";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-const tabs = [
-  { key: "appearance", label: "外观", icon: PaintBoardIcon },
-  { key: "general", label: "常规", icon: ConfigurationIcon },
-  { key: "model", label: "模型", icon: BotIcon },
-  { key: "memory", label: "记忆", icon: BrainIcon },
-  { key: "profile", label: "画像", icon: Building01Icon },
-  { key: "usage", label: "用量", icon: BarChartIcon },
-  { key: "environment", label: "环境", icon: ComputerSettingsIcon },
-] as const;
-
-type SettingsTab = (typeof tabs)[number]["key"];
+type SettingsTab = ConfigTabKey;
 
 export default function SkillCenter({
   initialClaudeSettings,
@@ -46,9 +37,12 @@ export default function SkillCenter({
   const [subagentModel, setSubagentModel] = useState(initialClaudeSettings.subagentModel);
   const [companyName, setCompanyName] = useState(initialClaudeSettings.companyName);
   const [agentName, setAgentName] = useState(initialClaudeSettings.agentName);
+  const [userName, setUserName] = useState(initialClaudeSettings.userName);
+  const [userAvatar, setUserAvatar] = useState(initialClaudeSettings.userAvatar);
   const [roleMode, setRoleMode] = useState(initialClaudeSettings.roleMode);
   const [activeTab, setActiveTab] = useState<SettingsTab>(isSettingsTab(initialTab) ? initialTab : "general");
   const [menuQuery, setMenuQuery] = useState("");
+  const identity = useUserIdentity();
   const router = useRouter();
 
   const saveClaudeRef = useRef(saveClaudeSettings);
@@ -60,7 +54,7 @@ export default function SkillCenter({
     claudeSaveTimerRef.current = setTimeout(() => void saveClaudeRef.current(false), 800);
   }
 
-  const filteredTabs = tabs.filter((tab) =>
+  const filteredTabs = CONFIG_TABS.filter((tab) =>
     `${tab.label} ${tab.key}`.toLowerCase().includes(menuQuery.trim().toLowerCase())
   );
 
@@ -68,7 +62,7 @@ export default function SkillCenter({
     const res = await fetch("/api/settings/claude", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ apiUrl, model, apiKey: apiKey.trim() || undefined, clearApiKey, routerModel, subagentModel, companyName, agentName, roleMode }),
+      body: JSON.stringify({ apiUrl, model, apiKey: apiKey.trim() || undefined, clearApiKey, routerModel, subagentModel, companyName, agentName, userName, userAvatar, roleMode }),
     });
     const payload = (await res.json()) as { data: PublicClaudeSettings };
     setClaudeSettings(payload.data);
@@ -78,6 +72,8 @@ export default function SkillCenter({
     setSubagentModel(payload.data.subagentModel);
     setCompanyName(payload.data.companyName);
     setAgentName(payload.data.agentName);
+    setUserName(payload.data.userName);
+    setUserAvatar(payload.data.userAvatar);
     setRoleMode(payload.data.roleMode);
     setApiKey("");
   }
@@ -87,7 +83,7 @@ export default function SkillCenter({
     window.history.replaceState(null, "", tab === "general" ? "/config" : `/config?tab=${tab}`);
   }
 
-  const activeTabMeta = tabs.find((t) => t.key === activeTab) ?? tabs[0];
+  const activeTabMeta = CONFIG_TABS.find((t) => t.key === activeTab) ?? CONFIG_TABS[0];
 
   return (
     <div
@@ -149,15 +145,17 @@ export default function SkillCenter({
           <div className="flex-1 overflow-auto px-6 py-6">
             {activeTab === "appearance" && <AppearanceSettings />}
             {activeTab === "general" && (
-              <>
-                <GeneralSettings
-                  agentName={agentName}
-                  companyName={companyName}
-                  onAgentNameChange={(v) => { setAgentName(v); scheduleClaudeSave(); }}
-                  onCompanyNameChange={(v) => { setCompanyName(v); scheduleClaudeSave(); }}
-                />
-                <UpdaterSettings />
-              </>
+              <GeneralSettings
+                agentName={agentName}
+                companyName={companyName}
+                userName={userName}
+                userAvatar={userAvatar}
+                onAgentNameChange={(v) => { setAgentName(v); scheduleClaudeSave(); }}
+                onCompanyNameChange={(v) => { setCompanyName(v); scheduleClaudeSave(); }}
+                // 名字/头像改了先乐观同步到侧栏(identity),再防抖落库。
+                onUserNameChange={(v) => { setUserName(v); identity.setIdentity({ name: v, avatar: userAvatar }); scheduleClaudeSave(); }}
+                onUserAvatarChange={(v) => { setUserAvatar(v); identity.setIdentity({ name: userName, avatar: v }); scheduleClaudeSave(); }}
+              />
             )}
             {activeTab === "model" && (
               <ModelSettings
@@ -181,7 +179,7 @@ export default function SkillCenter({
             {activeTab === "memory" && <MemorySettings />}
             {activeTab === "profile" && <ProfileSettings />}
             {activeTab === "usage" && <UsageSettings />}
-            {activeTab === "environment" && <EnvironmentSettings />}
+            {activeTab === "about" && <AboutSettings />}
           </div>
         </main>
       </div>
@@ -191,5 +189,5 @@ export default function SkillCenter({
 }
 
 function isSettingsTab(value: string): value is SettingsTab {
-  return tabs.some((t) => t.key === value);
+  return CONFIG_TABS.some((t) => t.key === value);
 }

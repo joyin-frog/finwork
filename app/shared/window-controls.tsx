@@ -76,7 +76,7 @@ export function useIsWindowsApp() {
  * 仅 Windows+Tauri 渲染(mac 用系统红绿灯、linux 原生框、web 无);非 Windows 返回 null,
  * 作为 app-shell flex 列的首个子项不占高度 → mac/linux/web 布局零影响。
  * 整条 data-tauri-drag-region 可拖动 + 双击最大化;三键是其子元素,按下命中自身不触发拖拽。
- * 复用项目标准 <Button variant="ghost" size="icon">(28px)+ Hugeicons,与各页图标按钮同风格。
+ * 复用项目标准 <Button variant="ghost" size="icon">(32px,见 globals.css 的 .icon-btn)+ Hugeicons,与各页图标按钮同风格。
  * 另:dev 预览(?winchrome=1)下也渲染,但此时无窗口 API,三键点击不做事(见 hasWindow)。
  */
 export function WindowTitleBar() {

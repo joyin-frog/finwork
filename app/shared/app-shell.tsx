@@ -43,7 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           action: {
             label: "去设置",
             onClick: () => {
-              window.location.href = "/config?tab=environment";
+              window.location.href = "/config?tab=about";
             },
           },
         });
