@@ -21,7 +21,8 @@ import { getConversationFilesDir } from "@/lib/runtime/paths";
 import { sanitizeFileName, uniqueFilePath } from "@/lib/files/unique-name";
 import { cleanupUnfinalizedFiles, recordNewGeneratedFiles, snapshotGeneratedFiles } from "@/lib/chat/generated-files";
 import { filterIdentity, createStreamingIdentityFilter } from "@/lib/safety/identity-filter";
-import { pickAgentModel, runRouter } from "@/lib/agent/router";
+import { normalizeTier, resolveModelByTier, runRouter } from "@/lib/agent/router";
+import { injectSkillHint } from "@/lib/agent/skill-hint";
 import { generateConversationTitle } from "@/lib/agent/conversation-title";
 import { cancelPendingQuestions, createPendingQuestion } from "@/lib/agent/pending-questions";
 import type { AgentQuestion } from "@/lib/agent/claude-adapter";
@@ -39,6 +40,8 @@ export async function POST(request: Request) {
   let messages: AgentMessage[];
   let conversationId: number | undefined;
   let attachments: AgentAttachment[] = [];
+  let referencedSkills: string[] = [];
+  let modelTier: string | undefined;
 
   try {
     const contentType = request.headers.get("content-type") ?? "";
@@ -47,11 +50,15 @@ export async function POST(request: Request) {
       messages = parsed.messages;
       conversationId = parsed.conversationId;
       attachments = parsed.attachments;
+      referencedSkills = parsed.referencedSkills;
+      modelTier = parsed.modelTier;
     } else {
       const parsed = await parseJsonRequest(request);
       messages = parsed.messages;
       conversationId = parsed.conversationId;
       attachments = parsed.attachments;
+      referencedSkills = parsed.referencedSkills;
+      modelTier = parsed.modelTier;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -97,7 +104,8 @@ export async function POST(request: Request) {
     setChatConversationClaudeSessionId(conversationId, claudeSessionId);
   }
 
-  const agentMessages = messages; // 裁剪职责下沉到 adapter（pickPromptMessages）
+  // 用户引用的技能 → 注入"优先使用这些技能"提示(只改发给 agent 的副本,不污染已落库原文)。
+  const agentMessages = injectSkillHint(messages, referencedSkills); // 裁剪职责下沉到 adapter（pickPromptMessages）
   const outputDir = conversationId ? path.join(getConversationFilesDir(conversationId), "generate") : undefined;
   if (outputDir) mkdirSync(outputDir, { recursive: true });
   const beforeGenerate = snapshotGeneratedFiles(conversationId);
@@ -123,7 +131,8 @@ export async function POST(request: Request) {
     const turnParams: AgentTurnParams = {
       traceId, agentMessages, claudeSessionId, existingClaudeSessionId,
       attachments, outputDir, routerResult,
-      modelOverride: pickAgentModel(routerResult.decision, settings),
+      // 模型由「深度思考」开关决定:默认快速模型,开了用推理模型(该档未配则回落主模型)。
+      modelOverride: resolveModelByTier(normalizeTier(modelTier), settings),
     };
     const persistParams: PersistTurnParams = {
       conversationId, existingClaudeSessionId, beforeGenerate,
@@ -500,12 +509,17 @@ async function parseMultipartRequest(request: Request, traceId: string) {
   const refJson = formData.get("referencedAttachments") as string | null;
   if (refJson) { try { attachments.push(...(JSON.parse(refJson) as AgentAttachment[])); } catch { /* ok */ } }
 
-  return { messages, conversationId, attachments };
+  let referencedSkills: string[] = [];
+  const skillsJson = formData.get("referencedSkills") as string | null;
+  if (skillsJson) { try { referencedSkills = JSON.parse(skillsJson) as string[]; } catch { /* ok */ } }
+  const modelTier = (formData.get("modelTier") as string | null) ?? undefined;
+
+  return { messages, conversationId, attachments, referencedSkills, modelTier };
 }
 
 async function parseJsonRequest(request: Request) {
-  const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[] };
-  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId: body.conversationId, attachments: body.attachments ?? [] };
+  const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[]; referencedSkills?: string[]; modelTier?: string };
+  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId: body.conversationId, attachments: body.attachments ?? [], referencedSkills: body.referencedSkills ?? [], modelTier: body.modelTier };
 }
 
 // ─── string helpers ─────────────────────────────────────────────────

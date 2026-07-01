@@ -183,7 +183,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   const mcpServers = await buildFinanceMcpServers(sdk, outputDir);
   // 静态工具全集(含 Bash/Write 供 skill 脚本);不再按 skill 收敛,高风险工具经确认门兜底。
   const allowedTools = ALLOWED_TOOLS;
-  const skillPlugin = getSkillPluginConfig();
+  const skillPlugin = await getSkillPluginConfig();
 
   const memoryStartedAt = Date.now();
   await ensureConventionsMigrated().catch((e) => console.warn("[claude-adapter] migration warn:", e));

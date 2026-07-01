@@ -1,13 +1,15 @@
-import type { AgentEvent, ChatAttachment, Conversation, GeneratedAttachment, Message, ReferencedFile } from "@/app/chat/chat-types";
+import type { AgentEvent, ChatAttachment, Conversation, GeneratedAttachment, Message, ModelTier, ReferencedFile, SkillRef } from "@/app/chat/chat-types";
 
 export async function submitAgentRequest(params: {
   messages: Message[];
   conversationId: number | null;
   attachments: ChatAttachment[];
   referencedAttachments: ReferencedFile[];
+  referencedSkills?: SkillRef[];
+  modelTier?: ModelTier;
   signal: AbortSignal;
 }) {
-  const { messages, conversationId, attachments, referencedAttachments, signal } = params;
+  const { messages, conversationId, attachments, referencedAttachments, referencedSkills, modelTier, signal } = params;
   const refAgentAttachments = referencedAttachments.map((file) => ({
     name: file.name,
     mimeType: file.mimeType,
@@ -15,6 +17,9 @@ export async function submitAgentRequest(params: {
     dataUrl: "",
     storagePath: file.storagePath
   }));
+  // 后端只需技能名;tier 为 fast|reasoning(后端缺省按 fast 处理)。
+  const skillNames = (referencedSkills ?? []).map((s) => s.name);
+  const tier = modelTier;
 
   if (attachments.length) {
     const formData = new FormData();
@@ -27,13 +32,15 @@ export async function submitAgentRequest(params: {
     if (refAgentAttachments.length) {
       formData.append("referencedAttachments", JSON.stringify(refAgentAttachments));
     }
+    if (skillNames.length) formData.append("referencedSkills", JSON.stringify(skillNames));
+    if (tier) formData.append("modelTier", tier);
     return fetch("/api/agent/query", { method: "POST", body: formData, signal });
   }
 
   return fetch("/api/agent/query", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ conversationId, messages, attachments: refAgentAttachments }),
+    body: JSON.stringify({ conversationId, messages, attachments: refAgentAttachments, referencedSkills: skillNames, modelTier: tier }),
     signal
   });
 }
