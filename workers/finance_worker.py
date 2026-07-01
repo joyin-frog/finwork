@@ -190,7 +190,8 @@ def cmd_ocr_image():
         raise SystemExit("图片 OCR 需要依赖未安装:pip install rapidocr-onnxruntime")
 
     ocr = RapidOCR()
-    result, _ = ocr(str(path))
+    # 手机拍的纸质单据常横拍/倒置;use_angle_cls 启用方向分类,自动摆正后再识别。
+    result, _ = ocr(str(path), use_angle_cls=True)
 
     if not result:
         print("")
