@@ -21,6 +21,7 @@
 | `agent_spans.input_summary` / `output_summary` / `error` / `error_message` | **是** — 落盘前脱敏 | 同上 |
 | 路由分类 LLM payload + `model_routing_log.user_message` | **是** — 出网前脱敏 | `lib/agent/router.ts` 调用 `redact()` |
 | `chat_messages` / `chat_agent_events` | **否** — 原文保留 | 见下方「接受」决策 |
+| 本地诊断导出 | **否** — 完整数据库快照 + 白名单日志 | 本地支持包,含醒目警告;见 `docs/retention-and-diagnostics.md` |
 | 主模型出口(税务/对账的完整 prompt) | **否** — 刻意不脱敏 | 见下方「接受」决策 |
 
 ### 接受的未脱敏情况

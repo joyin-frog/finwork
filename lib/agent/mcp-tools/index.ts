@@ -16,12 +16,12 @@ import type { SdkLike } from "./sdk-types";
 
 type Sdk = SdkLike & { createSdkMcpServer: NonNullable<SdkLike["createSdkMcpServer"]> };
 
-export async function createFinanceMcpServer(sdk: Sdk, outputDir: string) {
+export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceId?: string) {
   return sdk.createSdkMcpServer({
     name: "finance_worker",
     version: "0.1.0",
     tools: [
-      createRunPythonTool(sdk, outputDir),
+      createRunPythonTool(sdk, outputDir, traceId),
       createSpawnSubagentTool(sdk, outputDir),
       createSearchKnowledgeTool(sdk),
       createQueryKnowledgeTool(sdk),
@@ -53,9 +53,10 @@ export async function createKingdeeMcpServer(sdk: Sdk) {
 export async function buildFinanceMcpServers(
   sdk: Sdk,
   outputDir: string,
+  traceId?: string,
 ) {
   return {
-    finance_worker: await createFinanceMcpServer(sdk, outputDir),
+    finance_worker: await createFinanceMcpServer(sdk, outputDir, traceId),
     kingdee_worker: await createKingdeeMcpServer(sdk),
   };
 }

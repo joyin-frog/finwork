@@ -1,13 +1,17 @@
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
 struct ServerProcess(Mutex<Option<Child>>);
+
+const NEXT_SERVER_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const HOST_LOG_MAX_BYTES: u128 = 2 * 1024 * 1024;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -15,24 +19,45 @@ pub fn run() {
     .manage(ServerProcess(Mutex::new(None)))
     .setup(|app| {
       let is_release = !cfg!(debug_assertions);
+      let boot_id = generate_boot_id();
+      let host_log_target = match app_data_root(app) {
+        Some(root) => Target::new(TargetKind::Folder {
+          path: root.join("finance-agent").join("logs"),
+          file_name: Some("tauri-host".into()),
+        }),
+        None => Target::new(TargetKind::LogDir {
+          file_name: Some("tauri-host".into()),
+        }),
+      };
+      let mut host_logger = tauri_plugin_log::Builder::default()
+        .clear_targets()
+        .target(host_log_target)
+        .level(log::LevelFilter::Info)
+        .max_file_size(HOST_LOG_MAX_BYTES)
+        .rotation_strategy(RotationStrategy::KeepSome(3));
+      if cfg!(debug_assertions) {
+        host_logger = host_logger.target(Target::new(TargetKind::Stdout));
+      }
+      app.handle().plugin(host_logger.build())?;
+      log::info!(
+        "host_start bootId={} mode={}",
+        boot_id,
+        if is_release { "release" } else { "debug" }
+      );
+
       // 端口只解析一次,setup 与下面的就绪轮询线程复用同一个值。生产态探测空闲端口(见
       // resolve_server_port):上次 app 崩溃/异常退出残留的 next-server 子进程仍占着固定端口时,
       // 新实例不再 listen EADDRINUSE 起不来(此前表现为整体"网络错误")。
       let server_port = if is_release { resolve_server_port() } else { 3000 };
       let url = if is_release {
-        start_next_server(app, server_port)?;
+        start_next_server(app, server_port, &boot_id).map_err(|error| {
+          log::error!("next_server_start_failed bootId={} error={error}", boot_id);
+          error
+        })?;
         format!("http://127.0.0.1:{server_port}")
       } else {
         "http://127.0.0.1:3000".to_string()
       };
-
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
 
       app.handle().plugin(tauri_plugin_dialog::init())?;
       app.handle().plugin(tauri_plugin_fs::init())?;
@@ -62,9 +87,16 @@ pub fn run() {
         let port = server_port;
         let win = window.clone();
         let real_url = url.clone();
+        let ready_boot_id = boot_id.clone();
         std::thread::spawn(move || {
-          wait_for_server_ready(port, Duration::from_secs(60));
-          let _ = win.eval(&format!("window.location.replace('{real_url}')"));
+          if wait_for_server_ready(port, Duration::from_secs(60)) {
+            log::info!("next_server_ready bootId={} port={}", ready_boot_id, port);
+          } else {
+            log::warn!("next_server_ready_timeout bootId={} port={}", ready_boot_id, port);
+          }
+          if let Err(error) = win.eval(&format!("window.location.replace('{real_url}')")) {
+            log::error!("next_server_navigation_failed bootId={} error={error}", ready_boot_id);
+          }
         });
       }
       Ok(())
@@ -82,7 +114,11 @@ pub fn run() {
     .expect("error while running tauri application");
 }
 
-fn start_next_server(app: &mut tauri::App, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+fn start_next_server(
+  app: &mut tauri::App,
+  port: u16,
+  boot_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
   let resource_dir = app.path().resource_dir()?;
   let server_dir = resource_dir.join("next-server");
   let bundled_plugin_dir = server_dir.join("agent-skills");
@@ -95,10 +131,9 @@ fn start_next_server(app: &mut tauri::App, port: u16) -> Result<(), Box<dyn std:
     "node".into()
   };
   // 子进程 stdout/stderr 重定向到 <appData>/finance-agent/logs/next-server.log,与 JS 端
-  // server-<date>.log 同目录。此前丢进 Stdio::null() → 所有 console.* 诊断信息全丢,打包态线上
-  // 故障无从查起(用户只看到「网络错误」)。每次启动 truncate:只留当前这次运行,既便于「复现后把
-  // 文件发来定位」又不会无限增长。打不开文件则回退 null(best-effort,绝不阻塞启动)。
-  let (stdout_cfg, stderr_cfg) = match open_next_server_log(app) {
+  // server-<date>.log 同目录。以 append 保留跨启动历史,超过上限时滚动为单个 .1 归档,
+  // 避免历史丢失与无限增长。打不开文件则回退 null(best-effort,绝不阻塞启动)。
+  let (stdout_cfg, stderr_cfg) = match open_next_server_log(app, boot_id) {
     Some(file) => match file.try_clone() {
       Ok(clone) => (Stdio::from(file), Stdio::from(clone)),
       Err(_) => (Stdio::from(file), Stdio::null()),
@@ -111,6 +146,7 @@ fn start_next_server(app: &mut tauri::App, port: u16) -> Result<(), Box<dyn std:
     .current_dir(&server_dir)
     .env("HOSTNAME", "127.0.0.1")
     .env("PORT", port.to_string())
+    .env("FINANCE_AGENT_BOOT_ID", boot_id)
     .env("FINANCE_AGENT_PROJECT_ROOT", &server_dir)
     .env("FINANCE_AGENT_BUNDLED_PLUGIN_DIR", bundled_plugin_dir)
     .stdout(stdout_cfg)
@@ -155,6 +191,12 @@ fn start_next_server(app: &mut tauri::App, port: u16) -> Result<(), Box<dyn std:
   }
 
   let child = command.spawn()?;
+  log::info!(
+    "next_server_started bootId={} pid={} port={}",
+    boot_id,
+    child.id(),
+    port
+  );
 
   // Windows:把子进程绑进 KILL_ON_JOB_CLOSE 的 Job Object。CloseRequested 时已显式 kill(见 on_window_event),
   // 但崩溃/被强杀/异常退出兜不住 → 残留 node 占内存(端口已靠动态选避开)。Job Object 让父进程一旦消失(含崩溃),
@@ -196,11 +238,71 @@ fn confine_child_to_job(child: &Child) {
 }
 
 /// next-server 子进程日志文件(<appData>/finance-agent/logs/next-server.log)。
-/// 每次启动 truncate(File::create)。打开失败返回 None → 调用方回退 Stdio::null()。
-fn open_next_server_log(app: &tauri::App) -> Option<File> {
+/// 每次宿主启动时检查大小:跨启动追加,达到 8 MiB 时保留一个 `.1` 归档。
+/// 单次长运行可暂时超过阈值,下次启动时收敛;打开失败返回 None → 调用方回退 Stdio::null()。
+fn open_next_server_log(app: &tauri::App, boot_id: &str) -> Option<File> {
   let dir = app_data_root(app)?.join("finance-agent").join("logs");
   std::fs::create_dir_all(&dir).ok()?;
-  File::create(dir.join("next-server.log")).ok()
+  open_next_server_log_path(&dir.join("next-server.log"), boot_id).ok()
+}
+
+fn open_next_server_log_path(path: &Path, boot_id: &str) -> std::io::Result<File> {
+  if let Err(error) = rotate_next_server_log_if_needed(path) {
+    // 轮转失败时仍尝试 append,优先保住本次诊断信息。
+    log::warn!("next_server_log_rotation_failed path={} error={error}", path.display());
+  }
+  let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+  let marker_result = writeln!(
+    file,
+    "[host] startup bootId={} pid={} timestampMs={}",
+    boot_id,
+    std::process::id(),
+    unix_timestamp_millis()
+  )
+  .and_then(|_| file.flush());
+  if let Err(error) = marker_result {
+    // 标记失败不能让 stdout/stderr 整体退化到 null;仍把已打开的句柄交给子进程。
+    log::warn!("next_server_startup_marker_failed path={} error={error}", path.display());
+  }
+  Ok(file)
+}
+
+fn rotate_next_server_log_if_needed(path: &Path) -> std::io::Result<()> {
+  let size = match std::fs::metadata(path) {
+    Ok(metadata) => metadata.len(),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+    Err(error) => return Err(error),
+  };
+  if size < NEXT_SERVER_LOG_MAX_BYTES {
+    return Ok(());
+  }
+
+  let archive = next_server_log_archive_path(path);
+  if archive.exists() {
+    std::fs::remove_file(&archive)?;
+  }
+  std::fs::rename(path, archive)
+}
+
+fn next_server_log_archive_path(path: &Path) -> PathBuf {
+  let mut archive = path.as_os_str().to_owned();
+  archive.push(".1");
+  PathBuf::from(archive)
+}
+
+fn unix_timestamp_millis() -> u128 {
+  SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_millis()
+}
+
+fn generate_boot_id() -> String {
+  let timestamp_nanos = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap_or_default()
+    .as_nanos();
+  format!("{timestamp_nanos:032x}-{:08x}", std::process::id())
 }
 
 /// 复刻 JS 端 paths.ts::getDefaultAppDataRoot 的平台默认根,确保原生日志与 JS 日志落同一目录。
@@ -259,15 +361,15 @@ const SPLASH_URL: &str = "data:text/html,<!doctype html><html><head><meta charse
 
 /// 轮询内置 Next 服务,直到 /api/health 返回 200 或超时。
 /// 超时也放行(navigate 过去让用户看到真实状态),避免无限转圈。
-fn wait_for_server_ready(port: u16, timeout: Duration) {
+fn wait_for_server_ready(port: u16, timeout: Duration) -> bool {
   let addr = format!("127.0.0.1:{port}");
   let deadline = Instant::now() + timeout;
   loop {
     if http_health_ok(&addr) {
-      return;
+      return true;
     }
     if Instant::now() >= deadline {
-      return;
+      return false;
     }
     std::thread::sleep(Duration::from_millis(150));
   }
@@ -293,5 +395,76 @@ fn http_health_ok(addr: &str) -> bool {
   match stream.read(&mut buf) {
     Ok(n) => String::from_utf8_lossy(&buf[..n]).contains("200"),
     Err(_) => false,
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn test_log_dir(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("finance-agent-{name}-{}", generate_boot_id()))
+  }
+
+  #[test]
+  fn next_server_log_appends_startup_markers_without_losing_history() {
+    let dir = test_log_dir("append-log");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("next-server.log");
+    std::fs::write(&path, "previous-run\n").unwrap();
+
+    let mut first = open_next_server_log_path(&path, "boot-one").unwrap();
+    writeln!(first, "first-child-output").unwrap();
+    drop(first);
+    let second = open_next_server_log_path(&path, "boot-two").unwrap();
+    drop(second);
+
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("previous-run"));
+    assert!(content.contains("startup bootId=boot-one"));
+    assert!(content.contains("first-child-output"));
+    assert!(content.contains("startup bootId=boot-two"));
+
+    std::fs::remove_dir_all(dir).unwrap();
+  }
+
+  #[test]
+  fn next_server_log_below_limit_stays_in_active_file() {
+    let dir = test_log_dir("below-limit-log");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("next-server.log");
+    std::fs::write(&path, "kept-history\n").unwrap();
+
+    let active = open_next_server_log_path(&path, "current-boot").unwrap();
+    drop(active);
+
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("kept-history"));
+    assert!(content.contains("startup bootId=current-boot"));
+    assert!(!next_server_log_archive_path(&path).exists());
+
+    std::fs::remove_dir_all(dir).unwrap();
+  }
+
+  #[test]
+  fn next_server_log_rotation_keeps_one_bounded_archive() {
+    let dir = test_log_dir("rotate-log");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("next-server.log");
+    let archive = next_server_log_archive_path(&path);
+    std::fs::write(&archive, "stale-archive").unwrap();
+    let oversized = File::create(&path).unwrap();
+    oversized.set_len(NEXT_SERVER_LOG_MAX_BYTES).unwrap();
+    drop(oversized);
+
+    let active = open_next_server_log_path(&path, "rotated-boot").unwrap();
+    drop(active);
+
+    assert_eq!(std::fs::metadata(&archive).unwrap().len(), NEXT_SERVER_LOG_MAX_BYTES);
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("startup bootId=rotated-boot"));
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+
+    std::fs::remove_dir_all(dir).unwrap();
   }
 }

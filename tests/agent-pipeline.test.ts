@@ -16,7 +16,10 @@ export const agentPipelineTestPromise = (async () => {
   assert.ok(!routeSource.includes("finalizeNonStreaming"), "AC5 FAIL: 旧的非 streaming 收尾应已删除");
   const persistCalls = routeSource.match(/persistAgentTurn\(\{ \.\.\.persistParams/g) ?? [];
   assert.equal(persistCalls.length, 2, "AC5 FAIL: streaming 与非 streaming 都应调用 persistAgentTurn");
-  assert.ok(routeSource.includes("pickAgentModel"), "AC5 FAIL: 模型分层应已接线");
+  // 模型分层已从"路由按 intent 自动升级"改为"用户在输入框选深度思考,默认快速"(见 lib/agent/router.ts
+  // 的 resolveModelByTier/normalizeTier);pickAgentModel 已废弃移除,断言改为校验新接线点。
+  assert.ok(routeSource.includes("resolveModelByTier"), "AC5 FAIL: 模型分层应已接线(resolveModelByTier)");
+  assert.ok(routeSource.includes("normalizeTier"), "AC5 FAIL: 模型分层应已接线(normalizeTier)");
 
   // ── AC6: Bash 机制兜底 ──
   const chain = [createUnwiredToolHook()];

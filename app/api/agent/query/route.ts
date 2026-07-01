@@ -23,19 +23,24 @@ import { cleanupUnfinalizedFiles, recordNewGeneratedFiles, snapshotGeneratedFile
 import { filterIdentity, createStreamingIdentityFilter } from "@/lib/safety/identity-filter";
 import { normalizeTier, resolveModelByTier, runRouter } from "@/lib/agent/router";
 import { injectSkillHint } from "@/lib/agent/skill-hint";
+import { getUsageStatus } from "@/lib/usage/store";
+import { buildBlockedNotice, type BlockedNotice } from "@/lib/usage/quota";
 import { generateConversationTitle } from "@/lib/agent/conversation-title";
 import { cancelPendingQuestions, createPendingQuestion } from "@/lib/agent/pending-questions";
 import type { AgentQuestion } from "@/lib/agent/claude-adapter";
 import { redact } from "@/lib/safety/pii";
 import { sanitizeTurnEvents } from "@/lib/agent/persist-hygiene";
 import { appendServerLog } from "@/lib/runtime/server-log";
+import { createLogger } from "@/lib/runtime/logger";
+
+const log = createLogger("agent-query");
 
 export async function POST(request: Request) {
   const traceId = randomUUID();
   const startedAt = Date.now();
   const settings = await readClaudeSettings().catch(() => ({ roleMode: "tech" as const, subagentModel: undefined as string | undefined }));
   const roleMode = settings.roleMode;
-  console.info("[agent-query] request start", { traceId });
+  log.info("request start", { traceId });
 
   let messages: AgentMessage[];
   let conversationId: number | undefined;
@@ -62,13 +67,13 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[agent-query] parse failed", { traceId, error: message });
+    log.error("parse failed", { traceId, error });
     return NextResponse.json({ ok: false, error: `请求解析失败: ${message}` }, { status: 400 });
   }
 
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
   const lastUserContent = lastUserMessage?.content.trim() ?? "";
-  console.info("[agent-query] payload parsed", { traceId, conversationId: conversationId ?? null, messageCount: messages.length, attachmentCount: attachments.length });
+  log.info("payload parsed", { traceId, conversationId: conversationId ?? null, messageCount: messages.length, attachmentCount: attachments.length });
 
   let conversation = conversationId ? getChatConversation(conversationId) : null;
   if (lastUserContent) {
@@ -76,7 +81,7 @@ export async function POST(request: Request) {
       const shortTitle = generateShortTitle(lastUserContent);
       conversationId = createChatConversation(shortTitle);
       conversation = getChatConversation(conversationId);
-      console.info("[agent-query] conversation created", { traceId, conversationId, title: shortTitle });
+      log.info("conversation created", { traceId, conversationId, title: shortTitle });
     }
     const messageId = insertChatMessage(conversationId, "user", lastUserContent);
     for (const att of attachments) {
@@ -95,7 +100,7 @@ export async function POST(request: Request) {
   let existingClaudeSessionId = conversation?.claudeSessionId ?? null;
   if (isEnabled("SESSION_LIVENESS_CHECK_ENABLED") && existingClaudeSessionId && conversation?.claudeSessionUpdatedAt) {
     if (Date.now() - new Date(conversation.claudeSessionUpdatedAt).getTime() > SESSION_MAX_AGE_MS) {
-      console.info("[agent-query] session stale", { traceId, conversationId });
+      log.info("session stale", { traceId, conversationId });
       existingClaudeSessionId = null;
     }
   }
@@ -111,11 +116,31 @@ export async function POST(request: Request) {
   const beforeGenerate = snapshotGeneratedFiles(conversationId);
   const useStreaming = shouldUseStreaming(request);
 
+  // --- 用量配额拦截:在 router/agent 之前,任何 LLM 花费前 ---
+  if (isEnabled("USAGE_LIMIT_ENABLED") && lastUserContent) {
+    const usage = getUsageStatus({
+      now: Date.now(),
+      roles: {
+        routerModel: "routerModel" in settings ? settings.routerModel : "",
+        mainModel: "mainModel" in settings ? settings.mainModel : "",
+        subagentModel: settings.subagentModel ?? "",
+      },
+      // 放行即把(过期则重锚的)窗口起点写回,使紧随其后的本回合 trace 落在窗口内。
+      // 命中拦截时窗口必为活动态,重锚为 no-op,落库无副作用。
+      persist: true,
+    });
+    const notice = buildBlockedNotice(usage);
+    if (notice) {
+      log.info("usage blocked", { traceId, window: notice.window, resetAt: notice.resetAt });
+      return buildUsageBlockedResponse({ notice, conversationId, traceId, useStreaming });
+    }
+  }
+
   // --- Router ---
   const routerResult = isEnabled("ROUTER_ENABLED") && lastUserContent
     ? await runRouter(lastUserContent, messages, traceId)
     : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
-  console.info("[agent-query] router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
+  log.info("router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
   writeSpan({
     traceId, spanType: "router", name: "router",
     startedAt: Date.now() - routerResult.latencyMs,
@@ -126,7 +151,7 @@ export async function POST(request: Request) {
 
   // --- Run agent ---
   try {
-    console.info("[agent-query] agent start", { traceId, conversationId, claudeSessionId, streaming: useStreaming });
+    log.info("agent start", { traceId, conversationId, claudeSessionId, streaming: useStreaming });
 
     const turnParams: AgentTurnParams = {
       traceId, agentMessages, claudeSessionId, existingClaudeSessionId,
@@ -149,11 +174,11 @@ export async function POST(request: Request) {
     const { result, collector } = await runAgentTurn(turnParams);
     const { generatedAttachments } = persistAgentTurn({ ...persistParams, result, collector });
     if (conversationId) void improveConversationTitle(conversationId).catch(() => {});
-    console.info("[agent-query] done", { traceId, durationMs: Date.now() - startedAt });
+    log.info("done", { traceId, durationMs: Date.now() - startedAt });
     return NextResponse.json({ ok: true, data: { ...result, conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[agent-query] failed", { traceId, durationMs: Date.now() - startedAt, error: message });
+    log.error("failed", { traceId, durationMs: Date.now() - startedAt, error });
     // 原始错误落盘:前端只会看到 humanize 后的「网络不稳定…」,真因(401/404/超时/网关地址错等)
     // 需在 server-<date>.log 留底才查得到。best-effort,不 await。
     void appendServerLog(`[agent-query] failed traceId=${traceId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
@@ -469,6 +494,54 @@ function modelLabel(routerResult?: Awaited<ReturnType<typeof runRouter>>) {
   return routerResult?.decision?.mainModelTier ?? "main";
 }
 
+/** 用量超限:把红字提示作为本回合 assistant 回复落库(+usage_blocked 事件供前端红字渲染),
+ * 用户消息已在 route 顶部入库,这里补齐 assistant 侧,使"对话内提示超限"在刷新后仍在。 */
+function persistBlockedNotice(conversationId: number | undefined, notice: BlockedNotice, traceId: string): void {
+  if (!conversationId) return;
+  // 走共用收尾出口 insertAssistantTurn(assistant 落库唯一处,见 AC5 守卫);
+  // usage_blocked 不在 sanitizeTurnEvents 的丢弃名单,会被保留,供前端红字渲染。
+  const collector: AgentTurnCollector = {
+    collectedChunks: [notice.message],
+    collectedEvents: [
+      { type: "system", subtype: "usage_blocked", message: notice.message, resetAt: notice.resetAt, window: notice.window },
+    ],
+  };
+  insertAssistantTurn(conversationId, notice.message, collector, traceId);
+}
+
+/** 拦截响应:落库提示后,按流式/非流式返回 blocked 事件(不跑 router/agent)。 */
+function buildUsageBlockedResponse(params: {
+  notice: BlockedNotice;
+  conversationId: number | undefined;
+  traceId: string;
+  useStreaming: boolean;
+}) {
+  const { notice, conversationId, traceId, useStreaming } = params;
+  persistBlockedNotice(conversationId, notice, traceId);
+  const conversation = conversationId ? getChatConversation(conversationId) : null;
+
+  if (!useStreaming) {
+    // content 带上提示文案;红字渲染由前端识别已落库的 usage_blocked 事件驱动(见 AssistantTurn)。
+    return NextResponse.json({
+      ok: true,
+      data: { blocked: true, content: notice.message, message: notice.message, resetAt: notice.resetAt, window: notice.window, conversationId, conversation },
+    });
+  }
+
+  // 流式:拦截无 LLM 产出,直接 meta→done。done 携带已落库会话(含 usage_blocked 事件),
+  // 前端 done 后用 mergeFinalMessages 重建消息,AssistantTurn 据此把正文渲染成红字。
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      const enqueue = (o: Record<string, unknown>) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(o)}\n\n`));
+      if (conversationId) enqueue({ type: "meta", conversationId });
+      enqueue({ type: "done", conversationId, conversation });
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" } });
+}
+
 /** 观测保真:有真实 usage 时记真实模型 id(modelUsage 的键),否则回落到分层名(cheap/错误路径无 usage)。 */
 function pickRealModel(result: AgentTurnResult, routerResult?: Awaited<ReturnType<typeof runRouter>>): string {
   if ("modelUsage" in result && result.modelUsage) {
@@ -491,7 +564,7 @@ async function parseMultipartRequest(request: Request, traceId: string) {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!conversationId && lastUser?.content.trim()) {
       conversationId = createChatConversation(generateShortTitle(lastUser.content.trim()));
-      console.info("[agent-query] conversation created for files", { traceId, conversationId });
+      log.info("conversation created for files", { traceId, conversationId });
     }
     if (conversationId) {
       const uploadDir = path.join(getConversationFilesDir(conversationId), "upload");
@@ -553,7 +626,7 @@ async function improveConversationTitle(conversationId: number): Promise<string 
     }
     return null;
   } catch (err) {
-    console.error("[title] gen failed", err);
+    log.error("title generation failed", { conversationId, error: err });
     return null;
   }
 }
