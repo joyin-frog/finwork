@@ -294,6 +294,23 @@
   font-size: 12px;
 }
 
+/* 只读代码文件的整页渲染:不用 .md-content 里给聊天短代码片段设计的卡片(限高 240px + 圆角边框),
+   让代码铺满整个内容区、跟随外层滚动,看起来像在看这个文件本身而不是一张截断的代码卡片。 */
+.skill-code-view pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  max-height: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  line-height: var(--lh-snug);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.skill-code-view pre code { background: none; padding: 0; font-size: inherit; }
+.skill-code-view pre code.hljs { background: none !important; padding: 0 !important; }
+
 .context-sidebar {
   height: 100%;
   overflow-y: auto;

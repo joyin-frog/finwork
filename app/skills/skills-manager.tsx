@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Add01Icon, Delete02Icon, MagicWand01Icon, Search01Icon, ArrowRight01Icon, ArrowDown01Icon, FolderFileStorageIcon, FolderOpenIcon, File01Icon, CodeIcon } from "@hugeicons/core-free-icons";
+import { Add01Icon, Delete02Icon, MagicWand01Icon, Search01Icon, ArrowRight01Icon, ArrowDown01Icon, FolderFileStorageIcon, FolderOpenIcon, File01Icon, CodeIcon, ViewIcon } from "@hugeicons/core-free-icons";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -273,7 +273,6 @@ function SkillEditor({ skill, onDeleted }: { skill: SkillSummary; onDeleted: () 
   const lang = activeFile ? fileLang(activeFile) : null;
   const isMd = lang === "markdown";
   const isCode = !!lang && !isMd; // 可按代码块高亮渲染的脚本(.py/.js/.json…)
-  const canRender = isMd || isCode;
   const tree = useMemo(() => buildFileTree(files), [files]);
 
   const toggleDir = (path: string) =>
@@ -389,22 +388,12 @@ function SkillEditor({ skill, onDeleted }: { skill: SkillSummary; onDeleted: () 
           <div className="flex items-center gap-2 px-4 h-9 shrink-0 border-b border-border">
             <span className="text-meta text-muted-foreground truncate">{activeFile ?? "无文件"}</span>
             <div className="flex-1" />
-            {canRender && (
-              <div className="inline-flex rounded-md border border-border p-0.5 text-meta">
-                <button
-                  type="button"
-                  onClick={() => setView("source")}
-                  className={cn("px-2 py-0.5 rounded", view === "source" ? "bg-accent text-foreground" : "text-muted-foreground")}
-                >
-                  源码
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView("render")}
-                  className={cn("px-2 py-0.5 rounded", view === "render" ? "bg-accent text-foreground" : "text-muted-foreground")}
-                >
-                  渲染
-                </button>
+            {/* 源码/渲染切换只对 Markdown 有意义(两种视图内容不同);纯代码文件不需要——只读时
+                直接整页渲染高亮,可编辑时直接编辑源码,没有"第三种视图"要切换。 */}
+            {isMd && (
+              <div className="inline-flex gap-0.5">
+                <IconButton icon={CodeIcon} label="源码" active={view === "source"} onClick={() => setView("source")} />
+                <IconButton icon={ViewIcon} label="渲染" active={view === "render"} onClick={() => setView("render")} />
               </div>
             )}
             {editable && (
@@ -415,11 +404,17 @@ function SkillEditor({ skill, onDeleted }: { skill: SkillSummary; onDeleted: () 
           <div className="flex-1 min-h-0 overflow-auto">
             {!activeFile ? (
               <div className="h-full grid place-items-center text-muted-foreground text-body">空技能,点右上「+」新建文件</div>
-            ) : canRender && view === "render" ? (
+            ) : isMd && view === "render" ? (
               <div className="md-content px-6 py-5">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                  {isMd ? stripFrontmatter(content) : `\`\`\`${lang}\n${content}\n\`\`\``}
+                  {stripFrontmatter(content)}
                 </ReactMarkdown>
+              </div>
+            ) : isCode && !editable ? (
+              // 只读代码文件:整个内容区就是代码本身,不套聊天气泡样式的小卡片(那套限高 240px,
+              // 是给对话里的短代码片段用的,不适合当完整文件查看器)。
+              <div className="skill-code-view px-6 py-5">
+                <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{`\`\`\`${lang}\n${content}\n\`\`\``}</ReactMarkdown>
               </div>
             ) : (
               <Textarea
