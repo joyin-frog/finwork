@@ -230,6 +230,87 @@
   padding: 12px;
 }
 
+/* 技能选择浮层:定位同 mention-popup,但每行是 技能名(主)+ 一行截断说明(次)。 */
+.skill-popup {
+  position: absolute;
+  left: -1rem;
+  right: -1rem;
+  bottom: calc(100% + 14px);
+  max-height: 320px;
+  overflow: hidden auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.skill-popup button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.skill-popup button.selected,
+.skill-popup button:hover {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* 名称为主、不收缩;说明小一号、占余宽、超长省略;标签贴最右。 */
+.skill-popup .skill-name {
+  flex-shrink: 0;
+  font-size: var(--text-small);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.skill-popup .skill-desc {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-popup .skill-tag {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.skill-empty {
+  padding: 12px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+/* 只读代码文件的整页渲染:不用 .md-content 里给聊天短代码片段设计的卡片(限高 240px + 圆角边框),
+   让代码铺满整个内容区、跟随外层滚动,看起来像在看这个文件本身而不是一张截断的代码卡片。 */
+.skill-code-view pre {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  max-height: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  line-height: var(--lh-snug);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.skill-code-view pre code { background: none; padding: 0; font-size: inherit; }
+.skill-code-view pre code.hljs { background: none !important; padding: 0 !important; }
+
 .context-sidebar {
   height: 100%;
   overflow-y: auto;

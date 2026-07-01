@@ -302,6 +302,23 @@ export function pickAgentModel(
     : undefined;
 }
 
+/** 用户在输入框显式选的推理强度档位 → 模型 id(对齐配置页「快速/推理」)。
+ * - fast → 快速模型(routerModel);reasoning → 推理模型(subagentModel)。
+ * - 该档位未配模型则返回 undefined,由调用方回落到主模型(adapter 内 mainModel)。 */
+export function resolveModelByTier(
+  tier: "fast" | "reasoning",
+  settings: { routerModel?: string; subagentModel?: string }
+): string | undefined {
+  const slot = tier === "fast" ? settings.routerModel : settings.subagentModel;
+  return slot?.trim() || undefined;
+}
+
+/** 把前端传来的档位归一:只有显式 "reasoning"(深度思考开)才推理,其余一律快速(默认)。
+ *  去掉了「自动」档——模型由用户的「深度思考」开关决定,不再由 router 自动升降。 */
+export function normalizeTier(tier: string | undefined | null): "fast" | "reasoning" {
+  return tier === "reasoning" ? "reasoning" : "fast";
+}
+
 function truncate(text: string): string {
   const trimmed = text.trim();
   return trimmed.length <= HISTORY_CONTENT_LIMIT ? trimmed : `${trimmed.slice(0, HISTORY_CONTENT_LIMIT)}…`;

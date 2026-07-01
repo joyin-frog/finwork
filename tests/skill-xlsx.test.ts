@@ -23,11 +23,13 @@ export const skillXlsxTestPromise = (async () => {
   assert.ok(existsSync(recalcScript), "AC-X1 FAIL: 应存在 scripts/recalc.py");
 
   // ── AC-X2: SDK 加载配置正确(内置 plugin + 隔离 ambient + 支持工具)──
-  const cfg = getSkillPluginConfig();
-  assert.equal(cfg.plugins.length, 1, "AC-X2 FAIL: 应注册一个本地 plugin");
+  const cfg = await getSkillPluginConfig();
+  // 内置 plugin 必注册且路径指向 agent-skills(用户技能 plugin 视机器状态可有可无)。
+  assert.ok(cfg.plugins.length >= 1, "AC-X2 FAIL: 应至少注册内置本地 plugin");
   assert.equal(cfg.plugins[0].type, "local");
-  assert.equal(cfg.plugins[0].path, pluginRoot, "AC-X2 FAIL: plugin 路径应指向内置 agent-skills");
-  assert.equal(cfg.skills, "all", "AC-X2 FAIL: 隔离下 skills 应为 'all'(内置 plugin 有啥加载啥)");
+  assert.equal(cfg.plugins[0].path, pluginRoot, "AC-X2 FAIL: 首个 plugin 路径应指向内置 agent-skills");
+  // skills 现为动态:干净态 'all',有用户技能/停用时为 plugin 限定名白名单数组。两者皆合法。
+  assert.ok(cfg.skills === "all" || Array.isArray(cfg.skills), "AC-X2 FAIL: skills 应为 'all' 或白名单数组");
   assert.deepEqual(cfg.settingSources, [], "AC-X2 FAIL: 应隔离 ambient skill(settingSources: [])");
   assert.ok(ALLOWED_TOOLS.includes("Bash") && ALLOWED_TOOLS.includes("Write"), "AC-X2 FAIL: 静态工具全集需含 Bash/Write 供 skill 脚本");
 
