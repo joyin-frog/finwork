@@ -78,6 +78,11 @@ async function runRgBinary(args: string[], cwd: string, stdin: string | null): P
       if (code === 0 || code === 1 || out.length >= RG_OUTPUT_CAP) resolve(out); // 1 = 无匹配,正常
       else reject(new SandboxRunError(err.trim() || `rg 退出码 ${code}`));
     });
+    // rg 的搜索目标常已由 argv(文件名/操作数)给出,不一定读 stdin,可能在 Node 写完前就退出并
+    // 关闭读端 → child.stdin.end() 写入 EPIPE。真实结果看上面的 close/exit code,这里只需吞掉
+    // 该写入错误,否则 Writable 的 'error' 事件无监听会让整个进程崩溃(异步、in-flight,不受
+    // try/catch 保护)。
+    child.stdin.on("error", () => {});
     child.stdin.end(stdin ?? "");
   });
 }
