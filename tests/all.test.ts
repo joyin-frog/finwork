@@ -230,6 +230,27 @@ void (async () => {
   const { moneyTestPromise } = await import("./money.test.ts");
   await moneyTestPromise;
 
+  const { voucherReconcileTestPromise } = await import("./voucher-reconcile.test.ts");
+  await voucherReconcileTestPromise;
+
+  const { accountMappingTestPromise } = await import("./account-mapping.test.ts");
+  await accountMappingTestPromise;
+
+  const { askUserMultiTestPromise } = await import("./ask-user-multi.test.ts");
+  await askUserMultiTestPromise;
+
+  const { voucherSummaryTestPromise } = await import("./voucher-summary.test.ts");
+  await voucherSummaryTestPromise;
+
+  const { askUserMultiStateTestPromise } = await import("./ask-user-multi-state.test.ts");
+  await askUserMultiStateTestPromise;
+
+  const { voucherToolsTestPromise } = await import("./voucher-tools.test.ts");
+  await voucherToolsTestPromise;
+
+  const { voucherBuildTestPromise } = await import("./voucher-build.test.ts");
+  await voucherBuildTestPromise;
+
   const { receiptTestPromise } = await import("./receipt.test.ts");
   await receiptTestPromise;
 
