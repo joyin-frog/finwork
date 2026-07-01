@@ -10,6 +10,12 @@ export async function register() {
       console.warn("[flags] init from DB failed, using defaults", err);
     }
     try {
+      const { scheduleRetentionCycle } = await import("@/lib/maintenance/retention");
+      scheduleRetentionCycle();
+    } catch {
+      // 启动保留治理是 best-effort,不得阻断应用启动。
+    }
+    try {
       const { appendServerLog } = await import("@/lib/runtime/server-log");
       // cold_boot≈ = 从 Node 进程启动到本钩子(Next bootstrap)的耗时,约等于打包态"白屏阶段"的
       // 主成本(④ Node+Next 冷启)。用来量化决定是否值得做 P1(服务常驻)。
