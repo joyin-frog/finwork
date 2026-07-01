@@ -206,8 +206,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       animate={{ width: collapsed ? 0 : 240 }}
       transition={SPRING_DEFAULT}
     >
-      {/* 顶栏:左侧为 macOS 红绿灯预留(DragHandle 拖拽区);右侧放收起按钮(展开态才在侧栏里)。 */}
-      <div className="relative h-11 shrink-0 flex items-center justify-end pr-2">
+      {/* 顶栏:左侧为 macOS 红绿灯预留(DragHandle 拖拽区);右侧放收起按钮(展开态才在侧栏里)。
+          Windows 无红绿灯,靠 .app-nav-topbar 的平台样式改为靠左,不留左上角空档(见 globals.css)。 */}
+      <div className="app-nav-topbar relative h-11 shrink-0 flex items-center justify-end pr-2">
         <DragHandle />
         <ShortcutHint label="搜索" combo="mod+g" side="right">
           <button

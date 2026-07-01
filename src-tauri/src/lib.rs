@@ -81,6 +81,11 @@ pub fn run() {
         .hidden_title(true)
         .traffic_light_position(tauri::LogicalPosition::new(12.0, 24.0));
 
+      // Windows:去系统标题栏(无边框),改由 Web 自绘三键(见 window-controls.tsx 的 WindowControls)。
+      // 仍 resizable(true) → tao 保留 WS_THICKFRAME,可从窗口边缘缩放。Linux 保持原生框不动。
+      #[cfg(target_os = "windows")]
+      let builder = builder.decorations(false);
+
       let window = builder.build()?;
 
       if is_release {
