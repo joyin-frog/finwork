@@ -47,6 +47,11 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__kingdee_worker__export_kingdee_draft",      category: "finance", riskLevel: "high" },
   { name: "mcp__kingdee_worker__validate_kingdee_voucher",  category: "finance", riskLevel: "medium" },
   { name: "mcp__kingdee_worker__import_kingdee_accounts",   category: "finance", riskLevel: "medium" },
+  // 单据→凭证:金额勾稽 / 科目映射 / 汇总(均只读,不写数据)
+  { name: "mcp__kingdee_worker__check_voucher_amount",      category: "finance", riskLevel: "safe" },
+  { name: "mcp__kingdee_worker__map_voucher_account",       category: "finance", riskLevel: "safe" },
+  { name: "mcp__kingdee_worker__summarize_vouchers",        category: "finance", riskLevel: "safe" },
+  { name: "mcp__kingdee_worker__build_voucher_lines",       category: "finance", riskLevel: "safe" },
   // P1 合同归纳:结构化 metadata 起草工具
   { name: "mcp__finance_worker__record_document_metadata",  category: "finance", riskLevel: "medium" },
   // P3: 公司画像（税务筹划）

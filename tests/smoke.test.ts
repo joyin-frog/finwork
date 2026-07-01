@@ -276,7 +276,8 @@ async function testKingdeeMcpIntegration() {
   };
 
   const kingdeeTools = createKingdeeTools(mockSdk as any);
-  assert.equal(kingdeeTools.length, 4);
+  // 4 原有 + 4 单据→凭证(check_voucher_amount/map_voucher_account/summarize_vouchers/build_voucher_lines)
+  assert.equal(kingdeeTools.length, 8);
 
   // 1. Test query_kingdee_accounts
   const queryHandler = tools["query_kingdee_accounts"]?.handler;
