@@ -1,9 +1,20 @@
 import type { NextConfig } from "next";
 import path from "node:path";
+import { readFileSync } from "node:fs";
+
+// 版本号来自 package.json,构建期注入 NEXT_PUBLIC_APP_VERSION 供「关于」页展示。
+const appVersion = (() => {
+  try {
+    return JSON.parse(readFileSync(path.join(__dirname, "package.json"), "utf-8")).version as string;
+  } catch {
+    return "";
+  }
+})();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  env: { NEXT_PUBLIC_APP_VERSION: appVersion },
   outputFileTracingRoot: path.join(__dirname),
   // layout.tsx 运行时 fs.readFileSync 读 highlight.js 主题 CSS 来内联代码高亮配色;
   // standalone 输出只 trace JS、不含这俩 CSS → 打包后 ENOENT 致全站 500。显式纳入 trace。

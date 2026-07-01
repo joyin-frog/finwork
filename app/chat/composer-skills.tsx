@@ -1,7 +1,8 @@
 "use client";
 
+import type { ReactNode, Ref } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MagicWand01Icon, Atom01Icon } from "@hugeicons/core-free-icons";
+import { MagicWand01Icon, BrainIcon } from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { SkillRef } from "@/app/chat/chat-types";
@@ -65,38 +66,55 @@ export function SkillPopup({
   );
 }
 
-/** 已引用技能的 chip 行。复用 .attachment-chip 系列样式,放在文件托盘旁。 */
-export function SkillTray({
-  skills,
-  onRemove,
-}: {
-  skills: SkillRef[];
-  onRemove: (name: string) => void;
-}) {
+/** 转义正则特殊字符(技能名本身已被 isValidSkillName 限制字符集,这里只做防御)。 */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 匹配 /skillName 整词(前后是空白或首尾),用于在草稿文本里定位需要高亮的引用。 */
+function buildSkillTokenPattern(skills: SkillRef[]): RegExp | null {
   if (!skills.length) return null;
-  return (
-    <div className="attachment-tray" aria-label="已引用技能">
-      {skills.map((skill) => (
-        <span className="attachment-chip" key={skill.name} title={skill.description || skill.name}>
-          <span className="attachment-chip-main">
-            <span className="attachment-chip-icon">
-              <HugeiconsIcon icon={MagicWand01Icon} size={18} className="text-muted-foreground" />
-            </span>
-            <span className="attachment-chip-text">
-              <span className="attachment-chip-name">{skill.name}</span>
-              <span className="attachment-chip-type">技能</span>
-            </span>
-          </span>
-          <button
-            type="button"
-            className="attachment-chip-close"
-            onClick={() => onRemove(skill.name)}
-            aria-label={`移除技能 ${skill.name}`}
-          >
-            &times;
-          </button>
+  const names = [...skills].sort((a, b) => b.name.length - a.name.length).map((s) => escapeRegExp(s.name));
+  return new RegExp(`(?<!\\S)/(?:${names.join("|")})(?!\\S)`, "g");
+}
+
+/**
+ * 输入框内 /skillName 的高亮镜像层:与 textarea 同宽高、同排版,叠在其后方,
+ * 让引用留在正文里(不再挪成上方 chip),只用主色 token 标出来。
+ */
+export function ComposerHighlightOverlay({
+  text,
+  skills,
+  ref,
+}: {
+  text: string;
+  skills: SkillRef[];
+  ref?: Ref<HTMLDivElement>;
+}) {
+  const pattern = buildSkillTokenPattern(skills);
+  const nodes: ReactNode[] = [];
+  if (pattern) {
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let key = 0;
+    while ((match = pattern.exec(text))) {
+      if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
+      nodes.push(
+        <span key={key++} className="text-[var(--primary)]">
+          {match[0]}
         </span>
-      ))}
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  } else {
+    nodes.push(text);
+  }
+  // whitespace-pre-wrap 会把末尾换行折叠掉一行高度,补一个空格保证与 textarea 高度一致。
+  if (text.endsWith("\n")) nodes.push(" ");
+  return (
+    <div ref={ref} aria-hidden className="composer-highlight-overlay text-body py-1 min-h-[24px]">
+      {nodes}
     </div>
   );
 }
@@ -115,16 +133,16 @@ export function DeepThinkToggle({
         <button
           type="button"
           aria-pressed={active}
+          aria-label="深度思考"
           onClick={() => onToggle(!active)}
           className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-caption transition-colors select-none",
+            "inline-flex size-8 items-center justify-center rounded-full border transition-colors select-none",
             active
-              ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]"
-              : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+              ? "border-transparent text-primary hover:bg-muted"
+              : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
-          <HugeiconsIcon icon={Atom01Icon} size={15} />
-          <span>深度思考</span>
+          <HugeiconsIcon icon={BrainIcon} size={16} />
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">深度思考:用推理模型解决复杂问题;关闭则用快速模型</TooltipContent>

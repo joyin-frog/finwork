@@ -19,6 +19,8 @@ export const PUT = withApiError(async function PUT(request: Request) {
     subagentModel?: string;
     companyName?: string;
     agentName?: string;
+    userName?: string;
+    userAvatar?: string;
     roleMode?: "daily" | "tech";
     telemetryEnabled?: boolean;
     telemetryEndpoint?: string;
@@ -35,6 +37,8 @@ export const PUT = withApiError(async function PUT(request: Request) {
       subagentModel: body.subagentModel,
       companyName: body.companyName,
       agentName: body.agentName,
+      userName: body.userName,
+      userAvatar: body.userAvatar,
       roleMode: body.roleMode,
       telemetryEnabled: body.telemetryEnabled,
       telemetryEndpoint: body.telemetryEndpoint,

@@ -6,6 +6,7 @@ import { GeistSans } from "geist/font/sans";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { getProjectRoot } from "@/lib/runtime/paths";
 import { NavStateProvider } from "./shared/nav-state";
+import { UserIdentityProvider } from "./shared/user-identity";
 import { ChatStreamProvider } from "./shared/chat-stream";
 import { AppThemeProvider } from "./shared/theme-provider";
 import { AppShell } from "./shared/app-shell";
@@ -67,9 +68,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <AppThemeProvider>
           <ScrollbarFade />
           <NavStateProvider>
-            <ChatStreamProvider>
-              <AppShell>{children}</AppShell>
-            </ChatStreamProvider>
+            <UserIdentityProvider>
+              <ChatStreamProvider>
+                <AppShell>{children}</AppShell>
+              </ChatStreamProvider>
+            </UserIdentityProvider>
           </NavStateProvider>
         </AppThemeProvider>
       </body>
