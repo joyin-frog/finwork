@@ -287,6 +287,15 @@ void (async () => {
   const { skillPluginTestPromise } = await import("./skill-plugin.test.ts");
   await skillPluginTestPromise;
 
+  const { skillsStoreTestPromise } = await import("./skills-store.test.ts");
+  await skillsStoreTestPromise;
+
+  const { agentQueryHelpersTestPromise } = await import("./agent-query-helpers.test.ts");
+  await agentQueryHelpersTestPromise;
+
+  const { skillsFileTreeTestPromise } = await import("./skills-file-tree.test.ts");
+  await skillsFileTreeTestPromise;
+
   const { telemetryInstallIdTestPromise } = await import("./telemetry-install-id.test.ts");
   await telemetryInstallIdTestPromise;
 

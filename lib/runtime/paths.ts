@@ -29,9 +29,20 @@ export function getSecretFallbackPath() {
   return process.env.FINANCE_AGENT_SECRET_FILE ?? path.join(getAppDataDir(), "local-secret");
 }
 
-/** SDK 原生 skill 的本地 plugin 目录(含 .claude-plugin/plugin.json + skills/);随 app 资源分发。 */
+/** SDK 原生 skill 的本地 plugin 目录(含 .claude-plugin/plugin.json + skills/);随 app 资源分发,只读。 */
 export function getBundledPluginRoot() {
   return process.env.FINANCE_AGENT_BUNDLED_PLUGIN_DIR ?? path.join(getProjectRoot(), "agent-skills");
+}
+
+/** 用户可写的 skill plugin 目录:新建/编辑(覆盖内置)的技能落在这里。打包态内置目录只读,故编辑写此处。
+ *  与 memory.md / system-prompt.md 同思路放应用数据目录,改完下条消息即生效、无需重编译。 */
+export function getUserPluginRoot() {
+  return process.env.FINANCE_AGENT_USER_PLUGIN_DIR ?? path.join(getAppDataDir(), "user-skills");
+}
+
+/** 技能启停状态(按技能 name 记 disabled 列表);与设置同级落应用数据目录。 */
+export function getSkillsStatePath() {
+  return process.env.FINANCE_AGENT_SKILLS_STATE_PATH ?? path.join(getAppDataDir(), "skills-state.json");
 }
 
 export function getConversationFilesDir(conversationId: number | string) {
