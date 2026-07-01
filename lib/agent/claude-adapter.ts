@@ -50,6 +50,8 @@ export type AgentQuestion = {
   header?: string;
   multiSelect?: boolean;
   options?: Array<{ label: string; description?: string; preview?: string }>;
+  // 多题一次下发:非空时前端渲染为一个浮层、左右切换逐题作答(单题走 question/options 原路径)。
+  questions?: AgentQuestion[];
 };
 
 export type AgentRunEvent =
