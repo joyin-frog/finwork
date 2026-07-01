@@ -20,6 +20,9 @@ void (async () => {
   const { appVersionTestPromise } = await import("./app-version.test.ts");
   await appVersionTestPromise;
 
+  const { skillTokenTestPromise } = await import("./skill-token.test.ts");
+  await skillTokenTestPromise;
+
   const { designComplianceTestPromise } = await import("./design-compliance.test.ts");
   await designComplianceTestPromise;
 
