@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { SettingsSection, SettingsRow, SettingsField } from "@/app/config/settings-ui";
+import { SettingsRow, SettingsField } from "@/app/config/settings-ui";
 import type { PublicClaudeSettings } from "@/lib/settings/claude-settings";
 import type { TestReportResult } from "@/lib/telemetry/reporter";
 
@@ -48,7 +48,8 @@ function formatTestResult(result: TestReportResult): string {
   return `上报失败${statusPart}:${r.error}`;
 }
 
-export function TelemetrySettings() {
+/** 「使用数据上报」卡片正文:开关 + 状态 + 本地测试上报。标题/说明由外层 SettingsCard 提供。 */
+export function TelemetryBody() {
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState<TelemetryStatus | null>(null);
   const [testEndpoint, setTestEndpoint] = useState("");
@@ -107,10 +108,7 @@ export function TelemetrySettings() {
   const builtIn = status?.endpointBuiltIn ?? false;
 
   return (
-    <SettingsSection
-      title="使用数据上报(可选)"
-      description="将匿名运行指标(token 用量/耗时/成本/错误/路由)上报以改进产品,不含财务数据。默认开启,可随时关闭。"
-    >
+    <>
       <SettingsRow label="启用上报" htmlFor="telemetry-enabled">
         <Switch
           id="telemetry-enabled"
@@ -185,6 +183,6 @@ export function TelemetrySettings() {
           )}
         </div>
       </div>
-    </SettingsSection>
+    </>
   );
 }

@@ -11,6 +11,8 @@ import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { DragHandle } from "@/app/shared/window-controls";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { useIsMac } from "@/app/shared/use-is-mac";
+import { useUserIdentity } from "@/app/shared/user-identity";
+import { UserAvatar } from "@/app/shared/user-avatar";
 import { formatShortcut } from "@/app/shared/shortcuts";
 import { SPRING_DEFAULT } from "@/app/shared/motion-presets";
 import {
@@ -71,6 +73,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     startDelete, confirmDelete, cancelDelete,
   } = useNavState();
   const { statusByConversationId } = useChatStream();
+  const { name: userName, avatar: userAvatar } = useUserIdentity();
 
   const renameInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -156,7 +159,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           <Link
             href={`/chat/recent?id=${c.id}`}
             title={c.title}
-            className="flex-1 min-w-0 pl-4 pr-3 py-1.5 text-small truncate"
+            className="flex-1 min-w-0 pl-4 pr-3 py-1 text-small truncate"
           >
             {c.title}
           </Link>
@@ -215,7 +218,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             type="button"
             onClick={() => setSearchOpen(true)}
             aria-label="搜索"
-            className="relative size-8 inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-accent hover:text-foreground"
+            className="icon-btn relative inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-accent hover:text-foreground"
           >
             <HugeiconsIcon icon={Search01Icon} size={16} />
           </button>
@@ -225,7 +228,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             type="button"
             onClick={() => setCollapsed(true)}
             aria-label="收起菜单"
-            className="relative size-8 inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-accent hover:text-foreground"
+            className="icon-btn relative inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-accent hover:text-foreground"
           >
             <HugeiconsIcon icon={PanelLeftIcon} size={16} />
           </button>
@@ -247,6 +250,10 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             <Link href="/files" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
               <HugeiconsIcon icon={LibraryIcon} size={16} />
               <span>资料</span>
+            </Link>
+            <Link href="/skills" onClick={() => trackFeature("nav.skills")} className={navLinkClass(active === "skills")}>
+              <HugeiconsIcon icon={MagicWand01Icon} size={16} />
+              <span>技能</span>
             </Link>
           </div>
 
@@ -296,14 +303,24 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           </nav>
 
           <div className="flex flex-col gap-0.5 px-2 py-2 shrink-0">
-            <Link href="/skills" onClick={() => trackFeature("nav.skills")} className={navLinkClass(active === "skills")}>
-              <HugeiconsIcon icon={MagicWand01Icon} size={16} />
-              <span>技能</span>
-            </Link>
-            <Link href="/config" onClick={() => trackFeature("nav.config")} className={cn(navLinkClass(active === "config"), "group")}>
-              <HugeiconsIcon icon={Settings02Icon} size={16} />
-              <span>设置</span>
-              <NavShortcut combo="mod+," />
+            {/* 与上方对话列表隔一条发丝线 */}
+            <div className="mx-1 mb-1 border-t border-border" />
+            {/* 用户头像行:左侧头像+名字,右侧保留「设置」齿轮图标;整行点击打开设置。 */}
+            <Link
+              href="/config"
+              onClick={() => trackFeature("nav.config")}
+              aria-current={active === "config" ? "page" : undefined}
+              aria-label="设置"
+              className={cn(
+                "group flex items-center gap-2 rounded-md pl-1.5 pr-1 min-h-[40px] transition-colors",
+                active === "config" ? "bg-primary/10" : "hover:bg-accent"
+              )}
+            >
+              <UserAvatar name={userName} avatar={userAvatar} size="default" />
+              <span className="flex-1 min-w-0 truncate text-small text-foreground">{userName || "用户"}</span>
+              <span className="shrink-0 p-1 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden>
+                <HugeiconsIcon icon={Settings02Icon} size={16} />
+              </span>
             </Link>
           </div>
         </>

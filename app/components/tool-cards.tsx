@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Alert02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { SuccessIcon, WarningIcon } from "@/lib/icons";
 import { formatCny } from "@/lib/format";
 import { parsePayrollStructured } from "./payroll-card-data";
 import { PayrollResultCard } from "./payroll-result-card";
@@ -56,8 +56,8 @@ function ReimbursementResultCard({ data }: { data: ReimbursementCardData }) {
         data.abnormalCount > 0 ? "border-[color:var(--tone-notice)]/30 bg-[color:var(--tone-notice)]/12" : "border-border text-muted-foreground"
       }`}>
         {data.abnormalCount > 0
-          ? <HugeiconsIcon icon={Alert02Icon} size={13} className="shrink-0" aria-hidden="true" />
-          : <HugeiconsIcon icon={Tick02Icon} size={13} className="shrink-0" aria-hidden="true" />}
+          ? <HugeiconsIcon icon={WarningIcon} size={13} className="shrink-0" aria-hidden="true" />
+          : <HugeiconsIcon icon={SuccessIcon} size={13} className="shrink-0" aria-hidden="true" />}
         <span>{data.summary}</span>
       </div>
       <div className="overflow-x-auto">
@@ -83,11 +83,11 @@ function ReimbursementResultCard({ data }: { data: ReimbursementCardData }) {
                 <td className="px-3 py-1.5">
                   {row.warnings.length ? (
                     <span className="inline-flex items-start gap-1 text-[color:var(--tone-notice)]">
-                      <HugeiconsIcon icon={Alert02Icon} size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
+                      <HugeiconsIcon icon={WarningIcon} size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
                       <span>{row.warnings.join("；")}</span>
                     </span>
                   ) : (
-                    <HugeiconsIcon icon={Tick02Icon} size={13} className="text-muted-foreground" aria-label="通过" />
+                    <HugeiconsIcon icon={SuccessIcon} size={13} className="text-muted-foreground" aria-label="通过" />
                   )}
                 </td>
               </tr>
@@ -104,7 +104,7 @@ function VoucherDraftCard({ data }: { data: VoucherDraftCardData }) {
     <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
       {data.simulated ? (
         <div className="px-3 py-2 border-b border-[color:var(--tone-notice)]/30 bg-[color:var(--tone-notice)]/12 text-meta flex items-center gap-2">
-          <HugeiconsIcon icon={Alert02Icon} size={13} className="shrink-0" aria-hidden="true" />
+          <HugeiconsIcon icon={WarningIcon} size={13} className="shrink-0" aria-hidden="true" />
           <span>模拟模式:草稿未写入金蝶系统,仅供核对。</span>
         </div>
       ) : null}
@@ -113,10 +113,10 @@ function VoucherDraftCard({ data }: { data: VoucherDraftCardData }) {
           {data.id} · {data.company} · {data.period}
         </span>
         {data.balanced ? (
-          <span className="inline-flex items-center gap-1 shrink-0"><HugeiconsIcon icon={Tick02Icon} size={12} aria-hidden="true" />借贷平衡</span>
+          <span className="inline-flex items-center gap-1 shrink-0"><HugeiconsIcon icon={SuccessIcon} size={12} aria-hidden="true" />借贷平衡</span>
         ) : (
           <span className="inline-flex items-center gap-1 shrink-0 text-destructive">
-            <HugeiconsIcon icon={Alert02Icon} size={12} aria-hidden="true" />
+            <HugeiconsIcon icon={WarningIcon} size={12} aria-hidden="true" />
             借贷不平衡:借 {formatCny(data.totalDebit)} / 贷 {formatCny(data.totalCredit)}
           </span>
         )}
@@ -166,7 +166,7 @@ function VoucherValidationCard({ data }: { data: VoucherValidationCardData }) {
       <div className={`px-3 py-2 text-meta flex items-center gap-2 ${
         data.valid ? "text-muted-foreground" : "bg-destructive/10 text-destructive"
       }`}>
-        {data.valid ? <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden="true" /> : <HugeiconsIcon icon={Alert02Icon} size={13} aria-hidden="true" />}
+        {data.valid ? <HugeiconsIcon icon={SuccessIcon} size={13} aria-hidden="true" /> : <HugeiconsIcon icon={WarningIcon} size={13} aria-hidden="true" />}
         <span>{data.valid ? "凭证校验通过" : `凭证校验未通过(${data.errors.length} 个错误)`}</span>
       </div>
       {data.errors.length ? (

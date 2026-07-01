@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Tick02Icon, HelpCircleIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { SuccessIcon, HelpIcon } from "@/lib/icons";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { SPRING_DEFAULT } from "@/app/shared/motion-presets";
@@ -64,7 +65,7 @@ export function AskUserCard({
       transition={SPRING_DEFAULT}
     >
       <div className="flex items-start gap-2">
-        <HugeiconsIcon icon={HelpCircleIcon} size={15} className="text-primary shrink-0 mt-0.5" aria-hidden="true" />
+        <HugeiconsIcon icon={HelpIcon} size={15} className="text-primary shrink-0 mt-0.5" aria-hidden="true" />
         <div className="flex flex-col gap-0.5 min-w-0">
           {question.header ? <span className="text-meta text-muted-foreground">{question.header}</span> : null}
           <span className="whitespace-pre-line">{question.question}</span>
@@ -72,7 +73,7 @@ export function AskUserCard({
       </div>
       {answered ? (
         <div className="flex items-center gap-2 text-meta text-muted-foreground pl-6">
-          <HugeiconsIcon icon={Tick02Icon} size={13} aria-hidden="true" />
+          <HugeiconsIcon icon={SuccessIcon} size={13} aria-hidden="true" />
           <span>{finalAnswer?.trim() ? `已选择:${finalAnswer}` : "未确认(已超时或取消)"}</span>
         </div>
       ) : expired ? (

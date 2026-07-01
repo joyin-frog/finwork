@@ -44,6 +44,28 @@
   display: none;
 }
 
+/* /skillName 高亮镜像层:叠在 textarea 后方,textarea 本身文字设为透明,
+   靠这层画出可见文字,与 textarea 的排版参数需保持一致(见 composer-highlight-wrap)。 */
+.composer-highlight-wrap {
+  position: relative;
+}
+
+.composer-highlight-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.composer-textarea {
+  position: relative;
+  color: transparent;
+  caret-color: var(--text);
+}
+
 .attachment-tray {
   display: flex;
   flex-wrap: wrap;

@@ -19,6 +19,23 @@ export function SettingsSection({ title, description, children }: {
   );
 }
 
+/** 设置卡片:带边框+圆角的独立卡,用于「关于」页把版本/环境/上报三大块各自框起来。 */
+export function SettingsCard({ title, description, children }: {
+  title: string;
+  description?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+      <div className="flex flex-col gap-0.5">
+        <h3 className="text-body font-medium">{title}</h3>
+        {description ? <p className="text-meta text-muted-foreground max-w-prose">{description}</p> : null}
+      </div>
+      <div className="flex flex-col gap-3">{children}</div>
+    </section>
+  );
+}
+
 /** 设置行:label 左、控件右;短值控件自动限宽,避免整行过长。 */
 export function SettingsRow({ label, htmlFor, hint, wide, children }: {
   label: string;
