@@ -538,6 +538,14 @@ html button.composer-send-button.stop {
 ::-webkit-scrollbar-thumb:horizontal { background-color: var(--sb-thumb); }
 ::-webkit-scrollbar-thumb:horizontal:hover { background-color: var(--sb-thumb-hover); }
 ::-webkit-scrollbar-corner { background: transparent; }
+
+/* Windows 自绘标题栏(见 WindowTitleBar):三键已移到顶部独立横条,页面内容整体在其下方,
+   故不再需要给各页 header / 预览卡右侧让位——旧的 padding-right 通配规则会误伤「右缘不在窗口右缘」
+   的 header(对话/资料预览列、居中设置模态)而把按钮左推,已随顶栏方案一并去掉。
+
+   仅剩这条:Windows 无红绿灯,收掉左侧栏顶栏为 mac 红绿灯预留的左侧空档,让搜索/收起键靠左、不留空;
+   补 0.5rem 左内边距,与下方导航项(px-2)左缘对齐。 */
+:root[data-platform="windows"] .app-nav-topbar { justify-content: flex-start; padding-left: 0.5rem; }
 @media (prefers-reduced-motion: reduce) {
   ::-webkit-scrollbar-thumb { transition: none; }
 }
