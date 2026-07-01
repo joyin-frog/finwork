@@ -232,6 +232,17 @@
   --doc-shadow: 0 2px 16px oklch(0 0 0 / 40%);
 }
 
+/* 纯图标按钮统一尺寸:容器 32px + 图标 16px,全站唯一标准。
+   只管尺寸,不管 flex/圆角等布局——那些由调用处的 Tailwind 类负责,保持可组合。 */
+.icon-btn {
+  width: 2rem;
+  height: 2rem;
+}
+.icon-btn svg:not([class*="size-"]) {
+  width: 1rem;
+  height: 1rem;
+}
+
 /* Thinking pulse animation for chat assistant turn */
 @keyframes think-breathe {
   0%, 100% { transform: scale(0.6); opacity: 0; }

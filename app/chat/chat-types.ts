@@ -39,7 +39,7 @@ export type ReferencedFile = {
   storagePath: string;
 };
 
-/** 输入框里被引用的技能(以 chip 呈现);name 为技能机器名,description 供提示。 */
+/** 输入框里被引用的技能(留在正文里,以 /skillName 高亮呈现);name 为技能机器名,description 供提示。 */
 export type SkillRef = {
   name: string;
   description: string;

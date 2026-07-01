@@ -19,11 +19,9 @@ import {
   Loading03Icon,
   InternetIcon,
   ChevronRightIcon,
-  Copy01Icon,
-  Tick02Icon,
-  RefreshIcon,
   MagicWand01Icon,
 } from "@hugeicons/core-free-icons";
+import { RefreshIcon, SuccessIcon, CopyIcon } from "@/lib/icons";
 import { useRouter } from "next/navigation";
 import type { StoredAgentEvent, StoredChatAttachment } from "@/lib/db/sqlite";
 import { ToolStepList } from "@/app/components/tool-call-step";
@@ -33,7 +31,7 @@ import { AskUserPanel } from "@/app/components/ask-user-panel";
 import { ChatFilePanel } from "@/app/chat/chat-file-panel";
 import { TurnError } from "@/app/chat/turn-error";
 import { ComposerTip } from "@/app/chat/composer-tips";
-import { SkillPopup, SkillTray, DeepThinkToggle, isValidSkillName, type PickerSkill } from "@/app/chat/composer-skills";
+import { SkillPopup, ComposerHighlightOverlay, DeepThinkToggle, isValidSkillName, type PickerSkill } from "@/app/chat/composer-skills";
 import { FindInChat } from "@/app/chat/find-in-chat";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
 import { useNavState } from "@/app/shared/nav-state";
@@ -263,6 +261,7 @@ export default function ChatPage({
   const threadEndRef = useRef<HTMLDivElement>(null);
   const threadRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerHighlightRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -357,6 +356,14 @@ export default function ChatPage({
     el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
     el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [draft, attachments, referencedAttachments]);
+
+  // /skillName 引用留在正文里,没有单独的移除按钮:用户把文字删了,引用就跟着掉。
+  useEffect(() => {
+    setReferencedSkills((prev) => {
+      const next = prev.filter((s) => new RegExp(`(?<!\\S)/${s.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?!\\S)`).test(draft));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [draft]);
 
   useEffect(() => {
     if (conversationId) void fetchConversationFiles(conversationId);
@@ -708,10 +715,16 @@ export default function ChatPage({
   }
 
   function selectSkill(skill: SkillRef) {
-    // 经 / 打开时回删 draft 里的 "/filter" 文本;经 + 菜单打开(skillAtPos<0)则不动 draft。
+    // 经 / 打开时把 draft 里的 "/filter" 替换成规范的 "/skillName "(留在正文里,靠高亮层标出来);
+    // 经 + 菜单打开(skillAtPos<0)则不动 draft,只登记引用。
     if (skillAtPos >= 0) {
       const cursorPos = textareaRef.current?.selectionStart ?? skillAtPos + 1 + skillFilter.length;
-      setDraft(`${draft.slice(0, skillAtPos)}${draft.slice(cursorPos)}`);
+      const token = `/${skill.name} `;
+      setDraft(`${draft.slice(0, skillAtPos)}${token}${draft.slice(cursorPos)}`);
+      requestAnimationFrame(() => {
+        const pos = skillAtPos + token.length;
+        textareaRef.current?.setSelectionRange(pos, pos);
+      });
     }
     setReferencedSkills((prev) => (prev.some((s) => s.name === skill.name) ? prev : [...prev, skill]));
     setSkillMenuActive(false);
@@ -1023,28 +1036,30 @@ export default function ChatPage({
                       removeAttachment={removeAttachment}
                       removeReference={(storagePath) => setReferencedAttachments((prev) => prev.filter((item) => item.storagePath !== storagePath))}
                     />
-                    <SkillTray
-                      skills={referencedSkills}
-                      onRemove={(name) => setReferencedSkills((prev) => prev.filter((s) => s.name !== name))}
-                    />
-                    <textarea
-                      ref={textareaRef}
-                      className="w-full resize-none bg-transparent text-body outline-none placeholder:text-muted-foreground py-1 min-h-[24px]"
-                      aria-label="输入消息"
-                      onChange={handleDraftChange}
-                      onKeyDown={handleKeyDown}
-                      onPaste={(event) => {
-                        const files = getClipboardFiles(event.clipboardData);
-                        if (files.length) {
-                          event.preventDefault();
-                          void addFiles(files);
-                        }
-                      }}
-                      placeholder={placeholder}
-                      rows={1}
-                      value={draft}
-                      disabled={loading}
-                    />
+                    <div className="composer-highlight-wrap">
+                      <ComposerHighlightOverlay text={draft} skills={referencedSkills} ref={composerHighlightRef} />
+                      <textarea
+                        ref={textareaRef}
+                        className="composer-textarea w-full resize-none bg-transparent text-body outline-none placeholder:text-muted-foreground py-1 min-h-[24px]"
+                        aria-label="输入消息"
+                        onChange={handleDraftChange}
+                        onKeyDown={handleKeyDown}
+                        onScroll={(event) => {
+                          if (composerHighlightRef.current) composerHighlightRef.current.scrollTop = event.currentTarget.scrollTop;
+                        }}
+                        onPaste={(event) => {
+                          const files = getClipboardFiles(event.clipboardData);
+                          if (files.length) {
+                            event.preventDefault();
+                            void addFiles(files);
+                          }
+                        }}
+                        placeholder={placeholder}
+                        rows={1}
+                        value={draft}
+                        disabled={loading}
+                      />
+                    </div>
                     {mentionActive ? (
                       <MentionPopup
                         files={filteredMentionFiles}
@@ -1090,8 +1105,8 @@ export default function ChatPage({
                       </DropdownMenuContent>
                     </DropdownMenu>
                     <div className="flex items-center gap-1">
-                      <UsageRing usage={usage} />
                       <DeepThinkToggle active={modelTier === "reasoning"} onToggle={(on) => setModelTier(on ? "reasoning" : "fast")} />
+                      <UsageRing usage={usage} />
                       {loading ? (
                         <button className="composer-send-button stop" type="button" aria-label="停止生成" onClick={stopGeneration}>
                           <HugeiconsIcon icon={StopIcon} size={16} />
@@ -1484,7 +1499,7 @@ function AssistantTurn({
               aria-label={answerCopied ? "已复制" : "复制全文"}
               onClick={copyAnswer}
             >
-              <HugeiconsIcon icon={answerCopied ? Tick02Icon : Copy01Icon} size={13} />
+              <HugeiconsIcon icon={answerCopied ? SuccessIcon : CopyIcon} size={13} />
             </button>
             <button
               type="button"
@@ -1673,7 +1688,7 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
           className="inline-flex items-center justify-center rounded p-1 bg-muted/80 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
           aria-label={copied ? "已复制" : "复制代码"}
         >
-          <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} size={13} />
+          <HugeiconsIcon icon={copied ? SuccessIcon : CopyIcon} size={13} />
         </button>
       </div>
       <pre ref={ref}>{children}</pre>
@@ -1712,7 +1727,7 @@ function TableBlock({ children }: { children?: React.ReactNode }) {
         className="absolute right-0 -top-1 z-10 inline-flex items-center justify-center rounded p-1 bg-background/85 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted hover:text-foreground cursor-pointer"
         aria-label={copied ? "已复制" : "复制表格"}
       >
-        <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} size={13} />
+        <HugeiconsIcon icon={copied ? SuccessIcon : CopyIcon} size={13} />
       </button>
       <table ref={ref}>{children}</table>
     </div>

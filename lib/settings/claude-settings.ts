@@ -12,6 +12,10 @@ export type ClaudeSettings = {
   model: string;
   companyName: string;
   agentName: string;
+  /** 当前用户显示名(侧栏底部头像行、可留空) */
+  userName: string;
+  /** 当前用户头像:小尺寸 data URL(客户端已压到 ~96px);空串=用姓名首字兜底 */
+  userAvatar: string;
   /** Haiku model for router/intent classification (WP2) */
   routerModel: string;
   /** Model for subagent tasks (WP8 cost routing) */
@@ -39,6 +43,8 @@ export type PublicClaudeSettings = {
   apiKeyPersisted: boolean;
   companyName: string;
   agentName: string;
+  userName: string;
+  userAvatar: string;
   routerModel: string;
   subagentModel: string;
   mainModel: string;
@@ -55,6 +61,8 @@ const defaultSettings: ClaudeSettings = {
   model: "",
   companyName: "",
   agentName: "小财",
+  userName: "",
+  userAvatar: "",
   routerModel: "",
   subagentModel: "",
   mainModel: "",
@@ -110,6 +118,8 @@ export async function readClaudeSettings(): Promise<ClaudeSettings> {
     model: source.model || "",
     companyName: source.companyName || "",
     agentName: source.agentName || defaultSettings.agentName,
+    userName: source.userName || "",
+    userAvatar: normalizeAvatar(source.userAvatar),
     routerModel: source.routerModel || defaultSettings.routerModel,
     subagentModel: source.subagentModel || defaultSettings.subagentModel,
     mainModel: source.mainModel || defaultSettings.mainModel,
@@ -131,6 +141,8 @@ export async function writeClaudeSettings(next: Partial<ClaudeSettings>) {
     model: normalizeModel(next.model ?? current.model),
     companyName: next.companyName?.trim() ?? current.companyName,
     agentName: next.agentName?.trim() || current.agentName || defaultSettings.agentName,
+    userName: next.userName?.trim() ?? current.userName,
+    userAvatar: next.userAvatar !== undefined ? normalizeAvatar(next.userAvatar) : current.userAvatar,
     routerModel: (next.routerModel || current.routerModel || defaultSettings.routerModel).trim(),
     subagentModel: (next.subagentModel || current.subagentModel || defaultSettings.subagentModel).trim(),
     mainModel: (next.mainModel || current.mainModel || defaultSettings.mainModel).trim(),
@@ -151,6 +163,8 @@ export async function writeClaudeSettings(next: Partial<ClaudeSettings>) {
     model: settings.model,
     companyName: settings.companyName,
     agentName: settings.agentName,
+    userName: settings.userName,
+    userAvatar: settings.userAvatar,
     routerModel: settings.routerModel,
     subagentModel: settings.subagentModel,
     mainModel: settings.mainModel,
@@ -196,6 +210,8 @@ export function toPublicClaudeSettings(settings: ClaudeSettings, apiKeyPersisted
     apiKeyPersisted,
     companyName: settings.companyName,
     agentName: settings.agentName,
+    userName: settings.userName,
+    userAvatar: settings.userAvatar,
     routerModel: settings.routerModel,
     subagentModel: settings.subagentModel,
     mainModel: settings.mainModel,
@@ -213,6 +229,16 @@ function normalizeApiUrl(value: string) {
 
 function normalizeModel(value: string) {
   return value.trim();
+}
+
+// 头像只接受小图 data URL(客户端已压到 ~96px);非 data:image/ 前缀或超过 512KB 一律丢弃,
+// 防脏值/超大串撑爆 settings.json。空串合法(表示清空,用姓名首字兜底)。
+function normalizeAvatar(value: string | undefined): string {
+  const v = (value || "").trim();
+  if (!v) return "";
+  if (!v.startsWith("data:image/")) return "";
+  if (v.length > 512 * 1024) return "";
+  return v;
 }
 
 function maskApiKey(value: string) {

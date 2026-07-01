@@ -8,7 +8,6 @@
  */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { SettingsSection } from "@/app/config/settings-ui";
 
 type UpdateStatus =
   | { state: "idle" }
@@ -42,7 +41,7 @@ function friendlyUpdaterError(err: unknown): string {
   return m;
 }
 
-export function UpdaterSettings() {
+export function UpdaterBody() {
   const [status, setStatus] = useState<UpdateStatus>({ state: "idle" });
   const [pendingUpdate, setPendingUpdate] = useState<{
     version: string;
@@ -102,10 +101,7 @@ export function UpdaterSettings() {
   }
 
   return (
-    <SettingsSection
-      title="应用更新"
-      description="检查是否有新版本可用。发现新版本时须手动确认后才会下载安装。"
-    >
+    <>
       {status.state === "idle" && (
         <Button variant="outline" className="w-fit" onClick={() => void checkUpdate()}>
           检查更新
@@ -169,6 +165,6 @@ export function UpdaterSettings() {
           </Button>
         </div>
       )}
-    </SettingsSection>
+    </>
   );
 }

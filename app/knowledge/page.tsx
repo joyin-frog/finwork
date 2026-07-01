@@ -6,7 +6,8 @@ import { isTauri } from "@tauri-apps/api/core";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, ArrowUp01Icon, LayoutAlignRightIcon, PanelRightIcon, Add01Icon, Search01Icon, Cancel01Icon, CheckmarkCircle01Icon, Clock01Icon, Edit01Icon, Archive01Icon, Archive02Icon, Delete02Icon, Folder02Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowUp01Icon, LayoutAlignRightIcon, PanelRightIcon, Add01Icon, Search01Icon, Cancel01Icon, Clock01Icon, Edit01Icon, Archive01Icon, Archive02Icon, Delete02Icon, Folder02Icon } from "@hugeicons/core-free-icons";
+import { SuccessCircleIcon } from "@/lib/icons";
 import { FilePreviewPage, type KnowledgePreviewFile } from "@/app/shared/file-preview-page";
 import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { DragHandle } from "@/app/shared/window-controls";
@@ -29,7 +30,7 @@ function MetaStatusBadge({ status }: { status: string }) {
   if (status === "confirmed") {
     return (
       <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-        <HugeiconsIcon icon={CheckmarkCircle01Icon} size={10} />已确认
+        <HugeiconsIcon icon={SuccessCircleIcon} size={10} />已确认
       </span>
     );
   }
@@ -167,7 +168,7 @@ function MetadataPanel({
             )}
             {doc.meta_status === "draft" && (
               <Button size="sm" className="flex-1 gap-1" onClick={handleConfirm} disabled={confirming}>
-                <HugeiconsIcon icon={CheckmarkCircle01Icon} size={12} />{confirming ? "确认中…" : "确认生效"}
+                <HugeiconsIcon icon={SuccessCircleIcon} size={12} />{confirming ? "确认中…" : "确认生效"}
               </Button>
             )}
           </>

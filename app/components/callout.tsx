@@ -1,7 +1,7 @@
 "use client";
 
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { InformationCircleIcon, CheckmarkCircle02Icon, Alert02Icon } from "@hugeicons/core-free-icons";
+import { InfoIcon, SuccessCircleIcon, WarningIcon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
 
 export type CalloutVariant = "info" | "ok" | "warn" | "neutral";
@@ -10,10 +10,10 @@ export type CalloutVariant = "info" | "ok" | "warn" | "neutral";
 // 手写 div(不基于 shadcn Alert:其 *:[svg]:text-current 会把语义图标色拉回灰)。
 // accent 用字面 Tailwind 任意值类(Tailwind 需字面串才能生成,故每档枚举)。
 const VARIANTS: Record<CalloutVariant, { icon: IconSvgElement; accent: string }> = {
-  info: { icon: InformationCircleIcon, accent: "text-[color:var(--tone-neutral)]" },
-  ok: { icon: CheckmarkCircle02Icon, accent: "text-[color:var(--tone-ok)]" },
-  warn: { icon: Alert02Icon, accent: "text-[color:var(--tone-alarm)]" },
-  neutral: { icon: InformationCircleIcon, accent: "text-muted-foreground" },
+  info: { icon: InfoIcon, accent: "text-[color:var(--tone-neutral)]" },
+  ok: { icon: SuccessCircleIcon, accent: "text-[color:var(--tone-ok)]" },
+  warn: { icon: WarningIcon, accent: "text-[color:var(--tone-alarm)]" },
+  neutral: { icon: InfoIcon, accent: "text-muted-foreground" },
 };
 
 export function Callout({
