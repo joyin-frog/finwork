@@ -40,7 +40,9 @@ function main() {
 
   // ── AC10: 既有键盘行为零回归(原实现原样保留) ──
   assert.ok(chatPage.includes('event.key === "Enter" && !event.shiftKey'), "AC10 FAIL: Enter 发送逻辑被改动");
-  assert.ok(chatPage.includes('event.key === "/" && !draft.trim()'), "AC10 FAIL: / 添加文件逻辑被改动");
+  // "/" 的行为已从"清空态直接开文件选择器"改为"打开技能选择浮层"(见 handleDraftChange 的
+  // slashMatch 正则),这是产品决策的有意变更,不再是"零回归"项——断言改为校验新接线点。
+  assert.ok(chatPage.includes("(?:^|\\s)\\/([^\\s/]*)$"), "AC10 FAIL: / 技能选择逻辑被改动");
   assert.ok(chatPage.includes("(?:^|\\s)@([^\\s@]*)$"), "AC10 FAIL: @ 引用逻辑被改动");
   assert.ok(appNav.includes('if (e.key === "Escape") cancelRename()'), "AC10 FAIL: 重命名 Esc 被改动");
 

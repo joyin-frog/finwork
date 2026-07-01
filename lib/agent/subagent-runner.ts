@@ -57,7 +57,7 @@ export async function runSubagent(
     }
 
     const allowedTools = ALLOWED_TOOLS;
-    const skillPlugin = getSkillPluginConfig();
+    const skillPlugin = await getSkillPluginConfig();
 
     const sdk = await import("@anthropic-ai/claude-agent-sdk");
 
