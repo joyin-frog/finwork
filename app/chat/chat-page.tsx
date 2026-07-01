@@ -32,6 +32,7 @@ import { ChatFilePanel } from "@/app/chat/chat-file-panel";
 import { TurnError } from "@/app/chat/turn-error";
 import { ComposerTip } from "@/app/chat/composer-tips";
 import { SkillPopup, ComposerHighlightOverlay, DeepThinkToggle, isValidSkillName, type PickerSkill } from "@/app/chat/composer-skills";
+import { insertSkillToken } from "@/app/chat/skill-token";
 import { FindInChat } from "@/app/chat/find-in-chat";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
 import { useNavState } from "@/app/shared/nav-state";
@@ -715,17 +716,14 @@ export default function ChatPage({
   }
 
   function selectSkill(skill: SkillRef) {
-    // 经 / 打开时把 draft 里的 "/filter" 替换成规范的 "/skillName "(留在正文里,靠高亮层标出来);
-    // 经 + 菜单打开(skillAtPos<0)则不动 draft,只登记引用。
-    if (skillAtPos >= 0) {
-      const cursorPos = textareaRef.current?.selectionStart ?? skillAtPos + 1 + skillFilter.length;
-      const token = `/${skill.name} `;
-      setDraft(`${draft.slice(0, skillAtPos)}${token}${draft.slice(cursorPos)}`);
-      requestAnimationFrame(() => {
-        const pos = skillAtPos + token.length;
-        textareaRef.current?.setSelectionRange(pos, pos);
-      });
-    }
+    // 两条路径都把规范 token 写进正文(引用靠正文里的 /name 存活,见上方剪枝 effect):
+    // 经 / 打开 → 替换已输入的 "/filter";经 + 菜单打开(skillAtPos<0)→ 在光标处插入。
+    const el = textareaRef.current;
+    const cursorPos = el?.selectionStart ?? (skillAtPos >= 0 ? skillAtPos + 1 + skillFilter.length : draft.length);
+    const start = skillAtPos >= 0 ? skillAtPos : cursorPos;
+    const { text, caret } = insertSkillToken(draft, start, cursorPos, skill.name);
+    setDraft(text);
+    requestAnimationFrame(() => el?.setSelectionRange(caret, caret));
     setReferencedSkills((prev) => (prev.some((s) => s.name === skill.name) ? prev : [...prev, skill]));
     setSkillMenuActive(false);
     setSkillAtPos(-1);
