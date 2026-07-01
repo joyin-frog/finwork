@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Add01Icon, Delete02Icon, MagicWand01Icon, Search01Icon, ArrowRight01Icon, ArrowDown01Icon, FolderFileStorageIcon, FolderOpenIcon, File01Icon, CodeIcon, ViewIcon } from "@hugeicons/core-free-icons";
+import { Add01Icon, Delete02Icon, Search01Icon, ArrowRight01Icon, ArrowDown01Icon, FolderFileStorageIcon, FolderOpenIcon, File01Icon, CodeIcon, ViewIcon } from "@hugeicons/core-free-icons";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -150,7 +150,6 @@ export function SkillsManager() {
                   selected === s.name ? "bg-accent" : "hover:bg-accent/60",
                 )}
               >
-                <HugeiconsIcon icon={MagicWand01Icon} size={16} className="shrink-0 text-muted-foreground" />
                 <span className={cn("flex-1 min-w-0 truncate text-body", !s.enabled && "text-muted-foreground line-through")}>
                   {s.name}
                 </span>
