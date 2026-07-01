@@ -21,7 +21,7 @@ export const skillPluginTestPromise = (async () => {
       cwd: getProjectRoot(),
       tools: { type: "preset", preset: "claude_code" },
       env: { ...process.env, ANTHROPIC_API_KEY: "sk-noop-test" },
-      ...getSkillPluginConfig(),
+      ...(await getSkillPluginConfig()),
     },
   });
   try {

@@ -22,6 +22,7 @@ import {
   Copy01Icon,
   Tick02Icon,
   RefreshIcon,
+  MagicWand01Icon,
 } from "@hugeicons/core-free-icons";
 import { useRouter } from "next/navigation";
 import type { StoredAgentEvent, StoredChatAttachment } from "@/lib/db/sqlite";
@@ -32,6 +33,7 @@ import { AskUserPanel } from "@/app/components/ask-user-panel";
 import { ChatFilePanel } from "@/app/chat/chat-file-panel";
 import { TurnError } from "@/app/chat/turn-error";
 import { ComposerTip } from "@/app/chat/composer-tips";
+import { SkillPopup, SkillTray, DeepThinkToggle, isValidSkillName, type PickerSkill } from "@/app/chat/composer-skills";
 import { FindInChat } from "@/app/chat/find-in-chat";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
 import { useNavState } from "@/app/shared/nav-state";
@@ -59,6 +61,8 @@ import type {
   ReferencedFile,
   GeneratedAttachment,
   Conversation,
+  SkillRef,
+  ModelTier,
 } from "@/app/chat/chat-types";
 import { buildTurnSegments, extractThinkingText, thinkingViewState } from "@/app/chat/turn-segments";
 import type { ProcessSegment } from "@/app/chat/turn-segments";
@@ -103,6 +107,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useUsage } from "./use-usage";
+import { UsageRing } from "./usage-ring";
 import { cn } from "@/lib/utils";
 import type { PluggableList } from "unified";
 
@@ -199,6 +205,11 @@ export default function ChatPage({
   const [turnKey, setTurnKey] = useState<string | null>(null);
   const turn = stream.getTurn(turnKey);
   const loading = turn?.status === "streaming";
+  // 用量进度环:挂载/轮询取数;回合从"进行中"落定后刷新一次,数字及时跟上。
+  const { usage, refetch: refetchUsage } = useUsage();
+  useEffect(() => {
+    if (!loading) refetchUsage();
+  }, [loading, refetchUsage]);
   const activeTimeline: TimelineItem[] = turn?.timeline ?? [];
   // 待答的 ask_user → 吸附在输入框上方的浮层;已答的在时间线里以紧凑摘要呈现
   const pendingAsk = useMemo(() => {
@@ -211,7 +222,7 @@ export default function ChatPage({
     }
     return null;
   }, [loading, activeTimeline]);
-  const lastOutgoingRef = useRef<{ attachments: ChatAttachment[]; referencedAttachments: ReferencedFile[]; text: string } | null>(null);
+  const lastOutgoingRef = useRef<{ attachments: ChatAttachment[]; referencedAttachments: ReferencedFile[]; referencedSkills: SkillRef[]; text: string } | null>(null);
 
   // 渲染用消息 = 已落库/已加载的历史;若本会话有进行中(或刚结束待收尾)的回合,
   // 在其上叠加"用户消息 + 助手流式气泡"(收尾 effect 会把最终消息写回本地 messages 后清掉回合)。
@@ -238,6 +249,17 @@ export default function ChatPage({
   const [mentionFilter, setMentionFilter] = useState("");
   const [mentionAtPos, setMentionAtPos] = useState(-1);
   const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0);
+  // 技能引用:/ 弹窗选/输入技能 → 以 chip 呈现并随消息发给 agent。
+  const [referencedSkills, setReferencedSkills] = useState<SkillRef[]>([]);
+  const [composerSkills, setComposerSkills] = useState<PickerSkill[]>([]);
+  const [composerSkillsLoaded, setComposerSkillsLoaded] = useState(false);
+  const [skillMenuActive, setSkillMenuActive] = useState(false);
+  const [skillFilter, setSkillFilter] = useState("");
+  // skillAtPos = -1 表示经 + 菜单打开(无 /xxx 文本需回删);>=0 为 / 在 draft 里的位置。
+  const [skillAtPos, setSkillAtPos] = useState(-1);
+  const [skillSelectedIdx, setSkillSelectedIdx] = useState(0);
+  // 模型档位:跨消息粘滞(本会话沿用),默认快速;「深度思考」开 = reasoning。
+  const [modelTier, setModelTier] = useState<ModelTier>("fast");
   const threadEndRef = useRef<HTMLDivElement>(null);
   const threadRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -410,6 +432,7 @@ export default function ChatPage({
       if (out) {
         setAttachments(out.attachments);
         setReferencedAttachments(out.referencedAttachments);
+        setReferencedSkills(out.referencedSkills);
         if (turn.status === "error" && out.text) setDraft(out.text);
       }
       // 失败时给一个明确的恢复动作:配置类→去配置;瞬时类→已还原输入,提示重试
@@ -645,6 +668,57 @@ export default function ChatPage({
     textareaRef.current?.focus();
   }
 
+  // 技能列表懒加载:/ 弹窗或 + 菜单首次打开时拉一次,只取启用的技能。
+  const ensureComposerSkillsLoaded = useCallback(async () => {
+    if (composerSkillsLoaded) return;
+    try {
+      const res = await fetch("/api/skills");
+      const json = (await res.json()) as { ok: boolean; data?: Array<{ name: string; description: string; enabled: boolean; source: "bundled" | "user" }> };
+      if (json.ok && json.data) {
+        setComposerSkills(json.data.filter((s) => s.enabled).map((s) => ({ name: s.name, description: s.description, source: s.source })));
+      }
+    } catch {
+      // 拉取失败:列表为空,/ 弹窗给"暂无可用技能"提示,不阻塞输入。
+    } finally {
+      setComposerSkillsLoaded(true);
+    }
+  }, [composerSkillsLoaded]);
+
+  const getFilteredSkills = useCallback(() => {
+    const q = skillFilter.trim().toLowerCase();
+    if (!q) return composerSkills;
+    return composerSkills.filter((s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
+  }, [composerSkills, skillFilter]);
+
+  // 自由输入:filter 是合法技能名且不在列表里 → 提供"引用自定义技能"行。
+  const customSkillName = (() => {
+    const q = skillFilter.trim();
+    if (!q || !isValidSkillName(q)) return null;
+    if (composerSkills.some((s) => s.name === q)) return null;
+    return q;
+  })();
+
+  function openSkillMenu() {
+    setSkillFilter("");
+    setSkillAtPos(-1);
+    setSkillSelectedIdx(0);
+    setMentionActive(false);
+    setSkillMenuActive(true);
+    void ensureComposerSkillsLoaded();
+  }
+
+  function selectSkill(skill: SkillRef) {
+    // 经 / 打开时回删 draft 里的 "/filter" 文本;经 + 菜单打开(skillAtPos<0)则不动 draft。
+    if (skillAtPos >= 0) {
+      const cursorPos = textareaRef.current?.selectionStart ?? skillAtPos + 1 + skillFilter.length;
+      setDraft(`${draft.slice(0, skillAtPos)}${draft.slice(cursorPos)}`);
+    }
+    setReferencedSkills((prev) => (prev.some((s) => s.name === skill.name) ? prev : [...prev, skill]));
+    setSkillMenuActive(false);
+    setSkillAtPos(-1);
+    textareaRef.current?.focus();
+  }
+
   function handleDraftChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
     const value = event.target.value;
     const cursorPos = event.target.selectionStart ?? value.length;
@@ -652,6 +726,7 @@ export default function ChatPage({
 
     const textBeforeCursor = value.slice(0, cursorPos);
     const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
+    const slashMatch = textBeforeCursor.match(/(?:^|\s)\/([^\s/]*)$/);
 
     if (atMatch && conversationId) {
       const atPos = atMatch.index! + atMatch[0].indexOf("@");
@@ -659,13 +734,52 @@ export default function ChatPage({
       setMentionAtPos(atPos);
       setMentionSelectedIdx(0);
       setMentionActive(true);
+      setSkillMenuActive(false);
       void fetchConversationFiles(conversationId);
-    } else if (mentionActive) {
+    } else if (slashMatch) {
+      const slashPos = slashMatch.index! + slashMatch[0].indexOf("/");
+      setSkillFilter(slashMatch[1]);
+      setSkillAtPos(slashPos);
+      setSkillSelectedIdx(0);
+      setSkillMenuActive(true);
       setMentionActive(false);
+      void ensureComposerSkillsLoaded();
+    } else {
+      if (mentionActive) setMentionActive(false);
+      if (skillMenuActive) setSkillMenuActive(false);
     }
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (skillMenuActive) {
+      const filtered = getFilteredSkills();
+      const optionCount = filtered.length + (customSkillName ? 1 : 0);
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        // optionCount 为 0(过滤后无结果且无自定义引用)时 optionCount-1=-1,不夹住会把下标压成负数,
+        // 后续 Enter 用 filtered[-1](undefined)调 selectSkill 直接崩在 skill.name 上。
+        if (optionCount > 0) setSkillSelectedIdx((prev) => Math.min(prev + 1, optionCount - 1));
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSkillSelectedIdx((prev) => Math.max(prev - 1, 0));
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        if (skillSelectedIdx < filtered.length) selectSkill(filtered[skillSelectedIdx]);
+        else if (customSkillName) selectSkill({ name: customSkillName, description: "" });
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSkillMenuActive(false);
+        return;
+      }
+      return;
+    }
+
     if (mentionActive) {
       const filtered = getFilteredMentionFiles();
       if (event.key === "ArrowDown") {
@@ -690,12 +804,6 @@ export default function ChatPage({
       return;
     }
 
-    if (event.key === "/" && !draft.trim()) {
-      event.preventDefault();
-      fileInputRef.current?.click();
-      return;
-    }
-
     if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
       event.preventDefault();
       void sendMessage(draft);
@@ -709,6 +817,7 @@ export default function ChatPage({
 
     const outgoingAttachments = attachments;
     const outgoingRefAttachments = referencedAttachments;
+    const outgoingSkills = referencedSkills;
     const userContent = buildUserContent(value, outgoingAttachments, outgoingRefAttachments);
     const imageDataUrls = outgoingAttachments.filter((a) => a.mimeType.startsWith("image/")).map((a) => a.dataUrl);
     const displayFiles: DisplayFile[] = [
@@ -733,12 +842,14 @@ export default function ChatPage({
     // 把发送 + 流式读取交给跨页存活的 store:流式态由它按会话 key 持有,
     // 切到别的页面再切回来,本回合仍在渲染(不再随组件卸载丢失)。
     const key = conversationId != null ? `c:${conversationId}` : `new:${crypto.randomUUID()}`;
-    lastOutgoingRef.current = { attachments: outgoingAttachments, referencedAttachments: outgoingRefAttachments, text: value };
+    lastOutgoingRef.current = { attachments: outgoingAttachments, referencedAttachments: outgoingRefAttachments, referencedSkills: outgoingSkills, text: value };
     setTurnKey(key);
     setDraft("");
     setAttachments([]);
     setReferencedAttachments([]);
+    setReferencedSkills([]);
     setMentionActive(false);
+    setSkillMenuActive(false);
 
     stream.startTurn({
       key,
@@ -747,7 +858,9 @@ export default function ChatPage({
       baseMessages: messages,
       requestMessages: nextMessages,
       attachments: outgoingAttachments,
-      referencedAttachments: outgoingRefAttachments
+      referencedAttachments: outgoingRefAttachments,
+      referencedSkills: outgoingSkills,
+      modelTier
     });
   }
 
@@ -910,6 +1023,10 @@ export default function ChatPage({
                       removeAttachment={removeAttachment}
                       removeReference={(storagePath) => setReferencedAttachments((prev) => prev.filter((item) => item.storagePath !== storagePath))}
                     />
+                    <SkillTray
+                      skills={referencedSkills}
+                      onRemove={(name) => setReferencedSkills((prev) => prev.filter((s) => s.name !== name))}
+                    />
                     <textarea
                       ref={textareaRef}
                       className="w-full resize-none bg-transparent text-body outline-none placeholder:text-muted-foreground py-1 min-h-[24px]"
@@ -936,17 +1053,26 @@ export default function ChatPage({
                         setSelectedIndex={setMentionSelectedIdx}
                       />
                     ) : null}
+                    {skillMenuActive ? (
+                      <SkillPopup
+                        skills={getFilteredSkills()}
+                        customName={customSkillName}
+                        selectedIndex={skillSelectedIdx}
+                        selectSkill={selectSkill}
+                        setSelectedIndex={setSkillSelectedIdx}
+                      />
+                    ) : null}
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <DropdownMenu>
-                      <ShortcutHint label="添加文件" combo="/" side="top">
+                      <ShortcutHint label="技能与文件" combo="/" side="top">
                         <DropdownMenuTrigger asChild>
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
                             className="size-10 rounded-full text-muted-foreground"
-                            aria-label="添加文件"
+                            aria-label="添加内容"
                           >
                             <HugeiconsIcon icon={Add01Icon} size={20} />
                           </Button>
@@ -957,27 +1083,35 @@ export default function ChatPage({
                           <HugeiconsIcon icon={Attachment01Icon} size={16} />
                           添加照片和文件
                         </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={openSkillMenu}>
+                          <HugeiconsIcon icon={MagicWand01Icon} size={16} />
+                          引用技能
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    {loading ? (
-                      <button className="composer-send-button stop" type="button" aria-label="停止生成" onClick={stopGeneration}>
-                        <HugeiconsIcon icon={StopIcon} size={16} />
-                      </button>
-                    ) : (
-                      <ShortcutHint label="发送" combo="enter" side="top">
-                        {/* span 承接 hover:disabled 按钮不发指针事件,穿透到外层后 tooltip 仍可见 */}
-                        <span className="inline-flex">
-                          <button
-                            className="composer-send-button disabled:pointer-events-none"
-                            disabled={!draft.trim() && !attachments.length && !referencedAttachments.length}
-                            type="submit"
-                            aria-label="发送"
-                          >
-                            <HugeiconsIcon icon={ArrowUp02Icon} size={18} />
-                          </button>
-                        </span>
-                      </ShortcutHint>
-                    )}
+                    <div className="flex items-center gap-1">
+                      <UsageRing usage={usage} />
+                      <DeepThinkToggle active={modelTier === "reasoning"} onToggle={(on) => setModelTier(on ? "reasoning" : "fast")} />
+                      {loading ? (
+                        <button className="composer-send-button stop" type="button" aria-label="停止生成" onClick={stopGeneration}>
+                          <HugeiconsIcon icon={StopIcon} size={16} />
+                        </button>
+                      ) : (
+                        <ShortcutHint label="发送" combo="enter" side="top">
+                          {/* span 承接 hover:disabled 按钮不发指针事件,穿透到外层后 tooltip 仍可见 */}
+                          <span className="inline-flex">
+                            <button
+                              className="composer-send-button disabled:pointer-events-none"
+                              disabled={!draft.trim() && !attachments.length && !referencedAttachments.length}
+                              type="submit"
+                              aria-label="发送"
+                            >
+                              <HugeiconsIcon icon={ArrowUp02Icon} size={18} />
+                            </button>
+                          </span>
+                        </ShortcutHint>
+                      )}
+                    </div>
                   </div>
                 </form>
                 )}
@@ -1156,6 +1290,14 @@ function AssistantTurn({
     const raw = ev ? (ev.payload as { message?: string }).message : undefined;
     return raw && raw.trim() ? raw.trim().slice(0, 2000) : null;
   }, [message]);
+  // 用量超限:服务端落库 subtype="usage_blocked" 的 system 事件并把提示文案作为正文。
+  // 重载/done 后取自 message.agentEvents(权威),直播瞬间兜底扫 timeline。命中则正文走红字。
+  const usageBlockedMessage = useMemo(() => {
+    const ev = (message.agentEvents ?? []).find((e) => (e.payload as { subtype?: string } | undefined)?.subtype === "usage_blocked");
+    if (ev) return (ev.payload as { message?: string }).message ?? null;
+    const live = timeline.find((t) => t.event.type === "system" && (t.event as { subtype?: string }).subtype === "usage_blocked");
+    return live ? ((live.event as { message?: string }).message ?? null) : null;
+  }, [message, timeline]);
   // C3 溯源:仅报销流程返回非空;机械事实打底,口径叙述仍由模型写在正文。
   const reimbursementProvenance = useMemo(() => buildReimbursementProvenance(timeline), [timeline]);
   const lastSegIdx = processSegments.length - 1;
@@ -1273,6 +1415,10 @@ function AssistantTurn({
       {/* 答案正文:占位态(还没产出)不渲染;answerText=最后一段无工具的 text,否则回退 message.content。
           流式期间文本已进过程段时不回退 message.content(避免与过程块里中间文本重复)。 */}
       {(() => {
+        // 用量超限:正文用红字渲染拦截提示(不弹窗、不加框),不再走普通 markdown 正文。
+        if (usageBlockedMessage) {
+          return <div className="text-body whitespace-pre-wrap text-[color:var(--tone-alarm)]">{usageBlockedMessage}</div>;
+        }
         if (isActive && message.content === "...") return null;
         const hasTextSegments = timeline.some((t) => t.event.type === "text");
         const displayContent = answerText || (hasTextSegments && isActive ? "" : getDisplayContent(message));

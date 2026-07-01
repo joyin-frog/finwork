@@ -39,6 +39,15 @@ export type ReferencedFile = {
   storagePath: string;
 };
 
+/** 输入框里被引用的技能(以 chip 呈现);name 为技能机器名,description 供提示。 */
+export type SkillRef = {
+  name: string;
+  description: string;
+};
+
+/** 本条消息的模型档位:fast=快速模型(默认),reasoning=推理模型(「深度思考」开)。 */
+export type ModelTier = "fast" | "reasoning";
+
 export type GeneratedAttachment = {
   name: string;
   mimeType: string;

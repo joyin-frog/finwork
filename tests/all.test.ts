@@ -8,6 +8,12 @@ void (async () => {
   const { observabilityTestPromise } = await import("./observability.test.ts");
   await observabilityTestPromise;
 
+  const { usageQuotaTestPromise } = await import("./usage-quota.test.ts");
+  await usageQuotaTestPromise;
+
+  const { usageStoreTestPromise } = await import("./usage-store.test.ts");
+  await usageStoreTestPromise;
+
   const { designComplianceTestPromise } = await import("./design-compliance.test.ts");
   await designComplianceTestPromise;
 
@@ -292,6 +298,15 @@ void (async () => {
 
   const { skillPluginTestPromise } = await import("./skill-plugin.test.ts");
   await skillPluginTestPromise;
+
+  const { skillsStoreTestPromise } = await import("./skills-store.test.ts");
+  await skillsStoreTestPromise;
+
+  const { agentQueryHelpersTestPromise } = await import("./agent-query-helpers.test.ts");
+  await agentQueryHelpersTestPromise;
+
+  const { skillsFileTreeTestPromise } = await import("./skills-file-tree.test.ts");
+  await skillsFileTreeTestPromise;
 
   const { telemetryInstallIdTestPromise } = await import("./telemetry-install-id.test.ts");
   await telemetryInstallIdTestPromise;
