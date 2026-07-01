@@ -96,6 +96,24 @@ export const skillsStoreTestPromise = (async () => {
       "AC-7 FAIL: 写内置技能文件应抛 read_only",
     );
 
+    // ── AC-7b: SKILL.md 删除守卫不能被路径归一化绕过 ────────────────────
+    await assert.rejects(
+      () => store.deleteSkillFile("mine", "SKILL.md"),
+      (err: unknown) => err instanceof store.SkillError && err.code === "invalid_path",
+      "AC-7b FAIL: 字面量 SKILL.md 应拒删",
+    );
+    await assert.rejects(
+      () => store.deleteSkillFile("mine", "./SKILL.md"),
+      (err: unknown) => err instanceof store.SkillError && err.code === "invalid_path",
+      "AC-7b FAIL: ./SKILL.md 归一化后仍应拒删",
+    );
+    await assert.rejects(
+      () => store.deleteSkillFile("mine", "scripts/../SKILL.md"),
+      (err: unknown) => err instanceof store.SkillError && err.code === "invalid_path",
+      "AC-7b FAIL: scripts/../SKILL.md 归一化后仍应拒删",
+    );
+    assert.ok(existsSync(path.join(userRoot, "skills", "mine", "SKILL.md")), "AC-7b FAIL: SKILL.md 不应被上述任一尝试删除");
+
     // ── AC-8: 路径穿越必须被拒(读/写都拒) ──────────────────────────────
     await assert.rejects(
       () => store.readSkillFile("mine", "../../../../etc/passwd"),

@@ -330,8 +330,11 @@ export async function writeSkillFile(name: string, relPath: string, content: str
 }
 
 export async function deleteSkillFile(name: string, relPath: string): Promise<void> {
-  if (relPath === "SKILL.md") throw new SkillError("SKILL.md 不可删除", "invalid_path");
   const abs = await resolveSkillFile(name, relPath, true);
+  // 比较解析后的绝对路径而非原始字符串:relPath 可能是 "./SKILL.md"、"subdir/../SKILL.md" 等
+  // 归一化后指向同一文件的写法,字面量比较 relPath==="SKILL.md" 会被绕过。
+  const skillMdAbs = await resolveSkillFile(name, "SKILL.md", true);
+  if (abs === skillMdAbs) throw new SkillError("SKILL.md 不可删除", "invalid_path");
   await fs.rm(abs, { recursive: true, force: true });
 }
 
