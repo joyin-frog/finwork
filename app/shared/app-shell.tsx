@@ -8,7 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppNav } from "@/app/shared/app-nav";
 import { GlobalShortcuts } from "@/app/shared/global-shortcuts";
 import { IsMacProvider } from "@/app/shared/use-is-mac";
-import { useDetectPlatform, WindowControls } from "@/app/shared/window-controls";
+import { useDetectPlatform, WindowTitleBar } from "@/app/shared/window-controls";
 import { FirstRunGate } from "@/app/shared/first-run-gate";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -105,29 +105,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <IsMacProvider>
     <TooltipProvider delayDuration={300}>
-      {/* 背板用主内容底色;侧栏做成浮起的圆角卡片(见 app-nav),主区平铺为底层。 */}
-      <div className="flex h-screen overflow-hidden bg-background">
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background focus:border focus:rounded-md focus:text-sm"
-        >
-          跳转到主内容
-        </a>
-        <WindowControls />
-        <Suspense fallback={null}>
-          <AppNav active={active} chatActive={chatActive} />
-        </Suspense>
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className="flex-1 min-w-0 overflow-auto bg-background"
-        >
-          <FirstRunGate>{children}</FirstRunGate>
-        </main>
-        <Suspense fallback={null}>
-          <GlobalShortcuts />
-        </Suspense>
-        <Toaster position="top-center" theme={resolvedTheme as "light" | "dark" | "system" | undefined} />
+      {/* 背板用主内容底色;侧栏做成浮起的圆角卡片(见 app-nav),主区平铺为底层。
+          最外层竖排:Windows 自绘标题栏在最上(非 Windows 渲染 null、不占高),下方一行为侧栏 + 主区。 */}
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <WindowTitleBar />
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background focus:border focus:rounded-md focus:text-sm"
+          >
+            跳转到主内容
+          </a>
+          <Suspense fallback={null}>
+            <AppNav active={active} chatActive={chatActive} />
+          </Suspense>
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className="flex-1 min-w-0 overflow-auto bg-background"
+          >
+            <FirstRunGate>{children}</FirstRunGate>
+          </main>
+          <Suspense fallback={null}>
+            <GlobalShortcuts />
+          </Suspense>
+          <Toaster position="top-center" theme={resolvedTheme as "light" | "dark" | "system" | undefined} />
+        </div>
       </div>
     </TooltipProvider>
     </IsMacProvider>
