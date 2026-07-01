@@ -55,7 +55,9 @@ export function loadTaxRates(db: DatabaseSync = getDb()): TaxRates {
 
 // ─────────── 金蝶科目表(各公司不同 → 数据驱动,不写死) ───────────
 
-export type KingdeeAccount = { code: string; name: string; type: string; balance?: number };
+// dimension = 核算维度类型(部门/供应商/客户/员工/银行账号…),科目自带属性,
+// 确定科目即确定该科目需挂哪类维度;维度的"值"(哪个部门)由单据/对照表提供。
+export type KingdeeAccount = { code: string; name: string; type: string; balance?: number; dimension?: string };
 
 /**
  * 示例科目表:**仅 demo 兜底**。真实公司应用 import_kingdee_accounts 导入自家科目表,
@@ -113,7 +115,14 @@ export function saveChartOfAccounts(accounts: KingdeeAccount[]): number {
     if (!code || !name || seen.has(code)) continue;
     seen.add(code);
     const balance = typeof a.balance === "number" && Number.isFinite(a.balance) ? a.balance : undefined;
-    clean.push({ code, name, type: String(a.type ?? "").trim() || "未分类", ...(balance != null ? { balance } : {}) });
+    const dimension = typeof a.dimension === "string" && a.dimension.trim() ? a.dimension.trim() : undefined;
+    clean.push({
+      code,
+      name,
+      type: String(a.type ?? "").trim() || "未分类",
+      ...(balance != null ? { balance } : {}),
+      ...(dimension ? { dimension } : {}),
+    });
   }
   setAppSetting("kingdee_chart_of_accounts", JSON.stringify(clean));
   return clean.length;
