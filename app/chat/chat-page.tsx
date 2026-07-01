@@ -222,7 +222,7 @@ export default function ChatPage({
     }
     return null;
   }, [loading, activeTimeline]);
-  const lastOutgoingRef = useRef<{ attachments: ChatAttachment[]; referencedAttachments: ReferencedFile[]; text: string } | null>(null);
+  const lastOutgoingRef = useRef<{ attachments: ChatAttachment[]; referencedAttachments: ReferencedFile[]; referencedSkills: SkillRef[]; text: string } | null>(null);
 
   // 渲染用消息 = 已落库/已加载的历史;若本会话有进行中(或刚结束待收尾)的回合,
   // 在其上叠加"用户消息 + 助手流式气泡"(收尾 effect 会把最终消息写回本地 messages 后清掉回合)。
@@ -432,6 +432,7 @@ export default function ChatPage({
       if (out) {
         setAttachments(out.attachments);
         setReferencedAttachments(out.referencedAttachments);
+        setReferencedSkills(out.referencedSkills);
         if (turn.status === "error" && out.text) setDraft(out.text);
       }
       // 失败时给一个明确的恢复动作:配置类→去配置;瞬时类→已还原输入,提示重试
@@ -755,7 +756,9 @@ export default function ChatPage({
       const optionCount = filtered.length + (customSkillName ? 1 : 0);
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setSkillSelectedIdx((prev) => Math.min(prev + 1, optionCount - 1));
+        // optionCount 为 0(过滤后无结果且无自定义引用)时 optionCount-1=-1,不夹住会把下标压成负数,
+        // 后续 Enter 用 filtered[-1](undefined)调 selectSkill 直接崩在 skill.name 上。
+        if (optionCount > 0) setSkillSelectedIdx((prev) => Math.min(prev + 1, optionCount - 1));
         return;
       }
       if (event.key === "ArrowUp") {
@@ -839,7 +842,7 @@ export default function ChatPage({
     // 把发送 + 流式读取交给跨页存活的 store:流式态由它按会话 key 持有,
     // 切到别的页面再切回来,本回合仍在渲染(不再随组件卸载丢失)。
     const key = conversationId != null ? `c:${conversationId}` : `new:${crypto.randomUUID()}`;
-    lastOutgoingRef.current = { attachments: outgoingAttachments, referencedAttachments: outgoingRefAttachments, text: value };
+    lastOutgoingRef.current = { attachments: outgoingAttachments, referencedAttachments: outgoingRefAttachments, referencedSkills: outgoingSkills, text: value };
     setTurnKey(key);
     setDraft("");
     setAttachments([]);
