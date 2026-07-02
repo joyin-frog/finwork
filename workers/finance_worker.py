@@ -166,18 +166,23 @@ def extract_pdf(path: Path) -> str:
     import pdfplumber
 
     parts: list[str] = []
+    ocr_page_indices: set[int] = set()
     with pdfplumber.open(path) as pdf:
         for i, page in enumerate(pdf.pages):
             text = page.extract_text()
-            if text:
+            if text and text.strip():
                 parts.append(f"--- Page {i + 1} ---\n{text}")
-    if parts:
-        return "\n\n".join(parts)
-    # 无文字层(扫描件/手拍回单等图片型 PDF)→ 抽每页最大内嵌图,OCR 兜底
-    return _ocr_pdf_pages(path)
+            else:
+                ocr_page_indices.add(i)
+    # 无文字层的页面(扫描件/手拍回单等)逐页抽最大内嵌图 OCR,避免混合 PDF 漏页。
+    if ocr_page_indices:
+        ocr_text = _ocr_pdf_pages(path, ocr_page_indices)
+        if ocr_text:
+            parts.append(ocr_text)
+    return "\n\n".join(parts)
 
 
-def _ocr_pdf_pages(path: Path) -> str:
+def _ocr_pdf_pages(path: Path, page_indices: set[int] | None = None) -> str:
     """图片型 PDF 兜底:pypdf 抽每页最大内嵌图(跳过 logo/印章小图)→ rapidocr OCR。"""
     from pypdf import PdfReader
 
@@ -191,6 +196,8 @@ def _ocr_pdf_pages(path: Path) -> str:
     reader = PdfReader(str(path))
     parts: list[str] = []
     for i, page in enumerate(reader.pages):
+        if page_indices is not None and i not in page_indices:
+            continue
         # 取该页面积最大的内嵌图 = 扫描主体,跳过 logo/印章/二维码等小图
         biggest = None
         biggest_area = 0
