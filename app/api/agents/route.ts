@@ -3,6 +3,7 @@ import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import { listRoleDispatchSummary } from "@/lib/db/dispatch-store";
 import { getInvoiceLedgerStats } from "@/lib/db/finance-store";
 import { listSkills } from "@/lib/agent/skills-store";
+import { skillLabel } from "@/lib/agent/tools/renderers";
 import { getAppSetting } from "@/lib/db/sqlite";
 
 export async function GET() {
@@ -41,11 +42,12 @@ export async function GET() {
       const dispatch = dispatchMap.get(role.id);
       const userDisabled = disabledSet.has(role.id);
 
-      // 技能列表：关联 skills-store 取名称与描述，取不到则用 id 兜底
+      // 技能列表：中文名走 skillLabel(SKILL.md 的 name 是机器 id,不能直出给财务用户),
+      // 描述关联 skills-store,取不到用 id 兜底
       const skills = role.skills.map((skillId) => {
         const skill = skillMap.get(skillId);
         return {
-          name: skill?.name ?? skillId,
+          name: skillLabel(skillId),
           description: skill?.description ?? skillId,
         };
       });

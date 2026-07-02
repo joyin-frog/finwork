@@ -9,11 +9,12 @@ const SKILL_LABELS: Record<string, string> = {
   "reimbursement-check": "报销核对",
   "payroll-calc": "薪税计算",
   "kingdee-draft": "金蝶凭证",
+  "contract-extract": "合同要点",
   "tax-incentive": "税务优惠",
   "rnd-deduction-check": "研发加计",
   xlsx: "表格处理", pdf: "PDF 处理", docx: "Word 处理", pptx: "PPT 处理",
 };
-function skillLabel(id: string): string {
+export function skillLabel(id: string): string {
   const bare = id.replace(/^finance-skills:/, "").replace(/^.*:/, "");
   return SKILL_LABELS[bare] ?? bare;
 }

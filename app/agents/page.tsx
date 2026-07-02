@@ -135,7 +135,7 @@ function DispatchList({ roleId, initialDispatches }: { roleId: string; initialDi
       })}
 
       <p className="text-meta text-muted-foreground pt-1">
-        查看全部 {roleId} 台账（分页完整版 P2）
+        已显示最近 {rows.length} 条派发记录
       </p>
     </div>
   );
