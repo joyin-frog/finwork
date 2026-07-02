@@ -53,7 +53,10 @@ type ChatActive = "new" | "recent";
 function NavShortcut({ combo }: { combo: string }) {
   const isMac = useIsMac();
   return (
-    <span className="ml-auto shrink-0 text-meta text-muted-foreground tabular-nums opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+    <span
+      suppressHydrationWarning
+      className="ml-auto shrink-0 text-meta text-muted-foreground tabular-nums opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+    >
       {formatShortcut(combo, isMac)}
     </span>
   );
