@@ -30,6 +30,9 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
       "check_reimbursement_batch", "record_reimbursement_invoices", "read_expense_policy",
       "record_document_metadata", "query_kingdee_accounts", "validate_kingdee_voucher",
       "export_kingdee_draft",   // high：子代理内被确认门拒，白名单表达域归属
+      // 单据→凭证(voucher-from-slips 合入后补挂,2026-07-02)
+      "read_document", "scan_slip_folder", "check_voucher_amount", "map_voucher_account",
+      "build_voucher_lines", "build_voucher_sheet", "summarize_vouchers", "process_voucher_batch",
     ],
     dataScope: ["documents", "invoice_ledger", "金蝶科目表", "报销制度文件"],
     deliverables: ["voucher_draft", "risk_list", "ledger_entries"],
