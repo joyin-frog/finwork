@@ -254,6 +254,12 @@ void (async () => {
   const { pdfOcrFallbackTestPromise } = await import("./pdf-ocr-fallback.test.ts");
   await pdfOcrFallbackTestPromise;
 
+  const { folderIngestTestPromise } = await import("./folder-ingest.test.ts");
+  await folderIngestTestPromise;
+
+  const { voucherSheetTestPromise } = await import("./voucher-sheet.test.ts");
+  await voucherSheetTestPromise;
+
   const { receiptTestPromise } = await import("./receipt.test.ts");
   await receiptTestPromise;
 
