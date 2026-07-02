@@ -94,6 +94,22 @@ export const chatStreamStoreTestPromise = (async () => {
   const overlay = overlayMessages(baseTurn({ status: "stopped", streamedContent: "半句" }));
   assert.equal(overlay.length, 3, "AC5 FAIL: overlay = base + user + assistant");
   assert.equal(overlay[2].content, "半句\n\n已停止", "AC5 FAIL: overlay 末条为定格后的助手正文");
+  assert.equal(overlay[2].agentEvents, undefined, "AC5 FAIL: 空时间线不应挂 agentEvents");
+
+  // overlay 应保留时间线(工具步骤/思考):否则出错/停止收尾瞬间过程块消失、刷新才回来
+  const overlayWithTimeline = overlayMessages(baseTurn({
+    status: "stopped",
+    streamedContent: "半句",
+    timeline: [
+      { id: "t1", event: { type: "thinking", content: "想一下" }, createdAt: 2000 },
+      { id: "t2", event: { type: "tool_use", name: "run_python" }, createdAt: 2100 },
+    ],
+  }));
+  const overlayEvents = overlayWithTimeline[2].agentEvents ?? [];
+  assert.equal(overlayEvents.length, 2, "AC5 FAIL: overlay 应把时间线转成 agentEvents 保留");
+  assert.equal(overlayEvents[0].eventType, "thinking", "AC5 FAIL: 事件类型应保留");
+  assert.deepEqual(overlayEvents[1].payload, { type: "tool_use", name: "run_python" }, "AC5 FAIL: 事件负载应原样保留");
+  assert.equal(overlayEvents[0].createdAt, new Date(2000).toISOString(), "AC5 FAIL: 时间应转 ISO 供 getPersistedTimeline 解析");
 
   // ── AC6: humanizeAgentError 把 raw 错误映射成人话 + 恢复动作 ──
   assert.equal(humanizeAgentError("Error: 401 Unauthorized").action, "config", "AC6 FAIL: 401 应归为配置类");
@@ -108,5 +124,5 @@ export const chatStreamStoreTestPromise = (async () => {
   assert.equal(humanizeAgentError("Claude Code returned an error result: API Error: unexpected EOF").action, "retry", "AC6 FAIL: EOF/连接断开应归为重试类");
   assert.ok(humanizeAgentError("API Error: unexpected EOF").message.includes("连接"), "AC6 FAIL: EOF 应命中「连接中断」具体文案,而非通用兜底");
 
-  console.log("chat-stream-store: all 32 checks passed ✓");
+  console.log("chat-stream-store: all 37 checks passed ✓");
 })();

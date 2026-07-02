@@ -131,6 +131,10 @@ export async function runMockAgent(
   // ── journey: 多工具流程演示(验证工具步骤时间线的类型图标 / 失败标红 / 折叠)──
   if (/工具演示|流程演示|步骤演示/.test(text)) {
     await say("我按几个步骤来处理。");
+    // 思考与工具按真实时序穿插上报:验证过程时间线里 thinking 步骤的交错展示。
+    // 思考后停一拍再发工具:留出「星芒落在思考行」的可观察窗口(流动指示)。
+    runOptions.onThinking?.("先加载财务分析技能,再跑数、查制度,最后落盘报告。");
+    await sleep(delay);
     const steps: Array<{ name: string; input: unknown; result: string; isError?: boolean }> = [
       { name: "Skill", input: { command: "finance-skills:finance-analysis" }, result: "已加载技能" },
       // mcp 工具带 mcp__<server>__ 前缀(贴近真实),验证图标/剥前缀的归一化
@@ -142,6 +146,11 @@ export async function runMockAgent(
     ];
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
+      // 中途插一段思考:验证 thinking 夹在两个工具段之间时按时序拆段展示
+      if (i === 3) {
+        runOptions.onThinking?.("**数据已就绪**:税率有更新,写报告前先确认口径。");
+        await sleep(delay);
+      }
       emitEvent({ type: "tool_use", id: `demo-${i}`, name: s.name, input: s.input });
       await sleep(delay);
       emitEvent({ type: "tool_result", toolUseId: `demo-${i}`, name: s.name, content: s.result, isError: s.isError, durationMs: 1000 + i * 300 });
@@ -153,7 +162,7 @@ export async function runMockAgent(
 
   // ── journey: 富 markdown 排版样例(验证自管 .md-content 渲染:标题/列表/表格/代码/引用/外链)──
   if (/排版|样例|markdown|渲染/i.test(text)) {
-    // 思考过程(走「思考过程」折叠块):整块上报,经 route 脱敏后落库 + 下发。
+    // 思考过程(按时序穿插进过程时间线):整块上报,经 route 脱敏后落库 + 下发。
     runOptions.onThinking?.("我先把标题、列表、表格和代码块组织好,再给一段结论。");
     await say(
       [
