@@ -266,6 +266,12 @@ void (async () => {
   const { voucherBatchTestPromise } = await import("./voucher-batch.test.ts");
   await voucherBatchTestPromise;
 
+  const { slipGroupingTestPromise } = await import("./slip-grouping.test.ts");
+  await slipGroupingTestPromise;
+
+  const { scanSlipFolderTestPromise } = await import("./scan-slip-folder.test.ts");
+  await scanSlipFolderTestPromise;
+
   const { receiptTestPromise } = await import("./receipt.test.ts");
   await receiptTestPromise;
 

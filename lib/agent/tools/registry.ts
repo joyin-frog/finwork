@@ -27,6 +27,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__query_knowledge",  category: "finance", riskLevel: "medium" },
   { name: "mcp__finance_worker__read_file",        category: "finance", riskLevel: "safe" },
   { name: "mcp__finance_worker__read_document",     category: "finance", riskLevel: "safe" },
+  { name: "mcp__finance_worker__scan_slip_folder",  category: "finance", riskLevel: "safe" },
   // 写入用户约定:hook 层无条件要求用户确认(ALWAYS_CONFIRM)
   { name: "mcp__finance_worker__remember_convention", category: "finance", riskLevel: "medium" },
   // 经营数据登记

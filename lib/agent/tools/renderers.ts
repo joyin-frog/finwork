@@ -117,6 +117,7 @@ const summaries: Record<string, SummaryFn> = {
   },
 
   // ─── 单据→凭证(read_document 在 finance_worker;其余在 kingdee_worker) ───
+  scan_slip_folder: (i) => { const p = str(i, "folderPath"); const name = p ? p.split(/[/\\]/).pop() : ""; return name ? `扫描单据文件夹 ${name}` : "扫描单据文件夹"; },
   read_document: (i) => {
     const p = str(i, "filePath");
     const name = p ? p.split(/[/\\]/).pop() : "";
