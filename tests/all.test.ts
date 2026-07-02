@@ -391,4 +391,7 @@ void (async () => {
   const { cockpitTokensTestPromise } = await import("./cockpit-tokens.test.ts");
   await cockpitTokensTestPromise;
 
+  const { roleRegistryTestPromise } = await import("./role-registry.test.ts");
+  await roleRegistryTestPromise;
+
 })();

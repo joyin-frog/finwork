@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
 import { getProjectRoot } from "@/lib/runtime/paths";
 import { buildFinanceMcpServers } from "./mcp-tools";
-import { ALLOWED_TOOLS } from "./tools/registry";
 import { getSkillPluginConfig } from "./skill-plugin";
 import { runBeforeHooks, runAfterHooks } from "./hooks/chain";
 import { createUnwiredToolHook, createPathSafetyHook, createTimingHook, createRiskConfirmHook } from "./hooks/built-in";
 import { Semaphore } from "@/lib/utils/semaphore";
+import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
 
 export type SubagentTask = {
-  skill: string;
+  roleId: string;
   instructions: string;
   files?: string[];
   label: string;
@@ -24,15 +24,32 @@ export type SubagentResult = {
   durationMs: number;
 };
 
-function buildSubagentSystemPrompt(skillId: string): string {
-  // skill 正文不再手注;子 Agent 经 SDK 原生 skills:[skillId] 按需加载对应 skill。
-  return [
-    `你是一个专注于 ${skillId} 任务的子 Agent。`,
-    `遇到该任务时,用 Skill 工具加载并遵循 ${skillId} 技能的指令。`,
-    "主 Agent 已完成前置确认，你只需执行分配的任务并返回结构化结果。",
-    "不要询问用户任何问题，根据现有信息尽力完成任务。",
-    "任务完成后，在回复开头用【结果摘要】标记关键数字和结论。",
-  ].join("\n\n");
+// A 段共享基座(spec-role-registry §3);技能正文不手注,经 SDK 原生 skills 白名单按需加载。
+const SUBAGENT_BASE_PROMPT = `你是财务工作台的角色子代理，由主 Agent 派发执行单一任务。
+
+【执行纪律】
+- 你没有与用户对话的通道：不要提问、不要等待确认，基于给定信息尽力完成；
+  信息不足时在结果中列出「缺什么、为什么需要」。
+- 只做角色职责内的任务。任务超出角色边界时不要尝试完成，直接返回一行：
+  out_of_scope: <一句话说明该由哪个域处理>。
+- 执行域内专业作业时，先用 Skill 工具加载对应技能并遵循其流程。
+- 部分高风险工具会被系统拒绝，这是设计而非故障：把已完成的准备工作
+  与「待人确认的下一步」写进结果返回。
+
+【财务纪律】
+- 金额、税率、比率一律经工具计算，禁止心算；金额以分或 Decimal 处理。
+- 查不到的数据明确说「没有查到」，禁止用近似值填空。
+- 输出的每个关键数字带三样：来源（文件/表/发票号）、口径或期间、
+  结算状态（草稿/已确认）。
+- 身份证号、银行卡号不写入结果正文；需要引用时用掩码。
+
+【交付契约】
+- 回复第一段固定为【结果摘要】：关键数字 + 结论 + 异常计数。
+- 异常与疑点按风险从高到低排列，每条给出定位与建议动作。
+- 产出文件用 finalize_deliverable 声明。`;
+
+export function buildSubagentSystemPrompt(role: RoleDefinition): string {
+  return `${SUBAGENT_BASE_PROMPT}\n\n${role.rolePrompt}`;
 }
 
 export async function runSubagent(
@@ -45,6 +62,17 @@ export async function runSubagent(
   mkdirSync(outputDir, { recursive: true });
 
   try {
+    // roleId 校验必须先于 API key 检查:未知角色要报"未知角色",不能被 key 早返回吞掉
+    const role = getRoleDefinition(task.roleId);
+    if (!role) {
+      return {
+        label: task.label,
+        content: `未知角色 "${task.roleId}"：请从 spawn_subagent 的 role 枚举中选择。`,
+        success: false,
+        durationMs: Date.now() - startedAt,
+      };
+    }
+
     const settings = await readClaudeSettings();
 
     if (!settings.apiKey.trim()) {
@@ -56,7 +84,7 @@ export async function runSubagent(
       };
     }
 
-    const allowedTools = ALLOWED_TOOLS;
+    const allowedTools = resolveRoleAllowedTools(task.roleId);
     const skillPlugin = await getSkillPluginConfig();
 
     const sdk = await import("@anthropic-ai/claude-agent-sdk");
@@ -107,7 +135,7 @@ export async function runSubagent(
       });
     };
 
-    const systemPrompt = buildSubagentSystemPrompt(task.skill);
+    const systemPrompt = buildSubagentSystemPrompt(role);
 
     let prompt = task.instructions;
     if (task.files && task.files.length > 0) {
@@ -122,7 +150,7 @@ export async function runSubagent(
       mcpServers,
       allowedTools,
       plugins: skillPlugin.plugins,
-      skills: [task.skill],
+      skills: role.skills,
       settingSources: skillPlugin.settingSources,
       systemPrompt,
       canUseTool,
