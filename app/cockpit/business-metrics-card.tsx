@@ -102,7 +102,7 @@ export function BusinessMetricsCard({ business }: { business: BusinessOverview |
               <HugeiconsIcon icon={BarChartIcon} size={13} aria-hidden />
             </div>
             <CardTitle>经营数据</CardTitle>
-            {trustTier && (
+            {hasData && trustTier && (
               <TrustBadge
                 tier={trustTier}
                 sourceLabel={business?.source === "user_dictated" ? "用户口述" : undefined}
