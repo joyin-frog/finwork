@@ -23,7 +23,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     id: "bookkeeper",
     name: "记账专员",
     domain: "核算与报告",
-    charter: "单据变凭证草稿，报销核查入台账，月末结账检查",
+    charter: "凭证编制与审核、发票台账、结账核对",
     available: true,
     skills: ["reimbursement-check", "kingdee-draft", "contract-extract", "xlsx", "pdf"],
     tools: [
@@ -46,7 +46,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     id: "payroll-officer",
     name: "薪税专员",
     domain: "薪酬核算",
-    charter: "算薪、五险一金、个税累计预扣，草稿等人确认",
+    charter: "薪资核算、五险一金、个税代扣代缴",
     available: true,
     skills: ["payroll-calc", "xlsx"],
     tools: [
@@ -68,7 +68,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     id: "tax-officer",
     name: "税务专员",
     domain: "税务管理",
-    charter: "盯申报日历，出申报前复核清单和优惠线索",
+    charter: "纳税申报管理、申报前复核、税收优惠",
     available: true,
     skills: ["tax-incentive", "rnd-deduction-check", "xlsx"],  // 待建：filing-precheck
     tools: ["tax_calculator", "query_payroll_status"],
@@ -87,7 +87,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     id: "treasury-officer",
     name: "资金专员",
     domain: "资金管理",
-    charter: "银行对账、资金日报、付款到期提醒",
+    charter: "银行对账、资金日报、到期付款提示",
     available: true,
     skills: ["xlsx"],  // 待建：cash-daily（资金日报）
     tools: ["reconcile_bank_statement"],
@@ -105,7 +105,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     id: "receivables-officer",
     name: "往来专员",
     domain: "往来管理",
-    charter: "应收台账、账龄、催款清单、对账单核对",
+    charter: "应收应付台账、账龄分析、往来对账",
     available: false,   // 台账数据域未建，注册表预留；作业落地后翻 true
     skills: ["xlsx"],   // 待建：receivables-ledger（应收台账与账龄）
     tools: [],
@@ -123,7 +123,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     id: "analyst",
     name: "经营分析师",
     domain: "管理会计",
-    charter: "老板要的费用拆解、毛利、环比，口径先行",
+    charter: "费用与毛利分析、同比环比、经营指标解读",
     available: true,
     skills: ["business-analysis", "finance-analysis", "xlsx", "docx", "pptx"],
     tools: ["record_business_metrics", "generate_business_analysis"],

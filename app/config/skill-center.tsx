@@ -13,6 +13,7 @@ import { ModelSettings } from "./model/model-settings";
 import { AboutSettings } from "./about/about-settings";
 import { ProfileSettings } from "./profile/profile-settings";
 import { UsageSettings } from "./usage/usage-settings";
+import { SkillsManager } from "@/app/skills/skills-manager";
 import { Input } from "@/components/ui/input";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
@@ -176,6 +177,7 @@ export default function SkillCenter({
                 onRoleModeChange={(v) => { setRoleMode(v); scheduleClaudeSave(); }}
               />
             )}
+            {activeTab === "skills" && <SkillsManager />}
             {activeTab === "memory" && <MemorySettings />}
             {activeTab === "profile" && <ProfileSettings />}
             {activeTab === "usage" && <UsageSettings />}

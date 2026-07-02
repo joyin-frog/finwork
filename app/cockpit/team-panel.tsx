@@ -186,7 +186,6 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
                 </span>
                 <div className="flex-1 min-w-0">
                   <span className="text-sm font-medium">{item.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2 truncate">{item.charter}</span>
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
                   {item.dispatchCount} 次{item.lastAt ? ` · ${relativeTime(item.lastAt)}` : ""}

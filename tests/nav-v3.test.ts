@@ -98,10 +98,11 @@ export const navV3TestPromise = (async () => {
       "C6 FAIL: app/skills/page.tsx 应保留（/skills 路由不删除，只重定向）"
     );
     const skillsPageSrc = src("app/skills/page.tsx");
+    // 裁决修订(2026-07-02):设置页原本没有技能 tab,重定向必须深链到 ?tab=skills 才不丢功能
     assert.ok(
-      skillsPageSrc.includes('redirect("/config")') ||
-        skillsPageSrc.includes("redirect('/config')"),
-      "C6 FAIL: app/skills/page.tsx 应含 redirect(\"/config\")（重定向到技能中心）"
+      skillsPageSrc.includes('redirect("/config?tab=skills")') ||
+        skillsPageSrc.includes("redirect('/config?tab=skills')"),
+      "C6 FAIL: app/skills/page.tsx 应重定向到 /config?tab=skills（技能中心 tab 深链）"
     );
   }
 

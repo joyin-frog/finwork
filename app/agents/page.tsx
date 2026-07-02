@@ -331,9 +331,6 @@ export default function AgentsPage() {
         <DragHandle />
         <SidebarToggle />
         <h1 className="text-title">智能体</h1>
-        <span className="text-body text-muted-foreground">
-          你的财务班子：谁在岗、能碰什么、干过什么
-        </span>
       </header>
 
       <div className="flex-1 overflow-auto p-6 flex flex-col gap-4">
