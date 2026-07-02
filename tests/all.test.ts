@@ -260,6 +260,9 @@ void (async () => {
   const { voucherSheetTestPromise } = await import("./voucher-sheet.test.ts");
   await voucherSheetTestPromise;
 
+  const { readDocumentTestPromise } = await import("./read-document.test.ts");
+  await readDocumentTestPromise;
+
   const { receiptTestPromise } = await import("./receipt.test.ts");
   await receiptTestPromise;
 

@@ -14,8 +14,8 @@ description: 把纸质单据照片或审批后的报销/薪资数据做成金蝶
 ### 1. 取图
 用户选文件夹后拿到路径。用 `run_python` 列出目录下所有图片(.jpg/.png/.jpeg/.webp,按文件名排序;跳过隐藏文件)。
 
-### 2. 逐张 OCR + 提取字段
-对每张图 `run_python` 调 `workers/finance_worker.py ocr-image <路径>`(rapidocr,已开 use_angle_cls 自动摆正横拍)。从 OCR 文本提取:
+### 2. 逐张取文本 + 提取字段
+对每个文件调 **`read_document`**(传文件路径)取文本——PDF/Excel/Word 提文字、图片和扫描件 PDF 自动 OCR。**不要自己 run_python 写 OCR / import pytesseract**(会失败)。从返回文本提取:
 - 单据类型(费用报销单/付款申请单/…,看印刷表头,最可靠)
 - 日期、收款方/报销人、摘要
 - **金额线索**:各明细行数字、合计数字、大写金额文本(原样,别自己改废笔)
