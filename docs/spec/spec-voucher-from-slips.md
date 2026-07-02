@@ -316,7 +316,10 @@ run_python → 列出目录下所有图片（按文件名排序）
 要改/新增:
 - `export_kingdee_draft` 分录结构:成对 → **多行独立借贷**(每行要么借要么贷)
 - `map_voucher_account`:逐费用明细各自映射(工具够用,编排层多调几次)
-- **银行回单匹配**:复用 `reconcile_bank_statement`(金额+日期+方向勾对);前置 run_python 把回单 CSV/Excel 整理成 date/amount/direction
+- **银行回单/对账单**(样例已验证,两种形态两条路):
+  - 文字型对账单(如浦发,月度多笔):`pdfplumber` 提表格(日期/借贷分列=方向/对方名称/摘要)→ 复用 `reconcile_bank_statement` 找付款笔匹配单据
+  - 图片型回单(如建行水电费,单笔扫描):`pypdf` 抽内嵌大图(**零新依赖,不用 poppler/fitz**)→ rapidocr OCR(打印体识别近乎完美)→ 提付款/收款/金额大小写/日期/用途 → 用途映射科目、大小写走 check_voucher_amount → 作一张凭证的付款依据
+  - **待实现缺口**:图片型 PDF 的 OCR 兜底(pdfplumber 无文字层 → pypdf 抽内嵌图 → rapidocr);现 ocr-image 只收 .png/.jpg,PDF 回单需先抽图。受益面广(任何扫描 PDF)
 - 附件数:一张单据背后 K 张发票 → attachmentCount
 
 已就绪不用改:`check_voucher_amount` 勾稽已支持多明细(明细Σ=合计);`KingdeeAccount.dimension` 维度类型已实现。
@@ -350,6 +353,20 @@ run_python → 列出目录下所有图片（按文件名排序）
 - AC7：仅一处金额线索（无从勾稽）的单据一律标 ⚠️ 人工确认，不自动通过
 - AC8：含涂改废笔的金额（勾稽不平）触发 ⚠️，不由 AI 擅自判定哪笔有效
 - AC9：多问答浮层——一次下发 N 题，左右切换独立作答，一次提交回填全部；单题路径不回归
+- AC10：文字型 PDF（浦发对账单/陈岩电子回单）extract-text 走 pdfplumber，返回含关键字段的文本（含水印噪声无妨，交 LLM 提字段）
+- AC11：图片型 PDF（水电费手拍回单，无文字层）extract-text **自动 OCR 兜底**（pypdf 抽每页最大内嵌图 → rapidocr），返回含「水电费」「6155.80」等
+- AC12：OCR 依赖缺失时报可操作错误（pip install rapidocr-onnxruntime），不静默返回空
+
+---
+
+## 收尾：PDF 取文本自动兜底 + 银行回单接入（本次实现）
+
+银行回单/单据可能是 PDF。`extract_pdf` 现仅 pdfplumber 提文字,图片型(扫描)返回空。本次补兜底,串起银行回单三形态(见「待扩展」节):
+
+- **`extract_pdf` 加兜底**:pdfplumber 逐页提文字 → 若整体无文字层 → pypdf 抽每页最大内嵌图(跳过 logo/印章小图)→ rapidocr OCR(use_angle_cls,numpy array 输入免临时文件)→ 拼接
+- **零新依赖**:pypdf/numpy/PIL 已在,rapidocr 为可选依赖(缺失报可操作错误)
+- **上层全复用**:取到文本后 → LLM 提 5 字段(付款人/收款人/金额/日期/用途)→ `check_voucher_amount` 大小写勾稽 → `map_voucher_account`(用途→科目);信息不足(个人付款、用途空,如陈岩回单)标⚠️问用户,不瞎编科目
+- **三形态殊途同归**:手拍图片型/文字型电子回单/文字型对账单,都归到"取文本→LLM 提字段",不为每家银行写解析器
 
 ---
 
@@ -382,5 +399,9 @@ run_python → 列出目录下所有图片（按文件名排序）
    - N 题左右切换、每题独立选择、末题提交合并
 
 6. **worker 旋转检测**：`use_angle_cls=True` 已注册（源码断言，见现有 `ocr-image.test.ts` 模式）
+
+7. **PDF 取文本兜底**（收尾）：`extract_pdf` 图片型 PDF OCR 兜底
+   - 源码断言：`extract_pdf` 含 pypdf 抽图 + rapidocr 兜底 + 缺依赖可操作错误
+   - 真跑（rapidocr 可用时）：图片型 PDF extract-text 返回非空且含预期字段；文字型 PDF 仍走 pdfplumber
 
 skill 编排（SKILL.md）本身不写单测，靠上述工具/函数的绿测 + 真机跑通验证。
