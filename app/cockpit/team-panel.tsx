@@ -1,12 +1,11 @@
 "use client";
 
-// 团队面板（CV-3 §5.2）
+// 团队面板（CV-3 §5.2 + v3-P2 行内展开）
 // 低拟人红线：无头像、无性格文案、无第一人称；唯一的「人味」是中文岗位名。
-// 生长时刻：localStorage key "cockpit.seenRoleIds" 记录已见角色；新角色播放 fa-team-enter 入场动画。
 // prefers-reduced-motion: fa-team-enter 只在 globals.css @media(no-preference) 内定义，降级时直接出现。
 
 import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { TeamRoleItem } from "./types";
 import { ROLE_UI } from "@/lib/domain/role-ui";
@@ -40,8 +39,89 @@ function relativeTime(isoStr: string | null): string {
   return `${Math.floor(d / 30)} 个月前`;
 }
 
+type DispatchRow = {
+  id: number;
+  roleId: string;
+  label: string | null;
+  summary: string | null;
+  status: string;
+  blockedReason: string | null;
+  conversationId: string | null;
+  startedAt: string | null;
+};
+
+function RoleDispatchExpand({ roleId }: { roleId: string }) {
+  const [rows, setRows] = useState<DispatchRow[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (rows !== null) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/agents/dispatches?roleId=${encodeURIComponent(roleId)}&limit=5`);
+      const json = await res.json() as { ok: boolean; data?: { rows: DispatchRow[] } };
+      if (json.ok && json.data) setRows(json.data.rows);
+      else setRows([]);
+    } catch {
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [roleId, rows]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (loading) {
+    return <p className="text-xs text-muted-foreground py-1 pl-10">加载中…</p>;
+  }
+
+  if (!rows || rows.length === 0) {
+    return <p className="text-xs text-muted-foreground py-1 pl-10">暂无工作记录</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-1 pl-10 pb-1">
+      {rows.map((row) => {
+        const isBlocked = row.blockedReason != null && row.blockedReason !== "";
+        const href = row.conversationId ? `/chat/recent?id=${row.conversationId}` : undefined;
+
+        const inner = (
+          <div className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${
+            isBlocked
+              ? "bg-[color:var(--tone-notice,hsl(var(--muted)))/0.12] border border-[color:var(--tone-notice,hsl(var(--border)))]"
+              : "bg-muted/40"
+          }`}>
+            {isBlocked && (
+              <span className="shrink-0 font-medium px-1.5 py-0.5 rounded bg-[color:var(--tone-notice,hsl(var(--muted)))] text-[color:var(--tone-notice-fg,hsl(var(--foreground)))] whitespace-nowrap text-xs">
+                待确认
+              </span>
+            )}
+            <span className="flex-1 min-w-0 truncate text-foreground">
+              {row.label ?? row.summary ?? `#${row.id}`}
+            </span>
+            <span className="shrink-0 text-muted-foreground whitespace-nowrap">
+              {relativeTime(row.startedAt)}
+            </span>
+          </div>
+        );
+
+        return href ? (
+          <Link key={row.id} href={href} className="block hover:no-underline">
+            {inner}
+          </Link>
+        ) : (
+          <div key={row.id}>{inner}</div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
   const [newRoleIds, setNewRoleIds] = useState<Set<string>>(new Set());
+  const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -70,30 +150,60 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
           const ui = ROLE_UI[item.roleId as keyof typeof ROLE_UI];
           const tone = ui?.tone ?? "--tone-neutral";
           const isNew = newRoleIds.has(item.roleId);
+          const isExpanded = expandedRoleId === item.roleId;
+
+          function handleRowClick() {
+            setExpandedRoleId((prev) => (prev === item.roleId ? null : item.roleId));
+          }
+
+          function handleDispatch(e: React.MouseEvent) {
+            e.stopPropagation();
+            window.dispatchEvent(
+              new CustomEvent("cockpit:prefill-dispatch", {
+                detail: { text: `让${item.name}帮我处理` },
+              })
+            );
+          }
 
           return (
-            <div
-              key={item.roleId}
-              // 新角色触发入场动画（fa-team-enter 在 globals.css @media prefers-reduced-motion:no-preference 内定义）
-              // prefers-reduced-motion: reduce 时无 animation，直接出现
-              className={`flex items-center gap-3 py-1 ${isNew ? "fa-team-enter" : ""}`}
-              title={item.lastSummary ?? undefined}
-            >
-              {/* 圆形域图标（fa-toned 底，角色 tone） */}
-              <span
-                className="fa-toned shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold select-none"
-                style={{ "--tone": `var(${tone})` } as CSSProperties}
-                aria-hidden="true"
+            <div key={item.roleId} className="flex flex-col">
+              <div
+                className={`flex items-center gap-3 py-1 cursor-pointer select-none rounded px-1 hover:bg-muted/40 transition-colors ${isNew ? "fa-team-enter" : ""}`}
+                title={item.lastSummary ?? undefined}
+                onClick={handleRowClick}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && handleRowClick()}
+                aria-expanded={isExpanded}
               >
-                {item.name.slice(0, 1)}
-              </span>
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium">{item.name}</span>
-                <span className="text-xs text-muted-foreground ml-2 truncate">{item.charter}</span>
+                {/* 圆形域图标（fa-toned 底，角色 tone） */}
+                <span
+                  className="fa-toned shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold select-none"
+                  style={{ "--tone": `var(${tone})` } as CSSProperties}
+                  aria-hidden="true"
+                >
+                  {item.name.slice(0, 1)}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium">{item.name}</span>
+                  <span className="text-xs text-muted-foreground ml-2 truncate">{item.charter}</span>
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
+                  {item.dispatchCount} 次{item.lastAt ? ` · ${relativeTime(item.lastAt)}` : ""}
+                </span>
+                {/* 行尾「派活」次动作 → 预填派活入口并聚焦 */}
+                <button
+                  type="button"
+                  className="shrink-0 text-xs text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors"
+                  onClick={handleDispatch}
+                  aria-label={`让${item.name}派活`}
+                >
+                  派活
+                </button>
               </div>
-              <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
-                {item.dispatchCount} 次{item.lastAt ? ` · ${relativeTime(item.lastAt)}` : ""}
-              </span>
+
+              {/* inline 展开：最近 5 条任务 */}
+              {isExpanded && <RoleDispatchExpand roleId={item.roleId} />}
             </div>
           );
         })}

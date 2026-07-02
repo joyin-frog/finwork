@@ -421,4 +421,10 @@ void (async () => {
   const { agentsSpaceTestPromise } = await import("./agents-space.test.ts");
   await agentsSpaceTestPromise;
 
+  const { agentRoleToggleTestPromise } = await import("./agent-role-toggle.test.ts");
+  await agentRoleToggleTestPromise;
+
+  const { cockpitTeamExpandTestPromise } = await import("./cockpit-team-expand.test.ts");
+  await cockpitTeamExpandTestPromise;
+
 })();

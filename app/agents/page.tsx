@@ -143,14 +143,31 @@ function DispatchList({ roleId, initialDispatches }: { roleId: string; initialDi
 
 // ─── AgentRow（花名册行 + 展开详情） ────────────────────────────────────────
 
-function AgentRow({ agent }: { agent: AgentRosterItem }) {
+function AgentRow({ agent, onToggle }: { agent: AgentRosterItem; onToggle: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const ui = ROLE_UI[agent.roleId as keyof typeof ROLE_UI];
   const tone = ui?.tone ?? "--tone-neutral";
   const isDisabled = !agent.available || agent.userDisabled;
 
   const promptText = encodeURIComponent(`让${agent.name}帮我处理…`);
   const dispatchHref = `/chat/new?prompt=${promptText}`;
+
+  async function handleToggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (toggling) return;
+    setToggling(true);
+    try {
+      await fetch("/api/agents/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roleId: agent.roleId, disabled: !agent.userDisabled }),
+      });
+      onToggle();
+    } finally {
+      setToggling(false);
+    }
+  }
 
   return (
     <div
@@ -178,7 +195,12 @@ function AgentRow({ agent }: { agent: AgentRosterItem }) {
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold">{agent.name}</span>
             <span className="text-meta text-muted-foreground">{agent.domain}</span>
-            {isDisabled && (
+            {agent.userDisabled && (
+              <span className="text-meta px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                已停用
+              </span>
+            )}
+            {!agent.available && !agent.userDisabled && (
               <span className="text-meta px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                 尚未启用
               </span>
@@ -192,7 +214,20 @@ function AgentRow({ agent }: { agent: AgentRosterItem }) {
             {agent.dispatchCount} 次
             {agent.lastAt ? ` · ${relativeTime(agent.lastAt)}` : ""}
           </span>
-          {!isDisabled && (
+          {/* 启停控件：仅对 available:true 的角色显示 */}
+          {agent.available && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleToggle}
+              disabled={toggling}
+              className="shrink-0 text-muted-foreground"
+            >
+              {agent.userDisabled ? "启用" : "停用"}
+            </Button>
+          )}
+          {/* 派活按钮：userDisabled 时隐藏 */}
+          {!agent.userDisabled && !isDisabled && (
             <Link
               href={dispatchHref}
               onClick={(e) => e.stopPropagation()}
@@ -313,7 +348,7 @@ export default function AgentsPage() {
           </div>
         ) : (
           roster?.map((agent) => (
-            <AgentRow key={agent.roleId} agent={agent} />
+            <AgentRow key={agent.roleId} agent={agent} onToggle={fetchRoster} />
           ))
         )}
       </div>

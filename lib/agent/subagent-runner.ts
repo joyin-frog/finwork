@@ -10,7 +10,7 @@ import { createUnwiredToolHook, createPathSafetyHook, createTimingHook, createRi
 import { Semaphore } from "@/lib/utils/semaphore";
 import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
 import { getToolRiskLevel } from "./tools/registry";
-import { recordDispatchStart, recordDispatchEnd } from "@/lib/db/dispatch-store";
+import * as _dispatchStore from "@/lib/db/dispatch-store";
 
 export type SubagentTask = {
   roleId: string;
@@ -80,16 +80,31 @@ export async function runSubagent(
       };
     }
 
+    // 停用检查：紧贴未知角色校验之后、dispatch 落行之前
+    // 已停用角色不落 dispatch 台账行
+    {
+      const { getDisabledRoleIds } = await import("@/lib/agent/roles/availability");
+      const disabledIds = getDisabledRoleIds();
+      if (disabledIds.includes(task.roleId)) {
+        return {
+          label: task.label,
+          content: `角色 "${task.roleId}"（${role.name}）已停用，无法执行任务。如需使用请在「智能体」页面重新启用。`,
+          success: false,
+          durationMs: Date.now() - startedAt,
+        };
+      }
+    }
+
     // 角色已解析 → 落调度起始行(roleId 未知时不落行)
     try {
-      dispatchId = recordDispatchStart({
+      dispatchId = _dispatchStore.recordDispatchStart({
         roleId: task.roleId,
         label: task.label,
         conversationId: opts.conversationId,
         traceId: opts.traceId,
       });
     } catch (e) {
-      console.warn("[dispatch] recordDispatchStart 失败(不影响任务):", e);
+      console.warn("[dispatch] dispatch-start 失败(不影响任务):", e);
     }
 
     const settings = await readClaudeSettings();
@@ -103,13 +118,13 @@ export async function runSubagent(
       };
       if (dispatchId != null) {
         try {
-          recordDispatchEnd(dispatchId, {
+          _dispatchStore.recordDispatchEnd(dispatchId, {
             status: "failed",
             summary: result.content.slice(0, 200),
             blockedReasons: [],
           });
         } catch (e) {
-          console.warn("[dispatch] recordDispatchEnd 失败(不影响任务):", e);
+          console.warn("[dispatch] dispatch-end 失败(不影响任务):", e);
         }
       }
       return result;
@@ -273,13 +288,13 @@ export async function runSubagent(
     };
     if (dispatchId != null) {
       try {
-        recordDispatchEnd(dispatchId, {
+        _dispatchStore.recordDispatchEnd(dispatchId, {
           status: "success",
           summary: content.slice(0, 200),
           blockedReasons: [...blockedTools],
         });
       } catch (e) {
-        console.warn("[dispatch] recordDispatchEnd 失败(不影响任务):", e);
+        console.warn("[dispatch] dispatch-end 失败(不影响任务):", e);
       }
     }
     return subagentResult;
@@ -293,13 +308,13 @@ export async function runSubagent(
     };
     if (dispatchId != null) {
       try {
-        recordDispatchEnd(dispatchId, {
+        _dispatchStore.recordDispatchEnd(dispatchId, {
           status: "failed",
           summary: content.slice(0, 200),
           blockedReasons: [...blockedTools],
         });
       } catch (e) {
-        console.warn("[dispatch] recordDispatchEnd 失败(不影响任务):", e);
+        console.warn("[dispatch] dispatch-end 失败(不影响任务):", e);
       }
     }
     return subagentResult;

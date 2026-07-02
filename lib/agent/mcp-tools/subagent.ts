@@ -1,14 +1,19 @@
 import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
+import { listDispatchableRoleIds } from "@/lib/agent/roles/availability";
 
 type Sdk = SdkLike;
 
-const AVAILABLE_ROLES = ROLE_REGISTRY.filter((r) => r.available);
-const ROLE_IDS = AVAILABLE_ROLES.map((r) => r.id) as [string, ...string[]];
-const ROLE_CHEATSHEET = AVAILABLE_ROLES.map((r) => `- ${r.id}（${r.name}）：${r.charter}`).join("\n");
-
 export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string) {
+  // 从 ROLE_REGISTRY 按 available 过滤，再经 listDispatchableRoleIds 排除用户停用的角色
+  const dispatchableIds = listDispatchableRoleIds();
+  const ROLE_IDS = dispatchableIds as [string, ...string[]];
+  const ROLE_CHEATSHEET = ROLE_REGISTRY
+    .filter((r) => r.available && dispatchableIds.includes(r.id))
+    .map((r) => `- ${r.id}（${r.name}）：${r.charter}`)
+    .join("\n");
+
   return sdk.tool(
     "spawn_subagent",
     `按预制角色派发一个子 Agent 执行特定独立任务。

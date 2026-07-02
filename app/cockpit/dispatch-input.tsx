@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import type { CalendarContext } from "@/lib/domain/tax-calendar";
@@ -9,6 +9,7 @@ import { getCockpitSuggestions } from "@/lib/domain/cockpit-suggestions";
 export function DispatchInput({ calendar }: { calendar: CalendarContext | null }) {
   const [text, setText] = useState("");
   const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const placeholder = calendar
     ? getCockpitSuggestions(calendar).placeholder
@@ -20,9 +21,26 @@ export function DispatchInput({ calendar }: { calendar: CalendarContext | null }
     }
   }
 
+  // 监听 cockpit:prefill-dispatch 事件，设值并聚焦
+  useEffect(() => {
+    function handlePrefill(e: Event) {
+      const detail = (e as CustomEvent<{ text: string }>).detail;
+      if (detail?.text) {
+        setText(detail.text);
+        inputRef.current?.focus();
+      }
+    }
+
+    window.addEventListener("cockpit:prefill-dispatch", handlePrefill);
+    return () => {
+      window.removeEventListener("cockpit:prefill-dispatch", handlePrefill);
+    };
+  }, []);
+
   return (
     <Input
       id="dispatch-input-field"
+      ref={inputRef}
       value={text}
       onChange={(e) => setText(e.target.value)}
       onKeyDown={handleKeyDown}
