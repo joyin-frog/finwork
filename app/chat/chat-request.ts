@@ -51,6 +51,16 @@ export function buildUserContent(text: string, attachments: ChatAttachment[], re
   return "";
 }
 
+/**
+ * 选「单据文件夹」后生成的触发消息:带上本地文件夹路径(agent 靠它 run_python 列目录逐张识别),
+ * 并用「单据/凭证」触发词命中 kingdee-draft skill、提示走汇总确认模式。空路径返回空串。
+ */
+export function buildFolderIngestPrompt(folderPath: string): string {
+  const p = folderPath.trim();
+  if (!p) return "";
+  return `我在这个文件夹里放了一批单据,请逐张识别并生成金蝶记账凭证:先出一张汇总大表(自动通过/待确认分开),有疑点问我确认后再定,最后给对照手填清单。文件夹路径:${p}`;
+}
+
 export async function readAttachment(file: File): Promise<ChatAttachment> {
   const [dataUrl, text] = await Promise.all([readAsDataUrl(file), shouldReadAsText(file) ? readAsText(file) : undefined]);
   return {

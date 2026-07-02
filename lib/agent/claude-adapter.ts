@@ -50,6 +50,8 @@ export type AgentQuestion = {
   header?: string;
   multiSelect?: boolean;
   options?: Array<{ label: string; description?: string; preview?: string }>;
+  // 多题一次下发:非空时前端渲染为一个浮层、左右切换逐题作答(单题走 question/options 原路径)。
+  questions?: AgentQuestion[];
 };
 
 export type AgentRunEvent =
@@ -629,7 +631,10 @@ function buildPromptText(prompt: string, attachments: AgentAttachment[]) {
     const list = localFiles
       .map((f) => `- ${f.name} (${f.mimeType}, ${formatBytes(f.size)})\n  路径: ${f.storagePath}`)
       .join("\n");
-    parts.push("用户上传了以下文件，已保存到本地磁盘。请使用 Read 工具直接读取文件内容，必要时使用 run_python 进行解析：\n" + list);
+    parts.push(
+      "用户上传了以下文件，已保存到本地磁盘：\n" + list +
+      "\n\n读取方式：PDF/图片/Excel/Word 用 read_document 工具取文本（图片和扫描件 PDF 会自动 OCR）——不要自己写 OCR 代码或 import pytesseract；纯文本文件可用 Read。"
+    );
   }
 
   if (remoteFiles.length) {

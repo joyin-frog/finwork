@@ -65,6 +65,8 @@ export type AskUserQuestionPayload = {
   header?: string;
   multiSelect?: boolean;
   options?: Array<{ label: string; description?: string }>;
+  // 多题一次下发:非空(>1)时面板渲染为左右切换分页,逐题作答,提交时合并为 JSON。
+  questions?: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>;
 };
 
 export type AgentEvent =

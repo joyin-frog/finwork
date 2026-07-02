@@ -57,8 +57,13 @@ export const kingdeeTestPromise = (async () => {
   assert.equal(after.accounts.length, 1, "T4 FAIL: import 应覆盖为新表");
   assert.equal(after.accounts[0].code, "2001", "T4 FAIL: 新表内容不对");
 
+  // ── T5: 核算维度(dimension)随科目表落库并读回(凭证映射按此带出维度类型)──
+  saveChartOfAccounts([{ code: "6602.24", name: "管理费用-劳务费", type: "费用", dimension: "部门" }]);
+  const withDim = loadChartOfAccounts();
+  assert.equal(withDim.accounts[0].dimension, "部门", "T5 FAIL: dimension 应随科目表保留");
+
   // 清理:别把自定义科目表泄漏给后续测试(smoke 依赖默认示例表)
   getDb().prepare("DELETE FROM app_settings WHERE key = 'kingdee_chart_of_accounts'").run();
 
-  console.log("kingdee: 科目表数据驱动(示例兜底 / 导入清洗 / 校验对照真表 / import 工具)✓");
+  console.log("kingdee: 科目表数据驱动(示例兜底 / 导入清洗 / 校验对照真表 / import 工具 / 维度保留)✓");
 })();

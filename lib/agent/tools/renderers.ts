@@ -126,6 +126,27 @@ const summaries: Record<string, SummaryFn> = {
     const n = Array.isArray(a) ? a.length : 0;
     return `导入金蝶科目表${n ? `(${n} 个科目)` : ""}`;
   },
+
+  // ─── 单据→凭证(read_document 在 finance_worker;其余在 kingdee_worker) ───
+  scan_slip_folder: (i) => { const p = str(i, "folderPath"); const name = p ? p.split(/[/\\]/).pop() : ""; return name ? `扫描单据文件夹 ${name}` : "扫描单据文件夹"; },
+  read_document: (i) => {
+    const p = str(i, "filePath");
+    const name = p ? p.split(/[/\\]/).pop() : "";
+    return name ? `识别单据 ${name}` : "识别单据";
+  },
+  check_voucher_amount: (i) => {
+    const total = num(i, "totalYuan");
+    return `核对金额${total != null ? ` ¥${total.toLocaleString("zh-CN")}` : "(大写/小写勾稽)"}`;
+  },
+  map_voucher_account: (i) => { const t = str(i, "text"); return t ? `匹配科目「${t.slice(0, 20)}」` : "匹配科目"; },
+  build_voucher_lines: (i) => {
+    const exp = arrayLen(i, "expenses");
+    const adv = num(i, "advanceYuan");
+    return `生成分录${exp ? `(${exp} 项费用)` : ""}${adv ? " · 含预借款冲销" : ""}`;
+  },
+  build_voucher_sheet: (i) => { const n = arrayLen(i, "vouchers"); return `生成对照清单${n ? `(${n} 张凭证)` : ""}`; },
+  summarize_vouchers: (i) => { const n = arrayLen(i, "results"); return `汇总凭证${n ? `(${n} 张)` : ""}`; },
+  process_voucher_batch: (i) => { const n = arrayLen(i, "slips"); return `批量处理单据${n ? `(${n} 张)` : ""}`; },
 };
 
 /** 从 Python 代码提炼一句人话「目的」:仅当能认出操作的具名数据文件时给「处理《X》」,否则返回空(UI 兜底「运行代码」)。 */

@@ -21,6 +21,11 @@ function resolveDoc(fileName: string) {
   return docs.find(d => d.file_name === fileName || d.title === fileName) ?? null;
 }
 
+// MCP 工具结果必须是 {content:[...]} object;这三个知识库工具原先直接返回 string,
+// 真实 SDK 会拒(Invalid tools/call result: expected object, received string),导致
+// search_knowledge 等长期 isError。统一包装修复(mock 不校验格式,故单测漏了)。
+const knowledgeText = (text: string) => ({ content: [{ type: "text" as const, text }] });
+
 export function createSearchKnowledgeTool(sdk: Sdk) {
   return sdk.tool(
     "search_knowledge",
@@ -32,8 +37,8 @@ export function createSearchKnowledgeTool(sdk: Sdk) {
     async (args: { query: string; topK?: number }) => {
       try {
         const res = await searchKnowledge({ query: args.query, topK: args.topK ?? 3 });
-        if (!res.ok) return `知识库搜索失败：${res.error}`;
-        if (!res.data.files.length) return "知识库中未找到相关内容。";
+        if (!res.ok) return knowledgeText(`知识库搜索失败：${res.error}`);
+        if (!res.data.files.length) return knowledgeText("知识库中未找到相关内容。");
         // 命中埋点已在 searchKnowledge 内统一处理
 
         const lines: string[] = [];
@@ -45,9 +50,9 @@ export function createSearchKnowledgeTool(sdk: Sdk) {
           }
           lines.push("---");
         }
-        return wrapExternalContext(lines.join("\n"));
+        return knowledgeText(wrapExternalContext(lines.join("\n")));
       } catch (err) {
-        return `知识库检索失败：${err instanceof Error ? err.message : String(err)}`;
+        return knowledgeText(`知识库检索失败：${err instanceof Error ? err.message : String(err)}`);
       }
     }
   );
@@ -74,12 +79,12 @@ export function createQueryKnowledgeTool(sdk: Sdk) {
       try {
         syncNamedMirror();
         const res = await executeKnowledgeQuery(args.command, getKnowledgeNamedDir());
-        if (!res.ok) return `命令未执行:${res.error}`;
-        if (!res.output.trim()) return "命令执行成功,但没有匹配结果。可调整关键词或先用 ls 查看可检索的文档。";
+        if (!res.ok) return knowledgeText(`命令未执行:${res.error}`);
+        if (!res.output.trim()) return knowledgeText("命令执行成功,但没有匹配结果。可调整关键词或先用 ls 查看可检索的文档。");
         const out = res.truncated ? `${res.output}\n\n[输出较长已截断,请缩小检索范围或加 head 限制行数]` : res.output;
-        return wrapExternalContext(out);
+        return knowledgeText(wrapExternalContext(out));
       } catch (err) {
-        return `query_knowledge 失败：${err instanceof Error ? err.message : String(err)}`;
+        return knowledgeText(`query_knowledge 失败：${err instanceof Error ? err.message : String(err)}`);
       }
     }
   );
@@ -95,16 +100,16 @@ export function createReadFileTool(sdk: Sdk) {
     async (args: { fileName: string }) => {
       try {
         const doc = resolveDoc(args.fileName);
-        if (!doc) return `未找到 ${args.fileName}`;
+        if (!doc) return knowledgeText(`未找到 ${args.fileName}`);
         markKnowledgeHits([doc.id]);
         const text = readTextMirror(doc.content_hash);
-        if (!text) return `未找到 ${args.fileName} 的文本内容`;
+        if (!text) return knowledgeText(`未找到 ${args.fileName} 的文本内容`);
         if (text.length > 200_000) {
-          return wrapExternalContext(text.slice(0, 200_000) + "\n\n[...内容过长，已截断，共 " + text.length + " 字符]");
+          return knowledgeText(wrapExternalContext(text.slice(0, 200_000) + "\n\n[...内容过长，已截断，共 " + text.length + " 字符]"));
         }
-        return wrapExternalContext(text);
+        return knowledgeText(wrapExternalContext(text));
       } catch (err) {
-        return `read_file 失败：${err instanceof Error ? err.message : String(err)}`;
+        return knowledgeText(`read_file 失败：${err instanceof Error ? err.message : String(err)}`);
       }
     }
   );

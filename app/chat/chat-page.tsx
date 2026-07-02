@@ -8,6 +8,7 @@ import {
   ArrowUp02Icon,
   Clock01Icon,
   Attachment01Icon,
+  Folder01Icon,
   Add01Icon,
   StopIcon,
   ThumbsDownIcon,
@@ -34,6 +35,7 @@ import { useNavState } from "@/app/shared/nav-state";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import {
   buildUserContent,
+  buildFolderIngestPrompt,
   readAttachment,
   shouldReadAsText,
   getClipboardFiles,
@@ -816,6 +818,21 @@ export default function ChatPage({
     }
   }
 
+  // 选「单据文件夹」:桌面端选本地目录,把路径注入一条消息发给 agent(不走上传,无大小限制)。
+  // agent 据路径 run_python 列目录逐张识别 → 汇总 → 生成凭证草稿。
+  async function pickReceiptFolder() {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const folder = await open({ directory: true, multiple: false, title: "选择单据文件夹" });
+      if (!folder || typeof folder !== "string") return;
+      const prompt = buildFolderIngestPrompt(folder);
+      if (prompt) void sendMessage(prompt);
+    } catch (err) {
+      console.error("[pick-folder] failed", err);
+      toast.error("选择文件夹失败(桌面端可用)");
+    }
+  }
+
   async function sendMessage(text: string) {
     const value = text.trim();
     const hasContent = value || attachments.length || referencedAttachments.length;
@@ -1090,6 +1107,10 @@ export default function ChatPage({
                         <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
                           <HugeiconsIcon icon={Attachment01Icon} size={16} />
                           添加照片和文件
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void pickReceiptFolder()}>
+                          <HugeiconsIcon icon={Folder01Icon} size={16} />
+                          选择单据文件夹
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={openSkillMenu}>
                           <HugeiconsIcon icon={MagicWand01Icon} size={16} />
