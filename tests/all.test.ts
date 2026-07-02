@@ -385,4 +385,10 @@ void (async () => {
   const { subagentRunnerTestPromise } = await import("./subagent-runner.test.ts");
   await subagentRunnerTestPromise;
 
+  const { trustTierTestPromise } = await import("./trust-tier.test.ts");
+  await trustTierTestPromise;
+
+  const { cockpitTokensTestPromise } = await import("./cockpit-tokens.test.ts");
+  await cockpitTokensTestPromise;
+
 })();
