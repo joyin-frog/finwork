@@ -9,6 +9,8 @@ import { runBeforeHooks, runAfterHooks } from "./hooks/chain";
 import { createUnwiredToolHook, createPathSafetyHook, createTimingHook, createRiskConfirmHook } from "./hooks/built-in";
 import { Semaphore } from "@/lib/utils/semaphore";
 import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
+import { getToolRiskLevel } from "./tools/registry";
+import { recordDispatchStart, recordDispatchEnd } from "@/lib/db/dispatch-store";
 
 export type SubagentTask = {
   roleId: string;
@@ -61,6 +63,11 @@ export async function runSubagent(
   const outputDir = path.join(opts.parentOutputDir, "subagents", safeLabel);
   mkdirSync(outputDir, { recursive: true });
 
+  // 本次任务途中被高风险工具确认门拒绝的工具名集合
+  const blockedTools = new Set<string>();
+  // 调度记录行 id(仅已知 roleId 时写入)
+  let dispatchId: number | null = null;
+
   try {
     // roleId 校验必须先于 API key 检查:未知角色要报"未知角色",不能被 key 早返回吞掉
     const role = getRoleDefinition(task.roleId);
@@ -73,15 +80,37 @@ export async function runSubagent(
       };
     }
 
+    // 角色已解析 → 落调度起始行(roleId 未知时不落行)
+    try {
+      dispatchId = recordDispatchStart({
+        roleId: task.roleId,
+        label: task.label,
+      });
+    } catch (e) {
+      console.warn("[dispatch] recordDispatchStart 失败(不影响任务):", e);
+    }
+
     const settings = await readClaudeSettings();
 
     if (!settings.apiKey.trim()) {
-      return {
+      const result: SubagentResult = {
         label: task.label,
         content: "Claude API Key 未配置。",
         success: false,
         durationMs: Date.now() - startedAt,
       };
+      if (dispatchId != null) {
+        try {
+          recordDispatchEnd(dispatchId, {
+            status: "failed",
+            summary: result.content.slice(0, 200),
+            blockedReasons: [],
+          });
+        } catch (e) {
+          console.warn("[dispatch] recordDispatchEnd 失败(不影响任务):", e);
+        }
+      }
+      return result;
     }
 
     const allowedTools = resolveRoleAllowedTools(task.roleId);
@@ -127,12 +156,17 @@ export async function runSubagent(
       const stack = pendingToolCalls.get(toolName) ?? [];
       stack.push({ startTime: Date.now(), input });
       pendingToolCalls.set(toolName, stack);
-      return runBeforeHooks(hookChain, {
+      const hookResult = await runBeforeHooks(hookChain, {
         toolName,
         input,
         outputDir,
         resolveUserQuestion: undefined,
       });
+      // 捕获高风险工具被 deny 的情况 → 累入 blockedTools
+      if (hookResult.behavior === "deny" && getToolRiskLevel(toolName) === "high") {
+        blockedTools.add(toolName);
+      }
+      return hookResult;
     };
 
     const systemPrompt = buildSubagentSystemPrompt(role);
@@ -229,19 +263,44 @@ export async function runSubagent(
     }
 
     const content = result || chunks.join("\n").trim() || "子 Agent 已执行，但没有返回文本结果。";
-    return {
+    const subagentResult: SubagentResult = {
       label: task.label,
       content,
       success: true,
       durationMs: Date.now() - startedAt,
     };
+    if (dispatchId != null) {
+      try {
+        recordDispatchEnd(dispatchId, {
+          status: "success",
+          summary: content.slice(0, 200),
+          blockedReasons: [...blockedTools],
+        });
+      } catch (e) {
+        console.warn("[dispatch] recordDispatchEnd 失败(不影响任务):", e);
+      }
+    }
+    return subagentResult;
   } catch (error) {
-    return {
+    const content = error instanceof Error ? error.message : String(error);
+    const subagentResult: SubagentResult = {
       label: task.label,
-      content: error instanceof Error ? error.message : String(error),
+      content,
       success: false,
       durationMs: Date.now() - startedAt,
     };
+    if (dispatchId != null) {
+      try {
+        recordDispatchEnd(dispatchId, {
+          status: "failed",
+          summary: content.slice(0, 200),
+          blockedReasons: [...blockedTools],
+        });
+      } catch (e) {
+        console.warn("[dispatch] recordDispatchEnd 失败(不影响任务):", e);
+      }
+    }
+    return subagentResult;
   }
 }
 

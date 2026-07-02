@@ -400,4 +400,7 @@ void (async () => {
   const { cockpitAttentionUiTestPromise } = await import("./cockpit-attention-ui.test.ts");
   await cockpitAttentionUiTestPromise;
 
+  const { subagentDispatchesTestPromise } = await import("./subagent-dispatches.test.ts");
+  await subagentDispatchesTestPromise;
+
 })();

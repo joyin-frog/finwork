@@ -1,0 +1,143 @@
+/**
+ * dispatch-store.ts
+ *
+ * 子代理调度史读写(spec-role-registry §5)。
+ * 走 getDb() 单例,惯例与 finance-store.ts 一致。
+ */
+
+import { getDb } from "./sqlite";
+
+// ─── Write ──────────────────────────────────────────────────────────────────
+
+export type RecordDispatchStartInput = {
+  roleId: string;
+  skill?: string;
+  label?: string;
+  traceId?: string;
+  conversationId?: string;
+};
+
+/**
+ * INSERT 一条 status='running' 的调度行,返回新行 id。
+ * started_at 由 SQLite DEFAULT (datetime('now')) 填写。
+ */
+export function recordDispatchStart(input: RecordDispatchStartInput): number {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `INSERT INTO subagent_dispatches
+         (role_id, skill, label, trace_id, conversation_id, status)
+       VALUES (?, ?, ?, ?, ?, 'running')`
+    )
+    .run(
+      input.roleId,
+      input.skill ?? null,
+      input.label ?? null,
+      input.traceId ?? null,
+      input.conversationId ?? null
+    );
+  return Number(result.lastInsertRowid);
+}
+
+export type RecordDispatchEndInput = {
+  status: "success" | "failed";
+  summary?: string;
+  blockedReasons?: string[];
+};
+
+/**
+ * UPDATE 调度行:写 ended_at、duration_ms、status、summary、blocked_reason。
+ * duration_ms 由 started_at 差值计算(SQLite 侧),保证非空且非负。
+ * status 与 blocked_reason 独立——任务可以 success 同时有 blocked_reason。
+ */
+export function recordDispatchEnd(id: number, r: RecordDispatchEndInput): void {
+  const db = getDb();
+  const blockedReason =
+    r.blockedReasons && r.blockedReasons.length > 0
+      ? r.blockedReasons.join(",")
+      : null;
+  db.prepare(
+    `UPDATE subagent_dispatches
+     SET
+       status        = ?,
+       summary       = ?,
+       blocked_reason = ?,
+       ended_at      = datetime('now'),
+       duration_ms   = CAST(
+         (julianday('now') - julianday(started_at)) * 86400000
+         AS INTEGER
+       )
+     WHERE id = ?`
+  ).run(r.status, r.summary ?? null, blockedReason, id);
+}
+
+// ─── Read ───────────────────────────────────────────────────────────────────
+
+export type RoleDispatchSummary = {
+  roleId: string;
+  count: number;
+  lastAt: string | null;
+};
+
+/**
+ * GROUP BY role_id:派发次数 + 最近 started_at。
+ * 供角色卡「有记录才渲染」使用(spec §5.1)。
+ */
+export function listRoleDispatchSummary(): RoleDispatchSummary[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT role_id, COUNT(*) AS cnt, MAX(started_at) AS last_at
+       FROM subagent_dispatches
+       GROUP BY role_id`
+    )
+    .all() as Array<{ role_id: string; cnt: number; last_at: string | null }>;
+  return rows.map((r) => ({
+    roleId: r.role_id,
+    count: Number(r.cnt),
+    lastAt: r.last_at ?? null,
+  }));
+}
+
+export type BlockedDispatchRow = {
+  id: number;
+  roleId: string;
+  label: string | null;
+  summary: string | null;
+  blockedReason: string;
+  conversationId: string | null;
+  endedAt: string | null;
+};
+
+/**
+ * 查 blocked_reason 非空且 ended_at 在 sinceDays 天内的行(「停在门前的活」)。
+ * sinceDays 默认 7。
+ */
+export function listBlockedDispatches(sinceDays = 7): BlockedDispatchRow[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, role_id, label, summary, blocked_reason, conversation_id, ended_at
+       FROM subagent_dispatches
+       WHERE blocked_reason IS NOT NULL
+         AND ended_at >= datetime('now', '-' || ? || ' days')`
+    )
+    .all(sinceDays) as Array<{
+      id: number;
+      role_id: string;
+      label: string | null;
+      summary: string | null;
+      blocked_reason: string;
+      conversation_id: string | null;
+      ended_at: string | null;
+    }>;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    roleId: r.role_id,
+    label: r.label ?? null,
+    summary: r.summary ?? null,
+    blockedReason: r.blocked_reason,
+    conversationId: r.conversation_id ?? null,
+    endedAt: r.ended_at ?? null,
+  }));
+}
