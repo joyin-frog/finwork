@@ -1238,8 +1238,10 @@ export type RecentWorkItem = {
 /**
  * 最近工作列表（spec §4.1）
  *
- * status 来源：JOIN 该会话最新一条 agent_traces，按其 status 映射：
- *   running → "running"；error → "error"；其余（含无 trace）→ "done"
+ * status 来源：JOIN 该会话最新一条 agent_traces，按其 status 映射（PR #16 review 修复,2026-07-02）：
+ *   writeAgentTrace 只在回合结束时写入一行（值域 error/slow/ok，从不写 "running"）,
+ *   所以"没有 trace 行"= 还没写完(可能在跑,也可能是新对话)，不能当"已完成"处理：
+ *   无 trace(null) → "running"；trace.status=error → "error"；其余(有 trace 且非 error)→ "done"
  *
  * roleIds 来自 subagent_dispatches 按 CAST(conversation_id AS INTEGER) = c.id 关联，
  * 去重聚合，无则空数组。
@@ -1287,9 +1289,10 @@ export function listRecentWorkItems(limit = 8): RecentWorkItem[] {
   }
 
   return rows.map((row) => {
-    let status: "running" | "done" | "error" = "done";
-    if (row.trace_status === "running") status = "running";
-    else if (row.trace_status === "error") status = "error";
+    // 无 trace 行(还没结束,可能在跑)→ running；error → error；有 trace 且非 error → done
+    let status: "running" | "done" | "error" = "running";
+    if (row.trace_status === "error") status = "error";
+    else if (row.trace_status != null) status = "done";
 
     return {
       conversationId: row.conversation_id,
