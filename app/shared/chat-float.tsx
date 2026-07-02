@@ -17,7 +17,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MessageAdd01Icon, ArrowExpand01Icon, Cancel01Icon, ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import { MarkdownMessage } from "@/app/chat/markdown-message";
-import { useChatStream } from "@/app/shared/chat-stream";
+import { useChatStream, isFinished } from "@/app/shared/chat-stream";
 import type { StartTurnParams } from "@/app/shared/chat-stream";
 import type { DisplayFile, Message } from "@/app/chat/chat-types";
 
@@ -45,15 +45,21 @@ export function ChatFloat() {
   const conversationId = turn?.conversationId ?? null;
   const isStreaming = turn?.status === "streaming";
 
-  // 回合结束(done)后并入本地历史,每个 turnKey 只并入一次
+  // 回合结束后并入本地历史,每个 turnKey 只并入一次。
+  // 必须覆盖全部终态(done/error/stopped/incomplete)——只捕获 done 时,失败/中止的回合
+  // 在用户发下一句的瞬间被 startTurn 的孤儿清理逻辑吞掉,连同已流出的部分回复一起消失
+  // (PR #16 review 修复,2026-07-02)。
   useEffect(() => {
-    if (!turn || !turnKey || turn.status !== "done") return;
+    if (!turn || !turnKey || !isFinished(turn.status)) return;
     if (capturedKeyRef.current === turnKey) return;
     capturedKeyRef.current = turnKey;
+    const fallback = turn.status === "error" ? "（出错，未完成）"
+      : turn.status === "stopped" ? "（已停止）"
+      : "（无内容）";
     setHistory((prev) => [
       ...prev,
       turn.userMessage,
-      { role: "assistant", content: turn.streamedContent || "（无内容）" },
+      { role: "assistant", content: turn.streamedContent || fallback },
     ]);
   }, [turn, turnKey]);
 

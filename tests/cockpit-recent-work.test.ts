@@ -63,6 +63,16 @@ export const cockpitRecentWorkTestPromise = (async () => {
           ('payroll-officer', '2', 'success'),
           ('analyst', '2', 'success')
       `);
+
+      // status 映射回归(PR #16 review 修复,2026-07-02)：writeAgentTrace 只在回合结束时写一行
+      // (值域 error/slow/ok,从不写 running)，所以"无 trace 行"必须映射成 running 而非 done——
+      // conv1 故意不给 trace(验证无 trace → running)；conv2 给 status='ok'(→ done)；
+      // conv3 给 status='error'(→ error)。
+      rawDb.exec(`
+        INSERT INTO agent_traces (trace_id, conversation_id, started_at, status) VALUES
+          ('t-conv2', 2, '2026-06-02 11:00:05', 'ok'),
+          ('t-conv3', 3, '2026-06-03 12:00:05', 'error')
+      `);
       rawDb.close();
 
       // 动态 import（测试应先行失败，函数尚不存在）
@@ -114,6 +124,21 @@ export const cockpitRecentWorkTestPromise = (async () => {
       assert.ok(
         Array.isArray(conv3!.roleIds) && conv3!.roleIds.length === 0,
         `T1 FAIL: conv3 的 roleIds 应为空数组，实际 ${JSON.stringify(conv3!.roleIds)}`
+      );
+
+      // status 映射：无 trace(conv1) → running；trace status='ok'(conv2) → done；
+      // trace status='error'(conv3) → error（PR #16 review 修复的回归断言）
+      assert.equal(
+        conv1!.status, "running",
+        `T1 FAIL: conv1 无 trace 行应映射为 running(进行中),实际 ${conv1!.status}`
+      );
+      assert.equal(
+        conv2!.status, "done",
+        `T1 FAIL: conv2 trace status=ok 应映射为 done,实际 ${conv2!.status}`
+      );
+      assert.equal(
+        conv3!.status, "error",
+        `T1 FAIL: conv3 trace status=error 应映射为 error,实际 ${conv3!.status}`
       );
 
       // limit 生效：limit=2 只返回 2 条
