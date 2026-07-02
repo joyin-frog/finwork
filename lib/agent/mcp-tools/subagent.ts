@@ -8,7 +8,7 @@ const AVAILABLE_ROLES = ROLE_REGISTRY.filter((r) => r.available);
 const ROLE_IDS = AVAILABLE_ROLES.map((r) => r.id) as [string, ...string[]];
 const ROLE_CHEATSHEET = AVAILABLE_ROLES.map((r) => `- ${r.id}（${r.name}）：${r.charter}`).join("\n");
 
-export function createSpawnSubagentTool(sdk: Sdk, outputDir: string) {
+export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string) {
   return sdk.tool(
     "spawn_subagent",
     `按预制角色派发一个子 Agent 执行特定独立任务。
@@ -42,7 +42,7 @@ ${ROLE_CHEATSHEET}
           files: args.files ?? undefined,
           label: args.label,
         },
-        { parentOutputDir: outputDir }
+        { parentOutputDir: outputDir, traceId }
       );
       return [
         `子任务执行结果 [${result.label}]`,

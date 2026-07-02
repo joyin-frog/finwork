@@ -56,7 +56,7 @@ export function buildSubagentSystemPrompt(role: RoleDefinition): string {
 
 export async function runSubagent(
   task: SubagentTask,
-  opts: { parentOutputDir: string; signal?: AbortSignal }
+  opts: { parentOutputDir: string; signal?: AbortSignal; conversationId?: string; traceId?: string }
 ): Promise<SubagentResult> {
   const startedAt = Date.now();
   const safeLabel = task.label.replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
@@ -85,6 +85,8 @@ export async function runSubagent(
       dispatchId = recordDispatchStart({
         roleId: task.roleId,
         label: task.label,
+        conversationId: opts.conversationId,
+        traceId: opts.traceId,
       });
     } catch (e) {
       console.warn("[dispatch] recordDispatchStart 失败(不影响任务):", e);
@@ -306,7 +308,7 @@ export async function runSubagent(
 
 export async function runSubagentsParallel(
   tasks: SubagentTask[],
-  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal }
+  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal; conversationId?: string }
 ): Promise<SubagentResult[]> {
   const concurrency = opts.concurrency ?? 5;
   const semaphore = new Semaphore(concurrency);
@@ -314,7 +316,7 @@ export async function runSubagentsParallel(
   const promises = tasks.map(async (task) => {
     const release = await semaphore.acquire();
     try {
-      return await runSubagent(task, { parentOutputDir: opts.parentOutputDir, signal: opts.signal });
+      return await runSubagent(task, { parentOutputDir: opts.parentOutputDir, signal: opts.signal, conversationId: opts.conversationId });
     } finally {
       release();
     }

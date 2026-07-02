@@ -409,4 +409,7 @@ void (async () => {
   const { businessMetricsSourceTestPromise } = await import("./business-metrics-source.test.ts");
   await businessMetricsSourceTestPromise;
 
+  const { teamPanelTestPromise } = await import("./team-panel.test.ts");
+  await teamPanelTestPromise;
+
 })();

@@ -77,25 +77,37 @@ export type RoleDispatchSummary = {
   roleId: string;
   count: number;
   lastAt: string | null;
+  lastSummary: string | null;
 };
 
 /**
- * GROUP BY role_id:派发次数 + 最近 started_at。
+ * GROUP BY role_id:派发次数 + 最近 started_at + 最近一条 summary。
  * 供角色卡「有记录才渲染」使用(spec §5.1)。
  */
 export function listRoleDispatchSummary(): RoleDispatchSummary[] {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT role_id, COUNT(*) AS cnt, MAX(started_at) AS last_at
-       FROM subagent_dispatches
-       GROUP BY role_id`
+      `SELECT
+         d.role_id,
+         COUNT(*) AS cnt,
+         MAX(d.started_at) AS last_at,
+         (
+           SELECT summary
+           FROM subagent_dispatches
+           WHERE role_id = d.role_id
+           ORDER BY id DESC
+           LIMIT 1
+         ) AS last_summary
+       FROM subagent_dispatches d
+       GROUP BY d.role_id`
     )
-    .all() as Array<{ role_id: string; cnt: number; last_at: string | null }>;
+    .all() as Array<{ role_id: string; cnt: number; last_at: string | null; last_summary: string | null }>;
   return rows.map((r) => ({
     roleId: r.role_id,
     count: Number(r.cnt),
     lastAt: r.last_at ?? null,
+    lastSummary: r.last_summary ?? null,
   }));
 }
 
@@ -115,12 +127,16 @@ export type BlockedDispatchRow = {
  */
 export function listBlockedDispatches(sinceDays = 7): BlockedDispatchRow[] {
   const db = getDb();
+  // conversation_id 兜底:派发链路只带 trace_id 时,经 agent_traces 反查会话归属
   const rows = db
     .prepare(
-      `SELECT id, role_id, label, summary, blocked_reason, conversation_id, ended_at
-       FROM subagent_dispatches
-       WHERE blocked_reason IS NOT NULL
-         AND ended_at >= datetime('now', '-' || ? || ' days')`
+      `SELECT sd.id, sd.role_id, sd.label, sd.summary, sd.blocked_reason,
+              COALESCE(sd.conversation_id, CAST(at.conversation_id AS TEXT)) AS conversation_id,
+              sd.ended_at
+       FROM subagent_dispatches sd
+       LEFT JOIN agent_traces at ON at.trace_id = sd.trace_id
+       WHERE sd.blocked_reason IS NOT NULL
+         AND sd.ended_at >= datetime('now', '-' || ? || ' days')`
     )
     .all(sinceDays) as Array<{
       id: number;

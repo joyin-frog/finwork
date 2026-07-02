@@ -22,7 +22,7 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
     version: "0.1.0",
     tools: [
       createRunPythonTool(sdk, outputDir, traceId),
-      createSpawnSubagentTool(sdk, outputDir),
+      createSpawnSubagentTool(sdk, outputDir, traceId),
       createSearchKnowledgeTool(sdk),
       createQueryKnowledgeTool(sdk),
       createReadFileTool(sdk),

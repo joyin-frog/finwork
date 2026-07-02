@@ -4,14 +4,20 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { TrustBadge } from "@/app/shared/trust-badge";
 import type { AttentionItem } from "@/lib/domain/attention";
 import type { CalendarContext } from "@/lib/domain/tax-calendar";
 import { getCockpitSuggestions } from "@/lib/domain/cockpit-suggestions";
+import { ROLE_UI, ROLE_LABELS } from "@/lib/domain/role-ui";
 
 const DEFAULT_VISIBLE = 5;
 
 function AttentionCard({ item }: { item: AttentionItem }) {
   const action = item.actions[0];
+  const isGate = item.source === "gate";
+  const roleUi = isGate && item.roleId ? ROLE_UI[item.roleId as keyof typeof ROLE_UI] : null;
+  const pillTone = roleUi ? roleUi.tone : "--tone-notice";
+
   return (
     <div className="flex items-center gap-3 rounded-md border border-border bg-card px-4 py-2.5">
       <span
@@ -21,10 +27,14 @@ function AttentionCard({ item }: { item: AttentionItem }) {
       />
       <span
         className="fa-tone-pill text-meta shrink-0"
-        style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
+        style={{ "--tone": `var(${pillTone})` } as CSSProperties}
       >
         {item.sourceLabel}
+        {isGate && item.roleId && ` · ${(ROLE_LABELS as Record<string, string>)[item.roleId] ?? item.roleId}`}
       </span>
+      {isGate && (
+        <TrustBadge tier="pending" />
+      )}
       <span className="text-body flex-1 min-w-0 truncate">{item.title}</span>
       {action && (
         <Link

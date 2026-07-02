@@ -140,5 +140,73 @@ export const cockpitPageTestPromise = (async () => {
     "T8 FAIL: page.tsx 应 import/使用 RecentWorkCard（spec §4.1 最近工作卡）"
   );
 
-  console.log("cockpit-page (CV-1 + CV-2): all 8 checks passed ✓");
+  // ── T9: TeamPanel + GrowthHint（CV-3 §5）────────────────────────────────
+  // 新组件文件必须存在
+  assert.ok(
+    existsSync("app/cockpit/team-panel.tsx"),
+    "T9 FAIL: app/cockpit/team-panel.tsx 应存在（CV-3 团队面板）"
+  );
+  assert.ok(
+    existsSync("app/cockpit/team-growth-hint.tsx"),
+    "T9 FAIL: app/cockpit/team-growth-hint.tsx 应存在（CV-3 生长引导卡）"
+  );
+
+  // page.tsx 右列：team.length>0 渲染 TeamPanel，否则渲染 TeamGrowthHint
+  assert.ok(
+    pageSource.includes("TeamPanel"),
+    "T9 FAIL: page.tsx 应 import/使用 TeamPanel（§5.2）"
+  );
+  assert.ok(
+    pageSource.includes("TeamGrowthHint") || pageSource.includes("GrowthHint"),
+    "T9 FAIL: page.tsx 应 import/使用 TeamGrowthHint（§5.3 冷启动引导卡）"
+  );
+
+  // TeamPanel/GrowthHint 位置必须在右列（FinanceCalendarCard 之前或同列）——
+  // 宽松断言：右列源码中 TeamPanel 出现在 FinanceCalendarCard 之前
+  const teamPanelIdx = pageSource.indexOf("TeamPanel");
+  const growthHintIdx = Math.min(
+    pageSource.includes("TeamGrowthHint") ? pageSource.indexOf("TeamGrowthHint") : Infinity,
+    pageSource.includes("GrowthHint") && !pageSource.includes("TeamGrowthHint")
+      ? pageSource.indexOf("GrowthHint")
+      : Infinity
+  );
+  const calendarIdx = pageSource.indexOf("FinanceCalendarCard");
+  const teamOrHintIdx = Math.min(
+    teamPanelIdx === -1 ? Infinity : teamPanelIdx,
+    growthHintIdx
+  );
+  assert.ok(
+    calendarIdx !== -1,
+    "T9 FAIL: page.tsx 应含 FinanceCalendarCard"
+  );
+  assert.ok(
+    teamOrHintIdx !== Infinity && teamOrHintIdx < calendarIdx,
+    `T9 FAIL: 右列中 TeamPanel/GrowthHint（pos ${teamOrHintIdx}）应出现在 FinanceCalendarCard（pos ${calendarIdx}）之前（日历卡之上）`
+  );
+
+  // page.tsx 中 team 字段应传给 TeamPanel（data.team 或 summary?.team）
+  assert.ok(
+    pageSource.includes("team") && (pageSource.includes("summary?.team") || pageSource.includes("summary.team") || pageSource.includes("data.team") || pageSource.includes("team={") || pageSource.includes("team =")),
+    "T9 FAIL: page.tsx 应把 summary.team 传给 TeamPanel"
+  );
+
+  // ── T10: summary API 含 team 字段（CV-3 §6）────────────────────────────
+  const apiSourceT10 = await readFile("app/api/cockpit/summary/route.ts", "utf-8");
+  const apiLinesT10 = apiSourceT10.split("\n").filter(
+    (l) => !l.trim().startsWith("//") && !l.trim().startsWith("*")
+  );
+  const hasTeamKey = apiLinesT10.some((l) => /\bteam\s*:/.test(l));
+  assert.ok(
+    hasTeamKey,
+    "T10 FAIL: summary route.ts 返回的 data 应含 team 字段（非注释行，CV-3 §6）"
+  );
+
+  // types.ts 应含 team 字段
+  const typesSrcT10 = await readFile("app/cockpit/types.ts", "utf-8");
+  assert.ok(
+    typesSrcT10.includes("team"),
+    "T10 FAIL: CockpitSummary types.ts 应含 team 字段"
+  );
+
+  console.log("cockpit-page (CV-1 + CV-2 + CV-3): all 10 checks passed ✓");
 })();

@@ -13,10 +13,12 @@ import { BusinessMetricsCard } from "./business-metrics-card";
 import { CashObligationsCard } from "./cash-obligations-card";
 import { ComplianceStrip } from "./compliance-strip";
 import { DispatchInput } from "./dispatch-input";
-import { FinanceCalendarCard } from "./finance-calendar-card";
 import { MetricStrip } from "./metric-strip";
 import { PeriodBadge } from "./period-badge";
 import { RecentWorkCard } from "./recent-work-card";
+import { TeamPanel } from "./team-panel";
+import { TeamGrowthHint } from "./team-growth-hint";
+import { FinanceCalendarCard } from "./finance-calendar-card";
 
 function TodayDate() {
   const [dateStr, setDateStr] = useState("");
@@ -89,8 +91,13 @@ export default function CockpitPage() {
                 <CashObligationsCard obligations={summary?.obligations ?? []} />
               </div>
 
-              {/* 右列：财务日历 */}
+              {/* 右列：团队面板（有记录）或生长引导卡（冷启动），日历在下 */}
               <div className="flex flex-col gap-4">
+                {(summary?.team ?? []).length > 0 ? (
+                  <TeamPanel team={summary!.team} />
+                ) : (
+                  <TeamGrowthHint />
+                )}
                 <FinanceCalendarCard calendar={calendar} />
               </div>
             </div>

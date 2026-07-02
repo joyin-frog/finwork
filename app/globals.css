@@ -530,6 +530,16 @@ html button.composer-send-button.stop {
   .fa-shimmer-text { animation: none; color: var(--foreground); -webkit-text-fill-color: var(--foreground); }
 }
 
+/* 团队面板新角色入场动效(fa- 族命名;§5.2 生长时刻;一次性不循环) */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes fa-team-enter {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .fa-team-enter { animation: fa-team-enter 0.32s ease-out both; }
+}
+/* prefers-reduced-motion: reduce 时无动画,直接出现(无需额外声明,无 animation 属性即可) */
+
 /* 全站滚动条:细、淡、圆角。内容溢出才出现(overflow:auto 默认)。
    默认隐形(thumb 透明),有滚动意图时才浮现——<html>.fa-scrolling 由 ScrollbarFade
    在 scroll 事件时加上、停下 ~1.2s 后移除;直接 hover 到滚动条上(想抓拖)也显形。

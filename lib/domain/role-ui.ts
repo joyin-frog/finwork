@@ -26,12 +26,12 @@ export type RoleUiSpec = {
  * 将来由 role-registry 测试守卫一致性时再收紧（Phase 3）。
  */
 export const ROLE_LABELS: Record<string, string> = {
-  "bookkeeper":          "记账员",
-  "payroll-officer":     "薪资专员",
+  "bookkeeper":          "记账专员",
+  "payroll-officer":     "薪税专员",
   "tax-officer":         "税务专员",
   "treasury-officer":    "资金专员",
-  "receivables-officer": "应收专员",
-  "analyst":             "财务分析师",
+  "receivables-officer": "往来专员",
+  "analyst":             "经营分析师",
 };
 
 export const ROLE_UI: Record<RoleId, RoleUiSpec> = {

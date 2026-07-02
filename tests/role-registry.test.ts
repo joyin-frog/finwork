@@ -227,5 +227,35 @@ export const roleRegistryTestPromise = (async () => {
     );
   }
 
-  console.log("role-registry: all 6 guards passed ✓");
+  // ── G7: ROLE_LABELS 与 ROLE_REGISTRY id→name 逐项一致（防前端副本漂移） ──
+  // PR5 引入 lib/domain/role-ui.ts 的 ROLE_LABELS 是服务端 registry 的 client-safe 副本，
+  // 两者中文名若漂移会造成 UI 显示与注册表不一致。此守卫强制同步。
+  {
+    const { ROLE_LABELS } = await import("../lib/domain/role-ui.ts");
+
+    // 每个 ROLE_REGISTRY 条目的 name 必须与 ROLE_LABELS[id] 相等
+    for (const role of ROLE_REGISTRY) {
+      const labelName = ROLE_LABELS[role.id];
+      assert.ok(
+        labelName !== undefined,
+        `G7 FAIL: ROLE_LABELS 缺少 id "${role.id}"（在 ROLE_REGISTRY 中存在但 role-ui.ts 中没有对应项）`
+      );
+      assert.equal(
+        labelName,
+        role.name,
+        `G7 FAIL: ROLE_LABELS["${role.id}"] = "${labelName}" 与 ROLE_REGISTRY name = "${role.name}" 不一致`
+      );
+    }
+
+    // 反向：ROLE_LABELS 中的每个 key 必须在 ROLE_REGISTRY 中存在
+    const registryIds = new Set(ROLE_REGISTRY.map((r: { id: string }) => r.id));
+    for (const labelId of Object.keys(ROLE_LABELS)) {
+      assert.ok(
+        registryIds.has(labelId),
+        `G7 FAIL: ROLE_LABELS 含 id "${labelId}"，但 ROLE_REGISTRY 中不存在该角色（孤立副本）`
+      );
+    }
+  }
+
+  console.log("role-registry: all 7 guards passed ✓");
 })();

@@ -135,11 +135,83 @@ export function deriveAttentionItems(
     });
   }
 
-  // urgent 全部在前，同级保持原序
-  items.sort((a, b) => {
-    if (a.severity === b.severity) return 0;
-    return a.severity === "urgent" ? -1 : 1;
-  });
+  // urgent 全部在前；同 severity 内 rule 在前、gate 按 occurredAt 降序在后
+  sortAttentionItems(items);
 
   return items;
+}
+
+/**
+ * 排序规则（编排者裁决 2026-07-02）：
+ * - urgent 全部在前；
+ * - 同 severity 内：rule 在前，gate 按 occurredAt 降序在后。
+ */
+export function sortAttentionItems(items: AttentionItem[]): void {
+  items.sort((a, b) => {
+    // urgent 优先
+    if (a.severity !== b.severity) {
+      return a.severity === "urgent" ? -1 : 1;
+    }
+    // 同 severity：rule 在前，gate 在后
+    if (a.source !== b.source) {
+      return a.source === "rule" ? -1 : 1;
+    }
+    // 同 source=gate：occurredAt 降序（最新在前）
+    if (a.source === "gate" && b.source === "gate") {
+      const aT = a.occurredAt ?? "";
+      const bT = b.occurredAt ?? "";
+      if (aT < bT) return 1;
+      if (aT > bT) return -1;
+    }
+    return 0;
+  });
+}
+
+/**
+ * gate 供给源转换：blocked dispatch 行 → AttentionItem（spec §3.1）
+ *
+ * 分支 A：conversationId 有 → action.href = /chat/recent?id=，label = 「回到原对话」
+ * 分支 B：conversationId 无 → action.href = /chat/new?prompt=（含角色名与 summary），label = 「继续处理」
+ */
+export function blockedDispatchToAttentionItem(
+  row: {
+    id: number;
+    roleId: string;
+    label: string | null;
+    summary: string | null;
+    blockedReason: string;
+    conversationId: string | null;
+    endedAt: string | null;
+  },
+  roleName: string
+): AttentionItem {
+  const summaryFirstLine = (row.summary ?? "").split("\n")[0].trim();
+  const title = `${roleName}的工作停在确认门：${summaryFirstLine}`;
+
+  let action: { label: string; href: string; primary: true };
+  if (row.conversationId) {
+    action = {
+      label: "回到原对话",
+      href: `/chat/recent?id=${row.conversationId}`,
+      primary: true,
+    };
+  } else {
+    const prompt = `继续处理${roleName}的任务：${summaryFirstLine}`;
+    action = {
+      label: "继续处理",
+      href: `/chat/new?prompt=${encodeURIComponent(prompt)}`,
+      primary: true,
+    };
+  }
+
+  return {
+    id: `gate-${row.id}`,
+    source: "gate",
+    sourceLabel: "停在确认门",
+    roleId: row.roleId,
+    severity: "normal",
+    title,
+    actions: [action],
+    occurredAt: row.endedAt ?? undefined,
+  };
 }

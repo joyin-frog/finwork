@@ -82,8 +82,22 @@ export const cockpitAttentionUiTestPromise = (async () => {
     );
     assert.ok(asSrc.includes("fa-dot-pulse"), "B6 FAIL: AttentionSection 源码应含 urgent 脉冲 fa-dot-pulse");
     assert.ok(asSrc.includes("还有"), "B6 FAIL: AttentionSection 源码折叠文案应含「还有」");
-    // rule 类不带 TrustBadge（§3.2）
-    assert.ok(!asSrc.includes("TrustBadge"), "B6 FAIL: AttentionSection 不应 import TrustBadge（rule 类不带信任徽章）");
+    // Phase 3 裁决（2026-07-02）：gate 类卡片必须带 TrustBadge。
+    // 旧断言「不应 import TrustBadge」在 Phase 1 时写入，因 Phase 3 起 attention-section
+    // 须渲染 gate 类卡片，gate 类带 TrustBadge，故反转为「必须 import TrustBadge」。
+    assert.ok(asSrc.includes("TrustBadge"), "B6 FAIL: AttentionSection 应 import TrustBadge（gate 类卡片须带信任徽章，Phase 3 裁决）");
+
+    // gate 卡片渲染特征：source==="gate" 分支必须存在
+    assert.ok(
+      asSrc.includes('"gate"') || asSrc.includes("=== \"gate\"") || asSrc.includes("==='gate'") || asSrc.includes('source === "gate"'),
+      "B6 FAIL: AttentionSection 源码应含 source===\"gate\" 分支（gate 类卡片渲染）"
+    );
+
+    // gate 类使用角色 tone（引用 ROLE_UI 或 roleId + tone 的映射）
+    assert.ok(
+      asSrc.includes("ROLE_UI") || asSrc.includes("roleId") || asSrc.includes("role-ui"),
+      "B6 FAIL: AttentionSection 源码应引用角色 tone（通过 ROLE_UI 或 roleId 映射）"
+    );
   }
 
   // ── B7: dispatch-input.tsx 新组件存在且满足 UI 契约 ─────────────────────

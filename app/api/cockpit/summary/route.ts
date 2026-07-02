@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { getInvoiceLedgerStats, getPayrollPeriodSummary, getBusinessOverview } from "@/lib/db/finance-store";
 import { listConfirmedMetaDocRows, listRecentWorkItems } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
-import { deriveAttentionItems } from "@/lib/domain/attention";
+import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
 import { deriveCashObligations, obligationsInMonth, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
+import { listRoleDispatchSummary, listBlockedDispatches } from "@/lib/db/dispatch-store";
+import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
 import { appendServerLog } from "@/lib/runtime/server-log";
 
@@ -33,13 +35,39 @@ export async function GET() {
     }));
     const obligations = deriveCashObligations(oblDocs);
 
+    // 关注区：rule 供给源 + gate 供给源合并排序
+    const ruleItems = deriveAttentionItems(calendar, payroll, obligations);
+    const blockedDispatches = listBlockedDispatches(7);
+    const gateItems = blockedDispatches.map((row) => {
+      const reg = ROLE_REGISTRY.find((r) => r.id === row.roleId);
+      const roleName = reg?.name ?? row.roleId;
+      return blockedDispatchToAttentionItem(row, roleName);
+    });
+    const attention = [...ruleItems, ...gateItems];
+    sortAttentionItems(attention);
+
+    // 团队面板：有调度记录的角色（name/charter 从 ROLE_REGISTRY 取）
+    const dispatchSummaries = listRoleDispatchSummary();
+    const team = dispatchSummaries.map((s) => {
+      const reg = ROLE_REGISTRY.find((r) => r.id === s.roleId);
+      return {
+        roleId: s.roleId,
+        name: reg?.name ?? s.roleId,
+        charter: reg?.charter ?? "",
+        dispatchCount: s.count,
+        lastAt: s.lastAt,
+        lastSummary: s.lastSummary,
+      };
+    });
+
     const data = {
       payroll,
       invoices,
-      attention: deriveAttentionItems(calendar, payroll, obligations),
+      attention,
       business: getBusinessOverview(now),
       obligations: obligationsInMonth(obligations, year, month),
       recentWork: listRecentWorkItems(8),
+      team: team,
     };
 
     return NextResponse.json({ ok: true, data });

@@ -22,6 +22,7 @@ export function DispatchInput({ calendar }: { calendar: CalendarContext | null }
 
   return (
     <Input
+      id="dispatch-input-field"
       value={text}
       onChange={(e) => setText(e.target.value)}
       onKeyDown={handleKeyDown}
