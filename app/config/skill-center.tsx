@@ -177,7 +177,16 @@ export default function SkillCenter({
                 onRoleModeChange={(v) => { setRoleMode(v); scheduleClaudeSave(); }}
               />
             )}
-            {activeTab === "skills" && <SkillsManager />}
+            {activeTab === "skills" && (
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-end">
+                  <Link href="/skills" className="text-meta text-muted-foreground hover:text-foreground transition-colors">
+                    全屏打开 ↗
+                  </Link>
+                </div>
+                <SkillsManager />
+              </div>
+            )}
             {activeTab === "memory" && <MemorySettings />}
             {activeTab === "profile" && <ProfileSettings />}
             {activeTab === "usage" && <UsageSettings />}

@@ -98,11 +98,16 @@ export const navV3TestPromise = (async () => {
       "C6 FAIL: app/skills/page.tsx 应保留（/skills 路由不删除，只重定向）"
     );
     const skillsPageSrc = src("app/skills/page.tsx");
-    // 裁决修订(2026-07-02):设置页原本没有技能 tab,重定向必须深链到 ?tab=skills 才不丢功能
+    // 裁决修订二(2026-07-02):导航降权与阅读空间分离——/skills 恢复为独立全屏页(渲染 SkillsManager),
+    // 但不回导航(C5 仍守卫导航无 /skills 项);设置技能 tab 保留并提供「全屏打开」跳板
     assert.ok(
-      skillsPageSrc.includes('redirect("/config?tab=skills")') ||
-        skillsPageSrc.includes("redirect('/config?tab=skills')"),
-      "C6 FAIL: app/skills/page.tsx 应重定向到 /config?tab=skills（技能中心 tab 深链）"
+      skillsPageSrc.includes("SkillsManager"),
+      "C6 FAIL: app/skills/page.tsx 应渲染 SkillsManager（独立全屏技能页）"
+    );
+    const skillCenterSrc = src("app/config/skill-center.tsx");
+    assert.ok(
+      skillCenterSrc.includes('href="/skills"') && skillCenterSrc.includes("全屏打开"),
+      "C6 FAIL: 设置技能 tab 应含「全屏打开」跳板链接到 /skills"
     );
   }
 
