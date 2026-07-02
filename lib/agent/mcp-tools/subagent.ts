@@ -5,7 +5,7 @@ import { listDispatchableRoleIds } from "@/lib/agent/roles/availability";
 
 type Sdk = SdkLike;
 
-export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string) {
+export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string) {
   // 从 ROLE_REGISTRY 按 available 过滤，再经 listDispatchableRoleIds 排除用户停用的角色
   const dispatchableIds = listDispatchableRoleIds();
   const ROLE_IDS = dispatchableIds as [string, ...string[]];
@@ -47,7 +47,7 @@ ${ROLE_CHEATSHEET}
           files: args.files ?? undefined,
           label: args.label,
         },
-        { parentOutputDir: outputDir, traceId }
+        { parentOutputDir: outputDir, traceId, conversationId }
       );
       return [
         `子任务执行结果 [${result.label}]`,

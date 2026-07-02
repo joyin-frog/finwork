@@ -100,26 +100,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import rehypeHighlight from "rehype-highlight";
 import { useUsage } from "./use-usage";
 import { UsageRing } from "./usage-ring";
 import { cn } from "@/lib/utils";
-import type { PluggableList } from "unified";
-
-
-const REHYPE_SANITIZE_SCHEMA = {
-  ...defaultSchema,
-  attributes: {
-    ...defaultSchema.attributes,
-    code: [...(defaultSchema.attributes?.code ?? []), "className"],
-    pre: [...(defaultSchema.attributes?.pre ?? []), "className"],
-    span: [...(defaultSchema.attributes?.span ?? []), "className"],
-  },
-  protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? []), "finance-file"] },
-};
-
-const REHYPE_PLUGINS: PluggableList = [rehypeHighlight, [rehypeSanitize, REHYPE_SANITIZE_SCHEMA]];
 
 type ChatMode = "new" | "recent";
 

@@ -73,6 +73,8 @@ export type ClaudeAgentRunOptions = {
   /** 路由器的模型分层结果:简单任务用更轻的模型;缺省走设置里的主模型 */
   modelOverride?: string;
   traceId?: string;
+  /** 派发子代理时写入 subagent_dispatches.conversation_id,供「最近工作」角色徽章关联(2026-07-02 补) */
+  conversationId?: number;
 };
 
 /**
@@ -185,7 +187,12 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   const outputDir = runOptions.outputDir ?? path.join(tmpdir(), `finance-agent-output-${requestId}`);
   mkdirSync(outputDir, { recursive: true });
 
-  const mcpServers = await buildFinanceMcpServers(sdk, outputDir, requestId);
+  const mcpServers = await buildFinanceMcpServers(
+    sdk,
+    outputDir,
+    requestId,
+    runOptions.conversationId != null ? String(runOptions.conversationId) : undefined
+  );
   // 静态工具全集(含 Bash/Write 供 skill 脚本);不再按 skill 收敛,高风险工具经确认门兜底。
   const allowedTools = ALLOWED_TOOLS;
   const skillPlugin = await getSkillPluginConfig();

@@ -35,11 +35,27 @@ export function ChatFloat() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [turnKey, setTurnKey] = useState<string | null>(null);
+  // 本地历史:每轮 key 都不同(见 handleSend),turn store 里的对象只装当前这一轮,
+  // 不接住就会在下一句发出去的瞬间从界面消失——history 负责把已完成的轮次留住。
+  const [history, setHistory] = useState<Message[]>([]);
+  const capturedKeyRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const turn = getTurn(turnKey);
   const conversationId = turn?.conversationId ?? null;
   const isStreaming = turn?.status === "streaming";
+
+  // 回合结束(done)后并入本地历史,每个 turnKey 只并入一次
+  useEffect(() => {
+    if (!turn || !turnKey || turn.status !== "done") return;
+    if (capturedKeyRef.current === turnKey) return;
+    capturedKeyRef.current = turnKey;
+    setHistory((prev) => [
+      ...prev,
+      turn.userMessage,
+      { role: "assistant", content: turn.streamedContent || "（无内容）" },
+    ]);
+  }, [turn, turnKey]);
 
   // ─── A7: /chat 路径下圆钮隐藏 ───────────────────────────────────────────
   const isOnChat = pathname.startsWith("/chat");
@@ -94,8 +110,8 @@ export function ChatFloat() {
       key,
       conversationId: conversationId,
       userMessage,
-      baseMessages: [],
-      requestMessages: [userMessage],
+      baseMessages: history,
+      requestMessages: [...history, userMessage],
       attachments: [],
       referencedAttachments: [],
     };
@@ -103,7 +119,7 @@ export function ChatFloat() {
     setDraft("");
     setTurnKey(key);
     startTurn(params);
-  }, [draft, isStreaming, conversationId, startTurn]);
+  }, [draft, isStreaming, conversationId, startTurn, history]);
 
   // ─── A6: 放大按钮双分支 ──────────────────────────────────────────────────
   function handleExpand() {
@@ -118,6 +134,8 @@ export function ChatFloat() {
   // ─── 组装助手回显文本 ────────────────────────────────────────────────────
   const assistantContent = turn?.streamedContent ?? "";
   const userContent = turn?.userMessage.content ?? "";
+  // 当前轮一旦被并入 history(effect 里发生),这里不再重复渲染,避免同一轮闪现两次
+  const showLiveTurn = turn != null && capturedKeyRef.current !== turnKey;
 
   // ─── 渲染 ────────────────────────────────────────────────────────────────
   return (
@@ -144,7 +162,7 @@ export function ChatFloat() {
         >
           {/* 标题栏 */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-            <span className="text-sm font-medium text-foreground">对话</span>
+            <span className="text-body font-medium text-foreground">对话</span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -167,19 +185,36 @@ export function ChatFloat() {
 
           {/* 消息区 */}
           <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3 min-h-0">
-            {/* 用户气泡 */}
-            {userContent && (
+            {/* 历史消息(已完成的往轮,不然发下一句时会从界面消失) */}
+            {history.map((m, i) =>
+              m.role === "user" ? (
+                <div key={i} className="flex justify-end">
+                  <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-body text-primary-foreground whitespace-pre-wrap break-words">
+                    {m.content}
+                  </div>
+                </div>
+              ) : (
+                <div key={i} className="flex justify-start">
+                  <div className="max-w-[90%] text-body md-content">
+                    <MarkdownMessage content={m.content} conversationId={conversationId} files={EMPTY_FILES} onPreviewFile={noop} />
+                  </div>
+                </div>
+              )
+            )}
+
+            {/* 当前这一轮(用户气泡) */}
+            {showLiveTurn && userContent && (
               <div className="flex justify-end">
-                <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground whitespace-pre-wrap break-words">
+                <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-body text-primary-foreground whitespace-pre-wrap break-words">
                   {userContent}
                 </div>
               </div>
             )}
 
             {/* 助手回显 */}
-            {(assistantContent || isStreaming) && (
+            {showLiveTurn && (assistantContent || isStreaming) && (
               <div className="flex justify-start">
-                <div className="max-w-[90%] text-sm md-content">
+                <div className="max-w-[90%] text-body md-content">
                   {isStreaming && !assistantContent ? (
                     <span className="text-muted-foreground animate-pulse">正在处理…</span>
                   ) : (
@@ -209,7 +244,7 @@ export function ChatFloat() {
               }}
               placeholder="有什么财务问题？（Enter 发送）"
               rows={2}
-              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               aria-label="对话输入"
             />
             <button

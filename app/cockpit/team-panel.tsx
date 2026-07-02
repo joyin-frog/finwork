@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { TeamRoleItem } from "./types";
 import { ROLE_UI } from "@/lib/domain/role-ui";
+import { relativeTime } from "@/lib/utils/relative-time";
 
 const SEEN_KEY = "cockpit.seenRoleIds";
 
@@ -25,18 +26,6 @@ function saveSeenIds(ids: Set<string>): void {
   try {
     localStorage.setItem(SEEN_KEY, JSON.stringify([...ids]));
   } catch { /* ignore */ }
-}
-
-function relativeTime(isoStr: string | null): string {
-  if (!isoStr) return "";
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const min = Math.floor(diff / 60_000);
-  if (min < 60) return min <= 1 ? "刚刚" : `${min} 分钟前`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h} 小时前`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d} 天前`;
-  return `${Math.floor(d / 30)} 个月前`;
 }
 
 type DispatchRow = {
@@ -74,11 +63,11 @@ function RoleDispatchExpand({ roleId }: { roleId: string }) {
   }, [load]);
 
   if (loading) {
-    return <p className="text-xs text-muted-foreground py-1 pl-10">加载中…</p>;
+    return <p className="text-meta text-muted-foreground py-1 pl-10">加载中…</p>;
   }
 
   if (!rows || rows.length === 0) {
-    return <p className="text-xs text-muted-foreground py-1 pl-10">暂无工作记录</p>;
+    return <p className="text-meta text-muted-foreground py-1 pl-10">暂无工作记录</p>;
   }
 
   return (
@@ -88,13 +77,15 @@ function RoleDispatchExpand({ roleId }: { roleId: string }) {
         const href = row.conversationId ? `/chat/recent?id=${row.conversationId}` : undefined;
 
         const inner = (
-          <div className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${
-            isBlocked
-              ? "bg-[color:var(--tone-notice,hsl(var(--muted)))/0.12] border border-[color:var(--tone-notice,hsl(var(--border)))]"
-              : "bg-muted/40"
-          }`}>
+          <div
+            className={`flex items-center gap-2 rounded px-2 py-1 text-meta ${isBlocked ? "fa-toned" : "bg-muted/40"}`}
+            style={isBlocked ? ({ "--tone": "var(--tone-notice)" } as CSSProperties) : undefined}
+          >
             {isBlocked && (
-              <span className="shrink-0 font-medium px-1.5 py-0.5 rounded bg-[color:var(--tone-notice,hsl(var(--muted)))] text-[color:var(--tone-notice-fg,hsl(var(--foreground)))] whitespace-nowrap text-xs">
+              <span
+                className="fa-tone-pill shrink-0 whitespace-nowrap"
+                style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
+              >
                 待确认
               </span>
             )}
@@ -144,7 +135,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
 
   return (
     <section className="rounded-lg border border-border bg-card px-4 py-3 flex flex-col gap-2">
-      <h2 className="text-sm font-semibold">智能体</h2>
+      <h2 className="text-title font-semibold">智能体</h2>
       <div className="flex flex-col gap-1.5">
         {team.map((item) => {
           const ui = ROLE_UI[item.roleId as keyof typeof ROLE_UI];
@@ -178,22 +169,22 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
               >
                 {/* 圆形域图标（fa-toned 底，角色 tone） */}
                 <span
-                  className="fa-toned shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold select-none"
+                  className="fa-toned shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-meta font-semibold select-none"
                   style={{ "--tone": `var(${tone})` } as CSSProperties}
                   aria-hidden="true"
                 >
                   {item.name.slice(0, 1)}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium">{item.name}</span>
+                  <span className="text-body font-medium">{item.name}</span>
                 </div>
-                <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
+                <span className="text-meta text-muted-foreground shrink-0 whitespace-nowrap">
                   {item.dispatchCount} 次{item.lastAt ? ` · ${relativeTime(item.lastAt)}` : ""}
                 </span>
                 {/* 行尾「派活」次动作 → 预填派活入口并聚焦 */}
                 <button
                   type="button"
-                  className="shrink-0 text-xs text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors"
+                  className="shrink-0 text-meta text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors"
                   onClick={handleDispatch}
                   aria-label={`让${item.name}派活`}
                 >
@@ -208,7 +199,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
         })}
       </div>
       <div className="pt-1 border-t border-border">
-        <Link href="/agents" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <Link href="/agents" className="text-meta text-muted-foreground hover:text-foreground transition-colors">
           查看全部 →
         </Link>
       </div>

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ROLE_UI } from "@/lib/domain/role-ui";
+import type { DispatchRow } from "@/lib/db/dispatch-store";
+import { relativeTime } from "@/lib/utils/relative-time";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -33,32 +35,6 @@ type AgentRosterItem = {
   lastAt: string | null;
   invoiceStats?: InvoiceStats;
 };
-
-type DispatchRow = {
-  id: number;
-  roleId: string;
-  label: string | null;
-  summary: string | null;
-  status: string;
-  blockedReason: string | null;
-  conversationId: string | null;
-  startedAt: string | null;
-  endedAt: string | null;
-};
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function relativeTime(isoStr: string | null): string {
-  if (!isoStr) return "";
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const min = Math.floor(diff / 60_000);
-  if (min < 60) return min <= 1 ? "刚刚" : `${min} 分钟前`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h} 小时前`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d} 天前`;
-  return `${Math.floor(d / 30)} 个月前`;
-}
 
 // ─── DispatchList（台账区，按需懒加载） ────────────────────────────────────
 
@@ -107,12 +83,14 @@ function DispatchList({ roleId, initialDispatches }: { roleId: string; initialDi
 
         const inner = (
           <div
-            className={`flex items-start gap-2 rounded px-2 py-1.5 text-meta ${
-              isBlocked ? "bg-[color:var(--tone-notice,hsl(var(--muted)))/0.12] border border-[color:var(--tone-notice,hsl(var(--border)))]" : "bg-muted/40"
-            }`}
+            className={`flex items-start gap-2 rounded px-2 py-1.5 text-meta ${isBlocked ? "fa-toned" : "bg-muted/40"}`}
+            style={isBlocked ? ({ "--tone": "var(--tone-notice)" } as CSSProperties) : undefined}
           >
             {isBlocked && (
-              <span className="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded bg-[color:var(--tone-notice,hsl(var(--muted)))] text-[color:var(--tone-notice-fg,hsl(var(--foreground)))] whitespace-nowrap">
+              <span
+                className="fa-tone-pill shrink-0 font-medium whitespace-nowrap"
+                style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
+              >
                 停在确认门
               </span>
             )}
@@ -184,7 +162,7 @@ function AgentRow({ agent, onToggle }: { agent: AgentRosterItem; onToggle: () =>
       >
         {/* 圆形域图标 */}
         <span
-          className="fa-toned shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold select-none"
+          className="fa-toned shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-body font-semibold select-none"
           style={{ "--tone": `var(${tone})` } as CSSProperties}
           aria-hidden="true"
         >
@@ -193,7 +171,7 @@ function AgentRow({ agent, onToggle }: { agent: AgentRosterItem; onToggle: () =>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold">{agent.name}</span>
+            <span className="text-body font-semibold">{agent.name}</span>
             <span className="text-meta text-muted-foreground">{agent.domain}</span>
             {agent.userDisabled && (
               <span className="text-meta px-1.5 py-0.5 rounded bg-muted text-muted-foreground">

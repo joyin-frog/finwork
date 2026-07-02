@@ -5,21 +5,10 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ROLE_UI, ROLE_LABELS } from "@/lib/domain/role-ui";
 import type { RecentWorkItem } from "@/lib/db/sqlite";
+import { relativeTime } from "@/lib/utils/relative-time";
 
 /** ≤8 条限制：由 listRecentWorkItems(8) 保证；此处用常量记录意图。 */
 const MAX_ITEMS = 8;
-
-function relativeTime(updatedAt: string): string {
-  const diff = Date.now() - new Date(updatedAt).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} 天前`;
-  return `${Math.floor(days / 30)} 个月前`;
-}
 
 function StatusDot({ status }: { status: RecentWorkItem["status"] }) {
   if (status === "running") {

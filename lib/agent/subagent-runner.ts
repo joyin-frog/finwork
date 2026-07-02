@@ -80,8 +80,19 @@ export async function runSubagent(
       };
     }
 
-    // 停用检查：紧贴未知角色校验之后、dispatch 落行之前
-    // 已停用角色不落 dispatch 台账行
+    // 可派发性检查：紧贴未知角色校验之后、dispatch 落行之前
+    // ① 注册表预留(available:false,作业未落地)——spawn 层枚举已挡,这里独立兜底,
+    //   防止未来新增的内部派发入口(如巡检)绕过 spawn 层直接调 runSubagent
+    // ② 用户手动停用(app_settings)
+    // 两者均不落 dispatch 台账行(编制外/未启用的活不进台账)
+    if (!role.available) {
+      return {
+        label: task.label,
+        content: `角色 "${task.roleId}"（${role.name}）尚未启用，无法执行任务。`,
+        success: false,
+        durationMs: Date.now() - startedAt,
+      };
+    }
     {
       const { getDisabledRoleIds } = await import("@/lib/agent/roles/availability");
       const disabledIds = getDisabledRoleIds();
@@ -323,7 +334,7 @@ export async function runSubagent(
 
 export async function runSubagentsParallel(
   tasks: SubagentTask[],
-  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal; conversationId?: string }
+  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal; conversationId?: string; traceId?: string }
 ): Promise<SubagentResult[]> {
   const concurrency = opts.concurrency ?? 5;
   const semaphore = new Semaphore(concurrency);
@@ -331,7 +342,12 @@ export async function runSubagentsParallel(
   const promises = tasks.map(async (task) => {
     const release = await semaphore.acquire();
     try {
-      return await runSubagent(task, { parentOutputDir: opts.parentOutputDir, signal: opts.signal, conversationId: opts.conversationId });
+      return await runSubagent(task, {
+        parentOutputDir: opts.parentOutputDir,
+        signal: opts.signal,
+        conversationId: opts.conversationId,
+        traceId: opts.traceId,
+      });
     } finally {
       release();
     }

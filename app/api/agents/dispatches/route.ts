@@ -15,8 +15,12 @@ export async function GET(request: Request) {
       );
     }
 
-    const limit = limitParam ? Math.max(1, parseInt(limitParam, 10)) : 20;
-    const offset = offsetParam ? Math.max(0, parseInt(offsetParam, 10)) : 0;
+    // parseInt 对非数字字符串返回 NaN,Math.max(1/0, NaN) 仍是 NaN——直传 SQLite LIMIT/OFFSET 会抛异常,
+    // 用 Number.isFinite 兜底非法输入(2026-07-02 review 修复)。
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
+    const parsedOffset = offsetParam ? parseInt(offsetParam, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 20;
+    const offset = Number.isFinite(parsedOffset) ? Math.max(0, parsedOffset) : 0;
 
     const rows = listDispatchesByRole(roleId, limit, offset);
 

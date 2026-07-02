@@ -93,7 +93,7 @@ export function RoleActivityTicker({ calendar }: { calendar: CalendarContext | n
     const hint = calendar ? getCockpitSuggestions(calendar).attentionEmptyHint : null;
     if (!hint) return null;
     return (
-      <p className="text-sm text-muted-foreground px-1 py-1">
+      <p className="text-body text-muted-foreground px-1 py-1">
         {hint}
       </p>
     );
@@ -105,7 +105,7 @@ export function RoleActivityTicker({ calendar }: { calendar: CalendarContext | n
 
   return (
     <div
-      className="text-sm text-muted-foreground px-1 py-1 transition-opacity duration-300 motion-reduce:transition-none"
+      className="text-body text-muted-foreground px-1 py-1 transition-opacity duration-300 motion-reduce:transition-none"
       style={{ opacity: visible ? 1 : 0 }}
     >
       {href ? (
