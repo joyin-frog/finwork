@@ -272,6 +272,9 @@ void (async () => {
   const { scanSlipFolderTestPromise } = await import("./scan-slip-folder.test.ts");
   await scanSlipFolderTestPromise;
 
+  const { knowledgeResultShapeTestPromise } = await import("./knowledge-result-shape.test.ts");
+  await knowledgeResultShapeTestPromise;
+
   const { receiptTestPromise } = await import("./receipt.test.ts");
   await receiptTestPromise;
 
