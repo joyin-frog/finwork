@@ -8,7 +8,7 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { getCalendarContext, type CalendarContext } from "@/lib/domain/tax-calendar";
 import type { CockpitSummary } from "./types";
-import { DispatchInput } from "./dispatch-input";
+import { RoleActivityTicker } from "./role-activity-ticker";
 import { AttentionSection } from "./attention-section";
 import { BusinessMetricsCard } from "./business-metrics-card";
 import { CashObligationsCard } from "./cash-obligations-card";
@@ -75,7 +75,7 @@ export default function CockpitPage() {
           </div>
         ) : (
           <>
-            <DispatchInput calendar={calendar} />
+            <RoleActivityTicker calendar={calendar} />
             <AttentionSection items={summary?.attention ?? []} calendar={calendar} />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -7,8 +7,8 @@
  * 契约 2 — cockpit summary API：响应移除 invoices 字段；
  *           attention/payroll/business/obligations/recentWork/team 保留；types.ts 同步
  * 契约 3 — app/cockpit/team-panel.tsx：标题「我的团队」→「智能体」
- * 契约 4 — page.tsx v3 顺序：DispatchInput < AttentionSection < BusinessMetricsCard < CashObligationsCard；
- *           MetricStrip 不出现；全文件 ≤160 行
+ * 契约 4 — page.tsx v3 顺序：RoleActivityTicker < AttentionSection < BusinessMetricsCard < CashObligationsCard；
+ *           DispatchInput 不出现（D1 退役）；MetricStrip 不出现；全文件 ≤160 行
  *
  * 运行：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true npx tsx tests/cockpit-v3-slim.test.ts
  */
@@ -135,17 +135,25 @@ export const cockpitV3SlimTestPromise = (async () => {
     );
   }
 
-  // ── 契约 4a: page.tsx v3 顺序：DispatchInput < AttentionSection < BusinessMetricsCard < CashObligationsCard ─
+  // ── 契约 4a: page.tsx v3 顺序（D1 更新）：RoleActivityTicker < AttentionSection < BusinessMetricsCard < CashObligationsCard ─
+  // D1 切片: DispatchInput 退役，由 RoleActivityTicker 接替其位置（动态条排首位）
   {
     const pageSrc = src("app/cockpit/page.tsx");
-    const dispatchIdx = pageSrc.indexOf("DispatchInput");
+
+    // DispatchInput 已退役，不应出现
+    assert.ok(
+      !pageSrc.includes("DispatchInput"),
+      "C4a FAIL: page.tsx 不应含 DispatchInput（D1 切片已退役，由 RoleActivityTicker 接替）"
+    );
+
+    const tickerIdx = pageSrc.indexOf("RoleActivityTicker");
     const attentionIdx = pageSrc.indexOf("AttentionSection");
     const bizIdx = pageSrc.indexOf("BusinessMetricsCard");
     const cashIdx = pageSrc.indexOf("CashObligationsCard");
 
     assert.ok(
-      dispatchIdx !== -1,
-      "C4a FAIL: page.tsx 应含 DispatchInput"
+      tickerIdx !== -1,
+      "C4a FAIL: page.tsx 应含 RoleActivityTicker（D1 切片：接替 DispatchInput 位置的动态条）"
     );
     assert.ok(
       attentionIdx !== -1,
@@ -160,8 +168,8 @@ export const cockpitV3SlimTestPromise = (async () => {
       "C4a FAIL: page.tsx 应含 CashObligationsCard"
     );
     assert.ok(
-      dispatchIdx < attentionIdx,
-      `C4a FAIL: DispatchInput（pos ${dispatchIdx}）应先于 AttentionSection（pos ${attentionIdx}）`
+      tickerIdx < attentionIdx,
+      `C4a FAIL: RoleActivityTicker（pos ${tickerIdx}）应先于 AttentionSection（pos ${attentionIdx}）`
     );
     assert.ok(
       attentionIdx < bizIdx,

@@ -427,4 +427,10 @@ void (async () => {
   const { cockpitTeamExpandTestPromise } = await import("./cockpit-team-expand.test.ts");
   await cockpitTeamExpandTestPromise;
 
+  const { chatFloatTestPromise } = await import("./chat-float.test.ts");
+  await chatFloatTestPromise;
+
+  const { cockpitTickerTestPromise } = await import("./cockpit-ticker.test.ts");
+  await cockpitTickerTestPromise;
+
 })();

@@ -1,11 +1,7 @@
 "use client";
 
-import { Children, isValidElement, memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import rehypeHighlight from "rehype-highlight";
-import remarkGfm from "remark-gfm";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowDown02Icon,
@@ -17,7 +13,6 @@ import {
   ThumbsDownIcon,
   ThumbsUpIcon,
   Loading03Icon,
-  InternetIcon,
   ChevronRightIcon,
   MagicWand01Icon,
 } from "@hugeicons/core-free-icons";
@@ -53,6 +48,7 @@ import {
   getPersistedTimeline,
 } from "@/app/chat/chat-types";
 import { useChatStream, activeAssistantContent, mergeFinalMessages, overlayMessages } from "@/app/shared/chat-stream";
+import { MarkdownMessage } from "./markdown-message";
 import type {
   Message,
   DisplayFile,
@@ -75,8 +71,6 @@ import {
   previewSelectionFromDraftAttachment,
   previewSelectionFromReferencedFile,
   shouldShowScrollToBottom,
-  parseFileLinkHref,
-  normalizeModelFileLinks
 } from "@/app/chat/chat-preview-selection";
 import {
   getDefaultSidebarWidth,
@@ -97,8 +91,6 @@ import { type PreviewFileSelection } from "@/app/shared/file-preview-page";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ThinkingSpark } from "@/app/shared/thinking-spark";
-import { remarkFinanceFileLinks } from "@/lib/remark/finance-file-links";
-import { parseCodeLanguage } from "@/app/chat/code-language";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -106,10 +98,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeHighlight from "rehype-highlight";
 import { useUsage } from "./use-usage";
 import { UsageRing } from "./usage-ring";
 import { cn } from "@/lib/utils";
 import type { PluggableList } from "unified";
+
 
 const REHYPE_SANITIZE_SCHEMA = {
   ...defaultSchema,
@@ -1584,27 +1579,6 @@ function AssistantTurn({
   );
 }
 
-/** 外部链接:桌面壳走 Tauri shell 在系统浏览器打开(避开 webview 对 _blank 的拦截);浏览器回退 window.open。 */
-async function openExternalUrl(href: string) {
-  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-    try {
-      const { open } = await import("@tauri-apps/plugin-shell");
-      await open(href);
-      return;
-    } catch (err) {
-      console.error("[external-link] tauri open failed", err);
-    }
-  }
-  window.open(href, "_blank", "noopener,noreferrer");
-}
-
-/** 从 ReactMarkdown 传入 <pre> 的子 <code class="language-xxx"> 上取语言名(取不到返回 null)。
- *  纯解析逻辑在 parseCodeLanguage(已单测),这里只做拿 className 的 React 胶水。 */
-function extractCodeLanguage(children: React.ReactNode): string | null {
-  const first = Children.toArray(children)[0];
-  if (!isValidElement(first)) return null;
-  return parseCodeLanguage((first.props as { className?: string }).className);
-}
 
 /** 运行中实时跳秒(与工具步骤同款):从 startedAt 起每秒刷新,startedAt 清空即停。 */
 function useLiveElapsed(startedAt?: number): number {
@@ -1658,201 +1632,10 @@ function ThinkingBlock({ text, isActive, hasOutput, durationMs }: { text: string
   );
 }
 
-/** 代码块:复用 .md-content pre 样式,右上角 hover 浮现「语言名 + 复制」。 */
-function CodeBlock({ children }: { children?: React.ReactNode }) {
-  const ref = useRef<HTMLPreElement>(null);
-  const [copied, setCopied] = useState(false);
-  const language = extractCodeLanguage(children);
-  async function copy() {
-    const text = ref.current?.textContent ?? "";
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard 不可用时静默 */
-    }
-  }
-  return (
-    <div className="relative group">
-      <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        {language ? (
-          <span className="font-mono text-caption uppercase tracking-wide text-muted-foreground select-none">{language}</span>
-        ) : null}
-        <button
-          type="button"
-          onClick={copy}
-          className="inline-flex items-center justify-center rounded p-1 bg-muted/80 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-          aria-label={copied ? "已复制" : "复制代码"}
-        >
-          <HugeiconsIcon icon={copied ? SuccessIcon : CopyIcon} size={13} />
-        </button>
-      </div>
-      <pre ref={ref}>{children}</pre>
-    </div>
-  );
-}
-
-/** 表格 DOM → 制表符分隔文本(可直接贴进 Excel/表格)。 */
-function tableToText(table: HTMLTableElement | null): string {
-  if (!table) return "";
-  return Array.from(table.querySelectorAll("tr"))
-    .map((row) => Array.from(row.querySelectorAll("th,td")).map((c) => (c.textContent ?? "").trim()).join("\t"))
-    .join("\n");
-}
-
-/** 表格:只横线样式(CSS)+ 右上角复制按钮(hover 浮现,复制为 TSV)。 */
-function TableBlock({ children }: { children?: React.ReactNode }) {
-  const ref = useRef<HTMLTableElement>(null);
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    const text = tableToText(ref.current);
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard 不可用时静默 */
-    }
-  }
-  return (
-    <div className="relative group my-3">
-      <button
-        type="button"
-        onClick={copy}
-        className="absolute right-0 -top-1 z-10 inline-flex items-center justify-center rounded p-1 bg-background/85 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted hover:text-foreground cursor-pointer"
-        aria-label={copied ? "已复制" : "复制表格"}
-      >
-        <HugeiconsIcon icon={copied ? SuccessIcon : CopyIcon} size={13} />
-      </button>
-      <table ref={ref}>{children}</table>
-    </div>
-  );
-}
-
-const MarkdownMessage = memo(function MarkdownMessage({
-  content,
-  conversationId,
-  files,
-  onPreviewFile
-}: {
-  content: string;
-  conversationId: number | null;
-  files: DisplayFile[];
-  onPreviewFile: (file: PreviewableConversationFile) => void;
-}) {
-  const linkableFiles = useMemo(
-    () =>
-      files
-        .filter((file) => file.storagePath && file.name)
-        .map((file) => ({ name: file.name, storagePath: file.storagePath! })),
-    [files]
-  );
-
-  // 先把模型手写的文件链接(可能含空格/括号,会让 CommonMark 把整段降级成字面文本)规整成
-  // 干净的 finance-file:// 链接,再交给 ReactMarkdown 解析。
-  // useDeferredValue:流式期把内容降到低优先级再解析,避免每个 token 都重解析整棵 markdown 树
-  // 阻塞打字/滚动(高负载下跳过中间态,最终文本一定会渲染)。结构不变 → 表格/列表/代码块零回归风险。
-  const deferredContent = useDeferredValue(content);
-  const normalizedContent = useMemo(() => normalizeModelFileLinks(deferredContent), [deferredContent]);
-
-  const remarkPlugins: PluggableList = useMemo(
-    () => [remarkGfm, [remarkFinanceFileLinks, linkableFiles]] as PluggableList,
-    [linkableFiles]
-  );
-
-  const components = useMemo(
-    () => ({
-      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-        if (!href) return <span>{children}</span>;
-
-        const parsed = parseFileLinkHref(href);
-        if (parsed) {
-          // File link recognised — but we need conversationId to open the preview
-          if (!conversationId) return <span>{children}</span>;
-
-          const { storagePath } = parsed;
-          const file = files.find((item) => item.storagePath === storagePath);
-          const previewFile: PreviewableConversationFile = {
-            fileName: file?.name ?? parsed.name,
-            mimeType: file?.mimeType ?? guessMimeType(parsed.name),
-            sizeBytes: file?.sizeBytes ?? 0,
-            storagePath
-          };
-          return (
-            <button className="inline-flex items-center gap-1 text-meta text-primary cursor-pointer hover:underline underline-offset-2 hover:opacity-80" type="button" onClick={() => onPreviewFile(previewFile)}>
-              {getFileIcon(previewFile.mimeType, previewFile.fileName)}
-              <span>{children}</span>
-            </button>
-          );
-        }
-
-        // 外部 http(s) 链接(如 WebSearch 引用)→ 可点、系统语义绿、在系统浏览器打开。
-        // 排除指回本应用的 localhost/127.0.0.1(多为模型写的死链)→ 按纯文本处理,避免误开应用自身页 + shell.open 报错。
-        const isExternalHttp =
-          /^https?:\/\//i.test(href) &&
-          !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?([/?#]|$)/i.test(href);
-        if (isExternalHttp) {
-          // WebSearch 外链:前缀地球图标(网络标识)、蓝色(--primary,由 .md-content a 决定)、13px、默认无下划线 hover 才有。
-          // 锚点保持 inline,长 URL 仍能正常换行。
-          return (
-            <a
-              href={href}
-              onClick={(e) => { e.preventDefault(); void openExternalUrl(href); }}
-              className="text-small underline-offset-2 hover:underline transition-colors cursor-pointer"
-            >
-              <HugeiconsIcon icon={InternetIcon} size={12} className="inline-block align-[-0.15em] mr-1 shrink-0" aria-hidden="true" />
-              {children}
-            </a>
-          );
-        }
-        // 其余非文件、非 http 链接 → 纯文本,避免桌面端死链
-        return <span>{children}</span>;
-      },
-      table: ({ children }: { children?: React.ReactNode }) => <TableBlock>{children}</TableBlock>,
-      pre: ({ children }: { children?: React.ReactNode }) => <CodeBlock>{children}</CodeBlock>
-    }),
-    [files, onPreviewFile, conversationId]
-  );
-
-  return (
-    <ReactMarkdown
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={REHYPE_PLUGINS}
-      components={components}
-    >
-      {normalizedContent}
-    </ReactMarkdown>
-  );
-});
 
 function fileNameFromStoragePath(storagePath: string) {
   const normalized = storagePath.split(/[\\/]/).filter(Boolean).pop();
   return normalized || "生成文件";
-}
-
-function guessMimeType(fileName: string) {
-  const ext = fileName.toLowerCase().split(".").pop();
-  const map: Record<string, string> = {
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    webp: "image/webp",
-    pdf: "application/pdf",
-    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    xls: "application/vnd.ms-excel",
-    csv: "text/csv",
-    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    doc: "application/msword",
-    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    txt: "text/plain",
-    md: "text/markdown",
-    json: "application/json"
-  };
-  return ext ? map[ext] ?? "application/octet-stream" : "application/octet-stream";
 }
 
 function TimelineRow({ item }: { item: TimelineItem }) {

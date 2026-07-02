@@ -4,8 +4,8 @@
  * 覆盖契约 5/6/7 的源码断言：
  * - T1  app/agents/page.tsx：含 toggle 接口调用、含「已停用」文案
  * - T2  app/cockpit/team-panel.tsx：行内展开（fetch /api/agents/dispatches?roleId=&limit=5）+
- *       blocked 行「待确认」样式 + 行尾「派活」次动作（CustomEvent cockpit:prefill-dispatch）
- * - T3  app/cockpit/dispatch-input.tsx：监听 cockpit:prefill-dispatch，设值并聚焦
+ *       blocked 行「待确认」样式 + 行尾「派活」次动作（CustomEvent chat-float:open）
+ * - T3  [已退役] app/cockpit/dispatch-input.tsx 随 D1 切片退役，T3 改为断言其不存在
  *
  * 运行：
  *   FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true npx tsx tests/cockpit-team-expand.test.ts
@@ -126,10 +126,10 @@ export const cockpitTeamExpandTestPromise = (async () => {
       "T2 FAIL: app/cockpit/team-panel.tsx 应有 blocked 行「待确认」样式（文案或 blockedReason 处理）"
     );
 
-    // 2e：行尾「派活」次动作——通过 CustomEvent("cockpit:prefill-dispatch") 预填派活入口
+    // 2e：行尾「派活」次动作——通过 CustomEvent("chat-float:open") 打开浮窗并预填（D1 切片）
     assert.ok(
-      tpSrc.includes("cockpit:prefill-dispatch"),
-      "T2 FAIL: app/cockpit/team-panel.tsx 的「派活」次动作应 dispatch CustomEvent(\"cockpit:prefill-dispatch\")"
+      tpSrc.includes("chat-float:open"),
+      "T2 FAIL: app/cockpit/team-panel.tsx 的「派活」次动作应 dispatch CustomEvent(\"chat-float:open\")（cockpit:prefill-dispatch 已退役）"
     );
 
     // 2f：dispatchEvent 或 CustomEvent（实际派发事件）
@@ -156,67 +156,25 @@ export const cockpitTeamExpandTestPromise = (async () => {
       "T2 FAIL: app/cockpit/team-panel.tsx 展开条目应链接原对话（conversationId）"
     );
 
-    console.log("cockpit-team-expand T2: team-panel.tsx inline 展开 + blocked + 派活事件 ✓");
+    // 2j: 不再使用旧事件名 cockpit:prefill-dispatch
+    assert.ok(
+      !tpSrc.includes("cockpit:prefill-dispatch"),
+      "T2 FAIL: app/cockpit/team-panel.tsx 不应再使用旧事件名 cockpit:prefill-dispatch（D1 切片已退役）"
+    );
+
+    console.log("cockpit-team-expand T2: team-panel.tsx inline 展开 + blocked + 派活事件(chat-float:open) ✓");
   }
 
-  // ─── T3：app/cockpit/dispatch-input.tsx — 监听 cockpit:prefill-dispatch ─────────
+  // ─── T3：app/cockpit/dispatch-input.tsx — D1 切片退役，断言其已不存在 ─────
   {
-    assert.ok(
+    // D1 切片：dispatch-input.tsx 随派活入口退役，其功能由浮窗 chat-float:open 接管
+    assert.equal(
       exists("app/cockpit/dispatch-input.tsx"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 应存在"
+      false,
+      "T3 FAIL: app/cockpit/dispatch-input.tsx 应已删除（D1 切片派活入口退役；预填改由 chat-float:open 事件接管）"
     );
 
-    const diSrc = src("app/cockpit/dispatch-input.tsx");
-
-    // 3a：addEventListener（监听 CustomEvent）
-    assert.ok(
-      diSrc.includes("addEventListener"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 应含 addEventListener（监听预填事件）"
-    );
-
-    // 3b：事件名 "cockpit:prefill-dispatch"
-    assert.ok(
-      diSrc.includes("cockpit:prefill-dispatch"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 应监听事件 \"cockpit:prefill-dispatch\""
-    );
-
-    // 3c：设值（setText 或等价的 state 更新）
-    assert.ok(
-      diSrc.includes("setText") || diSrc.includes("setValue") || diSrc.includes("onChange"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 收到预填事件后应更新输入值（setText 或 setValue）"
-    );
-
-    // 3d：聚焦（focus()）
-    assert.ok(
-      diSrc.includes("focus"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 收到预填事件后应聚焦输入框（focus()）"
-    );
-
-    // 3e：removeEventListener（cleanup，避免内存泄漏）
-    assert.ok(
-      diSrc.includes("removeEventListener"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 应在 cleanup 时 removeEventListener"
-    );
-
-    // 3f：id="dispatch-input-field" 依然保留（不破坏现有 id）
-    assert.ok(
-      diSrc.includes('id="dispatch-input-field"') || diSrc.includes("id={'dispatch-input-field'}") || diSrc.includes("dispatch-input-field"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 应保留 id=\"dispatch-input-field\""
-    );
-
-    // 3g：useEffect（事件监听需在 effect 中注册）
-    assert.ok(
-      diSrc.includes("useEffect"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 应用 useEffect 注册事件监听"
-    );
-
-    // 3h：事件 detail.text（读取预填文本）
-    assert.ok(
-      diSrc.includes("detail") || diSrc.includes(".text"),
-      "T3 FAIL: app/cockpit/dispatch-input.tsx 应从事件 detail.text 取预填文本"
-    );
-
-    console.log("cockpit-team-expand T3: dispatch-input.tsx 监听预填事件 ✓");
+    console.log("cockpit-team-expand T3: dispatch-input.tsx 退役确认 ✓");
   }
 
   console.log("cockpit-team-expand: all T1–T3 done（上面任何 FAIL 即为红 → 等待实现者实现后才绿）");

@@ -2,16 +2,11 @@
 
 // 团队面板冷启动引导卡（CV-3 §5.3）
 // 仅当 team.length === 0 时在右列显示。
-// 按钮聚焦派活入口（dispatch-input），不新增硬编码 prompt。
+// 按钮派发 CustomEvent("chat-float:open") 打开浮窗（派活入口已退役）。
 
 export function TeamGrowthHint() {
-  function focusDispatchInput() {
-    // dispatch-input 的 input 元素有 id="dispatch-input-field"
-    const el = document.getElementById("dispatch-input-field");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      (el as HTMLInputElement).focus();
-    }
+  function openChatFloat() {
+    window.dispatchEvent(new CustomEvent("chat-float:open", { detail: {} }));
   }
 
   return (
@@ -21,7 +16,7 @@ export function TeamGrowthHint() {
       </p>
       <button
         type="button"
-        onClick={focusDispatchInput}
+        onClick={openChatFloat}
         className="text-meta text-muted-foreground hover:text-foreground border border-border rounded px-3 py-1 transition-colors"
       >
         先派一个活

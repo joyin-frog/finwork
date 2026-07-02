@@ -7,6 +7,7 @@ import { toast, Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppNav } from "@/app/shared/app-nav";
 import { GlobalShortcuts } from "@/app/shared/global-shortcuts";
+import { ChatFloat } from "@/app/shared/chat-float";
 import { IsMacProvider } from "@/app/shared/use-is-mac";
 import { useDetectPlatform, WindowTitleBar } from "@/app/shared/window-controls";
 import { FirstRunGate } from "@/app/shared/first-run-gate";
@@ -128,6 +129,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </main>
           <Suspense fallback={null}>
             <GlobalShortcuts />
+          </Suspense>
+          <Suspense fallback={null}>
+            <ChatFloat />
           </Suspense>
           <Toaster position="top-center" theme={resolvedTheme as "light" | "dark" | "system" | undefined} />
         </div>

@@ -11,6 +11,10 @@
  * - metric-strip.tsx / compliance-strip.tsx 已删除，T1 不再断言其存在；T4 已移除
  * - MetricStrip 从 page.tsx presentFiles 移出，改为断言不存在（见 cockpit-v3-slim.test.ts）
  *
+ * D1 变更点（spec-chat-dock.md §4 D1 切片）：
+ * - dispatch-input.tsx 退役；T1 presentFiles 移除该文件断言
+ * - page.tsx 不再 import DispatchInput；T3 断言相应更新为「不含 DispatchInput」
+ *
  * 旧断言（todos-card 存在 / deriveCockpitTodos 在 route / QuickActionsCard 含经营分析 /
  *         metric-strip.tsx 第4格 / compliance-strip.tsx 存在）已废弃。
  *
@@ -23,6 +27,7 @@ import { readFile } from "node:fs/promises";
 export const cockpitPageTestPromise = (async () => {
   // ── T1: 总览页已拆组件，page 只做装配 ────────────────────────────────────
   // 持续存在的组件（v3-P0: metric-strip / compliance-strip 已删除，不在此列）
+  // D1 切片: dispatch-input.tsx 退役，已从 presentFiles 移除（改在 cockpit-ticker.test.ts B1 断言其不存在）
   const presentFiles = [
     "app/cockpit/finance-calendar-card.tsx",
     "app/cockpit/cash-obligations-card.tsx",
@@ -30,7 +35,8 @@ export const cockpitPageTestPromise = (async () => {
     "app/cockpit/types.ts",
     // CV-1 新增
     "app/cockpit/attention-section.tsx",
-    "app/cockpit/dispatch-input.tsx",
+    // D1 新增：动态条接替派活入口位置
+    "app/cockpit/role-activity-ticker.tsx",
   ];
   for (const file of presentFiles) {
     assert.ok(existsSync(file), `T1 FAIL: 缺少组件文件 ${file}`);
@@ -57,7 +63,9 @@ export const cockpitPageTestPromise = (async () => {
 
   // 已 import 新组件
   assert.ok(pageSource.includes("AttentionSection"), "T3 FAIL: page.tsx 应 import AttentionSection");
-  assert.ok(pageSource.includes("DispatchInput"), "T3 FAIL: page.tsx 应 import DispatchInput");
+  // D1 切片: DispatchInput 退役，page.tsx 不应再引用；改为 RoleActivityTicker
+  assert.ok(!pageSource.includes("DispatchInput"), "T3 FAIL: page.tsx 不应再 import DispatchInput（D1 切片已退役）");
+  assert.ok(pageSource.includes("RoleActivityTicker"), "T3 FAIL: page.tsx 应 import RoleActivityTicker（接替 DispatchInput 位置的动态条）");
 
   // 总览页不再渲染 RecentActivityCard
   assert.ok(!pageSource.includes("RecentActivityCard"), "T3 FAIL: 总览页不应再渲染最近活动卡");

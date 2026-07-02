@@ -115,19 +115,12 @@ export const cockpitAttentionUiTestPromise = (async () => {
     );
   }
 
-  // ── B7: dispatch-input.tsx 新组件存在且满足 UI 契约 ─────────────────────
-  assert.ok(exists("app/cockpit/dispatch-input.tsx"), "B7 FAIL: app/cockpit/dispatch-input.tsx 应存在");
-  {
-    const diSrc = src("app/cockpit/dispatch-input.tsx");
-    assert.ok(
-      diSrc.includes("/chat/new?prompt="),
-      "B7 FAIL: dispatch-input.tsx 应含 /chat/new?prompt= 跳转逻辑"
-    );
-    assert.ok(
-      diSrc.includes("getCockpitSuggestions"),
-      "B7 FAIL: dispatch-input.tsx 应引用 getCockpitSuggestions 的 placeholder"
-    );
-  }
+  // ── B7: 派活入口已随 D1 退役,位置由角色动态条接替（裁决修订 2026-07-02,
+  //        与 tests/cockpit-ticker.test.ts 的 B1-B4 分工:此处只守卫退役事实） ──
+  assert.ok(
+    !exists("app/cockpit/dispatch-input.tsx"),
+    "B7 FAIL: app/cockpit/dispatch-input.tsx 应已删除（D1 派活入口退役）"
+  );
 
   // ── B8: page.tsx 不再 import 旧组件，已 import 新组件 ───────────────────
   {
@@ -138,7 +131,8 @@ export const cockpitAttentionUiTestPromise = (async () => {
     assert.ok(!pageSrc.includes("MetricStrip"), "B8 FAIL: page.tsx 不应 import MetricStrip（v3-P0）");
     assert.ok(!pageSrc.includes("ComplianceStrip"), "B8 FAIL: page.tsx 不应 import ComplianceStrip（v3-P0）");
     assert.ok(pageSrc.includes("AttentionSection"), "B8 FAIL: page.tsx 应 import AttentionSection");
-    assert.ok(pageSrc.includes("DispatchInput"), "B8 FAIL: page.tsx 应 import DispatchInput");
+    assert.ok(!pageSrc.includes("DispatchInput"), "B8 FAIL: page.tsx 不应再 import DispatchInput（D1 退役）");
+    assert.ok(pageSrc.includes("RoleActivityTicker"), "B8 FAIL: page.tsx 应 import RoleActivityTicker（接替位）");
     // 左列顺序：BusinessMetricsCard 出现位置先于 CashObligationsCard（v1.1 决定）
     const bizIdx = pageSrc.indexOf("BusinessMetricsCard");
     const cashIdx = pageSrc.indexOf("CashObligationsCard");

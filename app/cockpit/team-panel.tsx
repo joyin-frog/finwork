@@ -159,7 +159,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
           function handleDispatch(e: React.MouseEvent) {
             e.stopPropagation();
             window.dispatchEvent(
-              new CustomEvent("cockpit:prefill-dispatch", {
+              new CustomEvent("chat-float:open", {
                 detail: { text: `让${item.name}帮我处理` },
               })
             );

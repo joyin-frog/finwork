@@ -171,6 +171,52 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
   }));
 }
 
+export type RecentDispatchActivityRow = {
+  id: number;
+  roleId: string;
+  label: string | null;
+  summary: string | null;
+  status: string;
+  conversationId: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+};
+
+/**
+ * 全角色 started_at DESC + id DESC 排序，返回最近 limit 条（含 running）。
+ * 供动态条 GET /api/agents/activity 使用。
+ */
+export function listRecentDispatchActivity(limit = 10): RecentDispatchActivityRow[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, role_id, label, summary, status, conversation_id, started_at, ended_at
+       FROM subagent_dispatches
+       ORDER BY started_at DESC, id DESC
+       LIMIT ?`
+    )
+    .all(limit) as Array<{
+      id: number;
+      role_id: string;
+      label: string | null;
+      summary: string | null;
+      status: string;
+      conversation_id: string | null;
+      started_at: string | null;
+      ended_at: string | null;
+    }>;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    roleId: r.role_id,
+    label: r.label ?? null,
+    summary: r.summary ?? null,
+    status: r.status,
+    conversationId: r.conversation_id ?? null,
+    startedAt: r.started_at ?? null,
+    endedAt: r.ended_at ?? null,
+  }));
+}
+
 /**
  * 查 blocked_reason 非空且 ended_at 在 sinceDays 天内的行(「停在门前的活」)。
  * sinceDays 默认 7。
