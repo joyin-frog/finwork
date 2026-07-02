@@ -171,6 +171,42 @@ def extract_pdf(path: Path) -> str:
             text = page.extract_text()
             if text:
                 parts.append(f"--- Page {i + 1} ---\n{text}")
+    if parts:
+        return "\n\n".join(parts)
+    # 无文字层(扫描件/手拍回单等图片型 PDF)→ 抽每页最大内嵌图,OCR 兜底
+    return _ocr_pdf_pages(path)
+
+
+def _ocr_pdf_pages(path: Path) -> str:
+    """图片型 PDF 兜底:pypdf 抽每页最大内嵌图(跳过 logo/印章小图)→ rapidocr OCR。"""
+    from pypdf import PdfReader
+
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError:
+        raise SystemExit("扫描件/图片型 PDF 的 OCR 需要依赖未安装:pip install rapidocr-onnxruntime")
+    import numpy as np
+
+    ocr = RapidOCR()
+    reader = PdfReader(str(path))
+    parts: list[str] = []
+    for i, page in enumerate(reader.pages):
+        # 取该页面积最大的内嵌图 = 扫描主体,跳过 logo/印章/二维码等小图
+        biggest = None
+        biggest_area = 0
+        for im in page.images:
+            w, h = im.image.size
+            if w * h > biggest_area:
+                biggest_area = w * h
+                biggest = im
+        if biggest is None:
+            continue
+        arr = np.array(biggest.image.convert("RGB"))
+        result, _ = ocr(arr, use_angle_cls=True)
+        if not result:
+            continue
+        lines = sorted(result, key=lambda it: min(pt[1] for pt in it[0]))
+        parts.append(f"--- Page {i + 1} (OCR) ---\n" + "\n".join(it[1] for it in lines))
     return "\n\n".join(parts)
 
 

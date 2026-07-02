@@ -251,6 +251,9 @@ void (async () => {
   const { voucherBuildTestPromise } = await import("./voucher-build.test.ts");
   await voucherBuildTestPromise;
 
+  const { pdfOcrFallbackTestPromise } = await import("./pdf-ocr-fallback.test.ts");
+  await pdfOcrFallbackTestPromise;
+
   const { receiptTestPromise } = await import("./receipt.test.ts");
   await receiptTestPromise;
 
