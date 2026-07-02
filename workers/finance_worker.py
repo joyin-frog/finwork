@@ -166,11 +166,54 @@ def extract_pdf(path: Path) -> str:
     import pdfplumber
 
     parts: list[str] = []
+    ocr_page_indices: set[int] = set()
     with pdfplumber.open(path) as pdf:
         for i, page in enumerate(pdf.pages):
             text = page.extract_text()
-            if text:
+            if text and text.strip():
                 parts.append(f"--- Page {i + 1} ---\n{text}")
+            else:
+                ocr_page_indices.add(i)
+    # 无文字层的页面(扫描件/手拍回单等)逐页抽最大内嵌图 OCR,避免混合 PDF 漏页。
+    if ocr_page_indices:
+        ocr_text = _ocr_pdf_pages(path, ocr_page_indices)
+        if ocr_text:
+            parts.append(ocr_text)
+    return "\n\n".join(parts)
+
+
+def _ocr_pdf_pages(path: Path, page_indices: set[int] | None = None) -> str:
+    """图片型 PDF 兜底:pypdf 抽每页最大内嵌图(跳过 logo/印章小图)→ rapidocr OCR。"""
+    from pypdf import PdfReader
+
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError:
+        raise SystemExit("扫描件/图片型 PDF 的 OCR 需要依赖未安装:pip install rapidocr-onnxruntime")
+    import numpy as np
+
+    ocr = RapidOCR()
+    reader = PdfReader(str(path))
+    parts: list[str] = []
+    for i, page in enumerate(reader.pages):
+        if page_indices is not None and i not in page_indices:
+            continue
+        # 取该页面积最大的内嵌图 = 扫描主体,跳过 logo/印章/二维码等小图
+        biggest = None
+        biggest_area = 0
+        for im in page.images:
+            w, h = im.image.size
+            if w * h > biggest_area:
+                biggest_area = w * h
+                biggest = im
+        if biggest is None:
+            continue
+        arr = np.array(biggest.image.convert("RGB"))
+        result, _ = ocr(arr, use_angle_cls=True)
+        if not result:
+            continue
+        lines = sorted(result, key=lambda it: min(pt[1] for pt in it[0]))
+        parts.append(f"--- Page {i + 1} (OCR) ---\n" + "\n".join(it[1] for it in lines))
     return "\n\n".join(parts)
 
 
@@ -190,7 +233,8 @@ def cmd_ocr_image():
         raise SystemExit("图片 OCR 需要依赖未安装:pip install rapidocr-onnxruntime")
 
     ocr = RapidOCR()
-    result, _ = ocr(str(path))
+    # 手机拍的纸质单据常横拍/倒置;use_angle_cls 启用方向分类,自动摆正后再识别。
+    result, _ = ocr(str(path), use_angle_cls=True)
 
     if not result:
         print("")

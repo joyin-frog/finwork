@@ -91,6 +91,18 @@ export const ocrImageTestPromise = (async () => {
     console.log("ocr-image: AC2 缺依赖优雅错误 ✓");
   }
 
+  // AC6(凭证): 手机横拍单据需方向检测 → cmd_ocr_image 应启用 use_angle_cls(旋转分类)
+  {
+    const { readFileSync } = await import("node:fs");
+    const workerSource = readFileSync(workerPath, "utf-8");
+    const ocrFn = workerSource.match(/def cmd_ocr_image\(\):([\s\S]*?)(?=\ndef )/)?.[1] ?? "";
+    assert.ok(
+      ocrFn.includes("use_angle_cls"),
+      "AC6 FAIL: cmd_ocr_image 应启用 use_angle_cls 以支持横拍/旋转单据"
+    );
+    console.log("ocr-image: AC6 横拍方向检测(use_angle_cls)✓");
+  }
+
   // AC5: 红线7 — worker 不含任何网络外发(无 requests/urllib.request/http.client 调用)
   {
     const { readFileSync } = await import("node:fs");

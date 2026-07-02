@@ -230,6 +230,51 @@ void (async () => {
   const { moneyTestPromise } = await import("./money.test.ts");
   await moneyTestPromise;
 
+  const { voucherReconcileTestPromise } = await import("./voucher-reconcile.test.ts");
+  await voucherReconcileTestPromise;
+
+  const { accountMappingTestPromise } = await import("./account-mapping.test.ts");
+  await accountMappingTestPromise;
+
+  const { askUserMultiTestPromise } = await import("./ask-user-multi.test.ts");
+  await askUserMultiTestPromise;
+
+  const { voucherSummaryTestPromise } = await import("./voucher-summary.test.ts");
+  await voucherSummaryTestPromise;
+
+  const { askUserMultiStateTestPromise } = await import("./ask-user-multi-state.test.ts");
+  await askUserMultiStateTestPromise;
+
+  const { voucherToolsTestPromise } = await import("./voucher-tools.test.ts");
+  await voucherToolsTestPromise;
+
+  const { voucherBuildTestPromise } = await import("./voucher-build.test.ts");
+  await voucherBuildTestPromise;
+
+  const { pdfOcrFallbackTestPromise } = await import("./pdf-ocr-fallback.test.ts");
+  await pdfOcrFallbackTestPromise;
+
+  const { folderIngestTestPromise } = await import("./folder-ingest.test.ts");
+  await folderIngestTestPromise;
+
+  const { voucherSheetTestPromise } = await import("./voucher-sheet.test.ts");
+  await voucherSheetTestPromise;
+
+  const { readDocumentTestPromise } = await import("./read-document.test.ts");
+  await readDocumentTestPromise;
+
+  const { voucherBatchTestPromise } = await import("./voucher-batch.test.ts");
+  await voucherBatchTestPromise;
+
+  const { slipGroupingTestPromise } = await import("./slip-grouping.test.ts");
+  await slipGroupingTestPromise;
+
+  const { scanSlipFolderTestPromise } = await import("./scan-slip-folder.test.ts");
+  await scanSlipFolderTestPromise;
+
+  const { knowledgeResultShapeTestPromise } = await import("./knowledge-result-shape.test.ts");
+  await knowledgeResultShapeTestPromise;
+
   const { receiptTestPromise } = await import("./receipt.test.ts");
   await receiptTestPromise;
 

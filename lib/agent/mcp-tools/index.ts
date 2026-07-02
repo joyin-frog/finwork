@@ -4,6 +4,8 @@ import { createRememberConventionTool } from "./conventions";
 import { createRecordBusinessMetricsTool } from "./business-metrics";
 import { createBusinessAnalysisTool } from "./business-analysis-tool";
 import { createSearchKnowledgeTool, createQueryKnowledgeTool, createReadFileTool } from "./knowledge";
+import { createReadDocumentTool } from "./read-document";
+import { createScanSlipFolderTool } from "./scan-slip-folder";
 import { createKingdeeTools } from "./kingdee-tools";
 import { createFinanceTools } from "./finance-tools";
 import { createPayrollTools } from "../tools/finance/payroll";
@@ -26,6 +28,8 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createSearchKnowledgeTool(sdk),
       createQueryKnowledgeTool(sdk),
       createReadFileTool(sdk),
+      createReadDocumentTool(sdk),
+      createScanSlipFolderTool(sdk),
       createRememberConventionTool(sdk),
       createRecordBusinessMetricsTool(sdk),
       createBusinessAnalysisTool(sdk),

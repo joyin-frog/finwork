@@ -31,9 +31,16 @@ export function createAskUserQuestionHook(): Hook {
         };
       }
       const questions = getToolQuestions(ctx.input);
-      const answers: Record<string, string> = {};
-      for (const q of questions) {
-        answers[q.question] = await ctx.resolveUserQuestion(q);
+      if (questions.length === 0) return { action: "allow", input: { questions, answers: {} } };
+
+      let answers: Record<string, string>;
+      if (questions.length === 1) {
+        // 单题:原路径,答案为纯文本(不回归)
+        answers = { [questions[0].question]: await ctx.resolveUserQuestion(questions[0]) };
+      } else {
+        // 多题:一次下发(前端一个浮层左右切换),答案以 JSON 串返回,解析回填每题
+        const raw = await ctx.resolveUserQuestion({ question: `需要你确认 ${questions.length} 项`, questions });
+        answers = parseMultiAnswers(raw, questions);
       }
       return { action: "allow", input: { questions, answers } };
     },
@@ -225,4 +232,19 @@ function getToolQuestions(input: unknown) {
   return Array.isArray(questions)
     ? (questions as Array<{ question: string; header?: string }>)
     : [];
+}
+
+/** 多题答案:前端以 JSON 串 {问题文本: 答案} 返回;解析失败/空答 → 每题降级空串(按未确认)。 */
+function parseMultiAnswers(raw: string, questions: Array<{ question: string }>): Record<string, string> {
+  let parsed: Record<string, unknown> = {};
+  try {
+    if (raw) parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    parsed = {};
+  }
+  const answers: Record<string, string> = {};
+  for (const q of questions) {
+    answers[q.question] = typeof parsed[q.question] === "string" ? (parsed[q.question] as string) : "";
+  }
+  return answers;
 }

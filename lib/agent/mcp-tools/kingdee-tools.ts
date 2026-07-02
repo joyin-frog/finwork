@@ -3,6 +3,13 @@ import type { SdkLike } from "./sdk-types";
 import { wrapToolHandler } from "./sdk-types";
 import { withIdempotency } from "@/lib/agent/tools/idempotency";
 import { loadChartOfAccounts, saveChartOfAccounts, type KingdeeAccount } from "@/lib/db/finance-store";
+import { parseChineseAmount, reconcileAmount } from "@/lib/domain/voucher-reconcile";
+import { yuanToFen } from "@/lib/domain/money";
+import { resolveAccount } from "@/lib/domain/account-mapping";
+import { summarizeVouchers, type SlipResult } from "@/lib/domain/voucher-summary";
+import { buildVoucherLines, type BuildVoucherInput } from "@/lib/domain/voucher-build";
+import { buildVoucherSheet, type VoucherForSheet } from "@/lib/domain/voucher-sheet";
+import { processVoucherBatch, type BatchSlip } from "@/lib/domain/voucher-batch";
 
 type Sdk = SdkLike;
 
@@ -245,8 +252,193 @@ export function createKingdeeTools(sdk: Sdk) {
     };
   });
 
+  // ── 金额勾稽:明细Σ/合计/大写三来源交叉验证,不靠 LLM 心算(确定性关键)──
+  const checkAmountSchema = {
+    lineItemsYuan: z.array(z.number()).optional().describe("各明细行金额(元),如[1377,2323]"),
+    totalYuan: z.number().optional().describe("合计金额(元)"),
+    capitalText: z.string().optional().describe("大写金额文本,如「叁仟柒佰元整」"),
+  };
+  const checkAmountHandler = wrapToolHandler(checkAmountSchema, async (args: Record<string, unknown>) => {
+    const { lineItemsYuan, totalYuan, capitalText } = args as {
+      lineItemsYuan?: number[];
+      totalYuan?: number;
+      capitalText?: string;
+    };
+    const capitalFen = capitalText ? parseChineseAmount(capitalText) : null;
+    const input: { lineItemsFen?: number[]; totalFen?: number; capitalFen?: number } = {};
+    if (lineItemsYuan?.length) input.lineItemsFen = lineItemsYuan.map(yuanToFen);
+    if (totalYuan !== undefined) input.totalFen = yuanToFen(totalYuan);
+    if (capitalFen != null) input.capitalFen = capitalFen;
+    try {
+      const result = reconcileAmount(input);
+      const note = capitalText && capitalFen == null ? "⚠ 大写金额未能可靠解析,已排除出勾稽,请人工核对大写。" : undefined;
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ ...result, ...(note ? { note } : {}) }, null, 2) }],
+        structuredContent: result,
+      };
+    } catch (e) {
+      return {
+        content: [{ type: "text" as const, text: `金额勾稽失败:${e instanceof Error ? e.message : String(e)}` }],
+        isError: true as const,
+      };
+    }
+  });
+
+  // ── 科目映射:对照表命中→科目表验证→维度类型带出(编码必须存在才输出)──
+  const mapAccountSchema = {
+    text: z.string().describe("摘要/收款方文本,如「付杰强劳务费」"),
+    mappings: z
+      .array(z.object({ keyword: z.string(), code: z.string(), dimensionValue: z.string().optional() }))
+      .describe("从知识库对照表(search_knowledge)查到的条目:关键词→科目码→维度值"),
+  };
+  const mapAccountHandler = wrapToolHandler(mapAccountSchema, async (args: Record<string, unknown>) => {
+    const { text, mappings } = args as {
+      text: string;
+      mappings: Array<{ keyword: string; code: string; dimensionValue?: string }>;
+    };
+    const { accounts: chart, isExample } = loadChartOfAccounts();
+    const result = resolveAccount(text, mappings, chart);
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ ...result, ...(isExample ? { notice: EXAMPLE_NOTICE } : {}) }, null, 2) }],
+      structuredContent: result,
+    };
+  });
+
+  // ── 汇总:聚合每张单据的金额/科目结论为大表 + 统计(失败行跳过不干扰)──
+  const summarizeSchema = {
+    results: z
+      .array(
+        z.object({
+          file: z.string(),
+          ocrOk: z.boolean(),
+          amountOk: z.boolean().optional(),
+          amountIssue: z.string().optional(),
+          accountOk: z.boolean().optional(),
+          accountIssue: z.string().optional(),
+        })
+      )
+      .describe("每张单据的处理结论"),
+  };
+  const summarizeHandler = wrapToolHandler(summarizeSchema, async (args: Record<string, unknown>) => {
+    const { results } = args as { results: SlipResult[] };
+    const summary = summarizeVouchers(results);
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }],
+      structuredContent: summary,
+    };
+  });
+
+  // ── 多行凭证构造 + 预借款冲销:费用明细→多借方行;「原借款」有金额→冲销分录 ──
+  const buildVoucherSchema = {
+    expenses: z
+      .array(
+        z.object({
+          summary: z.string(),
+          account: z.string(),
+          accountName: z.string().optional(),
+          dimensionValue: z.string().optional(),
+          amountYuan: z.number(),
+        })
+      )
+      .describe("费用明细借方行(每行一个科目)"),
+    paymentAccount: z.object({ code: z.string(), name: z.string().optional() }).describe("付款科目(银行/现金)"),
+    departmentName: z.string().optional().describe("报销部门(费用行默认核算维度值)"),
+    advanceYuan: z.number().optional().describe("单据「原借款」栏金额;>0 走冲销分录,空/0 走普通"),
+    advanceAccount: z.object({ code: z.string(), name: z.string().optional() }).optional().describe("预借款科目,默认其他应收款-个人往来 1221.03"),
+    payeeName: z.string().optional().describe("报销人(冲销行核算维度=员工)"),
+  };
+  const buildVoucherHandler = wrapToolHandler(buildVoucherSchema, async (args: Record<string, unknown>) => {
+    const built = buildVoucherLines(args as unknown as BuildVoucherInput);
+    const warn = built.balanced ? "" : "\n⚠ 借贷不平衡,请检查明细。";
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(built, null, 2) + warn }],
+      structuredContent: built,
+    };
+  });
+
+  // ── 凭证 → 金蝶对照手填清单(行数据,列对齐录入界面);实际 xlsx 由 run_python 写 ──
+  const buildSheetSchema = {
+    vouchers: z
+      .array(
+        z.object({
+          date: z.string(),
+          voucherWord: z.string().optional(),
+          lines: z.array(
+            z.object({
+              summary: z.string(),
+              account: z.string(),
+              accountName: z.string().optional(),
+              dimensionType: z.string().optional(),
+              dimensionValue: z.string().optional(),
+              debitYuan: z.number().optional(),
+              creditYuan: z.number().optional(),
+            })
+          ),
+        })
+      )
+      .describe("确认后的凭证列表(每张含日期+多行分录)"),
+  };
+  const buildSheetHandler = wrapToolHandler(buildSheetSchema, async (args: Record<string, unknown>) => {
+    const { vouchers } = args as { vouchers: VoucherForSheet[] };
+    const sheet = buildVoucherSheet(vouchers);
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(sheet, null, 2) }],
+      structuredContent: sheet,
+    };
+  });
+
+  // ── 批量:一次处理整批单据(勾稽+映射+分录+汇总+清单),把 40+ 次 LLM 往返压成 1 次 ──
+  const batchSchema = {
+    slips: z
+      .array(
+        z.object({
+          file: z.string(),
+          date: z.string().describe("凭证日期 yyyy-MM-dd"),
+          lineItems: z.array(z.object({ summary: z.string(), amountYuan: z.number() })).describe("费用明细行"),
+          totalYuan: z.number().optional().describe("合计(元)"),
+          capitalText: z.string().optional().describe("大写金额文本"),
+          advanceYuan: z.number().optional().describe("单据「原借款」栏金额,>0 走冲销"),
+          payeeName: z.string().optional().describe("报销人(冲销行维度)"),
+          departmentName: z.string().optional().describe("报销部门(费用行维度)"),
+        })
+      )
+      .describe("整批单据(每张:字段已由 read_document + 提取得到)"),
+    mappings: z
+      .array(z.object({ keyword: z.string(), code: z.string(), dimensionValue: z.string().optional() }))
+      .default([])
+      .describe("从知识库对照表查到的条目(没有则传空)"),
+    paymentAccount: z.object({ code: z.string(), name: z.string().optional() }).optional().describe("付款科目,默认银行存款1002"),
+    advanceAccount: z.object({ code: z.string(), name: z.string().optional() }).optional().describe("预借款科目,默认其他应收款-个人往来1221.03"),
+  };
+  const batchHandler = wrapToolHandler(batchSchema, async (args: Record<string, unknown>) => {
+    const { slips, mappings, paymentAccount, advanceAccount } = args as {
+      slips: BatchSlip[];
+      mappings: Array<{ keyword: string; code: string; dimensionValue?: string }>;
+      paymentAccount?: { code: string; name?: string };
+      advanceAccount?: { code: string; name?: string };
+    };
+    const { accounts: chart, isExample } = loadChartOfAccounts();
+    const out = processVoucherBatch({
+      slips,
+      mappings: mappings ?? [],
+      chart,
+      paymentAccount: paymentAccount ?? { code: "1002", name: "银行存款" },
+      advanceAccount: advanceAccount ?? { code: "1221.03", name: "其他应收款-个人往来" },
+    });
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ ...out, ...(isExample ? { notice: EXAMPLE_NOTICE } : {}) }, null, 2) }],
+      structuredContent: out,
+    };
+  });
+
   return [
     sdk.tool("query_kingdee_accounts", "查询金蝶科目表(贵司导入的真表;未导入则用示例表并提示),支持按公司名、科目编码、科目名称过滤。返回科目列表含编码、名称、类型、余额。", queryAccountsSchema, queryAccountsHandler),
+    sdk.tool("process_voucher_batch", "【批量·首选】一次处理整批单据:传所有单据的字段(每张:日期/费用明细/金额/大写/原借款/部门),内部逐张做金额勾稽+科目映射+分录构造(含预借款冲销)+汇总+出对照清单,一次返回。用它避免逐张逐工具几十次往返导致超时。科目表工具内部自动读。", batchSchema, batchHandler),
+    sdk.tool("build_voucher_sheet", "把确认后的凭证整理成金蝶「对照手填清单」行数据(表头+行,列对齐录入界面:日期/凭证字/摘要/科目编码/科目全名/核算维度/借方/贷方,借贷分列)。拿到后用 run_python(openpyxl)写成 xlsx 交付。", buildSheetSchema, buildSheetHandler),
+    sdk.tool("build_voucher_lines", "构造多行凭证分录:传费用明细(多借方)+付款科目,自动配平出贷方。单据「原借款」栏有金额时(advanceYuan>0)自动生成预借款冲销:贷其他应收款-个人往来(挂报销人)、差额进银行(应退借/应补贷)。返回多行借贷+是否平衡。", buildVoucherSchema, buildVoucherHandler),
+    sdk.tool("check_voucher_amount", "金额勾稽校验:传明细行/合计/大写(元 + 大写文本),校验三者是否一致。一致→高置信度可自动用;不平→指出对不上处、列候选值,交人工。大写解析在工具内做,不要 LLM 心算。", checkAmountSchema, checkAmountHandler),
+    sdk.tool("map_voucher_account", "科目映射:传摘要文本 + 从知识库查到的对照表条目,返回科目编码(经科目表验证存在才输出)、名称、维度类型。未命中/编码失效会明确告知,不编造科目码。", mapAccountSchema, mapAccountHandler),
+    sdk.tool("summarize_vouchers", "汇总一批单据的处理结论为大表 + 统计(✅自动/⚠️待确认/❌失败)。用于汇总确认模式:全部识别完出大表,用户挑⚠️行集中确认。", summarizeSchema, summarizeHandler),
     sdk.tool("export_kingdee_draft", "导出一批记账凭证为金蝶K/3 Cloud格式草稿。当前为模拟模式生成JSON草稿供预览，不写入真实金蝶系统。", exportDraftSchema, withIdempotency("export_kingdee_draft", exportDraftHandler, { riskLevel: "high" })),
     sdk.tool("validate_kingdee_voucher", "校验金蝶凭证草稿的借贷平衡、科目有效性(对照贵司导入的科目表)、期间正确性。返回校验结果含错误列表和警告。", validateVoucherSchema, validateVoucherHandler),
     sdk.tool("import_kingdee_accounts", "导入贵司金蝶科目表(科目编码+名称+类别),覆盖此前导入。导入后查询/校验/凭证草稿都基于此表,不再用示例表。用户上传科目表后先调本工具。", importAccountsSchema, withIdempotency("import_kingdee_accounts", importAccountsHandler, { riskLevel: "medium" })),
