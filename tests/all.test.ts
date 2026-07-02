@@ -418,4 +418,7 @@ void (async () => {
   const { navV3TestPromise } = await import("./nav-v3.test.ts");
   await navV3TestPromise;
 
+  const { agentsSpaceTestPromise } = await import("./agents-space.test.ts");
+  await agentsSpaceTestPromise;
+
 })();
