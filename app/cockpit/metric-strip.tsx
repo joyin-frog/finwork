@@ -25,15 +25,16 @@ function obligationDelta(t: ObligationTotals): string {
   return t.unknownAmount > 0 ? `${formatAmount(t.amount)}+` : formatAmount(t.amount);
 }
 
-function MetricCard({ icon: Icon, label, value, delta, tone }: {
+function MetricCard({ icon: Icon, label, value, delta, tone, onClick }: {
   icon: IconSvgElement;
   label: string;
   value: number | null;
   delta: string;
   tone?: string;
+  onClick?: () => void;
 }) {
   return (
-    <Card>
+    <Card className={onClick ? "cursor-pointer hover:bg-accent/30 transition-colors" : ""} onClick={onClick}>
       <CardContent className="flex items-center gap-3 pt-4">
         <div
           className={`flex size-8 shrink-0 items-center justify-center rounded-md ${tone ? "fa-toned" : "bg-muted text-muted-foreground"}`}
@@ -53,9 +54,16 @@ function MetricCard({ icon: Icon, label, value, delta, tone }: {
   );
 }
 
+function scrollToAttention() {
+  const el = document.getElementById("attention");
+  if (el) el.scrollIntoView({ behavior: "smooth" });
+}
+
 export function MetricStrip({ calendar, summary }: { calendar: CalendarContext | null; summary: CockpitSummary | null }) {
   const deadline = calendar?.deadlines[0] ?? null;
   const obl = summary ? summarizeObligations(summary.obligations) : null;
+  const attentionItems = summary?.attention ?? [];
+  const hasUrgent = attentionItems.some((a) => a.severity === "urgent");
   return (
     <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
       <MetricCard
@@ -81,16 +89,17 @@ export function MetricStrip({ calendar, summary }: { calendar: CalendarContext |
       />
       <MetricCard
         icon={CheckListIcon}
-        label="待办"
-        value={summary ? summary.todos.length : null}
-        delta={summary && summary.todos.some((t) => t.severity === "urgent") ? "含紧急事项" : "按当前节点推导"}
+        label="需要关注"
+        value={summary ? attentionItems.length : null}
+        delta={hasUrgent ? "含紧急事项" : "按当前节点推导"}
         tone={
-          summary && summary.todos.some((t) => t.severity === "urgent")
+          hasUrgent
             ? "var(--tone-alarm)"
-            : summary && summary.todos.length > 0
+            : attentionItems.length > 0
               ? "var(--tone-notice)"
               : undefined
         }
+        onClick={scrollToAttention}
       />
     </div>
   );

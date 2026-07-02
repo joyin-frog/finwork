@@ -394,4 +394,10 @@ void (async () => {
   const { roleRegistryTestPromise } = await import("./role-registry.test.ts");
   await roleRegistryTestPromise;
 
+  const { attentionTestPromise } = await import("./attention.test.ts");
+  await attentionTestPromise;
+
+  const { cockpitAttentionUiTestPromise } = await import("./cockpit-attention-ui.test.ts");
+  await cockpitAttentionUiTestPromise;
+
 })();

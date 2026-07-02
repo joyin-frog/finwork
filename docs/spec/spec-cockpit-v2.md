@@ -134,7 +134,7 @@ export function deriveTrustTier(source: TrustSource, status: TrustStatus): Trust
 export type AttentionItem = {
   id: string;
   source: "rule" | "gate";        // 预留 "patrol"(巡检) | "finding"(核查异常，开放问题)
-  sourceLabel: string;            // 中文短标签：合同收付 / 申报截止 / 工资草稿 / 结账窗口 / 停在确认门
+  sourceLabel: string;            // 中文短标签：合同收付 / 申报截止 / 工资草稿 / 算薪窗口 / 结账窗口（rule 类）；停在确认门（gate 类，Phase 3）
   roleId?: string;                // gate/patrol 类有，rule 类无
   severity: "urgent" | "normal";
   title: string;                  // 主文案，沿用现有 todo label 的措辞风格

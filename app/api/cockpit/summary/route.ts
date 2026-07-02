@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getInvoiceLedgerStats, getPayrollPeriodSummary, getBusinessOverview } from "@/lib/db/finance-store";
 import { listConfirmedMetaDocRows } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
-import { deriveCockpitTodos } from "@/lib/domain/cockpit-todos";
+import { deriveAttentionItems } from "@/lib/domain/attention";
 import { deriveCashObligations, obligationsInMonth, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
 import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
 import { appendServerLog } from "@/lib/runtime/server-log";
@@ -36,7 +36,7 @@ export async function GET() {
     const data = {
       payroll,
       invoices,
-      todos: deriveCockpitTodos(calendar, payroll, obligations),
+      attention: deriveAttentionItems(calendar, payroll, obligations),
       business: getBusinessOverview(now),
       obligations: obligationsInMonth(obligations, year, month),
     };
@@ -44,7 +44,6 @@ export async function GET() {
     return NextResponse.json({ ok: true, data });
   } catch (error) {
     console.error("[cockpit/summary] error:", error);
-    // 总览页一坏就只显示「网络错误」(前端 catch 兜底),真因(多半是 DB/node:sqlite)需落盘才查得到。
     void appendServerLog(`[cockpit/summary] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "加载失败" },
