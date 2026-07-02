@@ -88,6 +88,8 @@ export const retentionTestPromise = (async () => {
   assert.equal(claimRetentionRun(db, now + 60_000), false, "same day startup must skip");
   assert.equal(claimRetentionRun(db, now + 86_400_000), true, "next day startup may run");
 
+  // 默认配置:chat_agent_events 走一年保留(封住无界增长),其余各表照旧。
+  assert.equal(DEFAULT_RETENTION_CONFIG.chatEventDays, 365, "默认应给 chat 事件 365 天保留");
   assert.equal(isValidRetentionSettingsValue('{"traceDays":30,"chatEventDays":null}'), true);
   assert.equal(isValidRetentionSettingsValue('{"traceDays":0}'), false);
   assert.equal(isValidRetentionSettingsValue('{"unknown":30}'), false);
