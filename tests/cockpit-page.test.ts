@@ -1,14 +1,18 @@
 /**
- * cockpit-page.test.ts — CV-1 改写版
+ * cockpit-page.test.ts — CV-1/CV-2/CV-3 改写版（v3-P0 同步）
  *
  * v2 变更点（spec-cockpit-v2.md §1 + §10）：
  * - QuickActionsCard / TodosCard 删除
  * - page.tsx import AttentionSection + DispatchInput，左列 BusinessMetricsCard 先于 CashObligationsCard
- * - metric-strip.tsx 第 4 格「待办」→「需要关注」
  * - summary route 返回 attention，不返回 todos
  * - lib/domain/cockpit-todos.ts 已迁移为 lib/domain/attention.ts
  *
- * 旧断言（todos-card 存在 / deriveCockpitTodos 在 route / QuickActionsCard 含经营分析）已废弃。
+ * v3-P0 变更点（spec-cockpit-v3.md §1）：
+ * - metric-strip.tsx / compliance-strip.tsx 已删除，T1 不再断言其存在；T4 已移除
+ * - MetricStrip 从 page.tsx presentFiles 移出，改为断言不存在（见 cockpit-v3-slim.test.ts）
+ *
+ * 旧断言（todos-card 存在 / deriveCockpitTodos 在 route / QuickActionsCard 含经营分析 /
+ *         metric-strip.tsx 第4格 / compliance-strip.tsx 存在）已废弃。
  *
  * 运行方式：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true npx tsx tests/cockpit-page.test.ts
  */
@@ -18,13 +22,11 @@ import { readFile } from "node:fs/promises";
 
 export const cockpitPageTestPromise = (async () => {
   // ── T1: 总览页已拆组件，page 只做装配 ────────────────────────────────────
-  // 持续存在的组件
+  // 持续存在的组件（v3-P0: metric-strip / compliance-strip 已删除，不在此列）
   const presentFiles = [
     "app/cockpit/finance-calendar-card.tsx",
     "app/cockpit/cash-obligations-card.tsx",
-    "app/cockpit/compliance-strip.tsx",
     "app/cockpit/business-metrics-card.tsx",
-    "app/cockpit/metric-strip.tsx",
     "app/cockpit/types.ts",
     // CV-1 新增
     "app/cockpit/attention-section.tsx",
@@ -39,6 +41,9 @@ export const cockpitPageTestPromise = (async () => {
   assert.equal(existsSync("app/cockpit/quick-actions-card.tsx"), false, "T2 FAIL: quick-actions-card.tsx 应已删除");
   assert.equal(existsSync("lib/domain/cockpit-todos.ts"), false, "T2 FAIL: cockpit-todos.ts 应已迁移删除");
   assert.ok(!existsSync("app/components/tool-call-pill.tsx"), "T2 FAIL: ToolCallPills 死组件应已删除");
+  // v3-P0: metric-strip / compliance-strip 也应删除
+  assert.equal(existsSync("app/cockpit/metric-strip.tsx"), false, "T2 FAIL: metric-strip.tsx 应已删除（v3-P0）");
+  assert.equal(existsSync("app/cockpit/compliance-strip.tsx"), false, "T2 FAIL: compliance-strip.tsx 应已删除（v3-P0）");
 
   // ── T3: page.tsx 检查 ─────────────────────────────────────────────────────
   const pageSource = await readFile("app/cockpit/page.tsx", "utf-8");
@@ -46,6 +51,9 @@ export const cockpitPageTestPromise = (async () => {
   // 不再 import 旧组件
   assert.ok(!pageSource.includes("QuickActionsCard"), "T3 FAIL: page.tsx 不应 import QuickActionsCard");
   assert.ok(!pageSource.includes("TodosCard"), "T3 FAIL: page.tsx 不应 import TodosCard");
+  // v3-P0: MetricStrip / ComplianceStrip 也不应存在
+  assert.ok(!pageSource.includes("MetricStrip"), "T3 FAIL: page.tsx 不应 import MetricStrip（v3-P0 已删除）");
+  assert.ok(!pageSource.includes("ComplianceStrip"), "T3 FAIL: page.tsx 不应 import ComplianceStrip（v3-P0 已删除）");
 
   // 已 import 新组件
   assert.ok(pageSource.includes("AttentionSection"), "T3 FAIL: page.tsx 应 import AttentionSection");
@@ -66,7 +74,7 @@ export const cockpitPageTestPromise = (async () => {
     `T3 FAIL: 左列中 BusinessMetricsCard（pos ${bizIdx}）应先于 CashObligationsCard（pos ${cashIdx}）`
   );
 
-  // page.tsx 作为装配层，总行数约束（v2 后宽松到 160，派活入口+关注区多了些行）
+  // page.tsx 作为装配层，总行数约束（v3 ≤160 行；MetricStrip/ComplianceStrip 已删行数只减不增）
   const pageLines = pageSource.split("\n").length;
   assert.ok(pageLines <= 160, `T3 FAIL: page.tsx 应为装配层（≤160 行），实际 ${pageLines} 行`);
 
@@ -75,25 +83,15 @@ export const cockpitPageTestPromise = (async () => {
     assert.ok(!pageSource.includes(agentTerm), `T3 FAIL: 总览页不应再含 agent 指标「${agentTerm}」`);
   }
 
-  // ── T4: metric-strip.tsx 第 4 格文案与 attention 锚点 ───────────────────
-  const metricStrip = await readFile("app/cockpit/metric-strip.tsx", "utf-8");
-  // 前 3 格财务指标保留
-  for (const financeTerm of ["距申报截止", "本月应付", "本月应收"]) {
-    assert.ok(metricStrip.includes(financeTerm), `T4 FAIL: 指标条缺财务指标「${financeTerm}」`);
-  }
-  // 第 4 格文案已更新
-  assert.ok(metricStrip.includes("需要关注"), "T4 FAIL: metric-strip.tsx 第 4 格应含「需要关注」");
-  assert.ok(!metricStrip.includes('"待办"'), "T4 FAIL: metric-strip.tsx 不应再有「待办」label");
-  // attention 锚点（宽松断言：含 attention 字符串）
-  assert.ok(metricStrip.includes("attention"), "T4 FAIL: metric-strip.tsx 应含 attention 锚点或 scrollIntoView 引用");
-  // urgent 时 alarm 色逻辑保留
-  assert.ok(metricStrip.includes("tone-alarm"), "T4 FAIL: metric-strip.tsx 应保留 urgent alarm 色逻辑");
+  // ── T4: metric-strip.tsx 已在 v3-P0 删除，此节已废弃 ───────────────────
+  // 原 T4 断言 metric-strip.tsx 第4格文案——组件已删除，断言移至 cockpit-v3-slim.test.ts C1a。
+  // 保留此注释以示历史，不读已删除的文件。
 
-  // ── T5: summary route 已切换为 attention 字段 ───────────────────────────
+  // ── T5: summary route 已切换为 attention 字段，v3-P0 移除 invoices ─────────
   const apiSource = await readFile("app/api/cockpit/summary/route.ts", "utf-8");
 
-  // 保留的依赖
-  for (const fn of ["getPayrollPeriodSummary", "getInvoiceLedgerStats", "getBusinessOverview"]) {
+  // 保留的依赖（v3-P0: getInvoiceLedgerStats 随 invoices 字段一并移除，不再检查）
+  for (const fn of ["getPayrollPeriodSummary", "getBusinessOverview"]) {
     assert.ok(apiSource.includes(fn), `T5 FAIL: summary API 缺 ${fn}`);
   }
 
@@ -104,6 +102,10 @@ export const cockpitPageTestPromise = (async () => {
   const apiLines = apiSource.split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"));
   const hasTodosKey = apiLines.some((l) => /todos\s*:/.test(l));
   assert.ok(!hasTodosKey, "T5 FAIL: summary route 不应再返回 todos 字段（非注释行）");
+
+  // v3-P0: invoices 字段也应已移除（详细断言在 cockpit-v3-slim.test.ts C2a）
+  const hasInvoicesKey = apiLines.some((l) => /\binvoices\s*:/.test(l));
+  assert.ok(!hasInvoicesKey, "T5 FAIL: summary route 不应再返回 invoices 字段（v3-P0 已迁往 /agents）");
 
   // deriveCockpitTodos 不应再出现
   assert.ok(!apiSource.includes("deriveCockpitTodos"), "T5 FAIL: route.ts 不应再 import deriveCockpitTodos");
@@ -119,6 +121,9 @@ export const cockpitPageTestPromise = (async () => {
   const typesLines = typesSrc.split("\n").filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"));
   const hasTodosField = typesLines.some((l) => /todos\s*[?:]/.test(l));
   assert.ok(!hasTodosField, "T6 FAIL: CockpitSummary 不应再含 todos 字段（非注释行）");
+  // v3-P0: invoices 字段也应移除
+  const hasInvoicesField = typesLines.some((l) => /\binvoices\s*[?:]/.test(l));
+  assert.ok(!hasInvoicesField, "T6 FAIL: CockpitSummary 不应再含 invoices 字段（v3-P0 已迁往 /agents）");
 
   // ── T7: 经营数据卡：月/季/年切换 + 空态 CTA ───────────────────────────
   const bizCard = await readFile("app/cockpit/business-metrics-card.tsx", "utf-8");
@@ -208,5 +213,5 @@ export const cockpitPageTestPromise = (async () => {
     "T10 FAIL: CockpitSummary types.ts 应含 team 字段"
   );
 
-  console.log("cockpit-page (CV-1 + CV-2 + CV-3): all 10 checks passed ✓");
+  console.log("cockpit-page (CV-1 + CV-2 + CV-3 + v3-P0): all checks passed ✓");
 })();

@@ -1,7 +1,5 @@
-import { SkillsManager } from "@/app/skills/skills-manager";
-
-export const dynamic = "force-dynamic";
+import { redirect } from "next/navigation";
 
 export default function SkillsPage() {
-  return <SkillsManager />;
+  redirect("/config");
 }

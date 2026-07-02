@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getInvoiceLedgerStats, getPayrollPeriodSummary, getBusinessOverview } from "@/lib/db/finance-store";
+import { getPayrollPeriodSummary, getBusinessOverview } from "@/lib/db/finance-store";
 import { listConfirmedMetaDocRows, listRecentWorkItems } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
@@ -25,7 +25,6 @@ export async function GET() {
 
     const calendar = getCalendarContext(now);
     const payroll = getPayrollPeriodSummary(year, month);
-    const invoices = getInvoiceLedgerStats(year, month);
 
     const oblDocs: ObligationSourceDoc[] = listConfirmedMetaDocRows().map((r) => ({
       id: r.id,
@@ -62,7 +61,6 @@ export async function GET() {
 
     const data = {
       payroll,
-      invoices,
       attention,
       business: getBusinessOverview(now),
       obligations: obligationsInMonth(obligations, year, month),

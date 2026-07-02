@@ -412,4 +412,10 @@ void (async () => {
   const { teamPanelTestPromise } = await import("./team-panel.test.ts");
   await teamPanelTestPromise;
 
+  const { cockpitV3SlimTestPromise } = await import("./cockpit-v3-slim.test.ts");
+  await cockpitV3SlimTestPromise;
+
+  const { navV3TestPromise } = await import("./nav-v3.test.ts");
+  await navV3TestPromise;
+
 })();

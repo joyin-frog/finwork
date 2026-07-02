@@ -8,12 +8,10 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { getCalendarContext, type CalendarContext } from "@/lib/domain/tax-calendar";
 import type { CockpitSummary } from "./types";
+import { DispatchInput } from "./dispatch-input";
 import { AttentionSection } from "./attention-section";
 import { BusinessMetricsCard } from "./business-metrics-card";
 import { CashObligationsCard } from "./cash-obligations-card";
-import { ComplianceStrip } from "./compliance-strip";
-import { DispatchInput } from "./dispatch-input";
-import { MetricStrip } from "./metric-strip";
 import { PeriodBadge } from "./period-badge";
 import { RecentWorkCard } from "./recent-work-card";
 import { TeamPanel } from "./team-panel";
@@ -79,7 +77,6 @@ export default function CockpitPage() {
           <>
             <DispatchInput calendar={calendar} />
             <AttentionSection items={summary?.attention ?? []} calendar={calendar} />
-            <MetricStrip calendar={calendar} summary={summary} />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* 左列：经营数据在上，合同收付在下（v1.1 评审决定） */}
@@ -91,7 +88,7 @@ export default function CockpitPage() {
                 <CashObligationsCard obligations={summary?.obligations ?? []} />
               </div>
 
-              {/* 右列：团队面板（有记录）或生长引导卡（冷启动），日历在下 */}
+              {/* 右列：智能体摘要卡（有记录）或生长引导卡（冷启动），日历在下 */}
               <div className="flex flex-col gap-4">
                 {(summary?.team ?? []).length > 0 ? (
                   <TeamPanel team={summary!.team} />
@@ -101,9 +98,6 @@ export default function CockpitPage() {
                 <FinanceCalendarCard calendar={calendar} />
               </div>
             </div>
-
-            {/* 薪税 / 发票 / 报销：周期性合规，降权为一行细条 */}
-            <ComplianceStrip payroll={summary?.payroll ?? null} invoices={summary?.invoices ?? null} />
           </>
         )}
       </div>

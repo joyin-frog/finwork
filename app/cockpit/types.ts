@@ -1,6 +1,6 @@
 import type { AttentionItem } from "@/lib/domain/attention";
 import type { CashObligation } from "@/lib/domain/cash-obligations";
-import type { BusinessOverview, InvoiceLedgerStats, PayrollPeriodSummary } from "@/lib/db/finance-store";
+import type { BusinessOverview, PayrollPeriodSummary } from "@/lib/db/finance-store";
 import type { RecentWorkItem } from "@/lib/db/sqlite";
 
 /** 团队面板单行（CV-3 §5.1） */
@@ -15,7 +15,6 @@ export type TeamRoleItem = {
 
 export type CockpitSummary = {
   payroll: PayrollPeriodSummary;
-  invoices: InvoiceLedgerStats;
   attention: AttentionItem[];
   business: BusinessOverview;
   /** 本月合同收付到期(供财务日历时间地图) */

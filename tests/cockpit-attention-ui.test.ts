@@ -1,8 +1,12 @@
 /**
- * CV-1 先行失败测试 B：
+ * CV-1/v3-P0 先行失败测试 B：
  * 源码文本断言——验证实现者遵守的组件/API/类型契约。
  * 文件不存在（应删除的）用 existsSync === false 断言。
  * 文件应存在的，readFileSync 后做字符串断言。
+ *
+ * v3-P0 变更（spec-cockpit-v3.md §1）：
+ * - B9（读 metric-strip.tsx 第4格文案）已废弃——组件已删除；
+ *   相应断言移至 cockpit-v3-slim.test.ts C1a/C4b。
  *
  * 运行方式：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true npx tsx tests/cockpit-attention-ui.test.ts
  */
@@ -31,6 +35,17 @@ export const cockpitAttentionUiTestPromise = (async () => {
     exists("app/cockpit/quick-actions-card.tsx"),
     false,
     "B1 FAIL: quick-actions-card.tsx 应已删除"
+  );
+  // v3-P0：metric-strip / compliance-strip 也应删除
+  assert.equal(
+    exists("app/cockpit/metric-strip.tsx"),
+    false,
+    "B1 FAIL: metric-strip.tsx 应已删除（v3-P0）"
+  );
+  assert.equal(
+    exists("app/cockpit/compliance-strip.tsx"),
+    false,
+    "B1 FAIL: compliance-strip.tsx 应已删除（v3-P0）"
   );
 
   // ── B2: 旧域逻辑文件已迁移（cockpit-todos.ts 不再存在） ─────────────────
@@ -119,6 +134,9 @@ export const cockpitAttentionUiTestPromise = (async () => {
     const pageSrc = src("app/cockpit/page.tsx");
     assert.ok(!pageSrc.includes("QuickActionsCard"), "B8 FAIL: page.tsx 不应 import QuickActionsCard");
     assert.ok(!pageSrc.includes("TodosCard"), "B8 FAIL: page.tsx 不应 import TodosCard");
+    // v3-P0: MetricStrip / ComplianceStrip 也应移除
+    assert.ok(!pageSrc.includes("MetricStrip"), "B8 FAIL: page.tsx 不应 import MetricStrip（v3-P0）");
+    assert.ok(!pageSrc.includes("ComplianceStrip"), "B8 FAIL: page.tsx 不应 import ComplianceStrip（v3-P0）");
     assert.ok(pageSrc.includes("AttentionSection"), "B8 FAIL: page.tsx 应 import AttentionSection");
     assert.ok(pageSrc.includes("DispatchInput"), "B8 FAIL: page.tsx 应 import DispatchInput");
     // 左列顺序：BusinessMetricsCard 出现位置先于 CashObligationsCard（v1.1 决定）
@@ -132,19 +150,14 @@ export const cockpitAttentionUiTestPromise = (async () => {
     );
   }
 
-  // ── B9: metric-strip.tsx 第 4 格文案与 attention 锚点 ────────────────────
-  {
-    const msSrc = src("app/cockpit/metric-strip.tsx");
-    assert.ok(msSrc.includes("需要关注"), "B9 FAIL: metric-strip.tsx 第 4 格文案应含「需要关注」");
-    assert.ok(!msSrc.includes('"待办"'), "B9 FAIL: metric-strip.tsx 不应再有「待办」label 文案");
-    // attention 锚点或 scrollIntoView（宽松断言含 "attention"）
-    assert.ok(
-      msSrc.includes("attention"),
-      "B9 FAIL: metric-strip.tsx 应含 attention 锚点或 scrollIntoView 引用"
-    );
-    // urgent 时 alarm 色逻辑保留
-    assert.ok(msSrc.includes("tone-alarm"), "B9 FAIL: metric-strip.tsx 应保留 urgent 时 alarm 色逻辑");
-  }
+  // ── B9: metric-strip.tsx 已在 v3-P0 删除，此节废弃 ──────────────────────
+  // 原断言（第4格文案、attention 锚点、alarm 色）随组件删除一并废弃。
+  // 组件存在性断言（existsSync === false）见 cockpit-v3-slim.test.ts C1a。
+  assert.equal(
+    exists("app/cockpit/metric-strip.tsx"),
+    false,
+    "B9 FAIL: metric-strip.tsx 应已删除（v3-P0）"
+  );
 
   // ── B10: route.ts 返回 attention 字段，不返回 todos ──────────────────────
   {
@@ -165,5 +178,5 @@ export const cockpitAttentionUiTestPromise = (async () => {
     assert.ok(!hasTodosField, "B11 FAIL: CockpitSummary 不应再含 todos 字段（非注释行）");
   }
 
-  console.log("cockpit-attention-ui: all checks passed ✓");
+  console.log("cockpit-attention-ui (CV-1 + v3-P0): all checks passed ✓");
 })();

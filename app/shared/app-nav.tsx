@@ -36,7 +36,7 @@ import {
   Settings02Icon,
   Delete02Icon,
   Search01Icon,
-  MagicWand01Icon,
+  UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 
 type ConversationSummary = {
@@ -46,7 +46,7 @@ type ConversationSummary = {
   pinned: boolean;
 };
 
-type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "skills";
+type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents";
 type ChatActive = "new" | "recent";
 
 /** 长条菜单项专用:hover 行时右侧纯文字显示快捷键(只读提示,不是按钮——无盒子/边框)。 */
@@ -247,13 +247,13 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               <HugeiconsIcon icon={DashboardSquare02Icon} size={16} />
               <span>总览</span>
             </Link>
+            <Link href="/agents" onClick={() => trackFeature("nav.agents")} className={navLinkClass(active === "agents")}>
+              <HugeiconsIcon icon={UserGroupIcon} size={16} />
+              <span>智能体</span>
+            </Link>
             <Link href="/files" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
               <HugeiconsIcon icon={LibraryIcon} size={16} />
               <span>资料</span>
-            </Link>
-            <Link href="/skills" onClick={() => trackFeature("nav.skills")} className={navLinkClass(active === "skills")}>
-              <HugeiconsIcon icon={MagicWand01Icon} size={16} />
-              <span>技能</span>
             </Link>
           </div>
 

@@ -7,6 +7,7 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { TeamRoleItem } from "./types";
 import { ROLE_UI } from "@/lib/domain/role-ui";
 
@@ -63,7 +64,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
 
   return (
     <section className="rounded-lg border border-border bg-card px-4 py-3 flex flex-col gap-2">
-      <h2 className="text-sm font-semibold">我的团队</h2>
+      <h2 className="text-sm font-semibold">智能体</h2>
       <div className="flex flex-col gap-1.5">
         {team.map((item) => {
           const ui = ROLE_UI[item.roleId as keyof typeof ROLE_UI];
@@ -96,6 +97,11 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
             </div>
           );
         })}
+      </div>
+      <div className="pt-1 border-t border-border">
+        <Link href="/agents" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          查看全部 →
+        </Link>
       </div>
     </section>
   );
