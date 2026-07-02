@@ -6,6 +6,9 @@ import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { BarChartIcon, ChartDecreaseIcon, ChartIncreaseIcon } from "@hugeicons/core-free-icons";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TrustBadge } from "@/app/shared/trust-badge";
+import { deriveTrustTier } from "@/lib/domain/trust-tier";
+import type { TrustSource } from "@/lib/domain/trust-tier";
 import type { BusinessOverview, BusinessPeriodView } from "@/lib/db/finance-store";
 
 type ViewKey = "month" | "quarter" | "year";
@@ -69,11 +72,23 @@ const EMPTY_PROMPT = encodeURIComponent(
   "请帮我录入最近几个月的经营数据（收入和利润），我来报数字。"
 );
 
+const VALID_TRUST_SOURCES: TrustSource[] = ["engine_calc", "file_parse", "user_dictated", "llm_inferred"];
+
+function toTrustSource(s: string | null | undefined): TrustSource {
+  if (s && (VALID_TRUST_SOURCES as string[]).includes(s)) return s as TrustSource;
+  return "user_dictated";
+}
+
 export function BusinessMetricsCard({ business }: { business: BusinessOverview | null }) {
   const [view, setView] = useState<ViewKey>("month");
 
   const data: BusinessPeriodView | null = business ? business[view] : null;
   const hasData = data && (data.revenue !== null || data.profit !== null);
+
+  // 信任标签（spec §4.3）：从最近一条数据的 source 推导
+  const trustTier = business?.source
+    ? deriveTrustTier(toTrustSource(business.source), "none")
+    : null;
 
   return (
     <Card className="h-full flex flex-col">
@@ -87,6 +102,12 @@ export function BusinessMetricsCard({ business }: { business: BusinessOverview |
               <HugeiconsIcon icon={BarChartIcon} size={13} aria-hidden />
             </div>
             <CardTitle>经营数据</CardTitle>
+            {trustTier && (
+              <TrustBadge
+                tier={trustTier}
+                sourceLabel={business?.source === "user_dictated" ? "用户口述" : undefined}
+              />
+            )}
           </div>
           {/* Segmented control */}
           <div className="flex rounded-md border border-border overflow-hidden text-meta">

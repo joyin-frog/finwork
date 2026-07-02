@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getInvoiceLedgerStats, getPayrollPeriodSummary, getBusinessOverview } from "@/lib/db/finance-store";
-import { listConfirmedMetaDocRows } from "@/lib/db/sqlite";
+import { listConfirmedMetaDocRows, listRecentWorkItems } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveAttentionItems } from "@/lib/domain/attention";
 import { deriveCashObligations, obligationsInMonth, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
@@ -39,6 +39,7 @@ export async function GET() {
       attention: deriveAttentionItems(calendar, payroll, obligations),
       business: getBusinessOverview(now),
       obligations: obligationsInMonth(obligations, year, month),
+      recentWork: listRecentWorkItems(8),
     };
 
     return NextResponse.json({ ok: true, data });

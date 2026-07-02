@@ -20,6 +20,20 @@ export type RoleUiSpec = {
   iconName: string;
 };
 
+/**
+ * roleId → 中文岗位名（client-safe，不 import lib/agent）。
+ * 注意：此映射应与 lib/agent/roles/registry 中的角色名保持同步；
+ * 将来由 role-registry 测试守卫一致性时再收紧（Phase 3）。
+ */
+export const ROLE_LABELS: Record<string, string> = {
+  "bookkeeper":          "记账员",
+  "payroll-officer":     "薪资专员",
+  "tax-officer":         "税务专员",
+  "treasury-officer":    "资金专员",
+  "receivables-officer": "应收专员",
+  "analyst":             "财务分析师",
+};
+
 export const ROLE_UI: Record<RoleId, RoleUiSpec> = {
   "bookkeeper": {
     tone: "--tone-invoice",

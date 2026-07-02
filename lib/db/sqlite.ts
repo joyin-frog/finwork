@@ -1225,6 +1225,82 @@ export function deleteLibraryFile(
   }
 }
 
+// ── 最近工作（CV-2）──────────────────────────────────────────────────────────
+
+export type RecentWorkItem = {
+  conversationId: number;
+  title: string;
+  status: "running" | "done" | "error";
+  roleIds: string[];
+  updatedAt: string;
+};
+
+/**
+ * 最近工作列表（spec §4.1）
+ *
+ * status 来源：JOIN 该会话最新一条 agent_traces，按其 status 映射：
+ *   running → "running"；error → "error"；其余（含无 trace）→ "done"
+ *
+ * roleIds 来自 subagent_dispatches 按 CAST(conversation_id AS INTEGER) = c.id 关联，
+ * 去重聚合，无则空数组。
+ */
+export function listRecentWorkItems(limit = 8): RecentWorkItem[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT
+      c.id AS conversation_id,
+      c.title,
+      c.updated_at,
+      (
+        SELECT at.status
+        FROM agent_traces at
+        WHERE at.conversation_id = c.id
+        ORDER BY at.started_at DESC
+        LIMIT 1
+      ) AS trace_status
+    FROM chat_conversations c
+    ORDER BY c.updated_at DESC
+    LIMIT ?
+  `).all(limit) as Array<{
+    conversation_id: number;
+    title: string;
+    updated_at: string;
+    trace_status: string | null;
+  }>;
+
+  if (rows.length === 0) return [];
+
+  // 按会话聚合 roleIds
+  const convIds = rows.map((r) => r.conversation_id);
+  const placeholders = convIds.map(() => "?").join(",");
+  const dispatchRows = db.prepare(`
+    SELECT CAST(conversation_id AS INTEGER) AS conv_id, role_id
+    FROM subagent_dispatches
+    WHERE CAST(conversation_id AS INTEGER) IN (${placeholders})
+  `).all(...convIds) as Array<{ conv_id: number; role_id: string }>;
+
+  const roleIdsByConv = new Map<number, Set<string>>();
+  for (const d of dispatchRows) {
+    const set = roleIdsByConv.get(d.conv_id) ?? new Set<string>();
+    set.add(d.role_id);
+    roleIdsByConv.set(d.conv_id, set);
+  }
+
+  return rows.map((row) => {
+    let status: "running" | "done" | "error" = "done";
+    if (row.trace_status === "running") status = "running";
+    else if (row.trace_status === "error") status = "error";
+
+    return {
+      conversationId: row.conversation_id,
+      title: row.title,
+      status,
+      roleIds: [...(roleIdsByConv.get(row.conversation_id) ?? [])],
+      updatedAt: row.updated_at,
+    };
+  });
+}
+
 export function readFeatureFlags(dbOverride?: import("node:sqlite").DatabaseSync): Record<string, boolean> {
   const db = dbOverride ?? getDb();
   const rows = db.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'flag:%'").all() as Array<{ key: string; value: string }>;

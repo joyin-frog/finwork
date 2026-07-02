@@ -403,4 +403,10 @@ void (async () => {
   const { subagentDispatchesTestPromise } = await import("./subagent-dispatches.test.ts");
   await subagentDispatchesTestPromise;
 
+  const { cockpitRecentWorkTestPromise } = await import("./cockpit-recent-work.test.ts");
+  await cockpitRecentWorkTestPromise;
+
+  const { businessMetricsSourceTestPromise } = await import("./business-metrics-source.test.ts");
+  await businessMetricsSourceTestPromise;
+
 })();

@@ -6,16 +6,15 @@ import type { IconSvgElement } from "@hugeicons/react";
 import { Calendar03Icon, ArrowUp01Icon, ArrowDown01Icon, CheckListIcon } from "@hugeicons/core-free-icons";
 import { Card, CardContent } from "@/components/ui/card";
 import { AnimatedNumber } from "@/app/shared/animated-number";
-import type { CalendarContext } from "@/lib/domain/tax-calendar";
+import { filingUrgency, type CalendarContext } from "@/lib/domain/tax-calendar";
 import { summarizeObligations, formatAmount, type ObligationTotals } from "@/lib/domain/cash-obligations";
 import type { CockpitSummary } from "./types";
 
 /** 距申报截止随状态换色:今天=报警 → ≤3天=警告 → ≤7天=提醒 → 其余=中性。 */
 function deadlineTone(daysLeft: number): string {
   if (daysLeft <= 0) return "var(--tone-alarm)";
-  if (daysLeft <= 3) return "var(--tone-warn)";
-  if (daysLeft <= 7) return "var(--tone-notice)";
-  return "var(--tone-neutral)";
+  const urgency = filingUrgency(daysLeft);
+  return `var(--tone-${urgency})`;
 }
 
 /** 收付 KPI 副文案:已填合计金额(+ 表示另有未填额);无到期→「本月无到期」(红线4 不编)。 */

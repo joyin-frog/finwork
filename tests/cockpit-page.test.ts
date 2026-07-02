@@ -128,5 +128,17 @@ export const cockpitPageTestPromise = (async () => {
     "T7 FAIL: 应有月/季/年视角"
   );
 
-  console.log("cockpit-page (CV-1): all 7 checks passed ✓");
+  // ── T8: page.tsx 引入 CV-2 新组件（PeriodBadge + RecentWorkCard）───────────
+  // spec §4.1 + §4.2：RecentWorkCard 放在 BusinessMetricsCard 同行（md 两列）；
+  // PeriodBadge 进 header。
+  assert.ok(
+    pageSource.includes("PeriodBadge"),
+    "T8 FAIL: page.tsx 应 import/使用 PeriodBadge（spec §4.2 header 期间徽章）"
+  );
+  assert.ok(
+    pageSource.includes("RecentWorkCard"),
+    "T8 FAIL: page.tsx 应 import/使用 RecentWorkCard（spec §4.1 最近工作卡）"
+  );
+
+  console.log("cockpit-page (CV-1 + CV-2): all 8 checks passed ✓");
 })();

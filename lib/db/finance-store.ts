@@ -411,6 +411,8 @@ export type BusinessOverview = {
   month: BusinessPeriodView;
   quarter: BusinessPeriodView;
   year: BusinessPeriodView;
+  /** 最近一条数据的来源（供 TrustBadge 推导信任级别） */
+  source: string | null;
 };
 
 export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSync = getDb()): void {
@@ -435,7 +437,7 @@ export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSyn
       row.expense ?? null,
       row.profit,
       row.note ?? null,
-      row.source ?? "agent"
+      row.source ?? "user_dictated"
     );
   }
 }
@@ -475,7 +477,12 @@ export function getBusinessOverview(now: Date, db: DatabaseSync = getDb()): Busi
     db
   );
 
-  return { month: monthView, quarter: quarterView, year: yearView };
+  // 取最近一条数据的 source（供 TrustBadge）
+  const latestSource = db.prepare(
+    "SELECT source FROM business_metrics ORDER BY year DESC, month DESC LIMIT 1"
+  ).get() as { source: string } | undefined;
+
+  return { month: monthView, quarter: quarterView, year: yearView, source: latestSource?.source ?? null };
 }
 
 function buildMonthView(year: number, month: number, db: DatabaseSync): BusinessPeriodView {

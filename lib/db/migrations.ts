@@ -109,6 +109,19 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    name: "business_metrics_source_enum",
+    up: (db) => {
+      // 存量 source='agent' 映射为 'user_dictated'（现状该表数据全部来自对话录入）。
+      // 幂等：已经是 user_dictated 的行不受影响；UPDATE WHERE 不存在匹配行时无副作用。
+      db.exec(`
+        UPDATE business_metrics
+        SET source = 'user_dictated'
+        WHERE source = 'agent'
+      `);
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

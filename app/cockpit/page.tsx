@@ -15,6 +15,8 @@ import { ComplianceStrip } from "./compliance-strip";
 import { DispatchInput } from "./dispatch-input";
 import { FinanceCalendarCard } from "./finance-calendar-card";
 import { MetricStrip } from "./metric-strip";
+import { PeriodBadge } from "./period-badge";
+import { RecentWorkCard } from "./recent-work-card";
 
 function TodayDate() {
   const [dateStr, setDateStr] = useState("");
@@ -57,6 +59,7 @@ export default function CockpitPage() {
         <SidebarToggle />
         <h1 className="text-title">总览</h1>
         <TodayDate />
+        <PeriodBadge calendar={calendar} />
         <div className="ml-auto">
           <Button variant="ghost" size="icon" onClick={fetchSummary} aria-label="刷新数据">
             <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} className={loading ? "animate-spin" : ""} />
@@ -79,7 +82,10 @@ export default function CockpitPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* 左列：经营数据在上，合同收付在下（v1.1 评审决定） */}
               <div className="lg:col-span-2 flex flex-col gap-4">
-                <BusinessMetricsCard business={summary?.business ?? null} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <BusinessMetricsCard business={summary?.business ?? null} />
+                  <RecentWorkCard items={summary?.recentWork ?? []} />
+                </div>
                 <CashObligationsCard obligations={summary?.obligations ?? []} />
               </div>
 
