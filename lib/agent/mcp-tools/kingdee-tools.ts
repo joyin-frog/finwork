@@ -8,6 +8,7 @@ import { yuanToFen } from "@/lib/domain/money";
 import { resolveAccount } from "@/lib/domain/account-mapping";
 import { summarizeVouchers, type SlipResult } from "@/lib/domain/voucher-summary";
 import { buildVoucherLines, type BuildVoucherInput } from "@/lib/domain/voucher-build";
+import { buildVoucherSheet, type VoucherForSheet } from "@/lib/domain/voucher-sheet";
 
 type Sdk = SdkLike;
 
@@ -354,8 +355,40 @@ export function createKingdeeTools(sdk: Sdk) {
     };
   });
 
+  // ── 凭证 → 金蝶对照手填清单(行数据,列对齐录入界面);实际 xlsx 由 run_python 写 ──
+  const buildSheetSchema = {
+    vouchers: z
+      .array(
+        z.object({
+          date: z.string(),
+          voucherWord: z.string().optional(),
+          lines: z.array(
+            z.object({
+              summary: z.string(),
+              account: z.string(),
+              accountName: z.string().optional(),
+              dimensionType: z.string().optional(),
+              dimensionValue: z.string().optional(),
+              debitYuan: z.number().optional(),
+              creditYuan: z.number().optional(),
+            })
+          ),
+        })
+      )
+      .describe("确认后的凭证列表(每张含日期+多行分录)"),
+  };
+  const buildSheetHandler = wrapToolHandler(buildSheetSchema, async (args: Record<string, unknown>) => {
+    const { vouchers } = args as { vouchers: VoucherForSheet[] };
+    const sheet = buildVoucherSheet(vouchers);
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(sheet, null, 2) }],
+      structuredContent: sheet,
+    };
+  });
+
   return [
     sdk.tool("query_kingdee_accounts", "查询金蝶科目表(贵司导入的真表;未导入则用示例表并提示),支持按公司名、科目编码、科目名称过滤。返回科目列表含编码、名称、类型、余额。", queryAccountsSchema, queryAccountsHandler),
+    sdk.tool("build_voucher_sheet", "把确认后的凭证整理成金蝶「对照手填清单」行数据(表头+行,列对齐录入界面:日期/凭证字/摘要/科目编码/科目全名/核算维度/借方/贷方,借贷分列)。拿到后用 run_python(openpyxl)写成 xlsx 交付。", buildSheetSchema, buildSheetHandler),
     sdk.tool("build_voucher_lines", "构造多行凭证分录:传费用明细(多借方)+付款科目,自动配平出贷方。单据「原借款」栏有金额时(advanceYuan>0)自动生成预借款冲销:贷其他应收款-个人往来(挂报销人)、差额进银行(应退借/应补贷)。返回多行借贷+是否平衡。", buildVoucherSchema, buildVoucherHandler),
     sdk.tool("check_voucher_amount", "金额勾稽校验:传明细行/合计/大写(元 + 大写文本),校验三者是否一致。一致→高置信度可自动用;不平→指出对不上处、列候选值,交人工。大写解析在工具内做,不要 LLM 心算。", checkAmountSchema, checkAmountHandler),
     sdk.tool("map_voucher_account", "科目映射:传摘要文本 + 从知识库查到的对照表条目,返回科目编码(经科目表验证存在才输出)、名称、维度类型。未命中/编码失效会明确告知,不编造科目码。", mapAccountSchema, mapAccountHandler),
