@@ -54,6 +54,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__kingdee_worker__summarize_vouchers",        category: "finance", riskLevel: "safe" },
   { name: "mcp__kingdee_worker__build_voucher_lines",       category: "finance", riskLevel: "safe" },
   { name: "mcp__kingdee_worker__build_voucher_sheet",       category: "finance", riskLevel: "safe" },
+  { name: "mcp__kingdee_worker__process_voucher_batch",     category: "finance", riskLevel: "safe" },
   // P1 合同归纳:结构化 metadata 起草工具
   { name: "mcp__finance_worker__record_document_metadata",  category: "finance", riskLevel: "medium" },
   // P3: 公司画像（税务筹划）
