@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trackFeature } from "@/lib/telemetry/track";
@@ -52,12 +52,15 @@ type ChatActive = "new" | "recent";
 /** 长条菜单项专用:hover 行时右侧纯文字显示快捷键(只读提示,不是按钮——无盒子/边框)。 */
 function NavShortcut({ combo }: { combo: string }) {
   const isMac = useIsMac();
+  // 挂载前不渲染文本:SSR 与水合首帧同为空,规避 isMac 在 Suspense 边界
+  // 水合前翻转导致的文本不匹配(该 span 仅 hover 可见,空一帧无感知)。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   return (
-    <span
-      suppressHydrationWarning
-      className="ml-auto shrink-0 text-meta text-muted-foreground tabular-nums opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-    >
-      {formatShortcut(combo, isMac)}
+    <span className="ml-auto shrink-0 text-meta text-muted-foreground tabular-nums opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+      {mounted ? formatShortcut(combo, isMac) : null}
     </span>
   );
 }
