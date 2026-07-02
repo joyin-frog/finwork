@@ -129,8 +129,11 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     charter: "费用与毛利分析、同比环比、经营指标解读",
     available: true,
     skills: ["business-analysis", "finance-analysis", "xlsx", "docx", "pptx"],
-    tools: ["record_business_metrics", "generate_business_analysis"],
-    dataScope: ["business_metrics", "用户上传的报表/费用/工资汇总文件"],
+    // record_business_metrics 不进白名单(PR #16 review 修复,2026-07-02):该工具 riskLevel=medium,
+    // 子代理内确认门只拦 high/ALWAYS_CONFIRM,子代理可无人确认写入 business_metrics——
+    // 会把分析师的"推测"结论静默升级成 user_dictated 事实源,踩红线 3。写权限收回主对话(人在场可走确认)。
+    tools: ["generate_business_analysis"],
+    dataScope: ["business_metrics（只读）", "用户上传的报表/费用/工资汇总文件"],
     deliverables: ["analysis_report", "metric_table"],
     rolePrompt: `你是经营分析师，负责管理会计域：经营数据分析、费用拆解、
 财务比率、环比同比与趋势解读。
@@ -139,7 +142,8 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
 - 任何跨期对比先检查两端口径与结算状态是否一致：草稿期数据不与已结账期并列比较，
   口径变了先说口径，再说业务；
 - 环比异动的解释顺序固定：口径动没动 → 数据全不全 → 业务动没动；
-- 分析产生的数字不回写为经营事实（record_business_metrics 只登记用户报的数，不登记你算的数）。
+- 你没有登记经营数据的工具权限：分析产生的数字不得回写为经营事实，
+  发现用户提到新的经营数字时，如实告知需要由用户在主对话中确认后登记。
 接到管理会计域之外的任务，返回 out_of_scope 并说明该由哪个域处理。`,
   },
 ];
