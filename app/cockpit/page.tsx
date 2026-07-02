@@ -8,13 +8,15 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { getCalendarContext, type CalendarContext } from "@/lib/domain/tax-calendar";
 import type { CockpitSummary } from "./types";
+import { RoleActivityTicker } from "./role-activity-ticker";
+import { AttentionSection } from "./attention-section";
 import { BusinessMetricsCard } from "./business-metrics-card";
 import { CashObligationsCard } from "./cash-obligations-card";
-import { ComplianceStrip } from "./compliance-strip";
+import { PeriodBadge } from "./period-badge";
+import { RecentWorkCard } from "./recent-work-card";
+import { TeamPanel } from "./team-panel";
+import { TeamGrowthHint } from "./team-growth-hint";
 import { FinanceCalendarCard } from "./finance-calendar-card";
-import { MetricStrip } from "./metric-strip";
-import { QuickActionsCard } from "./quick-actions-card";
-import { TodosCard } from "./todos-card";
 
 function TodayDate() {
   const [dateStr, setDateStr] = useState("");
@@ -57,6 +59,7 @@ export default function CockpitPage() {
         <SidebarToggle />
         <h1 className="text-title">总览</h1>
         <TodayDate />
+        <PeriodBadge calendar={calendar} />
         <div className="ml-auto">
           <Button variant="ghost" size="icon" onClick={fetchSummary} aria-label="刷新数据">
             <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} className={loading ? "animate-spin" : ""} />
@@ -72,27 +75,29 @@ export default function CockpitPage() {
           </div>
         ) : (
           <>
-            <MetricStrip calendar={calendar} summary={summary} />
+            <RoleActivityTicker calendar={calendar} />
+            <AttentionSection items={summary?.attention ?? []} calendar={calendar} />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* 头条(P1):合同收付总览——日常一眼看「钱怎么进出」;经营分析/快捷操作随后 */}
+              {/* 左列：经营数据在上，合同收付在下（v1.1 评审决定） */}
               <div className="lg:col-span-2 flex flex-col gap-4">
-                <CashObligationsCard obligations={summary?.obligations ?? []} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <BusinessMetricsCard business={summary?.business ?? null} />
-                  <QuickActionsCard />
+                  <RecentWorkCard items={summary?.recentWork ?? []} />
                 </div>
+                <CashObligationsCard obligations={summary?.obligations ?? []} />
               </div>
 
-              {/* 右列:该做什么 + 合规时间节点 */}
+              {/* 右列：智能体摘要卡（有记录）或生长引导卡（冷启动），日历在下 */}
               <div className="flex flex-col gap-4">
-                <TodosCard todos={summary?.todos ?? null} />
+                {(summary?.team ?? []).length > 0 ? (
+                  <TeamPanel team={summary!.team} />
+                ) : (
+                  <TeamGrowthHint />
+                )}
                 <FinanceCalendarCard calendar={calendar} />
               </div>
             </div>
-
-            {/* 薪税 / 发票 / 报销:周期性合规,降权为一行细条 */}
-            <ComplianceStrip payroll={summary?.payroll ?? null} invoices={summary?.invoices ?? null} />
           </>
         )}
       </div>

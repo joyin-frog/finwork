@@ -4,14 +4,16 @@ import { tmpdir } from "node:os";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
 import { getProjectRoot } from "@/lib/runtime/paths";
 import { buildFinanceMcpServers } from "./mcp-tools";
-import { ALLOWED_TOOLS } from "./tools/registry";
 import { getSkillPluginConfig } from "./skill-plugin";
 import { runBeforeHooks, runAfterHooks } from "./hooks/chain";
 import { createUnwiredToolHook, createPathSafetyHook, createTimingHook, createRiskConfirmHook } from "./hooks/built-in";
 import { Semaphore } from "@/lib/utils/semaphore";
+import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
+import { getToolRiskLevel } from "./tools/registry";
+import * as _dispatchStore from "@/lib/db/dispatch-store";
 
 export type SubagentTask = {
-  skill: string;
+  roleId: string;
   instructions: string;
   files?: string[];
   label: string;
@@ -24,39 +26,122 @@ export type SubagentResult = {
   durationMs: number;
 };
 
-function buildSubagentSystemPrompt(skillId: string): string {
-  // skill 正文不再手注;子 Agent 经 SDK 原生 skills:[skillId] 按需加载对应 skill。
-  return [
-    `你是一个专注于 ${skillId} 任务的子 Agent。`,
-    `遇到该任务时,用 Skill 工具加载并遵循 ${skillId} 技能的指令。`,
-    "主 Agent 已完成前置确认，你只需执行分配的任务并返回结构化结果。",
-    "不要询问用户任何问题，根据现有信息尽力完成任务。",
-    "任务完成后，在回复开头用【结果摘要】标记关键数字和结论。",
-  ].join("\n\n");
+// A 段共享基座(spec-role-registry §3);技能正文不手注,经 SDK 原生 skills 白名单按需加载。
+const SUBAGENT_BASE_PROMPT = `你是财务工作台的角色子代理，由主 Agent 派发执行单一任务。
+
+【执行纪律】
+- 你没有与用户对话的通道：不要提问、不要等待确认，基于给定信息尽力完成；
+  信息不足时在结果中列出「缺什么、为什么需要」。
+- 只做角色职责内的任务。任务超出角色边界时不要尝试完成，直接返回一行：
+  out_of_scope: <一句话说明该由哪个域处理>。
+- 执行域内专业作业时，先用 Skill 工具加载对应技能并遵循其流程。
+- 部分高风险工具会被系统拒绝，这是设计而非故障：把已完成的准备工作
+  与「待人确认的下一步」写进结果返回。
+
+【财务纪律】
+- 金额、税率、比率一律经工具计算，禁止心算；金额以分或 Decimal 处理。
+- 查不到的数据明确说「没有查到」，禁止用近似值填空。
+- 输出的每个关键数字带三样：来源（文件/表/发票号）、口径或期间、
+  结算状态（草稿/已确认）。
+- 身份证号、银行卡号不写入结果正文；需要引用时用掩码。
+
+【交付契约】
+- 回复第一段固定为【结果摘要】：关键数字 + 结论 + 异常计数。
+- 异常与疑点按风险从高到低排列，每条给出定位与建议动作。
+- 产出文件用 finalize_deliverable 声明。`;
+
+export function buildSubagentSystemPrompt(role: RoleDefinition): string {
+  return `${SUBAGENT_BASE_PROMPT}\n\n${role.rolePrompt}`;
 }
 
 export async function runSubagent(
   task: SubagentTask,
-  opts: { parentOutputDir: string; signal?: AbortSignal }
+  opts: { parentOutputDir: string; signal?: AbortSignal; conversationId?: string; traceId?: string }
 ): Promise<SubagentResult> {
   const startedAt = Date.now();
   const safeLabel = task.label.replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
   const outputDir = path.join(opts.parentOutputDir, "subagents", safeLabel);
   mkdirSync(outputDir, { recursive: true });
 
-  try {
-    const settings = await readClaudeSettings();
+  // 本次任务途中被高风险工具确认门拒绝的工具名集合
+  const blockedTools = new Set<string>();
+  // 调度记录行 id(仅已知 roleId 时写入)
+  let dispatchId: number | null = null;
 
-    if (!settings.apiKey.trim()) {
+  try {
+    // roleId 校验必须先于 API key 检查:未知角色要报"未知角色",不能被 key 早返回吞掉
+    const role = getRoleDefinition(task.roleId);
+    if (!role) {
       return {
         label: task.label,
-        content: "Claude API Key 未配置。",
+        content: `未知角色 "${task.roleId}"：请从 spawn_subagent 的 role 枚举中选择。`,
         success: false,
         durationMs: Date.now() - startedAt,
       };
     }
 
-    const allowedTools = ALLOWED_TOOLS;
+    // 可派发性检查：紧贴未知角色校验之后、dispatch 落行之前
+    // ① 注册表预留(available:false,作业未落地)——spawn 层枚举已挡,这里独立兜底,
+    //   防止未来新增的内部派发入口(如巡检)绕过 spawn 层直接调 runSubagent
+    // ② 用户手动停用(app_settings)
+    // 两者均不落 dispatch 台账行(编制外/未启用的活不进台账)
+    if (!role.available) {
+      return {
+        label: task.label,
+        content: `角色 "${task.roleId}"（${role.name}）尚未启用，无法执行任务。`,
+        success: false,
+        durationMs: Date.now() - startedAt,
+      };
+    }
+    {
+      const { getDisabledRoleIds } = await import("@/lib/agent/roles/availability");
+      const disabledIds = getDisabledRoleIds();
+      if (disabledIds.includes(task.roleId)) {
+        return {
+          label: task.label,
+          content: `角色 "${task.roleId}"（${role.name}）已停用，无法执行任务。如需使用请在「智能体」页面重新启用。`,
+          success: false,
+          durationMs: Date.now() - startedAt,
+        };
+      }
+    }
+
+    // 角色已解析 → 落调度起始行(roleId 未知时不落行)
+    try {
+      dispatchId = _dispatchStore.recordDispatchStart({
+        roleId: task.roleId,
+        label: task.label,
+        conversationId: opts.conversationId,
+        traceId: opts.traceId,
+      });
+    } catch (e) {
+      console.warn("[dispatch] dispatch-start 失败(不影响任务):", e);
+    }
+
+    const settings = await readClaudeSettings();
+
+    if (!settings.apiKey.trim()) {
+      const result: SubagentResult = {
+        label: task.label,
+        content: "Claude API Key 未配置。",
+        success: false,
+        durationMs: Date.now() - startedAt,
+      };
+      if (dispatchId != null) {
+        try {
+          _dispatchStore.recordDispatchEnd(dispatchId, {
+            status: "failed",
+            summary: result.content.slice(0, 200),
+            blockedReasons: [],
+          });
+        } catch (e) {
+          console.warn("[dispatch] dispatch-end 失败(不影响任务):", e);
+        }
+      }
+      return result;
+    }
+
+    const allowedTools = resolveRoleAllowedTools(task.roleId);
     const skillPlugin = await getSkillPluginConfig();
 
     const sdk = await import("@anthropic-ai/claude-agent-sdk");
@@ -99,15 +184,20 @@ export async function runSubagent(
       const stack = pendingToolCalls.get(toolName) ?? [];
       stack.push({ startTime: Date.now(), input });
       pendingToolCalls.set(toolName, stack);
-      return runBeforeHooks(hookChain, {
+      const hookResult = await runBeforeHooks(hookChain, {
         toolName,
         input,
         outputDir,
         resolveUserQuestion: undefined,
       });
+      // 捕获高风险工具被 deny 的情况 → 累入 blockedTools
+      if (hookResult.behavior === "deny" && getToolRiskLevel(toolName) === "high") {
+        blockedTools.add(toolName);
+      }
+      return hookResult;
     };
 
-    const systemPrompt = buildSubagentSystemPrompt(task.skill);
+    const systemPrompt = buildSubagentSystemPrompt(role);
 
     let prompt = task.instructions;
     if (task.files && task.files.length > 0) {
@@ -122,7 +212,7 @@ export async function runSubagent(
       mcpServers,
       allowedTools,
       plugins: skillPlugin.plugins,
-      skills: [task.skill],
+      skills: role.skills,
       settingSources: skillPlugin.settingSources,
       systemPrompt,
       canUseTool,
@@ -201,25 +291,50 @@ export async function runSubagent(
     }
 
     const content = result || chunks.join("\n").trim() || "子 Agent 已执行，但没有返回文本结果。";
-    return {
+    const subagentResult: SubagentResult = {
       label: task.label,
       content,
       success: true,
       durationMs: Date.now() - startedAt,
     };
+    if (dispatchId != null) {
+      try {
+        _dispatchStore.recordDispatchEnd(dispatchId, {
+          status: "success",
+          summary: content.slice(0, 200),
+          blockedReasons: [...blockedTools],
+        });
+      } catch (e) {
+        console.warn("[dispatch] dispatch-end 失败(不影响任务):", e);
+      }
+    }
+    return subagentResult;
   } catch (error) {
-    return {
+    const content = error instanceof Error ? error.message : String(error);
+    const subagentResult: SubagentResult = {
       label: task.label,
-      content: error instanceof Error ? error.message : String(error),
+      content,
       success: false,
       durationMs: Date.now() - startedAt,
     };
+    if (dispatchId != null) {
+      try {
+        _dispatchStore.recordDispatchEnd(dispatchId, {
+          status: "failed",
+          summary: content.slice(0, 200),
+          blockedReasons: [...blockedTools],
+        });
+      } catch (e) {
+        console.warn("[dispatch] dispatch-end 失败(不影响任务):", e);
+      }
+    }
+    return subagentResult;
   }
 }
 
 export async function runSubagentsParallel(
   tasks: SubagentTask[],
-  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal }
+  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal; conversationId?: string; traceId?: string }
 ): Promise<SubagentResult[]> {
   const concurrency = opts.concurrency ?? 5;
   const semaphore = new Semaphore(concurrency);
@@ -227,7 +342,12 @@ export async function runSubagentsParallel(
   const promises = tasks.map(async (task) => {
     const release = await semaphore.acquire();
     try {
-      return await runSubagent(task, { parentOutputDir: opts.parentOutputDir, signal: opts.signal });
+      return await runSubagent(task, {
+        parentOutputDir: opts.parentOutputDir,
+        signal: opts.signal,
+        conversationId: opts.conversationId,
+        traceId: opts.traceId,
+      });
     } finally {
       release();
     }

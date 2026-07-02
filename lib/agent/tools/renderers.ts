@@ -1,3 +1,5 @@
+import { getRoleDefinition } from "@/lib/agent/roles/registry";
+
 type SummaryFn = (input: unknown, result?: string, isError?: boolean) => string;
 
 /** 技能 id → 中文名(过程展示用人话,不露 finance-skills:business-analysis 机器 id)。 */
@@ -7,11 +9,12 @@ const SKILL_LABELS: Record<string, string> = {
   "reimbursement-check": "报销核对",
   "payroll-calc": "薪税计算",
   "kingdee-draft": "金蝶凭证",
+  "contract-extract": "合同要点",
   "tax-incentive": "税务优惠",
   "rnd-deduction-check": "研发加计",
   xlsx: "表格处理", pdf: "PDF 处理", docx: "Word 处理", pptx: "PPT 处理",
 };
-function skillLabel(id: string): string {
+export function skillLabel(id: string): string {
   const bare = id.replace(/^finance-skills:/, "").replace(/^.*:/, "");
   return SKILL_LABELS[bare] ?? bare;
 }
@@ -63,7 +66,15 @@ const summaries: Record<string, SummaryFn> = {
     if (hasBudget || hasPrior) return "生成经营分析表(四能力×三基准)";
     return "生成经营分析表(偿债/盈利/营运/发展)";
   },
-  spawn_subagent: (i) => { const label = str(i, "label"); return label && label !== "subagent" ? `执行子任务:${label}` : "执行子任务"; },
+  spawn_subagent: (i) => {
+    // 新参数 role(角色 id);历史会话事件里存的是旧参数 skill,保留兼容渲染
+    const roleName = getRoleDefinition(str(i, "role"))?.name;
+    const legacySkill = str(i, "skill");
+    const who = roleName ?? (legacySkill ? skillLabel(legacySkill) : "");
+    const label = str(i, "label");
+    const suffix = label && label !== "subagent" ? `:${label}` : "";
+    return who ? `派给${who}${suffix}` : `执行子任务${suffix}`;
+  },
   calculate_payroll_batch: (i) => {
     const period = formatPeriod(i);
     const count = arrayLen(i, "employees");

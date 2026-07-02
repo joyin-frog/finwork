@@ -155,7 +155,7 @@ export async function POST(request: Request) {
 
     const turnParams: AgentTurnParams = {
       traceId, agentMessages, claudeSessionId, existingClaudeSessionId,
-      attachments, outputDir, routerResult,
+      attachments, outputDir, routerResult, conversationId,
       // 模型由「深度思考」开关决定:默认快速模型,开了用推理模型(该档未配则回落主模型)。
       modelOverride: resolveModelByTier(normalizeTier(modelTier), settings),
     };
@@ -213,6 +213,7 @@ type AgentTurnParams = {
   resolveUserQuestion?: (question: AgentQuestion) => Promise<string>;
   emitChunk?: (text: string) => void;
   emitAgentEvent?: (event: Record<string, unknown>) => void;
+  conversationId?: number;
 };
 
 type AgentTurnResult =
@@ -247,6 +248,7 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     attachments,
     outputDir,
     traceId,
+    conversationId: params.conversationId,
     modelOverride: params.modelOverride,
     signal: params.signal,
     resolveUserQuestion: params.resolveUserQuestion,

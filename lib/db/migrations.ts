@@ -78,6 +78,50 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    name: "add_subagent_dispatches",
+    up: (db) => {
+      // 子代理调度史(spec-role-registry §5):记录每次 runSubagent 的起止、结果与高风险工具阻断原因。
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS subagent_dispatches (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          role_id TEXT NOT NULL,
+          skill TEXT,
+          label TEXT,
+          trace_id TEXT,
+          conversation_id TEXT,
+          status TEXT NOT NULL DEFAULT 'running',
+          summary TEXT,
+          blocked_reason TEXT,
+          started_at TEXT NOT NULL DEFAULT (datetime('now')),
+          ended_at TEXT,
+          duration_ms INTEGER
+        )
+      `);
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_dispatches_role_time
+          ON subagent_dispatches(role_id, started_at DESC)
+      `);
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_dispatches_blocked
+          ON subagent_dispatches(blocked_reason) WHERE blocked_reason IS NOT NULL
+      `);
+    },
+  },
+  {
+    version: 5,
+    name: "business_metrics_source_enum",
+    up: (db) => {
+      // 存量 source='agent' 映射为 'user_dictated'（现状该表数据全部来自对话录入）。
+      // 幂等：已经是 user_dictated 的行不受影响；UPDATE WHERE 不存在匹配行时无副作用。
+      db.exec(`
+        UPDATE business_metrics
+        SET source = 'user_dictated'
+        WHERE source = 'agent'
+      `);
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

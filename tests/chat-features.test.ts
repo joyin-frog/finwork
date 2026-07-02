@@ -46,9 +46,15 @@ function main() {
   console.log("✓ PASS: streaming cursor animation exists");
 
   // ---- Test 5: sanitize schema allows finance-file protocol and class attrs ----
-  const chatContent = fs.readFileSync(
-    path.join(import.meta.dirname, "../app/chat/chat-page.tsx"), "utf-8"
-  );
+  // 裁决修订(2026-07-02):MarkdownMessage 抽取为共享模块后,「对话渲染层」跨三个文件——
+  // 本测试的 chatContent 语义是渲染层整体,拼接读取;断言原样不动,禁止在 chat-page 留哨兵死代码喂断言
+  const chatContent = [
+    "../app/chat/chat-page.tsx",
+    "../app/chat/markdown-message.tsx",
+    "../app/chat/markdown-rehype-config.ts",
+  ]
+    .map((p) => fs.readFileSync(path.join(import.meta.dirname, p), "utf-8"))
+    .join("\n");
   const panelContent = fs.readFileSync(
     path.join(import.meta.dirname, "../app/chat/chat-file-panel.tsx"), "utf-8"
   );

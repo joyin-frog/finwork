@@ -7,6 +7,7 @@ export const FEATURE_EVENT_NAMES = [
   "nav.chat",
   "nav.knowledge",
   "nav.config",
+  "nav.agents",
   "nav.skills",
   // 主功能触达(快捷操作/功能页打开)
   "feature.business_analysis.open",

@@ -34,7 +34,8 @@ export function createRecordBusinessMetricsTool(sdk: Sdk) {
         for (const row of args.rows) {
           rowSchema.parse(row);
         }
-        upsertBusinessMetrics(args.rows);
+        // source 默认 'user_dictated'（spec §4.3：口述数据标签；此工具全部为用户口述）
+        upsertBusinessMetrics(args.rows.map((r) => ({ ...r, source: "user_dictated" })));
         const summary = args.rows
           .map((r) => `${r.year}年${r.month}月 收入${r.revenue} 利润${r.profit}`)
           .join("；");

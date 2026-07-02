@@ -141,6 +141,16 @@ export function getChatQuickPrompts(date: Date, opts: CalendarOptions = {}): Cha
   return prompts.slice(0, 3);
 }
 
+/**
+ * 报税期阈值函数（spec §4.2）— 供 metric-strip.tsx 和 period-badge.tsx 共用，避免阈值字面量两份。
+ * daysLeft ≤3 → alarm；≤7 → warn；其余 → notice
+ */
+export function filingUrgency(daysLeft: number): "alarm" | "warn" | "notice" {
+  if (daysLeft <= 3) return "alarm";
+  if (daysLeft <= 7) return "warn";
+  return "notice";
+}
+
 function toIsoDate(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");

@@ -19,6 +19,11 @@
     --color-tone-skill: var(--tone-skill);
     --color-tone-payroll: var(--tone-payroll);
     --color-tone-invoice: var(--tone-invoice);
+    --color-tone-unverified: var(--tone-unverified);
+    --color-tone-tax: var(--tone-tax);
+    --color-tone-treasury: var(--tone-treasury);
+    --color-tone-receivables: var(--tone-receivables);
+    --color-tone-analysis: var(--tone-analysis);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -129,6 +134,11 @@
     --tone-skill: oklch(0.56 0.095 125);
     --tone-payroll: oklch(0.56 0.10 355);
     --tone-invoice: oklch(0.57 0.10 330);
+    --tone-unverified: oklch(0.55 0.02 260);
+    --tone-tax: oklch(0.57 0.10 220);
+    --tone-treasury: oklch(0.56 0.10 190);
+    --tone-receivables: oklch(0.56 0.10 290);
+    --tone-analysis: oklch(0.58 0.10 105);
     /* —— Elevation 高度阶(语义,非尺寸):一处定浓淡,全站协同;light/dark 各一套 —— */
     /* 1 raised 纸面微升(卡片) · 2 overlay 浮层(菜单/下拉/气泡) · 3 modal 模态(弹窗/抽屉/大面板) */
     --elevation-1: 0 1px 3px 0 oklch(0.16 0.018 253 / 4%), 0 1px 2px -1px oklch(0.16 0.018 253 / 6%);
@@ -178,6 +188,11 @@
     --tone-skill: oklch(0.72 0.095 125);
     --tone-payroll: oklch(0.72 0.10 355);
     --tone-invoice: oklch(0.72 0.10 330);
+    --tone-unverified: oklch(0.72 0.02 260);
+    --tone-tax: oklch(0.72 0.10 220);
+    --tone-treasury: oklch(0.72 0.10 190);
+    --tone-receivables: oklch(0.72 0.10 290);
+    --tone-analysis: oklch(0.72 0.10 105);
 }
 
 @layer base {
@@ -514,6 +529,16 @@ html button.composer-send-button.stop {
   .fa-pulse::after { animation: none; opacity: 0.18; }
   .fa-shimmer-text { animation: none; color: var(--foreground); -webkit-text-fill-color: var(--foreground); }
 }
+
+/* 团队面板新角色入场动效(fa- 族命名;§5.2 生长时刻;一次性不循环) */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes fa-team-enter {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .fa-team-enter { animation: fa-team-enter 0.32s ease-out both; }
+}
+/* prefers-reduced-motion: reduce 时无动画,直接出现(无需额外声明,无 animation 属性即可) */
 
 /* 全站滚动条:细、淡、圆角。内容溢出才出现(overflow:auto 默认)。
    默认隐形(thumb 透明),有滚动意图时才浮现——<html>.fa-scrolling 由 ScrollbarFade

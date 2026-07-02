@@ -430,4 +430,52 @@ void (async () => {
   const { subagentRunnerTestPromise } = await import("./subagent-runner.test.ts");
   await subagentRunnerTestPromise;
 
+  const { trustTierTestPromise } = await import("./trust-tier.test.ts");
+  await trustTierTestPromise;
+
+  const { cockpitTokensTestPromise } = await import("./cockpit-tokens.test.ts");
+  await cockpitTokensTestPromise;
+
+  const { roleRegistryTestPromise } = await import("./role-registry.test.ts");
+  await roleRegistryTestPromise;
+
+  const { attentionTestPromise } = await import("./attention.test.ts");
+  await attentionTestPromise;
+
+  const { cockpitAttentionUiTestPromise } = await import("./cockpit-attention-ui.test.ts");
+  await cockpitAttentionUiTestPromise;
+
+  const { subagentDispatchesTestPromise } = await import("./subagent-dispatches.test.ts");
+  await subagentDispatchesTestPromise;
+
+  const { cockpitRecentWorkTestPromise } = await import("./cockpit-recent-work.test.ts");
+  await cockpitRecentWorkTestPromise;
+
+  const { businessMetricsSourceTestPromise } = await import("./business-metrics-source.test.ts");
+  await businessMetricsSourceTestPromise;
+
+  const { teamPanelTestPromise } = await import("./team-panel.test.ts");
+  await teamPanelTestPromise;
+
+  const { cockpitV3SlimTestPromise } = await import("./cockpit-v3-slim.test.ts");
+  await cockpitV3SlimTestPromise;
+
+  const { navV3TestPromise } = await import("./nav-v3.test.ts");
+  await navV3TestPromise;
+
+  const { agentsSpaceTestPromise } = await import("./agents-space.test.ts");
+  await agentsSpaceTestPromise;
+
+  const { agentRoleToggleTestPromise } = await import("./agent-role-toggle.test.ts");
+  await agentRoleToggleTestPromise;
+
+  const { cockpitTeamExpandTestPromise } = await import("./cockpit-team-expand.test.ts");
+  await cockpitTeamExpandTestPromise;
+
+  const { chatFloatTestPromise } = await import("./chat-float.test.ts");
+  await chatFloatTestPromise;
+
+  const { cockpitTickerTestPromise } = await import("./cockpit-ticker.test.ts");
+  await cockpitTickerTestPromise;
+
 })();

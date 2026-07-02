@@ -13,6 +13,7 @@ import { ModelSettings } from "./model/model-settings";
 import { AboutSettings } from "./about/about-settings";
 import { ProfileSettings } from "./profile/profile-settings";
 import { UsageSettings } from "./usage/usage-settings";
+import { SkillsManager } from "@/app/skills/skills-manager";
 import { Input } from "@/components/ui/input";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
@@ -175,6 +176,16 @@ export default function SkillCenter({
                 onSubagentModelChange={(v) => { setSubagentModel(v); scheduleClaudeSave(); }}
                 onRoleModeChange={(v) => { setRoleMode(v); scheduleClaudeSave(); }}
               />
+            )}
+            {activeTab === "skills" && (
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-end">
+                  <Link href="/skills" className="text-meta text-muted-foreground hover:text-foreground transition-colors">
+                    全屏打开 ↗
+                  </Link>
+                </div>
+                <SkillsManager />
+              </div>
             )}
             {activeTab === "memory" && <MemorySettings />}
             {activeTab === "profile" && <ProfileSettings />}
