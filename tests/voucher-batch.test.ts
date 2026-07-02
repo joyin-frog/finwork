@@ -53,5 +53,20 @@ export const voucherBatchTestPromise = (async () => {
   assert.equal(out.sheet.rows.length, 8, "PB4 FAIL: 清单 8 行(2+4+2)");
   assert.equal(out.sheet.headers[0], "日期", "PB4 FAIL: 清单表头");
 
+  // ── 默认/传入科目也必须存在于导入科目表,否则不能 auto ──
+  const invalidDefaultAccounts = processVoucherBatch({
+    slips: [
+      { file: "detail-chart.pdf", date: "2026-06-03", lineItems: [{ summary: "水电费", amountYuan: 100 }], totalYuan: 100, capitalText: "壹佰元整" },
+      { file: "advance.pdf", date: "2026-06-04", lineItems: [{ summary: "住宿费", amountYuan: 100 }], totalYuan: 100, capitalText: "壹佰元整", advanceYuan: 100, payeeName: "张三" },
+    ],
+    mappings,
+    chart: chart.filter((account) => account.code !== "1002" && account.code !== "1221.03"),
+    paymentAccount: { code: "1002", name: "银行存款" },
+    advanceAccount: { code: "1221.03", name: "其他应收款-个人往来" },
+  });
+  assert.equal(invalidDefaultAccounts.vouchers[0].status, "needs_confirm", "PB5 FAIL: 付款科目不在科目表时不能 auto");
+  assert.ok(invalidDefaultAccounts.vouchers[0].issues.some((issue) => issue.includes("付款科目待确认")), "PB5 FAIL: 应提示付款科目待确认");
+  assert.ok(invalidDefaultAccounts.vouchers[1].issues.some((issue) => issue.includes("预借款科目待确认")), "PB5 FAIL: 冲销时应提示预借款科目待确认");
+
   console.log("voucher-batch: 批量勾稽/映射/预借款冲销/汇总/清单一次出 ✓");
 })();

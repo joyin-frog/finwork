@@ -51,6 +51,7 @@ export function processVoucherBatch(input: BatchInput): BatchOutput {
   const { slips, mappings, chart, paymentAccount, advanceAccount } = input;
   const vouchers: BatchVoucher[] = [];
   const slipResults: SlipResult[] = [];
+  const chartCodes = new Set(chart.map((account) => account.code));
 
   for (const slip of slips) {
     const issues: string[] = [];
@@ -98,6 +99,24 @@ export function processVoucherBatch(input: BatchInput): BatchOutput {
       advanceAccount,
       payeeName: slip.payeeName,
     });
+
+    // 付款/预借款科目同样必须来自当前导入的科目表,不能因使用默认值绕过校验。
+    const usesPaymentAccount = built.lines.some((line) =>
+      line.account === paymentAccount.code && ["付款", "退回多借款", "补付款"].includes(line.summary)
+    );
+    if (usesPaymentAccount && !chartCodes.has(paymentAccount.code)) {
+      allMapped = false;
+      accountIssue = `付款科目待确认:${paymentAccount.code} 不在当前科目表`;
+      issues.push(accountIssue);
+    }
+    if ((slip.advanceYuan ?? 0) > 0) {
+      const advanceCode = advanceAccount?.code ?? "1221.03";
+      if (!chartCodes.has(advanceCode)) {
+        allMapped = false;
+        accountIssue = `预借款科目待确认:${advanceCode} 不在当前科目表`;
+        issues.push(accountIssue);
+      }
+    }
 
     const status: BatchVoucher["status"] = amount.ok && allMapped ? "auto" : "needs_confirm";
     vouchers.push({ file: slip.file, date: slip.date, amount, lines: built.lines, balanced: built.balanced, status, issues });
