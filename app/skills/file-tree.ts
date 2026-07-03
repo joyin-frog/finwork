@@ -70,8 +70,10 @@ export function fileLang(path: string): string | null {
 }
 
 /** 按名字或描述过滤技能(忽略大小写);空查询返回全部。 */
-export function filterSkills<T extends { name: string; description: string }>(skills: T[], query: string): T[] {
+export function filterSkills<T extends { name: string; title?: string; description: string }>(skills: T[], query: string): T[] {
   const q = query.trim().toLowerCase();
   if (!q) return skills;
-  return skills.filter((s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
+  return skills.filter(
+    (s) => s.name.toLowerCase().includes(q) || (s.title ?? "").toLowerCase().includes(q) || s.description.toLowerCase().includes(q),
+  );
 }

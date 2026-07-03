@@ -71,7 +71,7 @@ function SourceTag({ source }: { source: SkillSource }) {
 }
 
 type SkillSource = "bundled" | "user";
-type SkillSummary = { name: string; description: string; source: SkillSource; editable: boolean; enabled: boolean };
+type SkillSummary = { name: string; title: string; summary: string; description: string; source: SkillSource; editable: boolean; enabled: boolean };
 type SkillFileEntry = { path: string; isDir: boolean; size: number };
 
 const SKILL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -151,7 +151,7 @@ export function SkillsManager() {
                 )}
               >
                 <span className={cn("flex-1 min-w-0 truncate text-body", !s.enabled && "text-muted-foreground line-through")}>
-                  {s.name}
+                  {s.title || s.name}
                 </span>
                 <SourceTag source={s.source} />
                 <Switch
