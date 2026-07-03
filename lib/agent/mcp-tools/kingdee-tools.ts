@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
 import { wrapToolHandler } from "./sdk-types";
@@ -8,8 +11,10 @@ import { yuanToFen } from "@/lib/domain/money";
 import { resolveAccount } from "@/lib/domain/account-mapping";
 import { summarizeVouchers, type SlipResult } from "@/lib/domain/voucher-summary";
 import { buildVoucherLines, type BuildVoucherInput } from "@/lib/domain/voucher-build";
+import { validateVoucherDimensions } from "@/lib/domain/voucher-dimension-validate";
 import { buildVoucherSheet, type VoucherForSheet } from "@/lib/domain/voucher-sheet";
 import { processVoucherBatch, type BatchSlip } from "@/lib/domain/voucher-batch";
+import { getPythonPath, getProjectRoot, getAppDataDir } from "@/lib/runtime/paths";
 
 type Sdk = SdkLike;
 
@@ -62,7 +67,7 @@ const importAccountsSchema = {
     .describe("贵司金蝶导出的科目表(逐条:科目编码 + 名称 + 类别)"),
 };
 
-export function createKingdeeTools(sdk: Sdk) {
+export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
   const queryAccountsHandler = wrapToolHandler(queryAccountsSchema, async (args: Record<string, unknown>) => {
     const { accountCode, accountName, company, limit } = args as {
       accountCode?: string;
@@ -400,6 +405,8 @@ export function createKingdeeTools(sdk: Sdk) {
           advanceYuan: z.number().optional().describe("单据「原借款」栏金额,>0 走冲销"),
           payeeName: z.string().optional().describe("报销人(冲销行维度)"),
           departmentName: z.string().optional().describe("报销部门(费用行维度)"),
+          direction: z.enum(["expense", "income"]).optional().describe("资金方向,从单据本身的收/支继承:支出(默认)或收入(如结息,明细行记贷方、银行行记借方)"),
+          payerBankName: z.string().optional().describe("本张单据 OCR 出的付款银行/账户名,用作银行存款行的「银行账号」维度;识别不到就不传,严禁沿用其他单据的银行"),
         })
       )
       .describe("整批单据(每张:字段已由 read_document + 提取得到)"),
@@ -431,6 +438,171 @@ export function createKingdeeTools(sdk: Sdk) {
     };
   });
 
+  // ── export_voucher_list:确定性出三 sheet xlsx,把最后一公里从 LLM 手里拿走 ──
+  type VoucherLineInput = {
+    summary: string;
+    account: string;
+    accountName?: string;
+    dimensionType?: string;
+    dimensionValue?: string;
+    debitYuan?: number;
+    creditYuan?: number;
+  };
+  type VoucherInput = {
+    file: string;
+    date: string;
+    status: string;
+    lines: VoucherLineInput[];
+    issues?: string[];
+    voucherWord?: string;
+  };
+  type SkippedInput = {
+    file: string;
+    reason: string;
+    summary?: string;
+    amountYuan?: number;
+  };
+
+  const exportVoucherListSchema = {
+    vouchers: z
+      .array(
+        z.object({
+          file: z.string(),
+          date: z.string().describe("凭证日期 yyyy-MM-dd"),
+          status: z.string().describe("auto / confirmed / needs_confirm"),
+          lines: z.array(
+            z.object({
+              summary: z.string(),
+              account: z.string(),
+              accountName: z.string().optional(),
+              dimensionType: z.string().optional(),
+              dimensionValue: z.string().optional(),
+              debitYuan: z.number().optional(),
+              creditYuan: z.number().optional(),
+            })
+          ),
+          issues: z.array(z.string()).optional(),
+          voucherWord: z.string().optional(),
+        })
+      )
+      .describe("已确认凭证列表(process_voucher_batch 输出结构)"),
+    skipped: z
+      .array(
+        z.object({
+          file: z.string(),
+          reason: z.string(),
+          summary: z.string().optional(),
+          amountYuan: z.number().optional(),
+        })
+      )
+      .optional()
+      .describe("被跳过/排除的单据"),
+    chart: z
+      .array(
+        z.object({
+          code: z.string(),
+          name: z.string(),
+          type: z.string().optional(),
+          balance: z.number().optional(),
+          dimension: z.string().optional(),
+        })
+      )
+      .optional()
+      .describe("科目表条目,供维度合法性校验"),
+    fileName: z.string().optional().describe("输出文件名,默认:金蝶对照手填清单.xlsx"),
+  };
+
+  const exportVoucherListHandler = wrapToolHandler(exportVoucherListSchema, async (args: Record<string, unknown>) => {
+    const { vouchers, skipped, chart, fileName } = args as {
+      vouchers: VoucherInput[];
+      skipped?: SkippedInput[];
+      chart?: KingdeeAccount[];
+      fileName?: string;
+    };
+
+    // ① 借贷平衡校验(整数分)
+    const balanceErrors: string[] = [];
+    for (const v of vouchers) {
+      let debitFen = 0;
+      let creditFen = 0;
+      for (const l of v.lines) {
+        debitFen += l.debitYuan != null ? yuanToFen(l.debitYuan) : 0;
+        creditFen += l.creditYuan != null ? yuanToFen(l.creditYuan) : 0;
+      }
+      if (debitFen !== creditFen) {
+        balanceErrors.push(
+          `${v.file}(${v.date}): 借方 ${(debitFen / 100).toFixed(2)} ≠ 贷方 ${(creditFen / 100).toFixed(2)},不平衡`
+        );
+      }
+    }
+    if (balanceErrors.length > 0) {
+      return {
+        content: [{ type: "text" as const, text: `导出失败:以下凭证借贷不平衡,已拒绝落文件:\n${balanceErrors.join("\n")}` }],
+        isError: true as const,
+      };
+    }
+
+    // ② 维度合法性校验(有科目表时)
+    if (chart && chart.length > 0) {
+      const dimErrors: string[] = [];
+      for (const v of vouchers) {
+        const result = validateVoucherDimensions(v.lines, chart);
+        for (const err of result.errors) {
+          dimErrors.push(`${v.file}: ${err}`);
+        }
+      }
+      if (dimErrors.length > 0) {
+        return {
+          content: [{ type: "text" as const, text: `导出失败:以下凭证维度错误,已拒绝落文件:\n${dimErrors.join("\n")}` }],
+          isError: true as const,
+        };
+      }
+    }
+
+    // ③ 确定输出目录和文件路径。fileName 取 basename 防路径穿越("../x"),并强制 .xlsx 后缀
+    const outDir = outputDir ?? process.env.FINANCE_AGENT_OUTPUT_DIR ?? path.join(getAppDataDir(), "exports");
+    mkdirSync(outDir, { recursive: true });
+    let outFileName = path.basename(fileName ?? "金蝶对照手填清单.xlsx");
+    if (!outFileName.toLowerCase().endsWith(".xlsx")) outFileName += ".xlsx";
+    const outputPath = path.join(outDir, outFileName);
+
+    // ④ 调用 Python worker 生成 xlsx
+    const payload = JSON.stringify({ outputPath, vouchers, skipped: skipped ?? [] });
+    const workerPath = path.join(getProjectRoot(), "workers", "finance_worker.py");
+    try {
+      const out = execFileSync(getPythonPath(), [workerPath, "export-voucher-xlsx"], {
+        input: payload,
+        encoding: "utf-8",
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 60_000,
+        env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+      });
+      const result = JSON.parse(out.trim()) as { filePath: string };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              filePath: result.filePath,
+              fileName: outFileName,
+              sheets: ["对照清单", "汇总", "待确认与跳过"],
+              voucherCount: vouchers.length,
+              skippedCount: (skipped ?? []).length,
+            }, null, 2),
+          },
+        ],
+        structuredContent: { filePath: result.filePath, fileName: outFileName },
+      };
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      const hint = (e.stderr ?? "").toString().trim() || (e as { message?: string }).message || "未知错误";
+      return {
+        content: [{ type: "text" as const, text: `xlsx 生成失败:${hint.slice(0, 1000)}` }],
+        isError: true as const,
+      };
+    }
+  });
+
   return [
     sdk.tool("query_kingdee_accounts", "查询金蝶科目表(贵司导入的真表;未导入则用示例表并提示),支持按公司名、科目编码、科目名称过滤。返回科目列表含编码、名称、类型、余额。", queryAccountsSchema, queryAccountsHandler),
     sdk.tool("process_voucher_batch", "【批量·首选】一次处理整批单据:传所有单据的字段(每张:日期/费用明细/金额/大写/原借款/部门),内部逐张做金额勾稽+科目映射+分录构造(含预借款冲销)+汇总+出对照清单,一次返回。用它避免逐张逐工具几十次往返导致超时。科目表工具内部自动读。", batchSchema, batchHandler),
@@ -442,5 +614,6 @@ export function createKingdeeTools(sdk: Sdk) {
     sdk.tool("export_kingdee_draft", "导出一批记账凭证为金蝶K/3 Cloud格式草稿。当前为模拟模式生成JSON草稿供预览，不写入真实金蝶系统。", exportDraftSchema, withIdempotency("export_kingdee_draft", exportDraftHandler, { riskLevel: "high" })),
     sdk.tool("validate_kingdee_voucher", "校验金蝶凭证草稿的借贷平衡、科目有效性(对照贵司导入的科目表)、期间正确性。返回校验结果含错误列表和警告。", validateVoucherSchema, validateVoucherHandler),
     sdk.tool("import_kingdee_accounts", "导入贵司金蝶科目表(科目编码+名称+类别),覆盖此前导入。导入后查询/校验/凭证草稿都基于此表,不再用示例表。用户上传科目表后先调本工具。", importAccountsSchema, withIdempotency("import_kingdee_accounts", importAccountsHandler, { riskLevel: "medium" })),
+    sdk.tool("export_voucher_list", "【最终交付】把确认好的凭证列表导出为三 sheet xlsx:①对照清单(每行:日期/凭证字/摘要/科目编码/科目全名/核算维度类型/核算维度值/借方/贷方)②汇总(按科目+按文件小计)③待确认与跳过。导出前自动做借贷平衡+维度合法性双校验,违规返回错误不落文件。禁止用 run_python+openpyxl 手拼凭证行——统一用本工具。", exportVoucherListSchema, exportVoucherListHandler),
   ];
 }

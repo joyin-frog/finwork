@@ -150,7 +150,7 @@ export async function POST(request: Request) {
 
   // --- Router ---
   const routerResult = isEnabled("ROUTER_ENABLED") && lastUserContent
-    ? await runRouter(lastUserContent, messages, traceId)
+    ? await runRouter(lastUserContent, messages, traceId, { claudeSessionId: existingClaudeSessionId, conversationId })
     : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
   log.info("router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
   writeSpan({

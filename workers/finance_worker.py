@@ -481,6 +481,85 @@ def _force_utf8_stdio():
             pass  # 非常规流(如已被替换为 StringIO)忽略
 
 
+def cmd_export_voucher_xlsx():
+    """export-voucher-xlsx: 从 stdin 读 JSON payload,生成三 sheet 金蝶对照清单 xlsx。
+    JSON 结构:
+      { outputPath: str, vouchers: [...], skipped?: [...] }
+    输出到 stdout: JSON { filePath: str }
+    """
+    import openpyxl
+
+    payload = json.loads(sys.stdin.read())
+    output_path = payload["outputPath"]
+    vouchers = payload.get("vouchers", [])
+    skipped = payload.get("skipped", [])
+    # needs_confirm 只进 sheet3,不混入对照清单与汇总口径
+    confirmed = [v for v in vouchers if v.get("status") != "needs_confirm"]
+    needs_confirm = [v for v in vouchers if v.get("status") == "needs_confirm"]
+
+    wb = openpyxl.Workbook()
+
+    # ── Sheet 1: 对照清单(auto/confirmed 凭证) ──
+    ws1 = wb.active
+    ws1.title = "对照清单"
+    header1 = ["日期", "凭证字", "摘要", "科目编码", "科目全名", "核算维度类型", "核算维度值", "借方金额", "贷方金额"]
+    ws1.append(header1)
+    for v in confirmed:
+        date = v.get("date", "")
+        voucher_word = v.get("voucherWord", "记")
+        for line in v.get("lines", []):
+            ws1.append([
+                date,
+                voucher_word,
+                line.get("summary", ""),
+                line.get("account", ""),
+                line.get("accountName", ""),
+                line.get("dimensionType", ""),
+                line.get("dimensionValue", ""),
+                line.get("debitYuan", None),
+                line.get("creditYuan", None),
+            ])
+
+    # ── Sheet 2: 汇总(按文件、按科目笔数金额小计) ──
+    ws2 = wb.create_sheet("汇总")
+    ws2.append(["维度", "科目编码", "科目全名", "借方合计", "贷方合计", "笔数"])
+    # 按科目汇总
+    from collections import defaultdict
+    by_account: dict = defaultdict(lambda: {"name": "", "debit": 0.0, "credit": 0.0, "count": 0})
+    for v in confirmed:
+        for line in v.get("lines", []):
+            code = line.get("account", "")
+            by_account[code]["name"] = line.get("accountName", code)
+            by_account[code]["debit"] += line.get("debitYuan") or 0
+            by_account[code]["credit"] += line.get("creditYuan") or 0
+            by_account[code]["count"] += 1
+    for code, info in sorted(by_account.items()):
+        ws2.append(["科目", code, info["name"], round(info["debit"], 2), round(info["credit"], 2), info["count"]])
+    # 按文件汇总
+    ws2.append([])
+    ws2.append(["文件", "文件名", "", "借方合计", "贷方合计", ""])
+    for v in confirmed:
+        file_debit = sum(line.get("debitYuan") or 0 for line in v.get("lines", []))
+        file_credit = sum(line.get("creditYuan") or 0 for line in v.get("lines", []))
+        ws2.append(["文件", v.get("file", ""), "", round(file_debit, 2), round(file_credit, 2), ""])
+
+    # ── Sheet 3: 待确认与跳过 ──
+    ws3 = wb.create_sheet("待确认与跳过")
+    if not needs_confirm and not skipped:
+        ws3.append(["无"])
+    else:
+        ws3.append(["类型", "文件", "摘要", "金额(元)", "原因"])
+        for v in needs_confirm:
+            issues = "; ".join(v.get("issues", []))
+            total = sum((line.get("debitYuan") or 0) for line in v.get("lines", []))
+            ws3.append(["待确认", v.get("file", ""), "", round(total, 2), issues])
+        for s in skipped:
+            ws3.append(["跳过", s.get("file", ""), s.get("summary", ""), s.get("amountYuan", ""), s.get("reason", "")])
+
+    wb.save(output_path)
+    print(json.dumps({"filePath": output_path}, ensure_ascii=False))
+
+
 def main():
     _force_utf8_stdio()
     if len(sys.argv) >= 2 and sys.argv[1] == "--selfcheck":
@@ -504,8 +583,11 @@ def main():
     if len(sys.argv) == 3 and sys.argv[1] == "analyze-csv":
         print(json.dumps(analyze_csv(Path(sys.argv[2])), ensure_ascii=False, indent=2))
         return
+    if len(sys.argv) >= 2 and sys.argv[1] == "export-voucher-xlsx":
+        cmd_export_voucher_xlsx()
+        return
     raise SystemExit(
-        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | ocr-image <path> | run"
+        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | ocr-image <path> | run | export-voucher-xlsx"
     )
 
 

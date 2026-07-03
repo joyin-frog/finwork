@@ -35,6 +35,12 @@ export type BuildVoucherInput = {
   advanceYuan?: number; // 原借款金额;>0 走冲销
   advanceAccount?: { code: string; name?: string }; // 其他应收款-个人往来
   payeeName?: string; // 报销人(冲销行维度值=员工)
+  /** 资金流向:expense(默认,付款)或 income(收款,方向镜像) */
+  direction?: "expense" | "income";
+  /** 付款方银行名称,income 时填入 paymentAccount 行的银行账号维度;缺失则不填任何维度 */
+  payerBankName?: string;
+  /** paymentAccount 行的核算维度类型(如"银行账号"),有 payerBankName 时才生效 */
+  paymentAccountDimension?: string;
 };
 
 export type BuiltVoucher = {
@@ -45,47 +51,74 @@ export type BuiltVoucher = {
 };
 
 export function buildVoucherLines(input: BuildVoucherInput): BuiltVoucher {
-  const { expenses, paymentAccount, departmentName, advanceYuan, advanceAccount, payeeName } = input;
+  const { expenses, paymentAccount, departmentName, advanceYuan, advanceAccount, payeeName, direction, payerBankName, paymentAccountDimension } = input;
+  const isIncome = direction === "income";
   const lines: VoucherLine[] = [];
 
-  // 借方:各费用明细行(维度=部门)
+  // income 模式:费用行(收入/往来科目)记贷方;expense 模式:记借方
   let expenseTotalFen = 0;
   for (const e of expenses) {
     const fen = yuanToFen(e.amountYuan);
     expenseTotalFen += fen;
-    lines.push({
-      summary: e.summary,
-      account: e.account,
-      accountName: e.accountName,
-      dimensionType: "部门",
-      dimensionValue: e.dimensionValue ?? departmentName,
-      debitYuan: fenToYuan(fen),
-    });
+    if (isIncome) {
+      lines.push({
+        summary: e.summary,
+        account: e.account,
+        accountName: e.accountName,
+        dimensionType: e.dimensionValue != null ? "部门" : undefined,
+        dimensionValue: e.dimensionValue,
+        creditYuan: fenToYuan(fen),
+      });
+    } else {
+      lines.push({
+        summary: e.summary,
+        account: e.account,
+        accountName: e.accountName,
+        dimensionType: "部门",
+        dimensionValue: e.dimensionValue ?? departmentName,
+        debitYuan: fenToYuan(fen),
+      });
+    }
   }
 
-  const advanceFen = advanceYuan ? yuanToFen(advanceYuan) : 0;
-  if (advanceFen > 0) {
-    // 冲销:贷 其他应收款-个人往来(挂报销人),金额=原借款全额
+  // paymentAccount 行维度:类型与值必须成对(科目有维度类型且本单据识别出了银行),缺一律不填,绝不默认
+  const bankDimType = paymentAccountDimension && payerBankName ? paymentAccountDimension : undefined;
+  const bankDim = bankDimType ? { dimensionType: bankDimType, dimensionValue: payerBankName } : {};
+
+  if (isIncome) {
+    // 收款:paymentAccount 行记借方
     lines.push({
-      summary: "冲销预借款",
-      account: advanceAccount?.code ?? "1221.03",
-      accountName: advanceAccount?.name,
-      dimensionType: "员工",
-      dimensionValue: payeeName,
-      creditYuan: fenToYuan(advanceFen),
+      summary: "收款",
+      account: paymentAccount.code,
+      accountName: paymentAccount.name,
+      ...bankDim,
+      debitYuan: fenToYuan(expenseTotalFen),
     });
-    const diffFen = advanceFen - expenseTotalFen;
-    if (diffFen > 0) {
-      // 借多了 → 员工退回,借 银行/现金
-      lines.push({ summary: "退回多借款", account: paymentAccount.code, accountName: paymentAccount.name, debitYuan: fenToYuan(diffFen) });
-    } else if (diffFen < 0) {
-      // 借少了 → 公司补付,贷 银行/现金
-      lines.push({ summary: "补付款", account: paymentAccount.code, accountName: paymentAccount.name, creditYuan: fenToYuan(-diffFen) });
-    }
-    // diff=0:不加差额行
   } else {
-    // 普通:贷 银行,金额=费用合计
-    lines.push({ summary: "付款", account: paymentAccount.code, accountName: paymentAccount.name, creditYuan: fenToYuan(expenseTotalFen) });
+    const advanceFen = advanceYuan ? yuanToFen(advanceYuan) : 0;
+    if (advanceFen > 0) {
+      // 冲销:贷 其他应收款-个人往来(挂报销人),金额=原借款全额
+      lines.push({
+        summary: "冲销预借款",
+        account: advanceAccount?.code ?? "1221.03",
+        accountName: advanceAccount?.name,
+        dimensionType: "员工",
+        dimensionValue: payeeName,
+        creditYuan: fenToYuan(advanceFen),
+      });
+      const diffFen = advanceFen - expenseTotalFen;
+      if (diffFen > 0) {
+        // 借多了 → 员工退回,借 银行/现金
+        lines.push({ summary: "退回多借款", account: paymentAccount.code, accountName: paymentAccount.name, ...bankDim, debitYuan: fenToYuan(diffFen) });
+      } else if (diffFen < 0) {
+        // 借少了 → 公司补付,贷 银行/现金
+        lines.push({ summary: "补付款", account: paymentAccount.code, accountName: paymentAccount.name, ...bankDim, creditYuan: fenToYuan(-diffFen) });
+      }
+      // diff=0:不加差额行
+    } else {
+      // 普通:贷 银行,金额=费用合计
+      lines.push({ summary: "付款", account: paymentAccount.code, accountName: paymentAccount.name, ...bankDim, creditYuan: fenToYuan(expenseTotalFen) });
+    }
   }
 
   const totalDebitFen = lines.reduce((s, l) => s + (l.debitYuan != null ? yuanToFen(l.debitYuan) : 0), 0);

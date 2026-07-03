@@ -46,11 +46,11 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
   });
 }
 
-export async function createKingdeeMcpServer(sdk: Sdk) {
+export async function createKingdeeMcpServer(sdk: Sdk, outputDir?: string) {
   return sdk.createSdkMcpServer({
     name: "kingdee_worker",
     version: "0.1.0",
-    tools: createKingdeeTools(sdk),
+    tools: createKingdeeTools(sdk, outputDir),
   });
 }
 
@@ -62,6 +62,6 @@ export async function buildFinanceMcpServers(
 ) {
   return {
     finance_worker: await createFinanceMcpServer(sdk, outputDir, traceId, conversationId),
-    kingdee_worker: await createKingdeeMcpServer(sdk),
+    kingdee_worker: await createKingdeeMcpServer(sdk, outputDir),
   };
 }

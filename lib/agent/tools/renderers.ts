@@ -146,7 +146,8 @@ const summaries: Record<string, SummaryFn> = {
   },
   build_voucher_sheet: (i) => { const n = arrayLen(i, "vouchers"); return `生成对照清单${n ? `(${n} 张凭证)` : ""}`; },
   summarize_vouchers: (i) => { const n = arrayLen(i, "results"); return `汇总凭证${n ? `(${n} 张)` : ""}`; },
-  process_voucher_batch: (i) => { const n = arrayLen(i, "slips"); return `批量处理单据${n ? `(${n} 张)` : ""}`; },
+  process_voucher_batch: (i) => { const n = arrayLen(i, "slips"); return `批量处理${n ? `${n} 笔业务` : "单据"}`; },
+  export_voucher_list: (i) => { const n = arrayLen(i, "vouchers"); return `导出凭证清单${n ? `(${n} 笔)` : ""}`; },
 };
 
 /** 从 Python 代码提炼一句人话「目的」:仅当能认出操作的具名数据文件时给「处理《X》」,否则返回空(UI 兜底「运行代码」)。 */

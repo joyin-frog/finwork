@@ -8,6 +8,7 @@ import { parseChineseAmount, reconcileAmount, type ReconcileResult } from "@/lib
 import { yuanToFen } from "@/lib/domain/money";
 import { resolveAccount, type MappingEntry } from "@/lib/domain/account-mapping";
 import { buildVoucherLines, type VoucherLine } from "@/lib/domain/voucher-build";
+import { validateVoucherDimensions } from "@/lib/domain/voucher-dimension-validate";
 import { summarizeVouchers, type SlipResult, type VoucherSummary } from "@/lib/domain/voucher-summary";
 import { buildVoucherSheet, type VoucherSheet } from "@/lib/domain/voucher-sheet";
 import type { KingdeeAccount } from "@/lib/db/finance-store";
@@ -21,6 +22,10 @@ export type BatchSlip = {
   advanceYuan?: number;
   payeeName?: string;
   departmentName?: string;
+  /** 资金方向:expense(默认,付款)或 income(收款) */
+  direction?: "expense" | "income";
+  /** 付款方银行名称,income 时作为 paymentAccount 行银行账号维度值 */
+  payerBankName?: string;
 };
 
 export type BatchInput = {
@@ -52,6 +57,8 @@ export function processVoucherBatch(input: BatchInput): BatchOutput {
   const vouchers: BatchVoucher[] = [];
   const slipResults: SlipResult[] = [];
   const chartCodes = new Set(chart.map((account) => account.code));
+  // 付款科目的核算维度类型从科目表确定性带出(如 1002.01 → 银行账号),不靠调用方另传
+  const paymentAccountDimension = chart.find((a) => a.code === paymentAccount.code)?.dimension;
 
   for (const slip of slips) {
     const issues: string[] = [];
@@ -90,7 +97,12 @@ export function processVoucherBatch(input: BatchInput): BatchOutput {
       }
     }
 
-    // ③ 构造分录(含预借款冲销)
+    // ③ 构造分录(含预借款冲销;income 时方向镜像)
+    if (slip.direction === "income" && (slip.advanceYuan ?? 0) > 0) {
+      // 收款单据带「原借款」语义矛盾:忽略冲销并转人工确认,不产出似是而非的分录
+      allMapped = false;
+      issues.push("收款(income)单据不应带原借款金额,已忽略冲销,请人工确认单据性质");
+    }
     const built = buildVoucherLines({
       expenses,
       paymentAccount,
@@ -98,11 +110,14 @@ export function processVoucherBatch(input: BatchInput): BatchOutput {
       advanceYuan: slip.advanceYuan,
       advanceAccount,
       payeeName: slip.payeeName,
+      direction: slip.direction,
+      payerBankName: slip.payerBankName,
+      paymentAccountDimension,
     });
 
     // 付款/预借款科目同样必须来自当前导入的科目表,不能因使用默认值绕过校验。
     const usesPaymentAccount = built.lines.some((line) =>
-      line.account === paymentAccount.code && ["付款", "退回多借款", "补付款"].includes(line.summary)
+      line.account === paymentAccount.code && ["付款", "收款", "退回多借款", "补付款"].includes(line.summary)
     );
     if (usesPaymentAccount && !chartCodes.has(paymentAccount.code)) {
       allMapped = false;
@@ -116,6 +131,16 @@ export function processVoucherBatch(input: BatchInput): BatchOutput {
         accountIssue = `预借款科目待确认:${advanceCode} 不在当前科目表`;
         issues.push(accountIssue);
       }
+    }
+
+    // ④ 维度合法性校验(确定性规则:无核算维度科目不应填维度,类型须一致)
+    const dimValidation = validateVoucherDimensions(built.lines, chart);
+    for (const err of dimValidation.errors) {
+      allMapped = false;
+      issues.push(`维度错误:${err}`);
+    }
+    for (const warn of dimValidation.warnings) {
+      issues.push(`维度警告:${warn}`);
     }
 
     const status: BatchVoucher["status"] = amount.ok && allMapped ? "auto" : "needs_confirm";

@@ -490,4 +490,25 @@ void (async () => {
   const { cockpitTickerTestPromise } = await import("./cockpit-ticker.test.ts");
   await cockpitTickerTestPromise;
 
+  const { voucherBuildIncomeTestPromise } = await import("./voucher-build-income.test.ts");
+  await voucherBuildIncomeTestPromise;
+
+  const { voucherDimensionValidateTestPromise } = await import("./voucher-dimension-validate.test.ts");
+  await voucherDimensionValidateTestPromise;
+
+  const { exportVoucherListTestPromise } = await import("./export-voucher-list.test.ts");
+  await exportVoucherListTestPromise;
+
+  const { knowledgeMcpFixesTestPromise } = await import("./knowledge-mcp-fixes.test.ts");
+  await knowledgeMcpFixesTestPromise;
+
+  const { docCacheTestPromise } = await import("./doc-cache.test.ts");
+  await docCacheTestPromise;
+
+  const { routerContinuationTestPromise } = await import("./router-continuation.test.ts");
+  await routerContinuationTestPromise;
+
+  const { rendererVoucherFixesTestPromise } = await import("./renderer-voucher-fixes.test.ts");
+  await rendererVoucherFixesTestPromise;
+
 })();
