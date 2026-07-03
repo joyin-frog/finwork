@@ -1135,7 +1135,7 @@ export default function ChatPage({
             className={cn("w-1 shrink-0 cursor-col-resize hover:bg-primary/30 transition-colors", dragging && "bg-primary/30", sidebarMaximized && "hidden")}
             onMouseDown={handleSidebarDividerDown}
           />
-          <ChatPreviewSidebar collapsed={sidebarCollapsed} width={sidebarWidth} previewSelection={previewSelection} onMaximize={maximizeSidebar} isMaximized={sidebarMaximized} />
+          <ChatPreviewSidebar collapsed={sidebarCollapsed} width={sidebarWidth} previewSelection={previewSelection} onMaximize={maximizeSidebar} isMaximized={sidebarMaximized} onCollapse={toggleSidebar} />
         </div>
       </section>
     </RoleModeProvider>
