@@ -54,9 +54,13 @@ export const settingsRefactorTestPromise = (async () => {
   const memory = src("app/config/memory/memory-settings.tsx");
   assert.ok(!memory.includes('from "@/components/ui/button"'), "F6-2 FAIL: 记忆页应已去掉手动保存按钮");
   assert.ok(memory.includes("setTimeout") && memory.includes("600"), "F6-2 FAIL: 记忆页应为防抖自动保存");
-  assert.ok(/>\s*MAX_BYTES\)\s*return/.test(memory), "F6-2 FAIL: 超过 64KB 时应暂停落盘(不发 PUT)");
+  assert.ok(
+    />\s*MAX_BYTES\)\s*\{\s*pendingRef\.current = null;[^]*?return;/.test(memory),
+    "F6-2 FAIL: 超过 64KB 时应暂停落盘(不发 PUT,也不留待卸载补发)",
+  );
   assert.ok(memory.includes("自动保存已暂停"), "F6-2 FAIL: 超限时应显式告知已暂停保存(不可静默不存)");
   assert.ok(memory.includes("MAX_BYTES * 0.8"), "F6-2 FAIL: 字节计数应仅在超过 80% 时显示");
+  assert.ok(memory.includes("keepalive: true"), "F6-2 FAIL: 卸载时应补发防抖窗口内未落盘的编辑(不可静默丢弃)");
 
   console.log("settings-refactor: F5 容器/状态语言统一 + F6 保存心智统一 源码契约 ✓");
 })();

@@ -14,6 +14,8 @@ export function MemorySettings() {
   const [loading, setLoading] = useState(true);
   // 首个 post-load 渲染是加载进来的数据,不应触发自动保存
   const hydrated = useRef(false);
+  // 已排入防抖、尚未发出 PUT 的内容;卸载时据此补发,防止防抖窗口内切页丢掉最后一次编辑
+  const pendingRef = useRef<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -43,8 +45,13 @@ export function MemorySettings() {
       hydrated.current = true;
       return;
     }
-    if (new TextEncoder().encode(content).length > MAX_BYTES) return;
+    if (new TextEncoder().encode(content).length > MAX_BYTES) {
+      pendingRef.current = null; // 超限内容不落盘,也不该在卸载时被补发
+      return;
+    }
+    pendingRef.current = content;
     const t = setTimeout(() => {
+      pendingRef.current = null;
       void (async () => {
         setStatus("saving");
         try {
@@ -67,6 +74,20 @@ export function MemorySettings() {
     }, 600);
     return () => clearTimeout(t);
   }, [content, loading]);
+
+  // 卸载兜底:防抖窗口内切标签/关设置会清掉定时器,这里把未发出的编辑直接补发
+  // (不再更新组件状态;keepalive 让请求在页面卸载时也能送达)
+  useEffect(() => {
+    return () => {
+      if (pendingRef.current === null) return;
+      void fetch("/api/memory", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: pendingRef.current }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+  }, []);
 
   return (
     <div className="flex flex-col">
