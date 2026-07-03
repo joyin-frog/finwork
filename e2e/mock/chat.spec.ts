@@ -10,6 +10,25 @@ test("chat: 发送 → 流式回复渲染 → 回合结束", async ({ page }) =>
   await expect(page.getByText("本地模拟 Agent")).toBeVisible();
 });
 
+test("skills catalog: 开始 → 新聊天技能已钉 → 发送携带技能", async ({ page }) => {
+  await page.goto("/config?tab=skills", { waitUntil: "domcontentloaded" });
+  const payrollCard = page.locator("article").filter({ hasText: "工资个税计算" });
+  await expect(payrollCard).toBeVisible();
+  await payrollCard.getByRole("link", { name: "开始" }).click();
+
+  await expect(page).toHaveURL(/\/chat\/new\?skill=payroll-calc/);
+  const box = page.getByLabel("输入消息");
+  await expect(box).toBeFocused();
+  await expect(box).toHaveValue(/\/payroll-calc/);
+
+  const requestPromise = page.waitForRequest((request) => request.url().includes("/api/agent/query") && request.method() === "POST");
+  await page.getByRole("button", { name: "发送" }).click();
+  const request = await requestPromise;
+  const body = request.postDataJSON() as { referencedSkills?: string[] };
+  expect(body.referencedSkills).toContain("payroll-calc");
+  await expect(page.getByText(/核对完成/)).toBeVisible();
+});
+
 test("chat: 工具调用 → 工具卡 + 结果渲染", async ({ page }) => {
   await sendChat(page, "帮我核对这批报销数据");
   await expect(page.getByText("核对完成")).toBeVisible();

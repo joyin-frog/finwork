@@ -23,7 +23,7 @@ export const skillsStoreTestPromise = (async () => {
   mkdirSync(path.join(demoDir, "scripts"), { recursive: true });
   writeFileSync(
     path.join(demoDir, "SKILL.md"),
-    `---\nname: demo\ntitle: 演示技能\nsummary: 一句给财务用户看的演示说明。\ndescription: 内置演示技能\n---\n\n# Demo\n正文。\n`,
+    `---\nname: demo\ntitle: 演示技能\nsummary: 一句给财务用户看的演示说明。\nrequires: 演示表格\nstarter: 请帮我处理这份演示表格\ndescription: 内置演示技能\n---\n\n# Demo\n正文。\n`,
   );
   writeFileSync(path.join(demoDir, "scripts", "run.py"), "print('hi')\n");
 
@@ -43,6 +43,8 @@ export const skillsStoreTestPromise = (async () => {
     assert.equal(demo.enabled, true);
     assert.equal(demo.title, "演示技能", "AC-1 FAIL: 应解析 frontmatter title");
     assert.equal(demo.summary, "一句给财务用户看的演示说明。", "AC-1 FAIL: 应解析 frontmatter summary");
+    assert.equal(demo.requires, "演示表格", "AC-1 FAIL: 应解析 frontmatter requires");
+    assert.equal(demo.starter, "请帮我处理这份演示表格", "AC-1 FAIL: 应解析 frontmatter starter");
 
     // ── AC-2: 干净态 SDK 配置走快路径 ─────────────────────────────────
     let cfg = await store.getSkillSdkConfig();

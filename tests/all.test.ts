@@ -362,6 +362,9 @@ void (async () => {
   const { settingsRefactorTestPromise } = await import("./settings-refactor.test.ts");
   await settingsRefactorTestPromise;
 
+  const { settingsSkillsRedesignTestPromise } = await import("./settings-skills-redesign.test.ts");
+  await settingsSkillsRedesignTestPromise;
+
   const { agentQueryHelpersTestPromise } = await import("./agent-query-helpers.test.ts");
   await agentQueryHelpersTestPromise;
 

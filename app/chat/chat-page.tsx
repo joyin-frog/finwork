@@ -122,12 +122,14 @@ export default function ChatPage({
   mode,
   initialConversationId = null,
   initialDraft,
+  initialSkill,
   quickPrompts,
   roleMode = "daily",
 }: {
   mode: ChatMode;
   initialConversationId?: number | null;
   initialDraft?: string;
+  initialSkill?: SkillRef;
   quickPrompts?: ChatQuickPrompt[];
   roleMode?: RoleMode;
 }) {
@@ -166,9 +168,9 @@ export default function ChatPage({
     } catch { /* ignore */ }
   }, []);
 
-  // Focus textarea on mount when pre-filled via initialDraft
+  // 从能力目录进入时已预填技能引用/开场白，直接把操作焦点交给输入框。
   useEffect(() => {
-    if (initialDraft) textareaRef.current?.focus();
+    if (initialDraft || initialSkill) textareaRef.current?.focus();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -230,7 +232,7 @@ export default function ChatPage({
   const [mentionAtPos, setMentionAtPos] = useState(-1);
   const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0);
   // 技能引用:/ 弹窗选/输入技能 → 以 chip 呈现并随消息发给 agent。
-  const [referencedSkills, setReferencedSkills] = useState<SkillRef[]>([]);
+  const [referencedSkills, setReferencedSkills] = useState<SkillRef[]>(initialSkill ? [initialSkill] : []);
   const [composerSkills, setComposerSkills] = useState<PickerSkill[]>([]);
   const [composerSkillsLoaded, setComposerSkillsLoaded] = useState(false);
   const [skillMenuActive, setSkillMenuActive] = useState(false);

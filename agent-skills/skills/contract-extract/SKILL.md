@@ -2,6 +2,8 @@
 name: contract-extract
 title: 合同要点提取
 summary: 从合同、订单、发票里提炼金额和关键日期,先存成草稿,由你在知识库确认。
+requires: "合同、订单或发票"
+starter: "请提取这份文件里的财务要点"
 description: 上传合同/订单/发票/票据类文档后，提炼关键要点写入知识库结构化 metadata（draft）。触发条件：用户上传合同、订单、发票、账单、水电费单等应付应收相关文档，且文档已进入知识库（有 documentId）。不上传文档时不要触发。输出：调用 record_document_metadata 写 draft；绝不替用户确认（confirmed 由用户在目录页操作）。
 ---
 
