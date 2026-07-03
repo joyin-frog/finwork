@@ -1,5 +1,6 @@
-import { rmSync } from "node:fs";
-import { getConversationFilesDir } from "./paths";
+import { readdirSync, rmSync, statSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const CLEANUP_AFTER_MS = 3600_000; // 1h
 const STALE_MAX_MS = 86400_000; // 24h
@@ -13,36 +14,32 @@ export function scheduleCleanup(_outputDir: string, _delayMs: number = CLEANUP_A
 }
 
 /**
- * Remove output directories that are older than maxAgeMs.
+ * Remove os.tmpdir()/finance-agent-output-* fallback dirs older than maxAgeMs.
+ * (claude-adapter 在无会话 outputDir 时才落 tmpdir;这些目录没人引用,可安全清理。)
  * Called at startup to prevent tmpdir accumulation.
+ *
+ * ⚠ 只清 tmpdir 回落目录。会话内 <files>/<conv>/generate 是持久产物——已登记进
+ * chat_attachments、由 /api/files 与文件库长期供文件,绝不能按 mtime 清理。
  */
-export function purgeStaleOutputDirs(_maxAgeMs: number = STALE_MAX_MS): void {
-  // Best-effort: try to clean known conversation generate dirs
+export function purgeStaleOutputDirs(maxAgeMs: number = STALE_MAX_MS, tmpRoot: string = os.tmpdir()): void {
   try {
-    const filesDir = getConversationFilesDir(0);
-    // Strip the trailing /0 to get the parent dir
-    const parentDir = filesDir.replace(/\/\d+$/, "");
-    if (!parentDir) return;
-
-    const { readdirSync, statSync } = require("node:fs") as typeof import("node:fs");
     const now = Date.now();
     let entries: import("node:fs").Dirent[];
     try {
-      entries = readdirSync(parentDir, { withFileTypes: true });
+      entries = readdirSync(tmpRoot, { withFileTypes: true });
     } catch {
       return;
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const fullPath = `${parentDir}/${entry.name}/generate`;
+      if (!entry.isDirectory() || !entry.name.startsWith("finance-agent-output-")) continue;
+      const fullPath = path.join(tmpRoot, entry.name);
       try {
-        const stat = statSync(fullPath);
-        if (now - stat.mtimeMs > _maxAgeMs) {
+        if (now - statSync(fullPath).mtimeMs > maxAgeMs) {
           rmSync(fullPath, { recursive: true, force: true });
         }
       } catch {
-        // Directory doesn't exist or not accessible — skip
+        // Directory disappeared or not accessible — skip
       }
     }
   } catch {
