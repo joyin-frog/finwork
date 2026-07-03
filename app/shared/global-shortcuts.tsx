@@ -114,7 +114,7 @@ function ShortcutsHelpDialog({
         {/* 与全局搜索一致:浅色无模糊遮罩 */}
         <DialogPrimitive.Overlay
           data-slot="dialog-overlay"
-          className="fixed inset-0 z-50 bg-foreground/8 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+          className="fixed inset-0 z-50 bg-scrim-modal duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
         <DialogPrimitive.Content
           data-slot="dialog-content"

@@ -1,6 +1,7 @@
 import SkillCenter from "@/app/config/skill-center";
 import { readPublicClaudeSettings } from "@/lib/settings/claude-settings";
-import { CONFIG_TAB_KEYS } from "@/app/config/tabs";
+import { redirect } from "next/navigation";
+import { CONFIG_TAB_KEYS, LEGACY_CONFIG_TAB_REDIRECTS } from "@/app/config/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,10 @@ export default async function ConfigPage({
   searchParams?: Promise<{ tab?: string }>;
 }) {
   const params = await searchParams;
+  const legacyTarget = params?.tab && params.tab in LEGACY_CONFIG_TAB_REDIRECTS
+    ? LEGACY_CONFIG_TAB_REDIRECTS[params.tab as keyof typeof LEGACY_CONFIG_TAB_REDIRECTS]
+    : null;
+  if (legacyTarget) redirect(`/config?tab=${legacyTarget}`);
   const initialTab = params?.tab && validTabs.has(params.tab) ? params.tab : "general";
   const claudeSettings = await readPublicClaudeSettings();
   return (

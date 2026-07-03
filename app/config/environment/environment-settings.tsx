@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 type DoctorStatus = { ok: boolean; detail: string; pythonVersion?: string; missing?: string[] };
 
-/** 「运行环境」卡片正文:高级分析组件(Python)检测与一键安装。标题/说明由外层 SettingsCard 提供。 */
+/** 「运行环境」区块正文:高级分析组件(Python)检测与一键安装。标题/说明由外层 SettingsSection 提供。 */
 export function RuntimeEnvBody() {
   const [status, setStatus] = useState<DoctorStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,10 +53,12 @@ export function RuntimeEnvBody() {
         {loading ? (
           <span className="text-muted-foreground">检测中…</span>
         ) : (
-          <span className="text-muted-foreground">
-            {ready ? "✅ 已就绪" : "⚠ 未启用"}
-            {status?.detail ? ` — ${status.detail}` : ""}
-          </span>
+          <>
+            <span className={ready ? "text-[color:var(--tone-ok)]" : "text-muted-foreground"}>
+              {ready ? "已就绪 ✓" : "未启用"}
+            </span>
+            {status?.detail ? <span className="text-muted-foreground">{` — ${status.detail}`}</span> : null}
+          </>
         )}
       </div>
 

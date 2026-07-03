@@ -4,7 +4,7 @@ import { assertNoCrash, dismissGate } from "./helpers";
 // 遥测设置 journey(§17):
 // - 开关默认开(telemetryEnabled:true)
 // - 主区无 token/endpoint 输入框(内置模式)
-// - 测试区有 telemetry-test-endpoint / telemetry-test-token 输入 + 「立即上报(测试)」按钮
+// - dev 环境测试区有 telemetry-test-endpoint / telemetry-test-token 输入 + 「立即上报(测试)」按钮
 // - 可关闭
 // - 首启告知 toast 出现一次(disclosureShown 未见过时)
 // 不打真网络,不依赖真 installId。
@@ -108,8 +108,7 @@ test("遥测设置: 开关默认开 + 主区无 token 输入框 + 测试区有�
   await page.goto("/config?tab=about", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
 
-  // 断言「使用数据上报」章节可见(标题措辞/标点属表现层,只锁章节存在)
-  await expect(page.getByText(/使用数据上报/).first()).toBeVisible();
+  await expect(page.getByText("数据与隐私", { exact: true })).toBeVisible();
 
   // 开关默认应为 ON(§17.2)
   const toggle = page.getByRole("switch", { name: "启用上报" });

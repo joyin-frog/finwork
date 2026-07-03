@@ -359,6 +359,15 @@ void (async () => {
   const { skillsStoreTestPromise } = await import("./skills-store.test.ts");
   await skillsStoreTestPromise;
 
+  const { settingsRefactorTestPromise } = await import("./settings-refactor.test.ts");
+  await settingsRefactorTestPromise;
+
+  const { settingsSkillsRedesignTestPromise } = await import("./settings-skills-redesign.test.ts");
+  await settingsSkillsRedesignTestPromise;
+
+  const { overlayScrimTestPromise } = await import("./overlay-scrim.test.ts");
+  await overlayScrimTestPromise;
+
   const { agentQueryHelpersTestPromise } = await import("./agent-query-helpers.test.ts");
   await agentQueryHelpersTestPromise;
 

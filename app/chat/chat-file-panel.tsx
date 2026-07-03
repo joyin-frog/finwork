@@ -96,17 +96,19 @@ export function ChatFilePanel({
           </div>
         ) : null}
       </div>
-      <ShortcutHint label={sidebarCollapsed ? "展开右侧栏" : "收起右侧栏"} combo="alt+mod+b">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggleSidebar}
-          aria-label={sidebarCollapsed ? "展开右侧栏" : "收起右侧栏"}
-          aria-expanded={!sidebarCollapsed}
-        >
-          <HugeiconsIcon icon={sidebarCollapsed ? LayoutAlignRightIcon : PanelRightIcon} size={16} />
-        </Button>
-      </ShortcutHint>
+      {sidebarCollapsed ? (
+        <ShortcutHint label="展开右侧栏" combo="alt+mod+b">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleSidebar}
+            aria-label="展开右侧栏"
+            aria-expanded={false}
+          >
+            <HugeiconsIcon icon={LayoutAlignRightIcon} size={16} />
+          </Button>
+        </ShortcutHint>
+      ) : null}
     </div>
   );
 }

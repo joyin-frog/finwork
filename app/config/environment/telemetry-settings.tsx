@@ -17,6 +17,10 @@ type TelemetryStatus = {
   lastReportedCount: number;
 };
 
+export function isTelemetryDebugVisible(nodeEnv: string | undefined): boolean {
+  return nodeEnv === "development";
+}
+
 function formatTime(epochMs: number): string {
   if (!epochMs) return "从未";
   return new Date(epochMs).toLocaleString("zh-CN", {
@@ -48,7 +52,7 @@ function formatTestResult(result: TestReportResult): string {
   return `上报失败${statusPart}:${r.error}`;
 }
 
-/** 「使用数据上报」卡片正文:开关 + 状态 + 本地测试上报。标题/说明由外层 SettingsCard 提供。 */
+/** 「使用数据上报」区块正文:开关 + 状态 + 本地测试上报。标题/说明由外层 SettingsSection 提供。 */
 export function TelemetryBody() {
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState<TelemetryStatus | null>(null);
@@ -106,6 +110,7 @@ export function TelemetryBody() {
   }
 
   const builtIn = status?.endpointBuiltIn ?? false;
+  const showDebug = isTelemetryDebugVisible(process.env.NODE_ENV);
 
   return (
     <>
@@ -132,8 +137,8 @@ export function TelemetryBody() {
         </p>
       )}
 
-      {/* 测试上报区 */}
-      <div className="flex flex-col gap-2 border-t border-border/50 pt-3 mt-1">
+      {/* 测试上报区只属于开发环境，发布版不暴露调试端点和 token。 */}
+      {showDebug ? <div className="flex flex-col gap-2 border-t border-border/50 pt-3 mt-1">
         <p className="text-meta font-medium text-foreground">测试上报(本地调试)</p>
         <p className="text-meta text-muted-foreground">
           仅本地测试用;打包发布版用内置配置,这里留空即可。
@@ -182,7 +187,7 @@ export function TelemetryBody() {
             </p>
           )}
         </div>
-      </div>
+      </div> : null}
     </>
   );
 }

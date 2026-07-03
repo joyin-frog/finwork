@@ -163,7 +163,7 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim-blocking">
         <div className="w-[540px] max-w-[92vw] max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-background p-6 shadow-[var(--elevation-3)] flex flex-col gap-5">
           <h2 className="text-title">欢迎用小财</h2>
 

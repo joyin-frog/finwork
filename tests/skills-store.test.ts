@@ -4,8 +4,9 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync
 import { tmpdir } from "node:os";
 
 // 技能数据层 CRUD + 文件操作行为测试(新模型)。用临时目录 + 环境变量隔离,真实读写文件:
-// - 内置技能只读(可启停,不可改/删/改文件);用户技能全可改(描述/正文/任意文件)。
+// - 内置技能只读且恒启用(不可启停/改/删/改文件);用户技能全可改(描述/正文/任意文件)+可启停。
 // - 名字内置/用户互斥;喂给 SDK 的 plugins/skills 计算;路径穿越必须被拒。
+// - frontmatter 的 title/summary 纯展示字段要解析并经 /api/skills 返回。
 export const skillsStoreTestPromise = (async () => {
   const fixture = mkdtempSync(path.join(tmpdir(), "finance-agent-skills-store-"));
   const bundledRoot = path.join(fixture, "bundled");
@@ -20,7 +21,10 @@ export const skillsStoreTestPromise = (async () => {
   );
   const demoDir = path.join(bundledRoot, "skills", "demo");
   mkdirSync(path.join(demoDir, "scripts"), { recursive: true });
-  writeFileSync(path.join(demoDir, "SKILL.md"), `---\nname: demo\ndescription: 内置演示技能\n---\n\n# Demo\n正文。\n`);
+  writeFileSync(
+    path.join(demoDir, "SKILL.md"),
+    `---\nname: demo\ntitle: 演示技能\nsummary: 一句给财务用户看的演示说明。\nrequires: 演示表格\nstarter: 请帮我处理这份演示表格\ndescription: 内置演示技能\n---\n\n# Demo\n正文。\n`,
+  );
   writeFileSync(path.join(demoDir, "scripts", "run.py"), "print('hi')\n");
 
   process.env.FINANCE_AGENT_BUNDLED_PLUGIN_DIR = bundledRoot;
@@ -37,6 +41,10 @@ export const skillsStoreTestPromise = (async () => {
     assert.equal(demo.source, "bundled");
     assert.equal(demo.editable, false, "AC-1 FAIL: 内置技能 editable 应为 false");
     assert.equal(demo.enabled, true);
+    assert.equal(demo.title, "演示技能", "AC-1 FAIL: 应解析 frontmatter title");
+    assert.equal(demo.summary, "一句给财务用户看的演示说明。", "AC-1 FAIL: 应解析 frontmatter summary");
+    assert.equal(demo.requires, "演示表格", "AC-1 FAIL: 应解析 frontmatter requires");
+    assert.equal(demo.starter, "请帮我处理这份演示表格", "AC-1 FAIL: 应解析 frontmatter starter");
 
     // ── AC-2: 干净态 SDK 配置走快路径 ─────────────────────────────────
     let cfg = await store.getSkillSdkConfig();
@@ -68,17 +76,30 @@ export const skillsStoreTestPromise = (async () => {
       "AC-5 FAIL: 删除内置技能应抛 read_only",
     );
 
-    // ── AC-6: 启停(内置/用户都可);停用从 SDK 白名单剔除 ──────────────
-    await store.setSkillEnabled("demo", false);
+    // ── AC-6: 内置技能不可启停(恒启用),历史误关标记被忽略;用户技能可启停 ──
+    await assert.rejects(
+      () => store.setSkillEnabled("demo", false),
+      (err: unknown) => err instanceof store.SkillError && err.code === "read_only",
+      "AC-6 FAIL: 停用内置技能应抛 read_only",
+    );
+    // 历史遗留的停用标记:读取时一律视为启用,SDK 配置也不剔除(修复历史误关)
+    writeFileSync(statePath, `${JSON.stringify({ disabled: ["demo"] })}\n`);
     list = await store.listSkills();
-    assert.equal(list.find((s) => s.name === "demo")?.enabled, false);
+    assert.equal(list.find((s) => s.name === "demo")?.enabled, true, "AC-6 FAIL: 内置技能应忽略停用标记(恒启用)");
     cfg = await store.getSkillSdkConfig();
-    assert.ok(Array.isArray(cfg.skills), "AC-6 FAIL: 有用户技能/停用时 skills 应为白名单数组");
+    assert.ok(Array.isArray(cfg.skills), "AC-6 FAIL: 有用户技能时 skills 应为白名单数组");
+    assert.ok((cfg.skills as string[]).includes("finance-skills:demo"), "AC-6 FAIL: 内置 demo 不应被停用标记剔除");
+    // 用户技能仍可停用,并从 SDK 白名单剔除
+    await store.setSkillEnabled("mine", false);
+    list = await store.listSkills();
+    assert.equal(list.find((s) => s.name === "mine")?.enabled, false, "AC-6 FAIL: 用户技能应可停用");
+    cfg = await store.getSkillSdkConfig();
     const skills = cfg.skills as string[];
     assert.equal(cfg.plugins.length, 2, "AC-6 FAIL: 应注册内置+用户两个 plugin");
-    assert.ok(skills.includes("user-skills:mine"), "AC-6 FAIL: 用户技能应在白名单");
-    assert.ok(!skills.some((s) => s.endsWith(":demo")), "AC-6 FAIL: 停用的 demo 应被剔除");
-    await store.setSkillEnabled("demo", true);
+    assert.ok(!skills.includes("user-skills:mine"), "AC-6 FAIL: 停用的用户技能应被剔除");
+    assert.ok(skills.includes("finance-skills:demo"), "AC-6 FAIL: 内置 demo 应始终在白名单");
+    await store.setSkillEnabled("mine", true);
+    writeFileSync(statePath, `${JSON.stringify({ disabled: [] })}\n`);
 
     // ── AC-7: 文件操作(用户技能)——列/写/读/删;内置抛 read_only ──────
     let files = await store.listSkillFiles("mine");
@@ -134,7 +155,28 @@ export const skillsStoreTestPromise = (async () => {
     assert.equal(store.isValidSkillName("../evil"), false);
     assert.equal(store.isValidSkillName("good-name1"), true);
 
-    console.log("skills-store: 内置只读/用户全改/文件操作/路径防穿越/SDK 配置 ✓");
+    // ── AC-11: 路由层——GET /api/skills 返回 title/summary;PATCH 对内置改 enabled 拒 403 ──
+    const skillsRoute = await import("../app/api/skills/route.ts");
+    const listRes = await skillsRoute.GET(new Request("http://local/api/skills"));
+    const listBody = (await listRes.json()) as { ok: boolean; data: { name: string; title: string; summary: string }[] };
+    assert.equal(listBody.ok, true);
+    const demoItem = listBody.data.find((s) => s.name === "demo");
+    assert.equal(demoItem?.title, "演示技能", "AC-11 FAIL: /api/skills 应返回 title");
+    assert.equal(demoItem?.summary, "一句给财务用户看的演示说明。", "AC-11 FAIL: /api/skills 应返回 summary");
+
+    const nameRoute = await import("../app/api/skills/[name]/route.ts");
+    const patchRes = await nameRoute.PATCH(
+      new Request("http://local/api/skills/demo", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      }),
+      { params: Promise.resolve({ name: "demo" }) },
+    );
+    assert.equal(patchRes.status, 403, "AC-11 FAIL: PATCH 停用内置技能应拒 403");
+    assert.equal((await store.getSkill("demo"))?.enabled, true, "AC-11 FAIL: 内置技能 PATCH 后应仍启用");
+
+    console.log("skills-store: 内置只读恒启用/用户全改可启停/title 展示字段/文件操作/路径防穿越/SDK 配置 ✓");
   } finally {
     delete process.env.FINANCE_AGENT_BUNDLED_PLUGIN_DIR;
     delete process.env.FINANCE_AGENT_USER_PLUGIN_DIR;

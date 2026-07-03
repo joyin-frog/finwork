@@ -66,7 +66,7 @@ export const PATCH = withApiError(async function PATCH(request: Request, { param
   }
 }, "/api/skills/[name]");
 
-/** 删除用户技能(彻底删除目录)。内置技能不可删(read_only→403),请改用 PATCH 停用。 */
+/** 删除用户技能(彻底删除目录)。内置技能不可删(read_only→403),也不可经 PATCH 停用(恒启用)。 */
 export const DELETE = withApiError(async function DELETE(_request: Request, { params }: Ctx) {
   const { name } = await params;
   if (!isValidSkillName(name)) return badName();

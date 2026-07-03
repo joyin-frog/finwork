@@ -7,18 +7,20 @@ export function ChatPreviewSidebar({
   width,
   previewSelection,
   onMaximize,
-  isMaximized
+  isMaximized,
+  onCollapse,
 }: {
   collapsed: boolean;
   width: number;
   previewSelection: PreviewFileSelection | null;
   onMaximize?: () => void;
   isMaximized?: boolean;
+  onCollapse?: () => void;
 }) {
   if (collapsed) return null;
   return (
     <aside className="context-sidebar preview-sidebar" style={{ width, minWidth: 0, flexShrink: 0 }}>
-      <FilePreviewPage selection={previewSelection} onSelectionChange={() => undefined} onMaximize={onMaximize} isMaximized={isMaximized} docked />
+      <FilePreviewPage selection={previewSelection} onSelectionChange={() => undefined} onMaximize={onMaximize} isMaximized={isMaximized} docked onCollapse={onCollapse} />
     </aside>
   );
 }

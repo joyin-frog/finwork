@@ -98,16 +98,15 @@ export const navV3TestPromise = (async () => {
       "C6 FAIL: app/skills/page.tsx 应保留（/skills 路由不删除，只重定向）"
     );
     const skillsPageSrc = src("app/skills/page.tsx");
-    // 裁决修订二(2026-07-02):导航降权与阅读空间分离——/skills 恢复为独立全屏页(渲染 SkillsManager),
-    // 但不回导航(C5 仍守卫导航无 /skills 项);设置技能 tab 保留并提供「全屏打开」跳板
+    // 设置技能 tab 只展示能力目录；文件编辑仍由独立 /skills 全屏页承接。
     assert.ok(
       skillsPageSrc.includes("SkillsManager"),
       "C6 FAIL: app/skills/page.tsx 应渲染 SkillsManager（独立全屏技能页）"
     );
-    const skillCenterSrc = src("app/config/skill-center.tsx");
+    const skillCatalogSrc = src("app/config/skill-catalog.tsx");
     assert.ok(
-      skillCenterSrc.includes('href="/skills"') && skillCenterSrc.includes("全屏打开"),
-      "C6 FAIL: 设置技能 tab 应含「全屏打开」跳板链接到 /skills"
+      skillCatalogSrc.includes('href="/skills"') && skillCatalogSrc.includes("高级：技能文件管理"),
+      "C6 FAIL: 设置技能目录应含低调的高级文件管理入口"
     );
   }
 

@@ -126,7 +126,7 @@ test("设置→画像:字段自动保存(显示已保存),年营收非法值标�
     }
   });
 
-  await page.goto("/config?tab=profile", { waitUntil: "domcontentloaded" });
+  await page.goto("/config?tab=understanding", { waitUntil: "domcontentloaded" });
 
   // 改地区 → 自动保存,出现「已保存」且 PUT 落库
   const region = page.getByPlaceholder("上海市松江区");
