@@ -16,6 +16,7 @@ import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import DocxPreviewWrapper from "@/app/shared/docx-preview-wrapper";
 import { formatNumber, isNumericFormat } from "@/lib/preview/numfmt";
 import { sanitizeXlsxForPreview } from "@/lib/preview/xlsx-sanitize";
+import { fileAccentColorByExt } from "@/lib/files/file-type-colors";
 
 export type ConversationPreviewFile = {
   kind: "conversation";
@@ -1146,18 +1147,10 @@ function getExtension(name: string) {
   return name.toLowerCase().split(".").pop() ?? "";
 }
 
-// 文件类型强调色:与 file-type-icon.tsx 的图标配色一致(Excel 绿 / Word 蓝 / PDF 红 / PPT 橙 / md·txt 灰)。
-const FILE_ACCENT_COLORS: Record<string, string> = {
-  xls: "#43AE74", xlsx: "#43AE74", csv: "#43AE74",
-  doc: "#5193DC", docx: "#5193DC",
-  pdf: "#F06A66",
-  ppt: "#EC7A4D", pptx: "#EC7A4D",
-  md: "#728195", txt: "#828FA3",
-};
-
-/** 按文件名扩展名取强调色(选中/激活/跳转高亮用);未知类型回落主色。 */
+/** 按文件名取强调色(选中/激活/跳转高亮用)。品牌色统一取自 lib/files/file-type-colors,
+ *  与文件图标同一份;未知类型回落主色。 */
 function fileAccentColor(name: string): string {
-  return FILE_ACCENT_COLORS[getExtension(name)] ?? "var(--primary)";
+  return fileAccentColorByExt(getExtension(name));
 }
 
 function getNameFromPath(filePath: string) {

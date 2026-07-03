@@ -215,6 +215,9 @@ void (async () => {
   const { turnSegmentsTestPromise } = await import("./turn-segments.test.ts");
   await turnSegmentsTestPromise;
 
+  const { usageAccumulateTestPromise } = await import("./usage-accumulate.test.ts");
+  await usageAccumulateTestPromise;
+
   const { financeCardsTestPromise } = await import("./finance-cards.test.ts");
   await financeCardsTestPromise;
 
@@ -408,6 +411,12 @@ void (async () => {
 
   const { retentionTestPromise } = await import("./retention.test.ts");
   await retentionTestPromise;
+
+  const { attachmentGuardTestPromise } = await import("./attachment-guard.test.ts");
+  await attachmentGuardTestPromise;
+
+  const { localGuardTestPromise } = await import("./local-guard.test.ts");
+  await localGuardTestPromise;
 
   const { diagnosticsExportTestPromise } = await import("./diagnostics-export.test.ts");
   await diagnosticsExportTestPromise;

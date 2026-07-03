@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { ArrowRight01Icon, ChevronRightIcon } from "@hugeicons/core-free-icons";
 import { SuccessIcon, HelpIcon } from "@/lib/icons";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -101,22 +101,69 @@ export function AskUserCard({
   );
 }
 
+/** 剥掉选项尾部的 (推荐)/(Recommended) 噪声。 */
+function stripRecommended(s: string): string {
+  return s.replace(/\s*[（(]\s*(?:Recommended|推荐)\s*[）)]\s*$/i, "").trim();
+}
+
+/** 多问一次确认时,答案是 JSON 对象 {问:答};解析成 [问,答][],解析失败或非对象返回 null。 */
+function parseMultiAnswer(answer: string): Array<[string, string]> | null {
+  const t = answer.trim();
+  if (!t.startsWith("{")) return null;
+  try {
+    const obj = JSON.parse(t) as Record<string, unknown>;
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+    const entries = Object.entries(obj).filter(([, v]) => typeof v === "string") as Array<[string, string]>;
+    return entries.length ? entries : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 单条 问→答 chip 行(多问展开与单问共用同一视觉)。 */
+function AnswerPair({ question, answer }: { question?: string; answer: string }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      {question ? <span className="shrink-0 text-muted-foreground">{question}</span> : null}
+      <HugeiconsIcon icon={ArrowRight01Icon} size={12} className="shrink-0 text-muted-foreground/40" aria-hidden="true" />
+      <span className="min-w-0 truncate rounded-md bg-muted px-1.5 py-0.5 font-medium text-foreground">{stripRecommended(answer)}</span>
+    </div>
+  );
+}
+
 /** 已答 / 超时的 ask_user 在时间线里的紧凑摘要(待答的大卡片已移到输入框上方的浮层)。
- *  设计:无 ✓ 勾;「问题 → [所选]」,所选用浅灰 chip 强调;剥掉选项尾部的 (Recommended) 噪声。 */
+ *  单问:「[header] → [所选]」一行。多问(答案为 JSON 对象):默认折叠「已确认 N 项」,展开逐条 问→答。 */
 export function AskAnsweredSummary({ header, answer }: { header?: string; answer?: string }) {
   const answered = answer != null && answer.trim() !== "";
-  const clean = answered ? answer!.replace(/\s*[（(]\s*Recommended\s*[）)]\s*$/i, "").trim() : "";
-  return (
-    <div className="flex items-center gap-2 py-0.5 text-meta min-w-0">
-      {header ? <span className="shrink-0 text-muted-foreground">{header}</span> : null}
-      {answered ? (
-        <>
-          <HugeiconsIcon icon={ArrowRight01Icon} size={12} className="shrink-0 text-muted-foreground/40" aria-hidden="true" />
-          <span className="min-w-0 truncate rounded-md bg-muted px-1.5 py-0.5 font-medium text-foreground">{clean}</span>
-        </>
-      ) : (
+  if (!answered) {
+    return (
+      <div className="flex items-center gap-2 py-0.5 text-meta min-w-0">
+        {header ? <span className="shrink-0 text-muted-foreground">{header}</span> : null}
         <span className="shrink-0 text-muted-foreground/60">· 未确认</span>
-      )}
+      </div>
+    );
+  }
+
+  const multi = parseMultiAnswer(answer!);
+  // 多问:折叠成一行「已确认 N 项」,点开看逐条 —— 不再把 JSON 平铺成一坨。
+  if (multi && multi.length > 1) {
+    return (
+      <details className="py-0.5 text-meta min-w-0">
+        <summary className="flex items-center gap-1.5 cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
+          <span>{header ? `${header}：已确认 ${multi.length} 项` : `已确认 ${multi.length} 项`}</span>
+          <HugeiconsIcon icon={ChevronRightIcon} size={12} className="details-chevron transition-transform shrink-0 text-muted-foreground/60" aria-hidden="true" />
+        </summary>
+        <div className="mt-1 flex flex-col gap-1 pl-1">
+          {multi.map(([q, a], i) => <AnswerPair key={i} question={q} answer={a} />)}
+        </div>
+      </details>
+    );
+  }
+
+  // 单问:原样一行 chip。
+  return (
+    <div className="py-0.5 text-meta min-w-0">
+      <AnswerPair question={header} answer={answer!} />
     </div>
   );
 }

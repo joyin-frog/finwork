@@ -26,22 +26,22 @@ import {
 } from "./shared";
 
 // ─── MetaStatusBadge ─────────────────────────────────────
+// 走全站 tone 系统(tone-ok/tone-warn)+ .fa-toned(压深文字达 AA、10% wash 底),
+// 不再用 Tailwind emerald/amber 具名色,与其它状态标记同一套色语言。
 function MetaStatusBadge({ status }: { status: string }) {
-  if (status === "confirmed") {
-    return (
-      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-        <HugeiconsIcon icon={SuccessCircleIcon} size={10} />已确认
-      </span>
-    );
-  }
-  if (status === "draft") {
-    return (
-      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-        <HugeiconsIcon icon={Clock01Icon} size={10} />待确认
-      </span>
-    );
-  }
-  return null;
+  const spec =
+    status === "confirmed" ? { tone: "var(--tone-ok)", icon: SuccessCircleIcon, label: "已确认" }
+    : status === "draft" ? { tone: "var(--tone-warn)", icon: Clock01Icon, label: "待确认" }
+    : null;
+  if (!spec) return null;
+  return (
+    <span
+      className="fa-toned inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium"
+      style={{ ["--tone" as string]: spec.tone }}
+    >
+      <HugeiconsIcon icon={spec.icon} size={10} />{spec.label}
+    </span>
+  );
 }
 
 // ─── MetadataPanel ───────────────────────────────────────
@@ -741,7 +741,7 @@ function KnowledgePageContent() {
                           <span className="text-muted-foreground/50">·</span>
                           <span>{doc.last_hit_at ? `最近 ${fmtTime(doc.last_hit_at)}` : `更新于 ${fmtTime(doc.updated_at)}`}</span>
                           {archived && <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">已归档</span>}
-                          {stale && <span className="text-amber-600 dark:text-amber-400 text-caption">长期未使用</span>}
+                          {stale && <span className="fa-toned px-1.5 py-0.5 rounded text-caption" style={{ ["--tone" as string]: "var(--tone-warn)" }}>长期未使用</span>}
                         </>
                       }
                       onClick={() => viewFile(doc)}
@@ -868,7 +868,7 @@ function KnowledgePageContent() {
                   {/* Preview content */}
                   <div className="flex-1 overflow-y-auto font-mono text-meta leading-relaxed" ref={previewContentRef}>
                     {preview.text.length > 1_000_000 && (
-                      <div className="px-3 py-2 text-meta text-muted-foreground bg-amber-50/50 dark:bg-amber-900/10 border-b border-border">
+                      <div className="px-3 py-2 text-meta text-muted-foreground bg-[color:var(--tone-warn)]/10 border-b border-border">
                         文件较大，仅显示前 1MB。
                         <a href={`/api/knowledge/documents/${previewDocId}/download`} className="text-primary ml-2">下载完整文件</a>
                       </div>

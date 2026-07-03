@@ -11,7 +11,8 @@ export type RetentionConfig = {
   traceDays: number;
   appErrorDays: number;
   auditLogDays: number;
-  /** null means disabled. Chat tool events are visible history and must be opt-in. */
+  /** null 表示禁用。chat_agent_events 是历史对话里的过程时间线(工具步骤/思考/时长),
+   *  最终答案在 chat_messages 里不受影响。默认给一个长保留期封住无界增长,而非彻底禁用。 */
   chatEventDays: number | null;
 };
 
@@ -27,7 +28,9 @@ export const DEFAULT_RETENTION_CONFIG: Readonly<RetentionConfig> = Object.freeze
   traceDays: 90,
   appErrorDays: 90,
   auditLogDays: 180,
-  chatEventDays: null,
+  // 保留一年滚动窗口:重度使用下 chat_agent_events 每任务数百行会无界增长、拖慢会话加载,
+  // 一年足够覆盖可见历史;想彻底关闭清理可在设置里显式设为 null。
+  chatEventDays: 365,
 });
 
 function isRetentionDays(value: unknown): value is number {

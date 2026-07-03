@@ -100,7 +100,7 @@ test("chat: 多工具流程 → 类型图标时间线", async ({ page }) => {
   await sendChat(page, "工具演示");
   await page.getByText(/已处理/).first().click(); // 展开过程块(折叠摘要为「已处理 N 步 · 时长」)
   const details = page.locator("details").first();
-  await expect(details.getByText("财务分析")).toBeVisible();                        // Skill:友好名「调用【财务分析】技能」(不再露 finance-skills: id)
+  await expect(details.getByText("【财务分析】")).toBeVisible();                     // Skill:友好名「调用【财务分析】技能」(不再露 finance-skills: id);带括号以区别于思考行里的「财务分析技能」
   await expect(details.getByText("差旅住宿标准")).toBeVisible();                    // search_knowledge:去「」+ mcp 归一化
   await expect(details.getByText(/运行 Python/)).toHaveCount(0);                    // run_python:不露语言细节
   await expect(details.getByText("运行代码").first()).toBeVisible();                 // run_python:图标 + 友好文案

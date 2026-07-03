@@ -84,6 +84,66 @@ function PlainBlock({ text, error }: { text: string; error?: boolean }) {
   );
 }
 
+/** 思考段的一行摘要:取首个非空行,剥掉行首 markdown 记号与加粗星号。 */
+function thinkingSummary(content: string): string {
+  const line = content.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  return line.replace(/^[#>*\-\s]+/, "").replace(/\*\*/g, "") || "思考";
+}
+
+/** 思考步骤行:与工具步骤同构(一行摘要 + 可展开),按真实时序穿插在工具步骤之间,
+ *  展开后全文按 Markdown 渲染,整体灰色弱化与正文区分。
+ *  星芒是流动的:只有该行是当前进行中的尾巴(active)才亮动画星芒,处理完图标即消失(留空槽对齐)。 */
+export function ThinkingStep({ content, active = false }: { content: string; active?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const summary = thinkingSummary(content);
+  return (
+    <div className="w-full">
+      <button
+        className="group flex w-full items-center gap-2 py-0.5 text-small text-left cursor-pointer transition-colors"
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className="inline-flex shrink-0 w-4 h-4 items-center justify-center text-muted-foreground">
+          {/* 进行中=流动星芒;完成态=安静小圆点(非旋转、明确不是"工作中"),给思考行一个左锚点,
+              使它读作"动作之间的旁白"而非缺了图标的错位文字。 */}
+          {active
+            ? <ThinkingSpark size={13} speed="1.0s" />
+            : <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/45" />}
+        </span>
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            active ? "fa-shimmer-text" : "text-muted-foreground group-hover:text-foreground transition-colors"
+          )}
+          title={summary}
+        >
+          {summary}
+        </span>
+        <motion.span animate={{ rotate: expanded ? 90 : 0 }} transition={{ duration: 0.18 }} className="inline-flex shrink-0">
+          <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
+        </motion.span>
+      </button>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ height: { duration: 0.22, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.18 } }}
+            style={{ overflow: "hidden" }}
+            className="px-2 pb-1"
+          >
+            {/* 内联样式压过 .md-content 的双类字号/字色规则:思考全文走 small 号 + 弱化色 */}
+            <div className="md-content" style={{ fontSize: "var(--text-small)", color: "var(--muted-foreground)" }}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export type ToolPair = {
   id: string;
   name: string;
@@ -246,16 +306,18 @@ function buildPairs(timeline: TimelineItem[], finalizeDangling: boolean): ToolPa
     } else if (ev.type === "tool_result") {
       const name = ev.name ?? "";
       const byId = ev.toolUseId ? pendingById.get(ev.toolUseId) : null;
-      const last = byId ?? [...pairs].reverse().find((p) => {
+      // 无 toolUseId 的回退配对取最早的同名 running(FIFO):结果按发起顺序到达,
+      // 取最晚(LIFO)会在同名并发时把首个结果配给第二次调用,留下永远 running 的孤儿行。
+      const match = byId ?? pairs.find((p) => {
         if (p.status !== "running") return false;
         return name ? p.name === name : true;
       });
-      if (last) {
-        last.result = ev.content;
-        last.isError = ev.isError;
-        last.durationMs = ev.durationMs;
-        last.structured = ev.structured;
-        last.status = ev.isError ? "error" : "done";
+      if (match) {
+        match.result = ev.content;
+        match.isError = ev.isError;
+        match.durationMs = ev.durationMs;
+        match.structured = ev.structured;
+        match.status = ev.isError ? "error" : "done";
         if (ev.toolUseId) pendingById.delete(ev.toolUseId);
       } else {
         pairs.push({

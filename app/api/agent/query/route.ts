@@ -5,6 +5,8 @@ import { NextResponse } from "next/server";
 import { isEnabled } from "@/lib/runtime/flags";
 import { runClaudeAgent } from "@/lib/agent/claude-adapter";
 import type { AgentAttachment, AgentMessage } from "@/lib/agent/claude-adapter";
+import type { ModelUsage } from "@anthropic-ai/claude-agent-sdk";
+import { sanitizeAttachments } from "@/lib/agent/attachment-guard";
 import { writeSpan } from "@/lib/observability/spans";
 import { writeAgentTrace } from "@/lib/observability/trace-write";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
@@ -69,6 +71,16 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : String(error);
     log.error("parse failed", { traceId, error });
     return NextResponse.json({ ok: false, error: `请求解析失败: ${message}` }, { status: 400 });
+  }
+
+  // 安全护栏:客户端提交的 attachments.storagePath 完全可控,会被拼进 agent 提示("路径: …")
+  // 且 Read/read_document 无路径限制 —— 不校验就能诱导 agent 读任意文件。丢弃逃逸出会话目录的附件。
+  {
+    const { kept, dropped } = sanitizeAttachments(attachments, conversationId);
+    if (dropped.length) {
+      log.warn("dropped out-of-scope attachments", { traceId, count: dropped.length, names: dropped.map((a) => a.name) });
+      attachments = kept;
+    }
   }
 
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
@@ -184,13 +196,14 @@ export async function POST(request: Request) {
     void appendServerLog(`[agent-query] failed traceId=${traceId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     // 出错也保留已完成的部分(非流式路径同样不该整回合归零);拿不到 collector 才只记错误 trace。
     const collector = (error as { __collector?: AgentTurnCollector }).__collector;
+    const partialUsage = (error as { __modelUsage?: Record<string, ModelUsage> }).__modelUsage;
     if (collector) {
-      persistIncompleteTurn({ conversationId, existingClaudeSessionId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage: message });
+      persistIncompleteTurn({ conversationId, existingClaudeSessionId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage: message, modelUsage: partialUsage });
     } else {
       writeAgentTrace({
         traceId, conversationId, startedAt, modelUsed: modelLabel(routerResult),
         routerPath: routerResult.path, errorMessage: message, userMessage: lastUserContent.slice(0, 500),
-        finalAnswer: "", roleMode, toolCallCount: 0,
+        finalAnswer: "", roleMode, toolCallCount: 0, modelUsage: partialUsage,
       });
     }
     return NextResponse.json({ ok: false, error: redact(message), data: { conversationId, conversation: conversationId ? getChatConversation(conversationId) : null } }, { status: 502 });
@@ -278,6 +291,11 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
   }).catch((err: unknown) => {
     // collector 随抛异常会丢 → 挂到错误上,让上层出错收尾把"已做的部分"(部分正文/中间事件)落库,
     // 否则一抛异常整回合归零(见红线:出错不该把已完成的工作冲掉)。
+    // thinking_duration 同样只在正常返回后才 push——中断回合也补上,重载后"已思考 X"才有得显示。
+    if (thinkingSeen) {
+      const thinkingMs = Math.max(0, (firstOutputAt ?? Date.now()) - runStart);
+      collector.collectedEvents.push({ type: "system", subtype: "thinking_duration", message: String(thinkingMs) });
+    }
     (err as { __collector?: AgentTurnCollector }).__collector = collector;
     throw err;
   });
@@ -359,9 +377,9 @@ function persistAgentTurn(
  * 让"一抛异常整回合归零"不再发生——已做的工作保留、reload 后照常展示,后续可「继续」。trace 记错误。
  * claude 会话 id 在回合开始前已写入会话(见 route 顶部),故此处不再处理。 */
 function persistIncompleteTurn(
-  params: PersistTurnParams & { collector: AgentTurnCollector; errorMessage: string }
+  params: PersistTurnParams & { collector: AgentTurnCollector; errorMessage: string; modelUsage?: Record<string, ModelUsage> }
 ): { messageId?: number; fullContent: string; generatedAttachments: ReturnType<typeof recordNewGeneratedFiles> } {
-  const { conversationId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage } = params;
+  const { conversationId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage, modelUsage } = params;
 
   const fullContent = collector.collectedChunks.join("");
   const hasWork = fullContent.trim().length > 0 || collector.collectedEvents.some((e) => e.type === "tool_use");
@@ -378,6 +396,8 @@ function persistIncompleteTurn(
     traceId, conversationId, startedAt,
     modelUsed: modelLabel(routerResult), routerPath: routerResult.path, errorMessage,
     userMessage: lastUserContent, finalAnswer: fullContent, roleMode, toolCallCount,
+    // 中断/超时前已烧掉的 usage(adapter 逐条累计后挂在错误上):没有它,烧得最多的失败回合配额漏记。
+    modelUsage,
   });
   return { messageId, fullContent, generatedAttachments };
 }
@@ -410,13 +430,25 @@ function createStreamingResponse(params: {
 
   const stream = new ReadableStream({
     async start(controller) {
+      let streamClosed = false;
       requestSignal?.addEventListener("abort", () => {
         cancelPendingQuestions(traceId);
+        streamClosed = true;
         try { controller.close(); } catch { /* ok */ }
       }, { once: true });
 
-      const enqueue = (payload: Record<string, unknown>) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      // enqueue 不抛:客户端断开(abort)后 controller 已关,若任由 enqueue 抛异常,
+      // 会在 persistAgentTurn 成功落库之后把执行流打进 catch——那里的兜底 writeAgentTrace
+      // 会用一条无 usage 的 error trace 经 INSERT OR REPLACE 覆盖掉刚写好的成功 trace。
+      // 回合中断本身不依赖这里抛错:requestSignal 已透传给 adapter 去 abort SDK。
+      const enqueue = (payload: Record<string, unknown>) => {
+        if (streamClosed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        } catch {
+          streamClosed = true;
+        }
+      };
 
       // 新会话:一开始就把 conversationId 下发,前端可立刻进侧栏「最近」+ 改 URL,避免流式中切走丢记录
       if (conversationId) enqueue({ type: "meta", conversationId });
@@ -464,10 +496,11 @@ function createStreamingResponse(params: {
         // 流式聊天的真实失败路径:前端只收到 redact 后的 incomplete/error 文案,原始错误在这里落盘留底。
         void appendServerLog(`[agent-query/stream] failed traceId=${traceId} ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         const collector = (error as { __collector?: AgentTurnCollector }).__collector;
+        const partialUsage = (error as { __modelUsage?: Record<string, ModelUsage> }).__modelUsage;
         if (collector) {
           // 出错也保留已完成的部分:落库(消息+中间事件+文件)并发 incomplete,让前端立刻展示、可「继续」。
           collector.collectedEvents.push(...askEvents);
-          const { generatedAttachments } = persistIncompleteTurn({ ...persistParams, collector, errorMessage: msg });
+          const { generatedAttachments } = persistIncompleteTurn({ ...persistParams, collector, errorMessage: msg, modelUsage: partialUsage });
           enqueue({
             type: "incomplete",
             conversationId,
@@ -480,10 +513,11 @@ function createStreamingResponse(params: {
             traceId, conversationId, startedAt,
             modelUsed: modelLabel(persistParams.routerResult), routerPath: persistParams.routerResult.path, errorMessage: msg,
             userMessage: persistParams.lastUserContent, finalAnswer: "", roleMode: persistParams.roleMode, toolCallCount: 0,
+            modelUsage: partialUsage,
           });
           enqueue({ type: "error", message: redact(msg) });
         }
-        controller.close();
+        try { controller.close(); } catch { /* already closed */ }
       }
     }
   });

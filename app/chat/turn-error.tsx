@@ -12,8 +12,9 @@ import { humanizeAgentError } from "@/lib/agent/agent-error";
 export function TurnError({ error }: { error?: string | null }) {
   if (!error) return null;
   return (
-    <div className="self-start flex flex-col items-start gap-1 mt-1 max-w-full">
-      <Callout variant="warn">
+    // 全宽:与对话正文同宽,不再 self-start 缩成窄条(和 usage_blocked 等其它提示统一走 Callout 全宽)。
+    <div className="mt-1">
+      <Callout variant="warn" className="w-full">
         {humanizeAgentError(error).message}
         <details className="mt-1">
           <summary className="cursor-pointer list-none text-meta text-muted-foreground hover:text-foreground">详情</summary>
