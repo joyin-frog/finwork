@@ -122,9 +122,11 @@ export function pruneOldChatEvents(days: number, db: DatabaseSync = getDb(), now
 }
 
 /**
- * 清理内置 Claude CLI 落盘的会话 transcript(<configDir>/projects/<cwd编码>/*.jsonl 及同名子目录)。
- * 按 mtime 判老:transcript 每回合追加,活跃会话 mtime 常新,不会被误删。
- * 只清应用自有的 claude-config 目录,绝不碰用户 ~/.claude。
+ * 清理内置 Claude CLI 落盘的会话 transcript(<configDir>/projects/<cwd编码>/<sessionId>.jsonl)。
+ * 只按 transcript 自身 mtime 判老(每回合追加,活跃会话 mtime 常新);同名 sidecar 目录
+ * (<sessionId>/,如 tool-results)随其 transcript 一起删、不看自身 mtime——追加 transcript
+ * 不会刷新 sidecar 的 mtime,单独判老会误删活跃会话的附件。memory/、sessions-index.json 等
+ * 非 transcript 的项目级状态一律不动。只清应用自有的 claude-config 目录,绝不碰用户 ~/.claude。
  */
 export function pruneOldSessionTranscripts(
   days: number = SESSION_TRANSCRIPT_DAYS,
@@ -146,12 +148,14 @@ export function pruneOldSessionTranscripts(
     if (!project.isDirectory()) continue;
     const projectPath = path.join(projectsDir, project.name);
     for (const entry of readdirSync(projectPath)) {
+      if (!entry.endsWith(".jsonl")) continue;
       const entryPath = path.join(projectPath, entry);
       try {
-        if (statSync(entryPath).mtimeMs < cutoffMs) {
-          rmSync(entryPath, { recursive: true, force: true });
-          removed += 1;
-        }
+        const stat = statSync(entryPath);
+        if (!stat.isFile() || stat.mtimeMs >= cutoffMs) continue;
+        rmSync(entryPath, { force: true });
+        rmSync(path.join(projectPath, entry.slice(0, -".jsonl".length)), { recursive: true, force: true });
+        removed += 1;
       } catch {
         // 单个条目失败(并发写入/权限)不阻断其余清理
       }

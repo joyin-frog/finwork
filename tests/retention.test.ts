@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { NextRequest } from "next/server";
@@ -110,25 +110,39 @@ export const retentionTestPromise = (async () => {
     chatEventDays: 365,
   });
 
-  // ── 内置 CLI 会话 transcript 清理:mtime 过期删、活跃留、空项目目录顺手收 ──
+  // ── 内置 CLI 会话 transcript 清理:只按 transcript mtime 判老,sidecar 随删,项目级状态不动 ──
   {
     const projectDir = path.join(configDir, "projects", "-app-cwd");
-    mkdirSync(projectDir, { recursive: true });
+    const oldSidecar = path.join(projectDir, "old-session");
+    const freshSidecar = path.join(projectDir, "fresh-session");
+    const memoryDir = path.join(projectDir, "memory");
+    mkdirSync(oldSidecar, { recursive: true });
+    mkdirSync(freshSidecar, { recursive: true });
+    mkdirSync(memoryDir, { recursive: true });
     const oldJsonl = path.join(projectDir, "old-session.jsonl");
     const freshJsonl = path.join(projectDir, "fresh-session.jsonl");
     writeFileSync(oldJsonl, "{}");
     writeFileSync(freshJsonl, "{}");
+    writeFileSync(path.join(memoryDir, "MEMORY.md"), "# m");
     const oldSec = (now - 31 * 86_400_000) / 1000;
     utimesSync(oldJsonl, oldSec, oldSec);
+    // 活跃会话的 sidecar 与 memory/ 故意做旧:追加 transcript 不刷新它们的 mtime,不得按自身 mtime 判老
+    utimesSync(freshSidecar, oldSec, oldSec);
+    utimesSync(memoryDir, oldSec, oldSec);
 
     assert.equal(pruneOldSessionTranscripts(30, configDir, now), 1, "只清 30 天前的 transcript");
     assert.equal(existsSync(oldJsonl), false, "过期 transcript 应被删除");
+    assert.equal(existsSync(oldSidecar), false, "过期 transcript 的同名 sidecar 应一并删除");
     assert.equal(existsSync(freshJsonl), true, "活跃 transcript 必须保留");
-    assert.equal(existsSync(projectDir), true, "非空项目目录保留");
+    assert.equal(existsSync(freshSidecar), true, "活跃会话的 sidecar 不得按自身 mtime 误删");
+    assert.equal(existsSync(memoryDir), true, "memory/ 等项目级状态不动");
 
-    const emptySec = (now - 31 * 86_400_000) / 1000;
-    utimesSync(freshJsonl, emptySec, emptySec);
+    utimesSync(freshJsonl, oldSec, oldSec);
     assert.equal(pruneOldSessionTranscripts(30, configDir, now), 1);
+    assert.equal(existsSync(projectDir), true, "仍有 memory/ 时项目目录保留");
+
+    rmSync(memoryDir, { recursive: true });
+    assert.equal(pruneOldSessionTranscripts(30, configDir, now), 0);
     assert.equal(existsSync(projectDir), false, "清空后的项目目录应被移除");
 
     assert.equal(pruneOldSessionTranscripts(30, path.join(configDir, "no-such"), now), 0, "目录不存在时安全返回 0");
