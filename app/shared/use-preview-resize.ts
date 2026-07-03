@@ -69,6 +69,12 @@ export function usePreviewResize(listMinW = 300, handleW = 4) {
 
   function toggle() {
     touchedRef.current = true;
+    if (!collapsed && maximized) {
+      // 即将收起 → 复位放大并还原默认宽,否则列表列仍被 maximized 隐藏,主区全空无路可退
+      // (对齐 chat-page toggleSidebar 的同款处理)
+      setMaximized(false);
+      setPreviewW(getDefaultW(mainRef.current?.clientWidth ?? 1200));
+    }
     setCollapsed((prev) => !prev);
   }
   function open() {

@@ -219,8 +219,7 @@ function KnowledgePageContent() {
   const previewContentRef = useRef<HTMLDivElement>(null);
   const lineEls = useRef<Map<number, HTMLElement>>(new Map());
 
-  // upload FAB
-  const [uploadOpen, setUploadOpen] = useState(false);
+  // upload
   const [file, setFile] = useState<File | null>(null);
   const [upCat, setUpCat] = useState<string>("auto");
   const [uploading, setUploading] = useState(false);
@@ -530,27 +529,15 @@ function KnowledgePageContent() {
     return err;
   };
 
-  function pickFile(f: File) {
-    const ext = fileExt(f.name);
-    if (ext === ".xls") {
-      toast.error("不支持旧版 .xls 格式", { description: "请用 Excel/WPS 打开后『另存为 .xlsx』再上传。" });
-      return;
-    }
-    if (!KB_SUPPORTED_EXTS.includes(ext)) {
-      toast.error(`不支持的文件类型${ext ? " " + ext : ""}`, { description: `目前支持:${KB_SUPPORTED_LABEL}` });
-      return;
-    }
-    setFile(f);
-    setUpCat(inferCategory(f.name));
-  }
-
-  async function doUpload(overwrite = false) {
-    if (!file) return;
+  async function doUpload(overwrite = false, fileArg?: File, catArg?: string) {
+    const f = fileArg ?? file;
+    const cat = catArg ?? upCat;
+    if (!f) return;
     setUploading(true); setProgress("上传中…");
     try {
       const form = new FormData();
-      form.append("file", file); form.append("title", file.name);
-      if (upCat !== "auto") form.append("category", upCat);
+      form.append("file", f); form.append("title", f.name);
+      if (cat !== "auto") form.append("category", cat);
       if (overwrite) form.append("overwrite", "true");
       const res = await fetch("/api/knowledge/documents", { method: "POST", body: form });
       const json = await res.json() as {
@@ -564,10 +551,10 @@ function KnowledgePageContent() {
       if (json.exists && json.existingId !== undefined) {
         // 命中同内容 → 弹覆盖确认框
         setProgress("");
-        setOverwriteTarget({ existingId: json.existingId, existingTitle: json.existingTitle ?? file.name });
+        setOverwriteTarget({ existingId: json.existingId, existingTitle: json.existingTitle ?? f.name });
         return;
       }
-      setProgress("完成"); setFile(null); fetchDocs(); setTimeout(() => { setProgress(""); setUploadOpen(false); }, 800);
+      setProgress("完成"); setFile(null); fetchDocs(); setTimeout(() => { setProgress(""); }, 800);
     } finally { setUploading(false); }
   }
 
@@ -634,17 +621,18 @@ function KnowledgePageContent() {
             <ResourceTabs active="knowledge" />
             <div className="ml-auto flex items-center gap-2 shrink-0">
               <span className="text-meta text-muted-foreground whitespace-nowrap shrink-0">{docs.length} 份文档</span>
-              <button
-                type="button"
-                className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                onClick={toggleSidebar}
-                title={sidebarCollapsed ? "展开预览" : "收起预览"}
-                aria-label={sidebarCollapsed ? "展开预览" : "收起预览"}
-                aria-expanded={!sidebarCollapsed}
-              >
-                {/* 与对话页右侧栏按钮同逻辑:收起态用「展开」图标、展开态用「面板」图标 */}
-                <HugeiconsIcon icon={sidebarCollapsed ? LayoutAlignRightIcon : PanelRightIcon} size={16} />
-              </button>
+              {sidebarCollapsed ? (
+                <button
+                  type="button"
+                  className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  onClick={toggleSidebar}
+                  title="展开预览"
+                  aria-label="展开预览"
+                  aria-expanded={false}
+                >
+                  <HugeiconsIcon icon={LayoutAlignRightIcon} size={16} />
+                </button>
+              ) : null}
             </div>
           </header>
 
@@ -717,67 +705,41 @@ function KnowledgePageContent() {
             ) : (
               <>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-3.5">
-                {/* 上传卡:常驻网格首位,空库时就是第一张卡;点开后原位变为上传表单。
-                    (替代旧右下角 FAB——右栏收起时会被全局对话浮窗圆钮遮挡,e2e 抓到过) */}
-                {uploadOpen ? (
-                  <div className="bg-card border border-border rounded-xl overflow-hidden">
-                    <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-border">
-                      <span className="text-body font-semibold">上传文档</span>
-                      <button
-                        className="p-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        onClick={() => { setUploadOpen(false); setFile(null); setProgress(""); }}
-                      >
-                        <HugeiconsIcon icon={Cancel01Icon} size={14} />
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2 px-3.5 py-3">
-                      <button
-                        className="p-3.5 border-2 border-dashed border-border rounded-lg text-center cursor-pointer text-body text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/50"
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        {file ? (
-                          <span className="font-medium">
-                            {file.name}
-                            <em className="text-meta opacity-50 ml-2 not-italic">{fmtBytes(file.size)}</em>
-                          </span>
-                        ) : "点击选择文件"}
-                      </button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept={KB_SUPPORTED_EXTS.join(",")}
-                        className="hidden"
-                        onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f); e.target.value = ""; }}
-                      />
-                      {file && (
-                        <>
-                          <select
-                            className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-meta shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                            value={upCat}
-                            onChange={e => setUpCat(e.target.value)}
-                          >
-                            <option value="auto">自动检测分类</option>
-                            {CATS.map(c => <option key={c} value={c}>{CAT_LABELS[c] ?? c}</option>)}
-                          </select>
-                          <Button size="sm" className="w-full" onClick={() => void doUpload()} disabled={uploading}>
-                            {uploading ? "处理中…" : "上传并索引"}
-                          </Button>
-                          {progress && <p className="text-meta text-muted-foreground text-center">{progress}</p>}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    title="上传文档"
-                    onClick={() => setUploadOpen(true)}
-                    className="flex flex-col items-center justify-center gap-1.5 min-h-[120px] border-2 border-dashed border-border rounded-xl text-muted-foreground cursor-pointer transition-colors hover:border-primary/50 hover:text-primary hover:bg-accent/50"
-                  >
-                    <HugeiconsIcon icon={Add01Icon} size={24} />
-                    <span className="text-body">上传文档</span>
-                  </button>
-                )}
+                {/* 上传卡:常驻网格首位,点击直接弹系统文件选择器 */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={KB_SUPPORTED_EXTS.join(",")}
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    const ext = fileExt(f.name);
+                    if (ext === ".xls") {
+                      toast.error("不支持旧版 .xls 格式", { description: "请用 Excel/WPS 打开后『另存为 .xlsx』再上传。" });
+                      return;
+                    }
+                    if (!KB_SUPPORTED_EXTS.includes(ext)) {
+                      toast.error(`不支持的文件类型${ext ? " " + ext : ""}`, { description: `目前支持:${KB_SUPPORTED_LABEL}` });
+                      return;
+                    }
+                    const cat = inferCategory(f.name);
+                    setFile(f);
+                    setUpCat(cat);
+                    void doUpload(false, f, cat);
+                  }}
+                />
+                <button
+                  type="button"
+                  title="上传文档"
+                  onClick={() => { if (!uploading) fileInputRef.current?.click(); }}
+                  disabled={uploading}
+                  className="flex flex-col items-center justify-center gap-1.5 min-h-[120px] border-2 border-dashed border-border rounded-xl text-muted-foreground cursor-pointer transition-colors hover:border-primary/50 hover:text-primary hover:bg-accent/50 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground disabled:hover:bg-transparent"
+                >
+                  <HugeiconsIcon icon={Add01Icon} size={24} />
+                  <span className="text-body">{uploading || progress ? (progress || "上传中…") : "上传文档"}</span>
+                </button>
                 {filteredDocs.map(doc => {
                   const archived = doc.archived === 1;
                   const stale = !archived && isStaleDoc(doc);
@@ -874,18 +836,27 @@ function KnowledgePageContent() {
                       description="知识库文档预览"
                       onMaximize={maximize}
                       isMaximized={maximized}
+                      onCollapse={toggleSidebar}
                     />
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+                <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+                  <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
+                    <HugeiconsIcon icon={PanelRightIcon} size={16} />
+                  </button>
                   <h3 className="text-body font-medium text-foreground">选择文档预览</h3>
                   <p className="text-body">点击卡片查看文档内容</p>
                 </div>
               )
             ) : (
               previewLoading ? (
-                <div className="flex items-center justify-center h-full text-body text-muted-foreground">加载中...</div>
+                <div className="relative flex items-center justify-center h-full text-body text-muted-foreground">
+                  <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
+                    <HugeiconsIcon icon={PanelRightIcon} size={16} />
+                  </button>
+                  加载中...
+                </div>
               ) : preview ? (
                 <div className="flex flex-col h-full overflow-hidden">
                   {/* Preview nav bar */}
@@ -921,6 +892,9 @@ function KnowledgePageContent() {
                     ) : (
                       <span className="text-caption text-muted-foreground">{lines.length} 行</span>
                     )}
+                    <button type="button" className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
+                      <HugeiconsIcon icon={PanelRightIcon} size={16} />
+                    </button>
                   </div>
                   {/* Preview content */}
                   <div className="flex-1 overflow-y-auto font-mono text-meta leading-relaxed" ref={previewContentRef}>
@@ -955,7 +929,10 @@ function KnowledgePageContent() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+                <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+                  <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
+                    <HugeiconsIcon icon={PanelRightIcon} size={16} />
+                  </button>
                   <h3 className="text-body font-medium text-foreground">选择搜索结果预览</h3>
                   <p className="text-body">点击搜索结果查看文件内容</p>
                 </div>

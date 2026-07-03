@@ -489,17 +489,18 @@ function FilesPageContent() {
                 <HugeiconsIcon icon={CleanIcon} size={14} />
                 {dedupCleaning ? "清理中…" : "清理重复"}
               </button>
-              <button
-                type="button"
-                className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                onClick={togglePreview}
-                title={previewCollapsed ? "展开预览" : "收起预览"}
-                aria-label={previewCollapsed ? "展开预览" : "收起预览"}
-                aria-expanded={!previewCollapsed}
-              >
-                {/* 与对话页右侧栏按钮同逻辑:收起态用「展开」图标、展开态用「面板」图标 */}
-                <HugeiconsIcon icon={previewCollapsed ? LayoutAlignRightIcon : PanelRightIcon} size={16} />
-              </button>
+              {previewCollapsed ? (
+                <button
+                  type="button"
+                  className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  onClick={togglePreview}
+                  title="展开预览"
+                  aria-label="展开预览"
+                  aria-expanded={false}
+                >
+                  <HugeiconsIcon icon={LayoutAlignRightIcon} size={16} />
+                </button>
+              ) : null}
             </div>
           </header>
 
@@ -658,15 +659,22 @@ function FilesPageContent() {
                   description="文件内容预览"
                   onMaximize={maximize}
                   isMaximized={maximized}
+                  onCollapse={togglePreview}
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center gap-2 flex-1 text-center p-6 text-muted-foreground">
+                <div className="relative flex flex-col items-center justify-center gap-2 flex-1 text-center p-6 text-muted-foreground">
+                  <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={togglePreview} aria-label="收起预览">
+                    <HugeiconsIcon icon={PanelRightIcon} size={16} />
+                  </button>
                   <h3 className="text-body font-medium text-foreground">无法预览</h3>
                   <p className="text-body">该文件暂不支持在线预览</p>
                 </div>
               )
             ) : (
-              <div className="flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+              <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+                <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={togglePreview} aria-label="收起预览">
+                  <HugeiconsIcon icon={PanelRightIcon} size={16} />
+                </button>
                 <h3 className="text-body font-medium text-foreground">选择文件预览</h3>
                 <p className="text-body">点击左侧文件列表中的文件，在这里预览内容</p>
               </div>
