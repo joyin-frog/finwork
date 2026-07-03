@@ -162,6 +162,17 @@ export function getBundledClaudeCliPath(): string | null {
   return fs.existsSync(bundled) ? bundled : null;
 }
 
+/**
+ * 内置 Claude CLI 子进程的 CLAUDE_CONFIG_DIR。
+ * 不设时 CLI 默认写用户 ~/.claude/(persistSession:true 的会话 transcript 落
+ * ~/.claude/projects/<cwd编码>/<sessionId>.jsonl,每回合追加、无上限,已实测确认)。
+ * 指到应用数据目录,让落盘可控、可随 retention 清理、卸载即随目录带走,
+ * 也避免污染开发者自己的 ~/.claude(CLI 自带清理判据不透明,不可依赖)。
+ */
+export function getClaudeConfigDir() {
+  return process.env.FINANCE_AGENT_CLAUDE_CONFIG_DIR ?? path.join(getAppDataDir(), "claude-config");
+}
+
 function getDefaultAppDataRoot() {
   if (process.platform === "win32") {
     return process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");

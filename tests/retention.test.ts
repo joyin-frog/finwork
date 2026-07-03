@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { NextRequest } from "next/server";
 import { initializeSchema } from "../lib/db/schema.ts";
 import { isTrustedLocalMutation } from "../lib/api/local-request.ts";
@@ -10,11 +12,16 @@ import {
   isValidRetentionSettingsValue,
   loadRetentionConfig,
   pruneOldChatEvents,
+  pruneOldSessionTranscripts,
   RETENTION_SETTINGS_KEY,
   runRetentionCycle,
 } from "../lib/maintenance/retention.ts";
 
 export const retentionTestPromise = (async () => {
+  // 隔离 CLAUDE_CONFIG_DIR:runRetentionCycle 内嵌 transcript 清理,不得触碰真实应用数据目录
+  const configDir = mkdtempSync(path.join(tmpdir(), "retention-claude-config-"));
+  process.env.FINANCE_AGENT_CLAUDE_CONFIG_DIR = configDir;
+
   const db = new DatabaseSync(":memory:");
   initializeSchema(db);
   const now = Date.parse("2026-06-30T00:00:00.000Z");
@@ -54,7 +61,7 @@ export const retentionTestPromise = (async () => {
     now
   );
   assert.deepEqual(result.errors, []);
-  assert.deepEqual(result.stats, { traces: 1, spans: 1, appErrors: 1, auditLogs: 1, chatEvents: 0 });
+  assert.deepEqual(result.stats, { traces: 1, spans: 1, appErrors: 1, auditLogs: 1, chatEvents: 0, sessionTranscripts: 0 });
   assert.equal(
     (db.prepare("SELECT COUNT(*) AS n FROM agent_traces").get() as { n: number }).n,
     1,
@@ -102,6 +109,30 @@ export const retentionTestPromise = (async () => {
     traceDays: 30,
     chatEventDays: 365,
   });
+
+  // ── 内置 CLI 会话 transcript 清理:mtime 过期删、活跃留、空项目目录顺手收 ──
+  {
+    const projectDir = path.join(configDir, "projects", "-app-cwd");
+    mkdirSync(projectDir, { recursive: true });
+    const oldJsonl = path.join(projectDir, "old-session.jsonl");
+    const freshJsonl = path.join(projectDir, "fresh-session.jsonl");
+    writeFileSync(oldJsonl, "{}");
+    writeFileSync(freshJsonl, "{}");
+    const oldSec = (now - 31 * 86_400_000) / 1000;
+    utimesSync(oldJsonl, oldSec, oldSec);
+
+    assert.equal(pruneOldSessionTranscripts(30, configDir, now), 1, "只清 30 天前的 transcript");
+    assert.equal(existsSync(oldJsonl), false, "过期 transcript 应被删除");
+    assert.equal(existsSync(freshJsonl), true, "活跃 transcript 必须保留");
+    assert.equal(existsSync(projectDir), true, "非空项目目录保留");
+
+    const emptySec = (now - 31 * 86_400_000) / 1000;
+    utimesSync(freshJsonl, emptySec, emptySec);
+    assert.equal(pruneOldSessionTranscripts(30, configDir, now), 1);
+    assert.equal(existsSync(projectDir), false, "清空后的项目目录应被移除");
+
+    assert.equal(pruneOldSessionTranscripts(30, path.join(configDir, "no-such"), now), 0, "目录不存在时安全返回 0");
+  }
 
   const crossSiteRequest = {
     headers: new Headers({ origin: "https://evil.example", "sec-fetch-site": "cross-site" }),
