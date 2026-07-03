@@ -18,13 +18,17 @@ test("设置-填 API Key → 保存回路 → 已配置", async ({ page }) => {
   await dismissGate(page);
   await expect(page.getByText("模型连接")).toBeVisible();
   // 隔离 app-data + file 密钥后端:初始未配置;填 Key 失焦触发 PUT 保存 → 徽标翻到「已配置」。
+  // hydration 前 fill 不会被 React 跟踪、blur 不触发保存 → 重试"填→失焦→等 PUT"直到保存真的发生。
   const key = page.getByLabel("API Key");
-  await key.fill("sk-e2e-mock-key");
-  const saved = page.waitForResponse(
-    (r) => r.url().includes("/api/settings/claude") && r.request().method() === "PUT"
-  );
-  await key.blur();
-  expect((await saved).status()).toBe(200);
+  await expect(async () => {
+    await key.fill("sk-e2e-mock-key");
+    const saved = page.waitForResponse(
+      (r) => r.url().includes("/api/settings/claude") && r.request().method() === "PUT",
+      { timeout: 5_000 }
+    );
+    await key.blur();
+    expect((await saved).status()).toBe(200);
+  }).toPass({ timeout: 30_000 });
   await expect(page.getByText("已配置")).toBeVisible();
   await assertNoCrash(page);
 });
@@ -33,6 +37,13 @@ test("设置-记忆页渲染(编辑区在场)", async ({ page }) => {
   await page.goto("/config?tab=memory", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
   await expect(page.getByPlaceholder(/还没有|规矩|加载中/)).toBeVisible();
+  await assertNoCrash(page);
+});
+
+test("文件库页渲染不崩", async ({ page }) => {
+  await page.goto("/files", { waitUntil: "domcontentloaded" });
+  await dismissGate(page);
+  await expect(page.getByText(/个文件/).first()).toBeVisible(); // 头部计数常驻,空库时为「0 个文件」
   await assertNoCrash(page);
 });
 

@@ -6,15 +6,9 @@ import { dismissGate, sendChat } from "./helpers";
 
 test("find-in-chat: 打开浮窗 → 输入关键词 → 计数 → 翻页 → 关闭", async ({ page }) => {
   // 1. 发一条带唯一词的用户消息,建立有内容的对话。
-  //    用用户消息(乐观渲染、必在 DOM)做可搜内容,不依赖 mock agent 回复 → 去抖。
-  await page.goto("/chat/new", { waitUntil: "domcontentloaded" });
-  await dismissGate(page);
-  const box = page.getByLabel("输入消息");
-  await expect(box).toBeVisible();
-  await box.click();
-  await box.pressSequentially("查找测试关键词 MUTEXY", { delay: 5 });
-  await page.getByRole("button", { name: "发送" }).click();
-  await expect(page.getByText("查找测试关键词 MUTEXY")).toBeVisible({ timeout: 15_000 });
+  //    走 sendChat(自带 hydration 键入探测):裸 pressSequentially 在冷编译时会输在 hydration 赛跑。
+  await sendChat(page, "查找测试关键词 MUTEXY");
+  await expect(page.getByText("查找测试关键词 MUTEXY").first()).toBeVisible({ timeout: 15_000 });
 
   // 首启 gate 可能在交互后重出,清掉
   await dismissGate(page);

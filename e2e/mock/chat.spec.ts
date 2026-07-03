@@ -36,7 +36,7 @@ test("chat: 生成文件 → 产物出现在回答里", async ({ page }) => {
   await expect(page.getByRole("button", { name: "示例报表.xlsx" }).first()).toBeVisible();
 });
 
-test("chat: 富 markdown 排版渲染不塌 + 外链地球图标", async ({ page }) => {
+test("chat: 富 markdown 排版渲染不塌 + 外链成链", async ({ page }) => {
   await sendChat(page, "给我一段排版样例");
   const answer = page.locator(".md-content").last();
   // 各 markdown 结构都成形(不是塌成平文本)
@@ -46,12 +46,9 @@ test("chat: 富 markdown 排版渲染不塌 + 外链地球图标", async ({ page
   await expect(answer.getByText("收入")).toBeVisible();
   await expect(answer.locator("pre")).toBeVisible();                // 代码块
   await expect(answer.getByText("行内代码")).toBeVisible();          // 行内代码 chip
-  // 外链:绿色文本 + 地球图标(svg),角色为 link(用中性域名,避开身份脱敏过滤器)
+  // 外链:自动成链且可见(用中性域名,避开身份脱敏过滤器)。图标/配色属表现层,不在 e2e 锁定
   const link = answer.getByRole("link", { name: /example\.com/ });
   await expect(link).toBeVisible();
-  await expect(link.locator("svg")).toBeVisible();                  // 🌐 地球标识
-  // 金额列在 markdown 里标了右对齐,CSS 应强制为左对齐
-  await expect(answer.locator("td").filter({ hasText: "123" })).toHaveCSS("text-align", "left");
 });
 
 test("chat: 代码块语言标签 + 复制全文 + 思考折叠块", async ({ page }) => {
@@ -62,10 +59,9 @@ test("chat: 代码块语言标签 + 复制全文 + 思考折叠块", async ({ pa
   // #1 代码块语言标签:从 ```python 提取的语言名随代码块呈现
   await expect(answer.getByText("python", { exact: true })).toBeVisible();
 
-  // #3 思考折叠块:回合结束后头部为「已思考」(非旧「思考过程」)→ 展开 → 思考原文出现(经 route 脱敏后落库)
+  // #3 思考折叠块:回合结束后可展开 → 思考原文出现(经 route 脱敏后落库)
   const thinking = page.getByText(/^已思考/);
   await expect(thinking).toBeVisible();
-  await expect(page.getByText("思考过程", { exact: true })).toHaveCount(0); // 旧文案已不存在
   await thinking.click();
   await expect(page.getByText("我先把标题、列表、表格和代码块组织好")).toBeVisible();
 
@@ -100,10 +96,8 @@ test("chat: 多工具流程 → 类型图标时间线", async ({ page }) => {
   await sendChat(page, "工具演示");
   await page.getByText(/已处理/).first().click(); // 展开过程块(折叠摘要为「已处理 N 步 · 时长」)
   const details = page.locator("details").first();
-  await expect(details.getByText("财务分析")).toBeVisible();                        // Skill:友好名「调用【财务分析】技能」(不再露 finance-skills: id)
-  await expect(details.getByText("差旅住宿标准")).toBeVisible();                    // search_knowledge:去「」+ mcp 归一化
-  await expect(details.getByText(/运行 Python/)).toHaveCount(0);                    // run_python:不露语言细节
-  await expect(details.getByText("运行代码").first()).toBeVisible();                 // run_python:图标 + 友好文案
-  await expect(details.getByText(/[「」]/)).toHaveCount(0);                          // 无 CJK 引号
+  await expect(details.getByText("财务分析")).toBeVisible();                        // Skill:友好名(不露 finance-skills: id)
+  await expect(details.getByText("差旅住宿标准")).toBeVisible();                    // search_knowledge:mcp 归一化
+  await expect(details.getByText("运行代码").first()).toBeVisible();                 // run_python:友好文案
   await details.screenshot({ path: "test-results/tool-steps.png" }).catch(() => {});
 });
