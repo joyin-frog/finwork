@@ -240,5 +240,20 @@ export const summarizeToolSegmentTestPromise = (async () => {
     assert.equal(typeof summary, "string", "S5 FAIL: 空数组应返回字符串");
   }
 
+  // ── S6: 摘要携带对象(renderer 文案「动词：对象」的对象部分,去重取前 2) ──
+  {
+    const items: SegmentTimelineItem[] = [];
+    for (const f of ["测试单据A.pdf", "测试单据B.pdf", "测试单据C.jpg"]) {
+      const u: SegmentTimelineItem = { id: `u-${f}`, event: { type: "tool_use", name: "read_document", id: `u-${f}`, input: { filePath: `/tmp/${f}` } }, createdAt: Date.now() };
+      const r: SegmentTimelineItem = { id: `r-${f}`, event: { type: "tool_result", name: "read_document", isError: false, toolUseId: `u-${f}`, durationMs: 500 }, createdAt: Date.now() };
+      items.push(u, r);
+    }
+    const summary = summarizeToolSegment(items);
+    assert.ok(summary.includes("×3"), `S6 FAIL: 应含步数,实际: ${summary}`);
+    assert.ok(summary.includes("："), `S6 FAIL: 应含对象分隔冒号,实际: ${summary}`);
+    assert.ok(summary.includes("测试单据A") , `S6 FAIL: 应含首个对象名,实际: ${summary}`);
+    assert.ok(!summary.includes("测试单据C"), `S6 FAIL: 只取前 2 个对象,实际: ${summary}`);
+  }
+
   console.log("summarize-tool-segment: all checks passed ✓");
 })();

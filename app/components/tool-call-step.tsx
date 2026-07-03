@@ -543,22 +543,42 @@ export function ToolStepList({
   // spec 4: 将 aggregated 结果转为子步骤渲染
   const pairs = buildPairs(toolItems, !isActive);
 
+  const rows = aggregated.map((agg, idx) => {
+    if (agg.kind === "retry-group") {
+      return <RetryGroupRow key={`group-${idx}`} group={agg} />;
+    }
+    // kind:"step"
+    // 从 pairs 找对应的 ToolPair（按 item.id 匹配）
+    const pair = pairs.find((p) => p.id === agg.item.id);
+    if (!pair) return null;
+    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} />;
+  });
+
+  // 已完成的多步段默认收成一行摘要(带对象与统计),点开才见逐步明细——密度对齐 Claude 的
+  // "一句话+折叠动作组"。进行中的段保持实时逐行,当前动作必须可见。
+  if (!isActive && aggregated.length >= 2) {
+    return (
+      <details className="flex flex-col gap-0.5">
+        <summary className="group flex w-full items-center gap-2 py-0.5 text-body text-left cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
+          <span className="min-w-0 truncate">{summarizeToolSegment(toolItems)}</span>
+          <HugeiconsIcon
+            icon={ChevronRightIcon}
+            size={14}
+            className="details-chevron shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+          />
+        </summary>
+        <div className="flex flex-col gap-0.5 pl-3">{rows}</div>
+      </details>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-0.5">
-      {/* 段摘要（灰字，不展开） */}
-      {summary && (
+      {/* 进行中的段:段摘要灰字提示 + 实时逐行 */}
+      {isActive && summary && (
         <div className="text-small text-muted-foreground/60 pb-0.5 select-none">{summary}</div>
       )}
-      {aggregated.map((agg, idx) => {
-        if (agg.kind === "retry-group") {
-          return <RetryGroupRow key={`group-${idx}`} group={agg} />;
-        }
-        // kind:"step"
-        // 从 pairs 找对应的 ToolPair（按 item.id 匹配）
-        const pair = pairs.find((p) => p.id === agg.item.id);
-        if (!pair) return null;
-        return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} />;
-      })}
+      {rows}
     </div>
   );
 }

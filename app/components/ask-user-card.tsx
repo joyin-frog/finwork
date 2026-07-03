@@ -150,7 +150,7 @@ export function AskAnsweredSummary({ header, answer }: { header?: string; answer
   if (multi && multi.length > 1) {
     const snippet = extractAnswerSnippet(answer!);
     return (
-      <details className="py-0.5 text-meta min-w-0">
+      <details className="py-0.5 text-body min-w-0">
         <summary className="flex items-center gap-1.5 cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors min-w-0">
           <span className="shrink-0">{header ? `${header}：已确认 ${multi.length} 项` : `已确认 ${multi.length} 项`}</span>
           {snippet ? (
@@ -167,7 +167,7 @@ export function AskAnsweredSummary({ header, answer }: { header?: string; answer
 
   // 单问:原样一行 chip。
   return (
-    <div className="py-0.5 text-meta min-w-0">
+    <div className="py-0.5 text-body min-w-0">
       <AnswerPair question={header} answer={answer!} />
     </div>
   );

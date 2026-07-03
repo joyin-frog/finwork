@@ -22,7 +22,7 @@ import { messageTimestamp } from "@/app/chat/message-timestamp";
 import { extractVoucherChips } from "@/app/chat/voucher-chips";
 import { useRouter } from "next/navigation";
 import type { StoredAgentEvent, StoredChatAttachment } from "@/lib/db/sqlite";
-import { ToolStepList, ThinkingStep } from "@/app/components/tool-call-step";
+import { ToolStepList } from "@/app/components/tool-call-step";
 import { RoleModeProvider, type RoleMode } from "@/app/chat/role-mode";
 import { AskAnsweredSummary } from "@/app/components/ask-user-card";
 import { AskUserPanel } from "@/app/components/ask-user-panel";
@@ -1255,6 +1255,11 @@ function AssistantTurn({
   const { processSegments, answerText } = useMemo(() => buildTurnSegments(timeline), [timeline]);
   // thinking 段是否存在:决定纯思考回合(无工具步)也显示过程块,思考按时序穿插在步骤间。
   const hasThinkingSegment = useMemo(() => processSegments.some((s) => s.kind === "thinking"), [processSegments]);
+  // 过程区是否有可见内容(正文进展句):thinking 段不再渲染后,details 的显隐以此为准
+  const hasProcessText = useMemo(
+    () => processSegments.some((s) => s.kind === "text" && s.content.trim() !== ""),
+    [processSegments]
+  );
   const askUserItems = useMemo(() => timeline.filter(
     (t): t is TimelineItem & { event: Extract<AgentEvent, { type: "ask_user" }> } => t.event.type === "ask_user"
   ), [timeline]);
@@ -1342,8 +1347,6 @@ function AssistantTurn({
     return m;
   }, [timeline]);
   const lastSegIdx = processSegments.length - 1;
-  // 时间线尾巴是思考行时,流动星芒由该行自己亮,底部不再重复挂一个。
-  const lastSegIsThinking = processSegments[lastSegIdx]?.kind === "thinking";
 
   // F2: 反馈状态
   const [reasonPickerOpen, setReasonPickerOpen] = useState(false);
@@ -1384,8 +1387,12 @@ function AssistantTurn({
       {/* 起手纯思考阶段(还没任何产出)的状态行:正在思考 + 实时计时。产出一开始就交给过程块,
           思考原文作为 thinking 段按真实时序穿插在工具步骤之间,不再单独聚合展示。 */}
       <ThinkingStatusLine active={isActive && !hasOutput} />
-      {/* 过程块在有工具步骤或思考段时显示;步骤与思考按真实时序交错列出。 */}
-      {toolStepCount > 0 || hasThinkingSegment ? (
+      {/* 纯思考回合(无工具/无过程正文):思考行已不渲染,details 会是空壳,退化为一行定格标签 */}
+      {toolStepCount === 0 && !hasProcessText && hasThinkingSegment && !isActive ? (
+        <div className="py-1 text-body text-muted-foreground">{processedLabel}</div>
+      ) : null}
+      {/* 过程块在有工具步骤或过程正文时显示;进行中的纯思考回合也先挂上(产出随时到来) */}
+      {toolStepCount > 0 || hasProcessText || (hasThinkingSegment && isActive) ? (
         <>
         <details
           className="overflow-hidden text-small"
@@ -1406,7 +1413,7 @@ function AssistantTurn({
           {/* 无边框、不缩进:摘要左缘与正文对齐。结束显示实际处理时长(已处理 7m / 1h7m1s)。
               标题与正文同字号同色;流式中叠走光(思考→处理两段式由 isActive 决定文案)。 */}
           <summary className="flex items-center gap-2 cursor-pointer py-1 list-none">
-            <span className={cn("min-w-0 flex-1 truncate", isActive ? "fa-shimmer-text" : "text-muted-foreground")}>
+            <span className={cn("min-w-0 flex-1 truncate text-body", isActive ? "fa-shimmer-text" : "text-muted-foreground")}>
               {isActive ? "正在处理" : processedLabel}
             </span>
             <HugeiconsIcon icon={ChevronRightIcon} size={15} className="details-chevron transition-transform shrink-0" />
@@ -1431,8 +1438,9 @@ function AssistantTurn({
                 );
               }
               if (seg.kind === "thinking") {
-                // 思考行是当前尾巴且回合进行中 → 星芒落在这一行(动画);否则无图标。
-                return <ThinkingStep key={`thinking-${seg.id}`} content={seg.content} active={segActive && !anyToolRunning} />;
+                // 思考段不渲染(对齐 Claude:thinking 不进过程叙事,节奏由正文进展句+动作组承担)。
+                // 数据仍在 timeline 里,需要时可恢复;进行中的思考由 ThinkingStatusLine/星芒表达。
+                return null;
               }
               // 跨段恢复信号:该段之后所有 tools 段的事件(失败与重试成功常被 thinking 段隔开)
               const laterToolItems = processSegments
@@ -1448,23 +1456,36 @@ function AssistantTurn({
                 </div>
               );
             })}
+            {/* 已答的确认项折叠在过程块内(它们是过程的一部分);待答且回合进行中 → 输入框上方浮层,不在此重复 */}
+            {askUserItems.map((item) => {
+              const ans = askAnswers.get(item.event.questionId);
+              if (ans === undefined && isActive) return null;
+              return (
+                <AskAnsweredSummary
+                  key={item.event.questionId}
+                  header={item.event.question.header}
+                  answer={ans}
+                />
+              );
+            })}
           </div>
           )}
         </details>
         </>
-      ) : null}
-      {askUserItems.map((item) => {
-        const ans = askAnswers.get(item.event.questionId);
-        // 待答且本回合进行中 → 交给输入框上方的浮层,时间线不重复渲染
-        if (ans === undefined && isActive) return null;
-        return (
-          <AskAnsweredSummary
-            key={item.event.questionId}
-            header={item.event.question.header}
-            answer={ans}
-          />
-        );
-      })}
+      ) : (
+        // 无过程块的回合(纯直答)兜底:已答确认项仍要有处落脚
+        askUserItems.map((item) => {
+          const ans = askAnswers.get(item.event.questionId);
+          if (ans === undefined && isActive) return null;
+          return (
+            <AskAnsweredSummary
+              key={item.event.questionId}
+              header={item.event.question.header}
+              answer={ans}
+            />
+          );
+        })
+      )}
       {/* 答案正文:占位态(还没产出)不渲染;answerText=最后一段无工具的 text,否则回退 message.content。
           流式期间文本已进过程段时不回退 message.content(避免与过程块里中间文本重复)。 */}
       {(() => {
@@ -1487,8 +1508,8 @@ function AssistantTurn({
         );
       })()}
       {/* 「还活着」跟随星芒:已开始产出、回合未结束且没有工具在跑(答案流式 / 处理空档)→ 底部动的星芒。
-          起手纯思考由「正在思考」状态行负责;尾巴是思考行且过程块展开时星芒已落在该行,这里都不重复。 */}
-      {isActive && !anyToolRunning && hasOutput && !(processOpen && lastSegIsThinking) ? (
+          思考行已不渲染,尾巴是思考段时星芒统一落底部,不再有"落在思考行"的分支。 */}
+      {isActive && !anyToolRunning && hasOutput ? (
         <div className="flex items-center gap-2 py-0.5" role="status" aria-label="处理中">
           <ThinkingSpark size={18} />
         </div>

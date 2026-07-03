@@ -220,5 +220,28 @@ export const toolCallStepUiTestPromise = (async () => {
   }
   console.log("E2E: conv65 fixture 聚合断言 ✓");
 
+  // ── C-D: 密度收敛(第二轮) 源码契约 ──
+  {
+    const stepSrc2 = src("app/components/tool-call-step.tsx");
+    // 已完成多步段默认收成一行摘要(details 折叠),进行中保持逐行
+    assert.ok(
+      stepSrc2.includes("!isActive && aggregated.length >= 2"),
+      "C-D1 FAIL: 已完成多步段应默认折叠为摘要行"
+    );
+    const pageSrc2 = src("app/chat/chat-page.tsx");
+    // thinking 段不再渲染
+    assert.ok(pageSrc2.includes("思考段不渲染"), "C-D2 FAIL: chat-page 的 thinking 段应不渲染");
+    assert.ok(!pageSrc2.includes("<ThinkingStep"), "C-D2b FAIL: chat-page 不应再渲染 ThinkingStep");
+    // 已答确认项折叠进过程块(渲染点位于 </details> 之前)
+    const askIdx = pageSrc2.indexOf("已答的确认项折叠在过程块内");
+    const detailsClose = pageSrc2.indexOf("</details>", askIdx);
+    assert.ok(askIdx > -1 && detailsClose > askIdx, "C-D3 FAIL: 已答确认项应位于过程块 details 内");
+    // 过程折叠头 body 字号
+    assert.ok(/min-w-0 flex-1 truncate text-body/.test(pageSrc2), "C-D4 FAIL: 「已处理 N 步」折叠头应为 text-body");
+    // ask-user 摘要行 body 字号
+    const askSrc = src("app/components/ask-user-card.tsx");
+    assert.ok(askSrc.includes('details className="py-0.5 text-body'), "C-D5 FAIL: 已确认摘要行应为 text-body");
+  }
+
   console.log("\ntool-call-step-ui: 全部断言通过 ✓");
 })();
