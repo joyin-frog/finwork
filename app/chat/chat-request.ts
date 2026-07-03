@@ -169,8 +169,9 @@ export async function readSSEStream(response: Response, callbacks: SSECallbacks)
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      // 流结束时 flush 解码器:TCP 分包可能把多字节 UTF-8 字符切在 chunk 边界,
+      // stream 模式下尾部字节缓存在 decoder 里,不 flush 会丢末尾字符、最后一帧解析不出。
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
 
       const lines = buffer.split("\n\n");
       buffer = lines.pop() ?? "";
@@ -179,6 +180,7 @@ export async function readSSEStream(response: Response, callbacks: SSECallbacks)
         if (!line.startsWith("data: ")) continue;
         await dispatchSSEEvent(JSON.parse(line.slice(6)), callbacks);
       }
+      if (done) break;
     }
   } finally {
     reader.releaseLock();

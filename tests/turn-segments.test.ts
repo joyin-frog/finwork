@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildTurnSegments, coalesceTextEvent, extractThinkingText, thinkingViewState } from "../app/chat/turn-segments.ts";
+import { buildTurnSegments, coalesceTextEvent } from "../app/chat/turn-segments.ts";
 import type { TimelineItem } from "../app/components/tool-call-step.ts";
 
 function makeItem(type: string, extra: Record<string, unknown> = {}, id?: string): TimelineItem {
@@ -116,74 +116,67 @@ export const turnSegmentsTestPromise = (async () => {
     assert.equal((events[2] as { type: string; content: string }).content, "After tool", "T7 FAIL: new text event content mismatch");
   }
 
-  // ── T8: thinking 事件不进过程段(既不是 tools 也不是 text),末尾文本仍为答案 ──
+  // ── T8: thinking 按时序作为 thinking 段穿插进过程段,末尾文本仍为答案 ──
   {
     const timeline: TimelineItem[] = [
       makeItem("thinking", { content: "用户想算个税,我先读制度。" }),
       makeItem("tool_use", { name: "Read", id: "tu-6" }),
       makeItem("tool_result", { toolUseId: "tu-6", content: "...制度..." }),
       makeItem("thinking", { content: "拿到税率表,套公式。" }),
+      makeItem("tool_use", { name: "run_python", id: "tu-6b" }),
+      makeItem("tool_result", { toolUseId: "tu-6b", content: "1200" }),
       makeItem("text", { content: "个税为 1200 元。" }),
     ];
     const { processSegments, answerText } = buildTurnSegments(timeline);
     assert.equal(answerText, "个税为 1200 元。", "T8 FAIL: 末尾文本应为答案");
-    assert.deepEqual(processSegments.map((s) => s.kind), ["tools"], "T8 FAIL: 只应有一个 tools 段");
-    for (const seg of processSegments) {
-      if (seg.kind === "tools") {
-        for (const item of seg.items) {
-          assert.notEqual(item.event.type, "thinking", "T8 FAIL: thinking 不应进 tools 段");
-        }
-      }
-    }
+    assert.deepEqual(
+      processSegments.map((s) => s.kind),
+      ["thinking", "tools", "thinking", "tools"],
+      "T8 FAIL: thinking 应按时序穿插在工具段之间"
+    );
+    const think = processSegments.filter((s) => s.kind === "thinking");
+    assert.equal(think[0].kind === "thinking" && think[0].content, "用户想算个税,我先读制度。", "T8 FAIL: 第一段思考内容");
+    assert.equal(think[1].kind === "thinking" && think[1].content, "拿到税率表,套公式。", "T8 FAIL: 第二段思考内容");
   }
 
-  // ── T9: extractThinkingText 按序拼接全部 thinking,空则返回 "" ──
+  // ── T9: 连续 thinking 合并为一段(空行分隔);空白 thinking 跳过 ──
   {
-    assert.equal(extractThinkingText([]), "", "T9 FAIL: 无事件应返回空串");
-    const noThink: TimelineItem[] = [makeItem("text", { content: "只有答案" })];
-    assert.equal(extractThinkingText(noThink), "", "T9 FAIL: 无 thinking 应返回空串");
     const timeline: TimelineItem[] = [
       makeItem("thinking", { content: "第一段思考" }),
-      makeItem("tool_use", { name: "Read", id: "tu-7" }),
       makeItem("thinking", { content: "第二段思考" }),
-      makeItem("text", { content: "答案" }),
-    ];
-    assert.equal(
-      extractThinkingText(timeline),
-      "第一段思考\n\n第二段思考",
-      "T9 FAIL: 应按序拼接 thinking,用空行分隔"
-    );
-    // 空白 thinking 段应被跳过
-    const withBlank: TimelineItem[] = [
       makeItem("thinking", { content: "  " }),
-      makeItem("thinking", { content: "实质思考" }),
+      makeItem("tool_use", { name: "Read", id: "tu-7" }),
+      makeItem("tool_result", { toolUseId: "tu-7", content: "ok" }),
     ];
-    assert.equal(extractThinkingText(withBlank), "实质思考", "T9 FAIL: 空白 thinking 应跳过");
+    const { processSegments, answerText } = buildTurnSegments(timeline);
+    assert.equal(answerText, "", "T9 FAIL: 无末尾文本");
+    assert.deepEqual(processSegments.map((s) => s.kind), ["thinking", "tools"], "T9 FAIL: 连续 thinking 应合并为一段");
+    const seg = processSegments[0];
+    assert.equal(seg.kind === "thinking" && seg.content, "第一段思考\n\n第二段思考", "T9 FAIL: 合并用空行分隔且跳过空白段");
+
+    // 纯空白 thinking 不产生段
+    const blankOnly = buildTurnSegments([makeItem("thinking", { content: "   " })]);
+    assert.equal(blankOnly.processSegments.length, 0, "T9 FAIL: 纯空白 thinking 不应产生段");
   }
 
-  // ── T10: thinkingViewState —— 头部「正在思考/已思考 + 计时」的纯状态 ──
+  // ── T10: 答案前后的 thinking 不因答案被摘出而误合并成一段 ──
   {
-    // 思考进行中(回合活跃 + 还没产出):正在思考 + 实时计时,不可展开
-    const live = thinkingViewState({ isActive: true, hasOutput: false, hasText: false, durationMs: undefined, liveMs: 3000 });
-    assert.deepEqual(live, { render: true, label: "正在思考", ms: 3000, expandable: false, active: true }, "T10 FAIL: 进行中状态");
-
-    // 思考进行中但已有思考原文(可展开)
-    const liveWithText = thinkingViewState({ isActive: true, hasOutput: false, hasText: true, durationMs: undefined, liveMs: 5000 });
-    assert.equal(liveWithText.expandable, true, "T10 FAIL: 有原文应可展开");
-    assert.equal(liveWithText.label, "正在思考", "T10 FAIL: 仍进行中");
-
-    // 已产出(开始调工具/出答案)→ 已思考 + 定格时长,可展开
-    const done = thinkingViewState({ isActive: true, hasOutput: true, hasText: true, durationMs: 8000, liveMs: 99999 });
-    assert.deepEqual(done, { render: true, label: "已思考", ms: 8000, expandable: true, active: false }, "T10 FAIL: 已思考用定格时长");
-
-    // 回合结束、重载(非活跃)→ 用持久化时长
-    const reloaded = thinkingViewState({ isActive: false, hasOutput: true, hasText: true, durationMs: 12000, liveMs: 0 });
-    assert.deepEqual(reloaded, { render: true, label: "已思考", ms: 12000, expandable: true, active: false }, "T10 FAIL: 重载用持久化时长");
-
-    // 没有思考、也不在思考态 → 不渲染
-    const none = thinkingViewState({ isActive: false, hasOutput: true, hasText: false, durationMs: undefined, liveMs: 0 });
-    assert.equal(none.render, false, "T10 FAIL: 无思考不渲染");
+    const timeline: TimelineItem[] = [
+      makeItem("thinking", { content: "答前思考" }),
+      makeItem("text", { content: "最终答案。" }),
+      makeItem("thinking", { content: "答后思考" }),
+    ];
+    const { processSegments, answerText } = buildTurnSegments(timeline);
+    assert.equal(answerText, "最终答案。", "T10 FAIL: 末尾文本应为答案");
+    assert.deepEqual(
+      processSegments.map((s) => s.kind),
+      ["thinking", "thinking"],
+      "T10 FAIL: 答案两侧的 thinking 应各自成段,不合并"
+    );
+    const [a, b] = processSegments;
+    assert.equal(a.kind === "thinking" && a.content, "答前思考", "T10 FAIL: 第一段内容");
+    assert.equal(b.kind === "thinking" && b.content, "答后思考", "T10 FAIL: 第二段内容");
   }
 
-  console.log("turn-segments: all 11 checks passed ✓");
+  console.log("turn-segments: all 10 checks passed ✓");
 })();

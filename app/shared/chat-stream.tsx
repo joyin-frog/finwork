@@ -117,9 +117,23 @@ export function mergeFinalMessages(turn: StreamTurn): Message[] {
   return [...turn.baseMessages, turn.userMessage, assistant];
 }
 
-/** 终止/失败时,把已流式的内容定格成消息列表(供 chat-page 收尾落入本地 messages)。 */
+/** 终止/失败时,把已流式的内容定格成消息列表(供 chat-page 收尾落入本地 messages)。
+ *  timeline 转成 agentEvents 一并带上:否则收尾瞬间过程块(工具步骤/思考)整体消失、刷新才回来——
+ *  恰恰是出错时用户最需要看到"做到哪了"的时刻。合成事件仅供本地渲染,id 非 DB id。 */
 export function overlayMessages(turn: StreamTurn): Message[] {
-  return [...turn.baseMessages, turn.userMessage, { role: "assistant", content: activeAssistantContent(turn) }];
+  const agentEvents = turn.timeline.map((item, i) => ({
+    id: i + 1,
+    messageId: 0,
+    eventType: item.event.type,
+    payload: item.event,
+    createdAt: new Date(item.createdAt).toISOString(),
+    traceId: null,
+  }));
+  return [...turn.baseMessages, turn.userMessage, {
+    role: "assistant",
+    content: activeAssistantContent(turn),
+    agentEvents: agentEvents.length ? agentEvents : undefined,
+  }];
 }
 
 /** 叠加渲染时,当前回合助手气泡应显示的正文。 */

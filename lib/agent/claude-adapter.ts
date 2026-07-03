@@ -23,6 +23,7 @@ import {
 import { buildSystemPromptParts } from "./system-prompt";
 import { isMockAgentEnabled, runMockAgent } from "./mock-agent";
 import { createToolEventTracker, extractUserToolResults, type TrackedToolResult } from "./tool-event-tracker";
+import { accumulateModelUsage } from "./usage-accumulate";
 import { readMemoryMarkdown } from "@/lib/memory/file-store";
 import { ensureConventionsMigrated } from "@/lib/memory/migrate-conventions";
 import { readCompanyProfile } from "@/lib/profile/file-store";
@@ -171,6 +172,9 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   let totalCostUsd: number | undefined;
   let numTurns: number | undefined;
   let resultError: string | undefined;
+  // 逐条 assistant 消息累计的兜底 usage:回合被超时/中断掐掉时 result 消息不来,
+  // 没有它这些回合(往往烧得最多)的消耗会整体丢失、配额漏记。
+  const accumulatedUsage: Record<string, ModelUsage> = {};
 
   const abortController = new AbortController();
   if (runOptions.signal) {
@@ -323,6 +327,11 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       }
       log.warn("session resume failed, retrying", { traceId: requestId, claudeSessionId, error: msg });
       sessionRetried = true;
+      // 首次调用可能已流出少量内容/usage:不清会导致重试后正文前缀重复、
+      // streamedText=true 吞掉重试的 assistant 文本块、usage 双计。整体归零重来。
+      chunks.length = 0;
+      streamedText = false;
+      for (const k of Object.keys(accumulatedUsage)) delete accumulatedUsage[k];
       // 生成新 sessionId 避免复用失效 id
       const newSessionId = randomUUID();
       claudeSessionId = newSessionId;
@@ -455,6 +464,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       // Full assistant message with content blocks
       if (message.type === "assistant") {
         const assistantMsg = message as SDKAssistantMessage;
+        accumulateModelUsage(accumulatedUsage, assistantMsg.message.model, assistantMsg.message.usage);
         if (assistantMsg.error) {
           // 模型回合自带错误码(authentication_failed / billing_error / rate_limit / max_output_tokens 等)
           resultError = `模型返回错误:${assistantMsg.error}`;
@@ -504,6 +514,11 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       traceId: requestId, durationMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : String(error),
     });
+    // 已烧掉的 usage 挂上错误随之上抛(同 route 挂 __collector 的约定),
+    // 出错收尾据此写 trace,超时/中断回合的消耗不再丢失。
+    if (Object.keys(accumulatedUsage).length) {
+      (error as { __modelUsage?: Record<string, ModelUsage> }).__modelUsage = accumulatedUsage;
+    }
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -542,7 +557,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     mode: "claude" as const,
     claudeSessionId,
     content,
-    modelUsage,
+    // result 消息的 modelUsage 是权威值(含子代理等完整口径);拿不到时(部分网关/失败结果)回落逐条累计。
+    modelUsage: modelUsage ?? (Object.keys(accumulatedUsage).length ? accumulatedUsage : undefined),
     totalCostUsd,
     numTurns,
     roleMode: settings.roleMode,
