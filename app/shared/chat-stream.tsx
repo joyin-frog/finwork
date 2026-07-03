@@ -161,7 +161,7 @@ export function useChatStream(): ChatStreamApi {
   return ctx;
 }
 
-function isFinished(status: TurnStatus) {
+export function isFinished(status: TurnStatus) {
   return status === "done" || status === "error" || status === "stopped" || status === "incomplete";
 }
 
