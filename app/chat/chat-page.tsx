@@ -18,6 +18,8 @@ import {
   MagicWand01Icon,
 } from "@hugeicons/core-free-icons";
 import { RefreshIcon, SuccessIcon, CopyIcon } from "@/lib/icons";
+import { messageTimestamp } from "@/app/chat/message-timestamp";
+import { extractVoucherChips } from "@/app/chat/voucher-chips";
 import { useRouter } from "next/navigation";
 import type { StoredAgentEvent, StoredChatAttachment } from "@/lib/db/sqlite";
 import { ToolStepList, ThinkingStep } from "@/app/components/tool-call-step";
@@ -1317,6 +1319,26 @@ function AssistantTurn({
   }, [message, timeline]);
   // C3 溯源:仅报销流程返回非空;机械事实打底,口径叙述仍由模型写在正文。
   const reimbursementProvenance = useMemo(() => buildReimbursementProvenance(timeline), [timeline]);
+  // export_voucher_list chips:从 timeline tool_result 读取 sheets/voucherCount,按产物文件名索引。
+  // extractVoucherChips 按文件名查找;这里预先收集所有产物文件名 → chips,渲染时直接按名查。
+  const voucherChipsMap = useMemo((): Map<string, { sheets: number; voucherCount: number }> => {
+    const m = new Map<string, { sheets: number; voucherCount: number }>();
+    // 遍历所有 export_voucher_list tool_result,以 fileName 为 key 缓存 chips
+    for (const item of timeline) {
+      const ev = item.event;
+      if (ev.type !== "tool_result") continue;
+      const toolName = (ev as { name?: string }).name ?? "";
+      if (!toolName.includes("export_voucher_list")) continue;
+      const content = (ev as { content?: string }).content ?? "";
+      try {
+        const parsed = JSON.parse(content) as Record<string, unknown>;
+        if (typeof parsed.fileName !== "string") continue;
+        const chips = extractVoucherChips([item], parsed.fileName as string);
+        if (chips) m.set(parsed.fileName as string, chips);
+      } catch { /* ignore malformed JSON */ }
+    }
+    return m;
+  }, [timeline]);
   const lastSegIdx = processSegments.length - 1;
   // 时间线尾巴是思考行时,流动星芒由该行自己亮,底部不再重复挂一个。
   const lastSegIsThinking = processSegments[lastSegIdx]?.kind === "thinking";
@@ -1410,9 +1432,14 @@ function AssistantTurn({
                 // 思考行是当前尾巴且回合进行中 → 星芒落在这一行(动画);否则无图标。
                 return <ThinkingStep key={`thinking-${seg.id}`} content={seg.content} active={segActive && !anyToolRunning} />;
               }
+              // 跨段恢复信号:该段之后所有 tools 段的事件(失败与重试成功常被 thinking 段隔开)
+              const laterToolItems = processSegments
+                .slice(segIdx + 1)
+                .filter((s) => s.kind === "tools")
+                .flatMap((s) => s.items as TimelineItem[]);
               return (
                 <div key={`tools-${segIdx}`}>
-                  <ToolStepList timeline={seg.items as TimelineItem[]} isActive={segActive} />
+                  <ToolStepList timeline={seg.items as TimelineItem[]} isActive={segActive} laterTimeline={laterToolItems} />
                   {(seg.items as TimelineItem[]).filter((t) => t.event.type === "system").map((item) => (
                     <TimelineRow key={item.id} item={item} />
                   ))}
@@ -1480,6 +1507,7 @@ function AssistantTurn({
               setOpenMenuKey={setOpenMenuKey}
               onPreviewFile={onPreviewFile}
               bordered
+              voucherChips={voucherChipsMap.get(file.name) ?? null}
             />
           ))}
         </div>
@@ -1504,10 +1532,10 @@ function AssistantTurn({
             <button
               type="button"
               className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors",
+                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors transition-opacity",
                 answerCopied
                   ? "text-[color:var(--tone-ok)] bg-[color:var(--tone-ok)]/10"
-                  : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted"
+                  : "msg-toolbar-btn-fade text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground hover:bg-muted"
               )}
               aria-label={answerCopied ? "已复制" : "复制全文"}
               onClick={copyAnswer}
@@ -1517,10 +1545,10 @@ function AssistantTurn({
             <button
               type="button"
               className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors",
+                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors transition-opacity",
                 feedback?.rating === "up"
                   ? "text-[color:var(--tone-ok)] bg-[color:var(--tone-ok)]/10"
-                  : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted"
+                  : "msg-toolbar-btn-fade text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground hover:bg-muted"
               )}
               aria-label="有帮助"
               onClick={() => {
@@ -1533,10 +1561,10 @@ function AssistantTurn({
             <button
               type="button"
               className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors",
+                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors transition-opacity",
                 feedback?.rating === "down"
                   ? "text-[color:var(--tone-alarm)] bg-[color:var(--tone-alarm)]/10"
-                  : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted"
+                  : "msg-toolbar-btn-fade text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground hover:bg-muted"
               )}
               aria-label="没帮上"
               onClick={() => {
@@ -1546,6 +1574,12 @@ function AssistantTurn({
             >
               <HugeiconsIcon icon={ThumbsDownIcon} size={13} />
             </button>
+            {/* 相对时间戳:hover/键盘聚焦时淡入,灰字小字,离开后消失 */}
+            {message.createdAt ? (
+              <span className="msg-toolbar-timestamp text-caption text-muted-foreground/60 px-1 select-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                {messageTimestamp(message.createdAt)}
+              </span>
+            ) : null}
           </div>
           {reasonPickerOpen ? (
             <div className="mt-1 flex flex-col gap-2 max-w-xs text-meta">

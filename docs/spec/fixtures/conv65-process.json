@@ -1,0 +1,149 @@
+{
+  "_comment": "合成数据：镜像真实会话 65 第一轮的结构特征。严禁含真实公司名、金额、银行账号、OCR 内容。",
+  "description": "26步 单据识别记账汇总 — 结构 fixture，用于聚合函数端到端测试",
+  "totalSteps": 26,
+  "items": [
+    {
+      "id": "item-001",
+      "event": { "type": "thinking", "content": "The user wants to process some documents and create accounting entries. Let me start by scanning the folder." },
+      "createdAt": 1000
+    },
+    {
+      "id": "item-002",
+      "event": { "type": "tool_use", "name": "scan_slip_folder", "id": "tu-002", "input": { "folderPath": "/demo/示例单据" } },
+      "createdAt": 2000
+    },
+    {
+      "id": "item-003",
+      "event": { "type": "tool_result", "name": "scan_slip_folder", "toolUseId": "tu-002", "isError": true, "durationMs": 800,
+        "content": "<tool_use_error>Unknown skill: finance-worker:scan_slip_folder</tool_use_error>" },
+      "createdAt": 2800
+    },
+    {
+      "id": "item-004",
+      "event": { "type": "text", "content": "扫描工具暂不可用，改用逐个读取单据文件的方式处理。" },
+      "createdAt": 3200
+    },
+    {
+      "id": "item-005",
+      "event": { "type": "tool_use", "name": "read_document", "id": "tu-005", "input": { "filePath": "/demo/测试单据-1.pdf" } },
+      "createdAt": 4000
+    },
+    {
+      "id": "item-006",
+      "event": { "type": "tool_result", "name": "read_document", "toolUseId": "tu-005", "isError": false, "durationMs": 3200,
+        "content": "单据类型：增值税普通发票\n开票日期：2025年X月X日\n金额：示例金额\n供应商：示例公司" },
+      "createdAt": 7200
+    },
+    {
+      "id": "item-007",
+      "event": { "type": "thinking", "content": "I identified the document type. Now I need to search for the relevant accounting standards. Let me query the knowledge base." },
+      "createdAt": 7400
+    },
+    {
+      "id": "item-008",
+      "event": { "type": "tool_use", "name": "search_knowledge", "id": "tu-008", "input": { "query": "增值税普通发票科目映射", "topK": 10 } },
+      "createdAt": 8000
+    },
+    {
+      "id": "item-009",
+      "event": { "type": "tool_result", "name": "search_knowledge", "toolUseId": "tu-008", "isError": true, "durationMs": 400,
+        "content": "MCP error -32602: Input validation error: Invalid arguments for tool search_knowledge: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 5,\n    \"type\": \"number\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"Too big: expected number to be <=5\",\n    \"path\": [\"topK\"]\n  }\n]" },
+      "createdAt": 8400
+    },
+    {
+      "id": "item-010",
+      "event": { "type": "tool_use", "name": "search_knowledge", "id": "tu-010", "input": { "query": "增值税普通发票科目映射", "topK": 8 } },
+      "createdAt": 8600
+    },
+    {
+      "id": "item-011",
+      "event": { "type": "tool_result", "name": "search_knowledge", "toolUseId": "tu-010", "isError": true, "durationMs": 380,
+        "content": "MCP error -32602: Input validation error: Invalid arguments for tool search_knowledge: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 5,\n    \"type\": \"number\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"Too big: expected number to be <=5\",\n    \"path\": [\"topK\"]\n  }\n]" },
+      "createdAt": 8980
+    },
+    {
+      "id": "item-012",
+      "event": { "type": "tool_use", "name": "search_knowledge", "id": "tu-012", "input": { "query": "增值税普通发票科目映射", "topK": 6 } },
+      "createdAt": 9200
+    },
+    {
+      "id": "item-013",
+      "event": { "type": "tool_result", "name": "search_knowledge", "toolUseId": "tu-012", "isError": true, "durationMs": 360,
+        "content": "MCP error -32602: Input validation error: Invalid arguments for tool search_knowledge: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 5,\n    \"type\": \"number\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"Too big: expected number to be <=5\",\n    \"path\": [\"topK\"]\n  }\n]" },
+      "createdAt": 9560
+    },
+    {
+      "id": "item-014",
+      "event": { "type": "tool_use", "name": "search_knowledge", "id": "tu-014", "input": { "query": "增值税普通发票科目映射", "topK": 7 } },
+      "createdAt": 9700
+    },
+    {
+      "id": "item-015",
+      "event": { "type": "tool_result", "name": "search_knowledge", "toolUseId": "tu-014", "isError": true, "durationMs": 340,
+        "content": "MCP error -32602: Input validation error: Invalid arguments for tool search_knowledge: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 5,\n    \"type\": \"number\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"Too big: expected number to be <=5\",\n    \"path\": [\"topK\"]\n  }\n]" },
+      "createdAt": 10040
+    },
+    {
+      "id": "item-016",
+      "event": { "type": "tool_use", "name": "search_knowledge", "id": "tu-016", "input": { "query": "增值税普通发票科目映射", "topK": 5 } },
+      "createdAt": 10200
+    },
+    {
+      "id": "item-017",
+      "event": { "type": "tool_result", "name": "search_knowledge", "toolUseId": "tu-016", "isError": false, "durationMs": 1200,
+        "content": "1. 增值税普通发票 → 应交税费/应交增值税(进项税额)\n2. 费用类发票 → 相应费用科目\n示例科目：6602 管理费用，1123 应收票据" },
+      "createdAt": 11400
+    },
+    {
+      "id": "item-018",
+      "event": { "type": "thinking", "content": "Good, now I have the knowledge base result. Let me proceed to map the accounts and build the voucher entries." },
+      "createdAt": 11600
+    },
+    {
+      "id": "item-019",
+      "event": { "type": "tool_use", "name": "map_voucher_account", "id": "tu-019", "input": { "text": "管理费用-办公费" } },
+      "createdAt": 12000
+    },
+    {
+      "id": "item-020",
+      "event": { "type": "tool_result", "name": "map_voucher_account", "toolUseId": "tu-019", "isError": false, "durationMs": 600,
+        "content": "科目：6602.01 管理费用/办公费" },
+      "createdAt": 12600
+    },
+    {
+      "id": "item-021",
+      "event": { "type": "tool_use", "name": "build_voucher_lines", "id": "tu-021",
+        "input": { "expenses": [{ "subject": "管理费用-办公费", "amountYuan": 0 }], "advanceYuan": null } },
+      "createdAt": 13000
+    },
+    {
+      "id": "item-022",
+      "event": { "type": "tool_result", "name": "build_voucher_lines", "toolUseId": "tu-021", "isError": false, "durationMs": 800,
+        "content": "借：管理费用/办公费 示例金额\n  贷：应付账款/示例供应商 示例金额" },
+      "createdAt": 13800
+    },
+    {
+      "id": "item-023",
+      "event": { "type": "tool_use", "name": "build_voucher_sheet", "id": "tu-023", "input": { "vouchers": [{}] } },
+      "createdAt": 14200
+    },
+    {
+      "id": "item-024",
+      "event": { "type": "tool_result", "name": "build_voucher_sheet", "toolUseId": "tu-023", "isError": false, "durationMs": 1100,
+        "content": "对照清单已生成(1 张凭证)" },
+      "createdAt": 15300
+    },
+    {
+      "id": "item-025",
+      "event": { "type": "tool_use", "name": "export_voucher_list", "id": "tu-025", "input": { "vouchers": [{}] } },
+      "createdAt": 15600
+    },
+    {
+      "id": "item-026",
+      "event": { "type": "tool_result", "name": "export_voucher_list", "toolUseId": "tu-025", "isError": false, "durationMs": 2400,
+        "content": "凭证清单已导出：示例输出文件.xlsx" },
+      "createdAt": 18000
+    }
+  ]
+}

@@ -18,11 +18,22 @@ import { useRoleMode } from "@/app/chat/role-mode";
 import { ToolResultCard } from "./tool-cards";
 import { cn } from "@/lib/utils";
 import { formatToolInput, formatToolOutput } from "@/lib/agent/tools/content-format";
+import { aggregateToolSegment, summarizeToolSegment } from "@/app/chat/step-aggregate";
+import type { AggregatedStep } from "@/app/chat/step-aggregate";
+import { cleanErrorDetail } from "@/app/chat/error-detail";
 
 // 时长徽章只在 ≥3s 时显示,避免每个快速步骤都挂毫秒级噪声
 const STEP_DURATION_FLOOR_MS = 3000;
 
 const CODE_PLUGINS: PluggableList = [rehypeHighlight];
+
+// 图片扩展名集合，用于缩略图判断
+const IMAGE_EXT = /\.(jpg|jpeg|png|webp|gif|svg)$/i;
+
+/** 判断路径是否为图片 */
+function isImagePath(p: string): boolean {
+  return Boolean(p && IMAGE_EXT.test(p));
+}
 
 // 工具类型 → 图标(代替"运行 Python / 调用技能"等文案)+ 可剥的中文前缀。
 type IconSpec = typeof CommandLineIcon;
@@ -36,13 +47,13 @@ const TOOL_VISUAL: Record<string, { icon: IconSpec; strip?: RegExp; relabel?: st
   Edit:       { icon: PencilEdit01Icon, strip: /^编辑\s*/ },
   MultiEdit:  { icon: PencilEdit01Icon, strip: /^编辑\s*/ },
   Read:       { icon: File01Icon, strip: /^读取\s*/ },
-  read_file:  { icon: File01Icon, strip: /^读取(?:知识库文件)?\s*/ },
+  read_file:  { icon: File01Icon, strip: /^读取资料[:：]?\s*/ },
   WebSearch:  { icon: InternetIcon, strip: /^搜索/ },
   WebFetch:   { icon: InternetIcon, strip: /^获取\s*/ },
   Grep:       { icon: Search01Icon, strip: /^搜索/ },
   Glob:       { icon: Search01Icon, strip: /^查找文件\s*/ },
-  search_knowledge: { icon: Search01Icon, strip: /^检索知识库/ },
-  query_knowledge:  { icon: Search01Icon, strip: /^知识库命令检索[:：]?\s*/ },
+  search_knowledge: { icon: Search01Icon, strip: /^检索知识库[:：]?\s*/ },
+  query_knowledge:  { icon: Search01Icon, strip: /^查询知识库[:：]?\s*/ },
   AskUserQuestion:  { icon: HelpCircleIcon, strip: /^询问[:：]?\s*/ },
   spawn_subagent:   { icon: FlashIcon, strip: /^执行子任务[:：]?\s*/ },
   remember_convention: { icon: File01Icon },
@@ -84,22 +95,16 @@ function PlainBlock({ text, error }: { text: string; error?: boolean }) {
   );
 }
 
-/** 思考段的一行摘要:取首个非空行,剥掉行首 markdown 记号与加粗星号。 */
-function thinkingSummary(content: string): string {
-  const line = content.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
-  return line.replace(/^[#>*\-\s]+/, "").replace(/\*\*/g, "") || "思考";
-}
-
-/** 思考步骤行:与工具步骤同构(一行摘要 + 可展开),按真实时序穿插在工具步骤之间,
- *  展开后全文按 Markdown 渲染,整体灰色弱化与正文区分。
+/** 思考步骤行:折叠标题固定显示「思考」+ 时长徽章；原文进入展开详情。
  *  星芒是流动的:只有该行是当前进行中的尾巴(active)才亮动画星芒,处理完图标即消失(留空槽对齐)。 */
 export function ThinkingStep({ content, active = false }: { content: string; active?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const summary = thinkingSummary(content);
+  // spec 3b: 标题固定「思考」，不展示模型原文首行（统一与 Claude 行为一致）
+  const title = "思考";
   return (
     <div className="w-full">
       <button
-        className="group flex w-full items-center gap-2 py-0.5 text-small text-left cursor-pointer transition-colors"
+        className="group flex w-full items-center gap-2 py-0.5 text-body text-left cursor-pointer transition-colors"
         type="button"
         onClick={() => setExpanded((v) => !v)}
       >
@@ -115,11 +120,16 @@ export function ThinkingStep({ content, active = false }: { content: string; act
             "min-w-0 truncate",
             active ? "fa-shimmer-text" : "text-muted-foreground group-hover:text-foreground transition-colors"
           )}
-          title={summary}
+          title={title}
         >
-          {summary}
+          {title}
         </span>
-        <motion.span animate={{ rotate: expanded ? 90 : 0 }} transition={{ duration: 0.18 }} className="inline-flex shrink-0">
+        {/* spec 2: chevron 默认隐藏，hover/focus 显现；触屏兜底 */}
+        <motion.span
+          animate={{ rotate: expanded ? 90 : 0 }}
+          transition={{ duration: 0.18 }}
+          className="inline-flex shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+        >
           <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
         </motion.span>
       </button>
@@ -133,7 +143,7 @@ export function ThinkingStep({ content, active = false }: { content: string; act
             style={{ overflow: "hidden" }}
             className="px-2 pb-1"
           >
-            {/* 内联样式压过 .md-content 的双类字号/字色规则:思考全文走 small 号 + 弱化色 */}
+            {/* spec 3b: 展开详情展示原文，走 small 号 + 弱化色 */}
             <div className="md-content" style={{ fontSize: "var(--text-small)", color: "var(--muted-foreground)" }}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
@@ -168,13 +178,106 @@ function useLiveElapsed(startedAt?: number): number {
   return startedAt == null ? 0 : Math.max(0, now - startedAt);
 }
 
-function ToolCallStep({ pair }: { pair: ToolPair }) {
+/** 展开详情区：错误内容经 cleanErrorDetail 剥壳；成功输出原样格式化。
+ *  spec 12: read_document/Read 目标为图片时顶部内联缩略图（依赖现有 /api/files 路由）。
+ *  conversationId 未知时降级为路径 chip。 */
+function ExpandedDetail({
+  pair,
+  conversationId,
+}: {
+  pair: ToolPair;
+  conversationId?: string;
+}) {
+  // spec 12: 判断是否为图片路径
+  const filePath =
+    pair.name === "read_document" ? String((pair.input as Record<string, unknown>)?.filePath ?? "") :
+    pair.name === "Read" ? String((pair.input as Record<string, unknown>)?.file_path ?? "") :
+    "";
+  const showThumbnail = isImagePath(filePath);
+  // 路由：/api/files/[conversationId]/[...filename]
+  // 依赖现有路由；若无 conversationId 则降级为路径 chip
+  const imgSrc = showThumbnail && conversationId
+    ? `/api/files/${encodeURIComponent(conversationId)}/${filePath.replace(/^\//, "")}`
+    : null;
+
+  return (
+    <>
+      {/* spec 12: 图片缩略图（顶部） */}
+      {showThumbnail && (
+        <div className="mb-1.5">
+          {imgSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imgSrc}
+              alt={filePath.split(/[/\\]/).pop() ?? ""}
+              className="max-h-32 max-w-full rounded border border-border/40 object-contain"
+            />
+          ) : (
+            // 降级：路径 chip（无可用路由）
+            <code className="rounded bg-foreground/[0.07] px-1.5 py-0.5 font-mono text-small text-muted-foreground">
+              {filePath}
+            </code>
+          )}
+        </div>
+      )}
+
+      {pair.input != null && (() => {
+        const fmt = formatToolInput(pair.name, pair.input);
+        return (
+          <div className="mb-1">
+            <span className="text-small uppercase tracking-wide text-muted-foreground">输入</span>
+            {"lang" in fmt ? (
+              <div className="mt-0.5"><HighlightBlock lang={fmt.lang} text={fmt.text} /></div>
+            ) : (
+              <div className="mt-0.5"><PlainBlock text={fmt.plain} /></div>
+            )}
+          </div>
+        );
+      })()}
+
+      {pair.result != null && (() => {
+        const sliced = pair.result.slice(0, 6000);
+        if (pair.isError) {
+          // spec 6: 错误详情经 cleanErrorDetail 剥壳
+          const { headline, body } = cleanErrorDetail(sliced);
+          return (
+            <div>
+              <span className="text-small uppercase tracking-wide" style={{ color: "var(--tone-alarm)" }}>
+                错误
+              </span>
+              {/* headline 首行显示（保留「错误」标签样式） */}
+              {headline !== body && (
+                <div className="mt-0.5 text-small" style={{ color: "var(--tone-alarm)" }}>{headline}</div>
+              )}
+              <div className="mt-0.5"><PlainBlock text={body} error /></div>
+            </div>
+          );
+        }
+        const fmt = formatToolOutput(pair.name, sliced);
+        return (
+          <div>
+            <span className="text-small uppercase tracking-wide">输出</span>
+            {"plain" in fmt ? (
+              <div className="mt-0.5"><PlainBlock text={fmt.plain} /></div>
+            ) : (
+              <div className="mt-0.5"><HighlightBlock lang={fmt.lang} text={fmt.text} /></div>
+            )}
+          </div>
+        );
+      })()}
+    </>
+  );
+}
+
+function ToolCallStep({ pair, degraded = false }: { pair: ToolPair; degraded?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   // 日常:每步只一行人话、不可展开;技术模式:可点开看原始输入/输出(调试用)。
   const roleMode = useRoleMode();
   const hasDetail = roleMode === "tech" && Boolean(pair.input || pair.result);
   const running = pair.status === "running";
   const isError = pair.status === "error";
+  // spec 4: degraded（已恢复的单个失败步）灰显，不用 tone-alarm
+  const isDegraded = degraded && isError;
   // 图标按工具类型;文案与折叠摘要共用 stepDisplayText(剥动词前缀/错误前缀,口径一致)。
   const visual = toolVisual(pair.name.replace(/^mcp__\w+__/, ""));
   const text = stepDisplayText(pair);
@@ -184,7 +287,7 @@ function ToolCallStep({ pair }: { pair: ToolPair }) {
     <div className="w-full">
       <button
         className={cn(
-          "group flex w-full items-center gap-2 py-0.5 text-small text-left transition-colors",
+          "group flex w-full items-center gap-2 py-0.5 text-body text-left transition-colors",
           hasDetail ? "cursor-pointer" : "cursor-default"
         )}
         type="button"
@@ -192,22 +295,33 @@ function ToolCallStep({ pair }: { pair: ToolPair }) {
       >
         <span
           className="inline-flex shrink-0 w-4 h-4 items-center justify-center"
-          style={{ color: isError ? "var(--tone-alarm)" : "var(--muted-foreground)" }}
+          style={{ color: isError && !isDegraded ? "var(--tone-alarm)" : "var(--muted-foreground)" }}
         >
           {running ? <ThinkingSpark size={13} speed="1.0s" /> : <HugeiconsIcon icon={visual.icon} size={13} />}
         </span>
         <span
           className={cn(
             "min-w-0 truncate",
-            running ? "fa-shimmer-text" : isError ? "" : "text-muted-foreground group-hover:text-foreground transition-colors"
+            running ? "fa-shimmer-text"
+              : (isError && !isDegraded) ? ""
+              : "text-muted-foreground group-hover:text-foreground transition-colors"
           )}
-          style={isError ? { color: "var(--tone-alarm)" } : undefined}
+          style={isError && !isDegraded ? { color: "var(--tone-alarm)" } : undefined}
           title={text}
         >
           {renderStepText(text)}
         </span>
+        {/* spec 4: 已恢复标注 */}
+        {isDegraded && (
+          <span className="shrink-0 text-small text-muted-foreground/70">已恢复</span>
+        )}
+        {/* spec 2: chevron 默认隐藏，hover/focus 显现；触屏兜底 */}
         {hasDetail && (
-          <motion.span animate={{ rotate: expanded ? 90 : 0 }} transition={{ duration: 0.18 }} className="inline-flex shrink-0">
+          <motion.span
+            animate={{ rotate: expanded ? 90 : 0 }}
+            transition={{ duration: 0.18 }}
+            className="inline-flex shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+          >
             <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
           </motion.span>
         )}
@@ -231,37 +345,85 @@ function ToolCallStep({ pair }: { pair: ToolPair }) {
             style={{ overflow: "hidden" }}
             className="px-2 pb-1"
           >
-            {pair.input != null && (() => {
-              const fmt = formatToolInput(pair.name, pair.input);
-              return (
-                <div className="mb-1">
-                  <span className="text-small uppercase tracking-wide text-muted-foreground">输入</span>
-                  {"lang" in fmt ? (
-                    <div className="mt-0.5"><HighlightBlock lang={fmt.lang} text={fmt.text} /></div>
-                  ) : (
-                    <div className="mt-0.5"><PlainBlock text={fmt.plain} /></div>
-                  )}
-                </div>
-              );
-            })()}
-            {pair.result != null && (() => {
-              // 展示给用户的上限(技术模式展开时):比给模型的小得多——用户只是瞄一眼这步干了啥;
-              // 外层 <pre> 已是 max-h-64 滚动框,装不下会滚动,不会撑版面。
-              const sliced = pair.result.slice(0, 6000);
-              const fmt = pair.isError ? { plain: sliced } : formatToolOutput(pair.name, sliced);
-              return (
-                <div>
-                  <span className="text-small uppercase tracking-wide" style={{ color: pair.isError ? "var(--tone-alarm)" : undefined }}>
-                    {pair.isError ? "错误" : "输出"}
-                  </span>
-                  {"plain" in fmt ? (
-                    <div className="mt-0.5"><PlainBlock text={fmt.plain} error={pair.isError} /></div>
-                  ) : (
-                    <div className="mt-0.5"><HighlightBlock lang={fmt.lang} text={fmt.text} /></div>
-                  )}
-                </div>
-              );
-            })()}
+            <ExpandedDetail pair={pair} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** retry-group 行：工具重试聚合渲染。
+ *  spec 4: recovered=true 时整行灰显+「已恢复」，不用红色；recovered=false 保持红色。
+ *  展开显示组内逐步明细（复用 ToolCallStep）。*/
+function RetryGroupRow({
+  group,
+}: {
+  group: Extract<AggregatedStep, { kind: "retry-group" }>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const { label, count, recovered, items } = group;
+  const displayLabel = `${label}`;  // label 已含「×N」
+  void count; // count 已编码进 label
+
+  // 展开内的子步骤：从 items 重建最简 ToolPair
+  const subPairs = buildPairs(items, true);
+
+  return (
+    <div className="w-full">
+      <button
+        className="group flex w-full items-center gap-2 py-0.5 text-body text-left cursor-pointer transition-colors"
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span
+          className="inline-flex shrink-0 w-4 h-4 items-center justify-center"
+          style={{ color: recovered ? "var(--muted-foreground)" : "var(--tone-alarm)" }}
+        >
+          <HugeiconsIcon icon={Search01Icon} size={13} />
+        </span>
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            recovered
+              ? "text-muted-foreground group-hover:text-foreground transition-colors"
+              : ""
+          )}
+          style={!recovered ? { color: "var(--tone-alarm)" } : undefined}
+          title={displayLabel}
+        >
+          {displayLabel}
+        </span>
+        {/* spec 4: 已恢复尾缀 */}
+        {recovered && (
+          <span className="shrink-0 text-small text-muted-foreground/70">已恢复</span>
+        )}
+        {/* spec 2: chevron 默认隐藏，hover/focus 显现 */}
+        <motion.span
+          animate={{ rotate: expanded ? 90 : 0 }}
+          transition={{ duration: 0.18 }}
+          className="inline-flex shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+        >
+          <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
+        </motion.span>
+      </button>
+
+      {/* 展开：组内逐步明细 */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ height: { duration: 0.22, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.18 } }}
+            style={{ overflow: "hidden" }}
+            className="pl-6 py-0.5"
+          >
+            <div className="flex flex-col gap-0.5">
+              {subPairs.map((p) => (
+                <ToolCallStep key={p.id} pair={p} degraded={recovered} />
+              ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -357,20 +519,46 @@ function stepDisplayText(pair: ToolPair): string {
 export function ToolStepList({
   timeline,
   isActive,
+  laterTimeline,
 }: {
   timeline: TimelineItem[];
   isActive: boolean;
+  /** 本回合中位于该段之后的事件:跨段判定失败是否已被后续成功覆盖(已恢复→灰显) */
+  laterTimeline?: TimelineItem[];
 }) {
   const toolItems = timeline.filter(
     (t) => t.event.type === "tool_use" || t.event.type === "tool_result"
   );
-  const pairs = buildPairs(toolItems, !isActive);
-  if (!pairs.length) return null;
 
-  // 统一渲染:每步一行(人话摘要 + 走光指示),可展开看原始输入/输出(对所有人一致)。
+  // spec 4: 过 aggregateToolSegment 聚合失败重试(laterTimeline 提供跨段恢复信号)
+  const aggregated = aggregateToolSegment(toolItems, laterTimeline ?? []);
+  if (!aggregated.length) return null;
+
+  // spec 3c/7: 段级摘要（灰字组摘要，当 tools 段无前置 text 叙事时提示）
+  // 取舍说明：ToolStepList 不感知前置段是否存在 text 叙事（那层在 chat-page 里），
+  // 因此保守实现：当 aggregated.length >= 3（多步才有摘要价值）时在段首加灰字摘要。
+  // 若调用方已有叙事段，此摘要与叙事重复；但重复度低（摘要简短），可接受。
+  const summary = aggregated.length >= 3 ? summarizeToolSegment(toolItems) : "";
+
+  // spec 4: 将 aggregated 结果转为子步骤渲染
+  const pairs = buildPairs(toolItems, !isActive);
+
   return (
     <div className="flex flex-col gap-0.5">
-      {pairs.map((pair) => <ToolCallStep key={pair.id} pair={pair} />)}
+      {/* 段摘要（灰字，不展开） */}
+      {summary && (
+        <div className="text-small text-muted-foreground/60 pb-0.5 select-none">{summary}</div>
+      )}
+      {aggregated.map((agg, idx) => {
+        if (agg.kind === "retry-group") {
+          return <RetryGroupRow key={`group-${idx}`} group={agg} />;
+        }
+        // kind:"step"
+        // 从 pairs 找对应的 ToolPair（按 item.id 匹配）
+        const pair = pairs.find((p) => p.id === agg.item.id);
+        if (!pair) return null;
+        return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} />;
+      })}
     </div>
   );
 }

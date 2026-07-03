@@ -301,6 +301,15 @@ details[open] > summary .details-chevron {
   transform: rotate(90deg); /* ChevronRight:闭合朝右 → 展开转 90° 朝下 */
 }
 
+/* 消息工具条触屏设备始终可见(hover 媒体不支持时 opacity-0 逻辑失效)。
+   Tailwind group-hover: 在 (hover: none) 设备上不触发,需显式覆盖。 */
+@media (hover: none) {
+  .msg-toolbar-timestamp,
+  .msg-toolbar-btn-fade {
+    opacity: 1 !important;
+  }
+}
+
 /* ---------- 统一 markdown 渲染（chat 气泡 + 答案；自管排版，不依赖 @tailwindcss/typography）----------
    气泡与答案完全共用这套（已删 fa-answer 衬线层）；尺寸/间距全用上面的 --text-*/--lh-* token。
    颜色跟随主题变量（foreground/muted/border/primary），明暗自动。 */
@@ -321,7 +330,9 @@ details[open] > summary .details-chevron {
 .md-content > :first-child { margin-top: 0; }
 .md-content > :last-child { margin-bottom: 0; }
 
-.md-content p      { margin: 0.6em 0; }
+/* spec-14: 段间距与列表项间距一致化 — p 从 0.6em 降到 0.4em 与 li 对齐（一档内微调）。
+   行高 --lh-body 1.85 已提供足够呼吸；段距 0.4em ≈ 列表项距，节奏统一。 */
+.md-content p      { margin: 0.4em 0; }
 .md-content strong { font-weight: 600; }
 .md-content em     { font-style: italic; }
 .md-content a      { color: var(--primary); }   /* 渲染器按文件/外链覆盖，此为兜底 */
@@ -335,7 +346,7 @@ details[open] > summary .details-chevron {
 
 .md-content ul     { list-style: disc;    padding-left: 1.4em; margin: 0.5em 0; }
 .md-content ol     { list-style: decimal; padding-left: 1.5em; margin: 0.5em 0; }
-.md-content li     { margin: 0.25em 0; }
+.md-content li     { margin: 0.4em 0; }
 .md-content li > ul, .md-content li > ol { margin: 0.25em 0; }
 
 .md-content blockquote {

@@ -514,4 +514,20 @@ void (async () => {
   const { flagsDbOverrideTestPromise } = await import("./flags-db-override.test.ts");
   await flagsDbOverrideTestPromise;
 
+  const { chatProcessRenderersTestPromise } = await import("./chat-process-renderers.test.ts");
+  await chatProcessRenderersTestPromise;
+
+  const { errorDetailTestPromise } = await import("./error-detail.test.ts");
+  await errorDetailTestPromise;
+
+  const { stepAggregateTestPromise, summarizeToolSegmentTestPromise } = await import("./step-aggregate.test.ts");
+  await stepAggregateTestPromise;
+  await summarizeToolSegmentTestPromise;
+
+  const { toolCallStepUiTestPromise } = await import("./tool-call-step-ui.test.ts");
+  await toolCallStepUiTestPromise;
+
+  const { chatProcessPolishTestPromise } = await import("./chat-process-polish.test.ts");
+  await chatProcessPolishTestPromise;
+
 })();
