@@ -154,12 +154,15 @@ export function SkillsManager() {
                   {s.title || s.name}
                 </span>
                 <SourceTag source={s.source} />
-                <Switch
-                  checked={s.enabled}
-                  onClick={(e) => e.stopPropagation()}
-                  onCheckedChange={(v) => void toggleEnabled(s.name, v)}
-                  aria-label={`${s.enabled ? "停用" : "启用"} ${s.name}`}
-                />
+                {/* 内置技能恒启用,不给启停开关(误关算薪等会静默退化为 LLM 徒手算) */}
+                {s.source === "user" && (
+                  <Switch
+                    checked={s.enabled}
+                    onClick={(e) => e.stopPropagation()}
+                    onCheckedChange={(v) => void toggleEnabled(s.name, v)}
+                    aria-label={`${s.enabled ? "停用" : "启用"} ${s.name}`}
+                  />
+                )}
               </div>
             ))}
             {skills.length === 0 && <p className="px-2 py-4 text-meta text-muted-foreground">加载中…</p>}
@@ -427,7 +430,7 @@ function SkillEditor({ skill, onDeleted }: { skill: SkillSummary; onDeleted: () 
           </div>
           {!editable && (
             <div className="px-4 py-2 shrink-0 border-t border-border text-meta text-muted-foreground">
-              系统技能只读。可在左侧列表启停;如需定制,请「新建」一个个人技能。
+              系统技能内置启用、只读。如需定制,请「新建」一个个人技能。
             </div>
           )}
         </div>
