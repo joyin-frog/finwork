@@ -79,11 +79,14 @@ test("chat: ask_user 面板 → 选项 → 继续提交", async ({ page }) => {
   await dismissGate(page);
   const box = page.getByLabel("输入消息");
   await expect(box).toBeVisible();
+  // 双重校验缺一不可:enabled 证明 React 收到了草稿(hydration 前原生 value 也会变),
+  // toHaveValue 证明收全了(hydration 中途完成会截头)。
   await expect(async () => {
     await box.click();
     await box.fill("");
     await box.pressSequentially("这两个方案我该选哪个", { delay: 5 });
-    await expect(box).toHaveValue("这两个方案我该选哪个", { timeout: 2_000 }); // 全文提交,防 hydration 截头
+    await expect(box).toHaveValue("这两个方案我该选哪个", { timeout: 2_000 });
+    await expect(page.getByRole("button", { name: "发送" })).toBeEnabled({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
   await page.getByRole("button", { name: "发送" }).click();
   // 提问面板(覆盖输入框)出现 → 选「方案甲」(编号选项,标签互不为子串)→ 点「继续」提交
