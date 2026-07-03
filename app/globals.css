@@ -416,11 +416,17 @@ html button.composer-send-button:not(:disabled):active {
 html button.composer-send-button.stop {
   animation: none;
 }
+/* 无限循环的呼吸光环对光敏感用户是负担(WCAG 2.3.3);减少动效时停掉自发呼吸,hover/active 反馈保留。 */
+@media (prefers-reduced-motion: reduce) {
+  html button.composer-send-button:not(:disabled) { animation: none; }
+}
 
 /* ---------- Tone system utilities ----------
    容器上设 --tone(如 style={{ "--tone": "var(--tone-warn)" }}),再组合下列类。 */
-.fa-toned { background: oklch(from var(--tone) l c h / 10%); color: var(--tone); }
-.dark .fa-toned { background: oklch(from var(--tone) l c h / 16%); }
+/* 文字压深 0.12(暗色提亮 0.07)——与 .fa-tone-pill 同法:tone 实色直接做正文时,
+   notice/warn 在自己的 10% wash 底上对比度低于 WCAG AA 4.5:1,压深后达标。 */
+.fa-toned { background: oklch(from var(--tone) l c h / 10%); color: oklch(from var(--tone) calc(l - 0.12) c h); }
+.dark .fa-toned { background: oklch(from var(--tone) l c h / 16%); color: oklch(from var(--tone) calc(l + 0.07) calc(c - 0.03) h); }
 .fa-tone-edge {
   position: absolute;
   left: 0; top: 0; bottom: 0;

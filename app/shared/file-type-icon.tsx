@@ -1,22 +1,20 @@
 import { FileIcon, type FileIconProps } from "react-file-icon";
+import { FILE_TYPE_COLORS } from "@/lib/files/file-type-colors";
 
-// Folio 文件类型配色(react-file-icon):页角折叠 + 彩色标签带;按扩展名取色。
-// 配色映射来自设计系统 guidelines/brand-file-icons.html 的 fileStyles。
-// 配色:在品牌色基础上提亮、降饱和,小尺寸下更清爽不发闷(body 浅一档、label 带稍深做两色)。
-const fileStyles: Record<string, FileIconProps> = {
-  xls:  { color: "#43AE74", labelColor: "#329060", labelTextColor: "#fff", glyphColor: "#fff", type: "spreadsheet" },
-  xlsx: { color: "#43AE74", labelColor: "#329060", labelTextColor: "#fff", glyphColor: "#fff", type: "spreadsheet" },
-  csv:  { color: "#43AE74", labelColor: "#329060", labelTextColor: "#fff", glyphColor: "#fff", type: "spreadsheet" },
-  doc:  { color: "#5193DC", labelColor: "#3E7BBF", labelTextColor: "#fff", glyphColor: "#fff", type: "document" },
-  docx: { color: "#5193DC", labelColor: "#3E7BBF", labelTextColor: "#fff", glyphColor: "#fff", type: "document" },
-  pdf:  { color: "#F06A66", labelColor: "#DD524E", labelTextColor: "#fff", glyphColor: "#fff", type: "acrobat" },
-  ppt:  { color: "#EC7A4D", labelColor: "#D5663A", labelTextColor: "#fff", glyphColor: "#fff", type: "presentation" },
-  pptx: { color: "#EC7A4D", labelColor: "#D5663A", labelTextColor: "#fff", glyphColor: "#fff", type: "presentation" },
-  md:   { color: "#728195", labelColor: "#5C6A7E", labelTextColor: "#fff", glyphColor: "#fff", type: "document" },
-  txt:  { color: "#828FA3", labelColor: "#69768B", labelTextColor: "#fff", glyphColor: "#fff", type: "document" },
-  json: { color: "#828FA3", labelColor: "#69768B", labelTextColor: "#fff", glyphColor: "#fff", type: "code" },
-  zip:  { color: "#BFA259", labelColor: "#A38845", labelTextColor: "#fff", glyphColor: "#fff", type: "compressed" },
+// react-file-icon:页角折叠 + 彩色标签带。品牌色(color/labelColor)统一取自 lib/files/file-type-colors
+// (与预览强调色共用一份);标签字/字形色恒为白,type 是 react-file-icon 的类别。
+const FILE_ICON_TYPE: Record<string, FileIconProps["type"]> = {
+  xls: "spreadsheet", xlsx: "spreadsheet", csv: "spreadsheet",
+  doc: "document", docx: "document",
+  pdf: "acrobat", ppt: "presentation", pptx: "presentation",
+  md: "document", txt: "document", json: "code", zip: "compressed",
 };
+const fileStyles: Record<string, FileIconProps> = Object.fromEntries(
+  Object.entries(FILE_TYPE_COLORS).map(([ext, c]) => [
+    ext,
+    { color: c.color, labelColor: c.labelColor, labelTextColor: "#fff", glyphColor: "#fff", type: FILE_ICON_TYPE[ext] },
+  ]),
+);
 
 /** 从文件名扩展名 + mimeType 兜底解析出扩展名(小写)。 */
 function resolveExt(name: string, mimeType: string): string {

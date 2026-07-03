@@ -26,6 +26,7 @@ import { AskAnsweredSummary } from "@/app/components/ask-user-card";
 import { AskUserPanel } from "@/app/components/ask-user-panel";
 import { ChatFilePanel } from "@/app/chat/chat-file-panel";
 import { TurnError } from "@/app/chat/turn-error";
+import { Callout } from "@/app/components/callout";
 import { ComposerTip } from "@/app/chat/composer-tips";
 import { SkillPopup, ComposerHighlightOverlay, DeepThinkToggle, isValidSkillName, type PickerSkill } from "@/app/chat/composer-skills";
 import { insertSkillToken } from "@/app/chat/skill-token";
@@ -1438,9 +1439,13 @@ function AssistantTurn({
       {/* 答案正文:占位态(还没产出)不渲染;answerText=最后一段无工具的 text,否则回退 message.content。
           流式期间文本已进过程段时不回退 message.content(避免与过程块里中间文本重复)。 */}
       {(() => {
-        // 用量超限:正文用红字渲染拦截提示(不弹窗、不加框),不再走普通 markdown 正文。
+        // 用量超限:走与 TurnError 同一个全宽 Callout(warn),视觉与其它提示统一,不再是裸红字。
         if (usageBlockedMessage) {
-          return <div className="text-body whitespace-pre-wrap text-[color:var(--tone-alarm)]">{usageBlockedMessage}</div>;
+          return (
+            <Callout variant="warn" className="w-full">
+              <span className="whitespace-pre-wrap">{usageBlockedMessage}</span>
+            </Callout>
+          );
         }
         if (isActive && message.content === "...") return null;
         const hasTextSegments = timeline.some((t) => t.event.type === "text");

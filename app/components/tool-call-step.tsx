@@ -104,7 +104,11 @@ export function ThinkingStep({ content, active = false }: { content: string; act
         onClick={() => setExpanded((v) => !v)}
       >
         <span className="inline-flex shrink-0 w-4 h-4 items-center justify-center text-muted-foreground">
-          {active ? <ThinkingSpark size={13} speed="1.0s" /> : null}
+          {/* 进行中=流动星芒;完成态=安静小圆点(非旋转、明确不是"工作中"),给思考行一个左锚点,
+              使它读作"动作之间的旁白"而非缺了图标的错位文字。 */}
+          {active
+            ? <ThinkingSpark size={13} speed="1.0s" />
+            : <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/45" />}
         </span>
         <span
           className={cn(

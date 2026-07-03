@@ -18,7 +18,7 @@ export function getCockpitSuggestions(calendar: CalendarContext): CockpitSuggest
         daysLeft <= 3
           ? `申报截止还有 ${daysLeft} 天：让税务专员跑一遍申报前检查…`
           : "报税期：让税务专员跑一遍申报前检查，核对个税与增值税数据",
-      attentionEmptyHint: "当前无紧急事项，可提前让税务专员备好申报数据",
+      attentionEmptyHint: "可提前让税务专员备好申报数据",
     };
   }
 
@@ -39,6 +39,6 @@ export function getCockpitSuggestions(calendar: CalendarContext): CockpitSuggest
   // 平峰
   return {
     placeholder: "有什么财务问题？让专员帮你处理…",
-    attentionEmptyHint: "当前节点无需处理的事，可趁平峰做经营分析或税务筹划",
+    attentionEmptyHint: "可趁平峰做经营分析或税务筹划",
   };
 }
