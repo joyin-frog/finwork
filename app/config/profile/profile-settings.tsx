@@ -214,9 +214,6 @@ export function ProfileSettings() {
           </SettingsField>
         </div>
 
-        <p className="text-meta text-muted-foreground">
-          税务优惠发现：在对话中发送「帮我做税务优惠排查」；研发加计核查：发送「帮我核查研发费用加计扣除」。
-        </p>
       </SettingsSection>
     </div>
   );
