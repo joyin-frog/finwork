@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -8,7 +8,7 @@ export const serverLogTestPromise = (async () => {
   const orig = process.env.FINANCE_AGENT_APP_DATA_DIR;
   process.env.FINANCE_AGENT_APP_DATA_DIR = appData;
   try {
-    const { formatServerError, logServerError } = await import("../lib/runtime/server-log.ts");
+    const { formatServerError, logServerError, purgeOldServerLogs } = await import("../lib/runtime/server-log.ts");
 
     // ── 纯函数:digest / 路径 / 堆栈都进文本 ──
     const err = Object.assign(new Error("boom"), { digest: "97837100" });
@@ -28,6 +28,26 @@ export const serverLogTestPromise = (async () => {
     assert.equal(files.length, 1, "应生成当日日志文件");
     const content = readFileSync(path.join(logsDir, files[0]), "utf-8");
     assert.ok(content.includes("digest=97837100") && content.includes("/config"), "日志文件应含 digest 与路径");
+
+    // ── 保留清理:超过 N 天的 server-*.log 删除,新的与无关文件保留 ──
+    const dayMs = 86_400_000;
+    const dateName = (agoDays: number) =>
+      `server-${new Date(Date.now() - agoDays * dayMs).toISOString().slice(0, 10)}.log`;
+    const oldLog = path.join(logsDir, dateName(45));
+    const freshLog = path.join(logsDir, dateName(5));
+    const unrelated = path.join(logsDir, "next-server.log");
+    const malformed = path.join(logsDir, "server-not-a-date.log");
+    for (const f of [oldLog, freshLog, unrelated, malformed]) writeFileSync(f, "x");
+
+    await purgeOldServerLogs(30);
+    assert.equal(existsSync(oldLog), false, "超过 30 天的 server-*.log 应被删除");
+    assert.equal(existsSync(freshLog), true, "30 天内的 server-*.log 应保留");
+    assert.equal(existsSync(unrelated), true, "非 server-*.log 文件不应被动");
+    assert.equal(existsSync(malformed), true, "文件名日期不合法的应跳过保留");
+
+    // logs 目录不存在时:best-effort 不抛
+    rmSync(logsDir, { recursive: true, force: true });
+    await assert.doesNotReject(() => purgeOldServerLogs(30), "logs 目录不存在时不应抛错");
 
     console.log("server-log: all checks passed ✓");
   } finally {

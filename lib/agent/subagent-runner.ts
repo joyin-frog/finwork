@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
-import { getProjectRoot } from "@/lib/runtime/paths";
+import { getProjectRoot, getClaudeConfigDir } from "@/lib/runtime/paths";
 import { buildFinanceMcpServers } from "./mcp-tools";
 import { getSkillPluginConfig } from "./skill-plugin";
 import { runBeforeHooks, runAfterHooks } from "./hooks/chain";
@@ -152,6 +152,9 @@ export async function runSubagent(
       ANTHROPIC_API_KEY: settings.apiKey,
       ANTHROPIC_MODEL: settings.subagentModel || settings.model,
       CLAUDE_AGENT_SDK_CLIENT_APP: "finance-agent/0.1.0",
+      // 子代理 persistSession:false 不写 transcript,但 CLI 仍会在 CLAUDE_CONFIG_DIR 写
+      // .claude.json/backups 等杂项——与主 Agent 一致重定向,别漏进用户 ~/.claude。
+      CLAUDE_CONFIG_DIR: getClaudeConfigDir(),
     };
 
     const abortController = new AbortController();

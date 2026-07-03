@@ -409,6 +409,9 @@ void (async () => {
   const { cleanupTestPromise } = await import("./cleanup.test.ts");
   await cleanupTestPromise;
 
+  const { instrumentationWiringTestPromise } = await import("./instrumentation-wiring.test.ts");
+  await instrumentationWiringTestPromise;
+
   const { retentionTestPromise } = await import("./retention.test.ts");
   await retentionTestPromise;
 
