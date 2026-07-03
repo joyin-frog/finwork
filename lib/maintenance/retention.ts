@@ -1,5 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
+import { readdirSync, rmSync, rmdirSync, statSync } from "node:fs";
+import path from "node:path";
 import { getDb, insertAuditLog } from "@/lib/db/sqlite";
+import { getClaudeConfigDir } from "@/lib/runtime/paths";
 
 export const RETENTION_SETTINGS_KEY = "maintenance:retention";
 const RETENTION_LAST_RUN_KEY = "maintenance:retention:lastRunAt";
@@ -22,7 +25,13 @@ export type RetentionStats = {
   appErrors: number;
   auditLogs: number;
   chatEvents: number;
+  sessionTranscripts: number;
 };
+
+/** 内置 Claude CLI 会话 transcript(claude-config/projects/)的保留天数。
+ *  仅影响 session resume:过期后续接自动回落全量历史重建(claude-adapter 已兜底),
+ *  故写死不进 RetentionConfig;与 CLI 自身 cleanupPeriodDays 默认值对齐。 */
+const SESSION_TRANSCRIPT_DAYS = 30;
 
 export const DEFAULT_RETENTION_CONFIG: Readonly<RetentionConfig> = Object.freeze({
   traceDays: 90,
@@ -112,12 +121,59 @@ export function pruneOldChatEvents(days: number, db: DatabaseSync = getDb(), now
   return Number(result.changes);
 }
 
+/**
+ * 清理内置 Claude CLI 落盘的会话 transcript(<configDir>/projects/<cwd编码>/<sessionId>.jsonl)。
+ * 只按 transcript 自身 mtime 判老(每回合追加,活跃会话 mtime 常新);同名 sidecar 目录
+ * (<sessionId>/,如 tool-results)随其 transcript 一起删、不看自身 mtime——追加 transcript
+ * 不会刷新 sidecar 的 mtime,单独判老会误删活跃会话的附件。memory/、sessions-index.json 等
+ * 非 transcript 的项目级状态一律不动。只清应用自有的 claude-config 目录,绝不碰用户 ~/.claude。
+ */
+export function pruneOldSessionTranscripts(
+  days: number = SESSION_TRANSCRIPT_DAYS,
+  configDir: string = getClaudeConfigDir(),
+  now = Date.now()
+): number {
+  const projectsDir = path.join(configDir, "projects");
+  const cutoffMs = now - days * DAY_MS;
+  let removed = 0;
+
+  let projectEntries;
+  try {
+    projectEntries = readdirSync(projectsDir, { withFileTypes: true });
+  } catch {
+    return 0; // 目录还没建(尚无真实会话)
+  }
+
+  for (const project of projectEntries) {
+    if (!project.isDirectory()) continue;
+    const projectPath = path.join(projectsDir, project.name);
+    for (const entry of readdirSync(projectPath)) {
+      if (!entry.endsWith(".jsonl")) continue;
+      const entryPath = path.join(projectPath, entry);
+      try {
+        const stat = statSync(entryPath);
+        if (!stat.isFile() || stat.mtimeMs >= cutoffMs) continue;
+        rmSync(entryPath, { force: true });
+        rmSync(path.join(projectPath, entry.slice(0, -".jsonl".length)), { recursive: true, force: true });
+        removed += 1;
+      } catch {
+        // 单个条目失败(并发写入/权限)不阻断其余清理
+      }
+    }
+    try {
+      rmdirSync(projectPath); // 仅当已空;非空抛错即保留
+    } catch { /* 非空或已删,均可忽略 */ }
+  }
+
+  return removed;
+}
+
 export function runRetentionCycle(
   config: RetentionConfig = loadRetentionConfig(),
   db: DatabaseSync = getDb(),
   now = Date.now()
 ): { stats: RetentionStats; errors: string[] } {
-  const stats: RetentionStats = { traces: 0, spans: 0, appErrors: 0, auditLogs: 0, chatEvents: 0 };
+  const stats: RetentionStats = { traces: 0, spans: 0, appErrors: 0, auditLogs: 0, chatEvents: 0, sessionTranscripts: 0 };
   const errors: string[] = [];
 
   const run = (name: keyof RetentionStats, operation: () => number) => {
@@ -135,6 +191,7 @@ export function runRetentionCycle(
   if (config.chatEventDays !== null) {
     run("chatEvents", () => pruneOldChatEvents(config.chatEventDays!, db, now));
   }
+  run("sessionTranscripts", () => pruneOldSessionTranscripts(SESSION_TRANSCRIPT_DAYS, getClaudeConfigDir(), now));
 
   try {
     insertAuditLog("retention_cycle", {

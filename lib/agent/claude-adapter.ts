@@ -6,7 +6,7 @@ import type { SDKUserMessage, SDKMessage, SDKAssistantMessage, SDKPartialAssista
 import { isEnabled } from "@/lib/runtime/flags";
 import { createLogger } from "@/lib/runtime/logger";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
-import { getProjectRoot, getPythonBinDir, getPythonVenvRoot, getBundledClaudeCliPath } from "@/lib/runtime/paths";
+import { getProjectRoot, getPythonBinDir, getPythonVenvRoot, getBundledClaudeCliPath, getClaudeConfigDir } from "@/lib/runtime/paths";
 import { buildFinanceMcpServers } from "./mcp-tools";
 import { ALLOWED_TOOLS, BUILTIN_TOOLS } from "./tools/registry";
 import { getSkillPluginConfig } from "./skill-plugin";
@@ -156,6 +156,11 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     ANTHROPIC_API_KEY: settings.apiKey,
     ANTHROPIC_MODEL: settings.mainModel || settings.model,
     CLAUDE_AGENT_SDK_CLIENT_APP: "finance-agent/0.1.0",
+    // persistSession:true 的会话 transcript 由 CLI 写到 CLAUDE_CONFIG_DIR/projects/(不设则 ~/.claude,
+    // 无限增长)。重定向到应用数据目录,retention 周期清理(见 lib/maintenance/retention.ts)。
+    // 首次切换后旧会话 resume 会报「No conversation found」→ shouldRetryStaleSession 用全量历史
+    // 重建新 session,一次性、良性。skill 加载不受影响(plugins 走显式路径,settingSources 为空)。
+    CLAUDE_CONFIG_DIR: getClaudeConfigDir(),
   };
 
   const chunks: string[] = [];
