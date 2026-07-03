@@ -457,11 +457,19 @@ export default function ChatPage({
     if (!conversationFilesLoaded) return;
     if (panelDefaultResolvedRef.current) return;
     setFilePanelOpen(shouldDefaultOpenFilePanel(conversationFiles.length));
+    // 基线在此一并记录:历史产出不算"新产出",下方 auto-open effect 只对基线之后的增量弹出
+    outputCountRef.current = conversationFiles.filter((file) => file.role === "assistant").length;
     panelDefaultResolvedRef.current = true;
   }, [conversationFiles, conversationFilesLoaded]);
 
   useEffect(() => {
     const outputs = conversationFiles.filter((file) => file.role === "assistant");
+    // 历史会话首次加载只记基线:既有产出不是"新产出",不触发弹出(浮层会盖住回答首行);
+    // 基线就绪后回合中新增产出照常自动弹出。
+    if (!panelDefaultResolvedRef.current) {
+      outputCountRef.current = outputs.length;
+      return;
+    }
     if (!userClosedPanelRef.current && shouldAutoOpenOutputPanel(outputCountRef.current, outputs.length)) {
       setFilePanelOpen(true);
     }

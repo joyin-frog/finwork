@@ -278,8 +278,7 @@ function ToolCallStep({ pair, degraded = false }: { pair: ToolPair; degraded?: b
   const isError = pair.status === "error";
   // spec 4: degraded（已恢复的单个失败步）灰显，不用 tone-alarm
   const isDegraded = degraded && isError;
-  // 图标按工具类型;文案与折叠摘要共用 stepDisplayText(剥动词前缀/错误前缀,口径一致)。
-  const visual = toolVisual(pair.name.replace(/^mcp__\w+__/, ""));
+  // 文案与折叠摘要共用 stepDisplayText(剥动词前缀/错误前缀,口径一致);行图标已移除(仅运行中星芒)。
   const text = stepDisplayText(pair);
   const liveElapsed = useLiveElapsed(running ? pair.startedAt : undefined);
 
@@ -293,12 +292,12 @@ function ToolCallStep({ pair, degraded = false }: { pair: ToolPair; degraded?: b
         type="button"
         onClick={() => hasDetail && setExpanded((v) => !v)}
       >
-        <span
-          className="inline-flex shrink-0 w-4 h-4 items-center justify-center"
-          style={{ color: isError && !isDegraded ? "var(--tone-alarm)" : "var(--muted-foreground)" }}
-        >
-          {running ? <ThinkingSpark size={13} speed="1.0s" /> : <HugeiconsIcon icon={visual.icon} size={13} />}
-        </span>
+        {/* 每行一个类型图标是视觉噪音(Claude 过程行几乎无图标):仅运行中保留星芒,静止行无图标 */}
+        {running ? (
+          <span className="inline-flex shrink-0 w-4 h-4 items-center justify-center" style={{ color: "var(--muted-foreground)" }}>
+            <ThinkingSpark size={13} speed="1.0s" />
+          </span>
+        ) : null}
         <span
           className={cn(
             "min-w-0 truncate",
@@ -376,12 +375,6 @@ function RetryGroupRow({
         type="button"
         onClick={() => setExpanded((v) => !v)}
       >
-        <span
-          className="inline-flex shrink-0 w-4 h-4 items-center justify-center"
-          style={{ color: recovered ? "var(--muted-foreground)" : "var(--tone-alarm)" }}
-        >
-          <HugeiconsIcon icon={Search01Icon} size={13} />
-        </span>
         <span
           className={cn(
             "min-w-0 truncate",

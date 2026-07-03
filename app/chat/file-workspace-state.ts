@@ -8,8 +8,11 @@ export function getMaxSidebarWidth(containerWidth: number, dividerWidth = CHAT_S
   return Math.max(200, containerWidth - dividerWidth - MIN_CHAT_COLUMN_WIDTH);
 }
 
-export function shouldDefaultOpenFilePanel(fileCount: number) {
-  return fileCount > 0;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 保留签名兼容调用方,规则收敛为恒 false
+export function shouldDefaultOpenFilePanel(_fileCount: number) {
+  // 打开历史会话时不自动展开浮层面板——它悬浮在正文右上会盖住回答首行;
+  // 文件存在感由回形针角标承担,回合中出新产出仍走 shouldAutoOpenOutputPanel 弹出。
+  return false;
 }
 
 export function shouldAutoOpenOutputPanel(previousOutputCount: number, nextOutputCount: number) {
