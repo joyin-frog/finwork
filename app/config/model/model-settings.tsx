@@ -1,10 +1,8 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { SettingsSection } from "@/app/config/settings-ui";
+import { SettingsSection, SettingsRow, SettingsField } from "@/app/config/settings-ui";
 
 export function ModelSettings({
   apiUrl, model, apiKey, apiKeyConfigured, apiKeyPreview,
@@ -31,9 +29,13 @@ export function ModelSettings({
   return (
     <div className="flex flex-col">
       <SettingsSection title="模型连接" description="配置 LLM 端点和 API 密钥">
-        <Badge variant={apiKeyConfigured ? "secondary" : "outline"} className="self-start">
-          {apiKeyConfigured ? "已配置" : "未配置"}
-        </Badge>
+        <p className="text-meta">
+          {apiKeyConfigured ? (
+            <span className="text-[color:var(--tone-ok)]">已配置 ✓</span>
+          ) : (
+            <span className="text-muted-foreground">未配置</span>
+          )}
+        </p>
 
         {/* Connection path visualization */}
         <div className="flex w-fit items-center gap-3 p-3 rounded-lg bg-muted text-meta">
@@ -53,35 +55,28 @@ export function ModelSettings({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2 flex flex-col gap-2">
-            <Label htmlFor="api-url">LLM URL</Label>
-            <Input id="api-url" value={apiUrl} onChange={(e) => onApiUrlChange(e.target.value)} />
-          </div>
-          <div className="col-span-2 flex flex-col gap-2">
-            <Label htmlFor="api-key">API Key</Label>
-            <Input
-              id="api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e) => onApiKeyChange(e.target.value)}
-              onBlur={onApiKeyBlur}
-              placeholder={apiKeyConfigured ? `已配置：${apiKeyPreview}` : "sk-ant-..."}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="main-model">主模型</Label>
-            <Input id="main-model" value={model} onChange={(e) => onModelChange(e.target.value)} placeholder="claude-opus-4-8" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="router-model">快速模型</Label>
-            <Input id="router-model" value={routerModel} onChange={(e) => onRouterModelChange(e.target.value)} placeholder="claude-haiku-4-5-20251001" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="subagent-model">推理模型</Label>
-            <Input id="subagent-model" value={subagentModel} onChange={(e) => onSubagentModelChange(e.target.value)} placeholder="claude-sonnet-4-6" />
-          </div>
-        </div>
+        <SettingsField label="LLM URL" htmlFor="api-url">
+          <Input id="api-url" value={apiUrl} onChange={(e) => onApiUrlChange(e.target.value)} />
+        </SettingsField>
+        <SettingsField label="API Key" htmlFor="api-key">
+          <Input
+            id="api-key"
+            type="password"
+            value={apiKey}
+            onChange={(e) => onApiKeyChange(e.target.value)}
+            onBlur={onApiKeyBlur}
+            placeholder={apiKeyConfigured ? `已配置：${apiKeyPreview}` : "sk-ant-..."}
+          />
+        </SettingsField>
+        <SettingsRow label="主模型" htmlFor="main-model" wide>
+          <Input id="main-model" value={model} onChange={(e) => onModelChange(e.target.value)} placeholder="claude-opus-4-8" />
+        </SettingsRow>
+        <SettingsRow label="快速模型" htmlFor="router-model" wide>
+          <Input id="router-model" value={routerModel} onChange={(e) => onRouterModelChange(e.target.value)} placeholder="claude-haiku-4-5-20251001" />
+        </SettingsRow>
+        <SettingsRow label="推理模型" htmlFor="subagent-model" wide>
+          <Input id="subagent-model" value={subagentModel} onChange={(e) => onSubagentModelChange(e.target.value)} placeholder="claude-sonnet-4-6" />
+        </SettingsRow>
       </SettingsSection>
 
       <SettingsSection

@@ -48,7 +48,7 @@ function formatTestResult(result: TestReportResult): string {
   return `上报失败${statusPart}:${r.error}`;
 }
 
-/** 「使用数据上报」卡片正文:开关 + 状态 + 本地测试上报。标题/说明由外层 SettingsCard 提供。 */
+/** 「使用数据上报」区块正文:开关 + 状态 + 本地测试上报。标题/说明由外层 SettingsSection 提供。 */
 export function TelemetryBody() {
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState<TelemetryStatus | null>(null);
