@@ -4,9 +4,11 @@
 // 两者互补——本文件存结构化的 server error + digest,next-server.log 存原始 console.*/SDK stderr。
 // 所有写入都是 best-effort,绝不抛(日志失败不能拖垮请求)。
 
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { getAppDataDir } from "@/lib/runtime/paths";
+
+const LOG_RETENTION_DAYS = 30;
 
 export type ServerErrorContext = {
   path?: string;
@@ -51,4 +53,24 @@ export async function appendServerLog(line: string): Promise<void> {
 /** 记录一次服务端错误(含 Next 的 digest),写入当日日志文件。 */
 export async function logServerError(error: unknown, context: ServerErrorContext = {}): Promise<void> {
   await appendServerLog(formatServerError(error, context));
+}
+
+/**
+ * 启动期清理:删除超过 maxAgeDays 的 server-*.log(按文件名里的日期判断,不看 mtime)。
+ * 日志按日新建,无此清理则文件数无限增长。绝不抛。
+ */
+export async function purgeOldServerLogs(maxAgeDays: number = LOG_RETENTION_DAYS): Promise<void> {
+  try {
+    const logsDir = path.join(getAppDataDir(), "logs");
+    const cutoff = Date.now() - maxAgeDays * 86_400_000;
+    for (const name of await readdir(logsDir)) {
+      const match = /^server-(\d{4}-\d{2}-\d{2})\.log$/.exec(name);
+      if (!match) continue;
+      const fileTime = Date.parse(`${match[1]}T00:00:00Z`);
+      if (Number.isNaN(fileTime) || fileTime >= cutoff) continue;
+      await rm(path.join(logsDir, name), { force: true });
+    }
+  } catch {
+    // best-effort:logs 目录不存在或删除失败都不影响启动
+  }
 }

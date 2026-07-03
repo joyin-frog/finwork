@@ -99,20 +99,29 @@ export async function installPythonRuntime(opts: {
       onProgress({ phase: "resolve", message: "确定高级分析组件版本…" });
       const urls = resolvePythonAssetUrls();
       const archive = path.join(os.tmpdir(), "fa-python-runtime.tar.gz");
-      for (const url of urls) {
-        try {
-          onProgress({ phase: "download", message: "正在下载高级分析组件…" });
-          await opts.steps.download(url, archive);
-          onProgress({ phase: "extract", message: "正在解压…" });
-          await opts.steps.extract(archive, dir);
-          if (!exists(pythonPath)) {
-            lastError = new Error("解压后未找到 Python 可执行文件");
-            continue;
+      try {
+        for (const url of urls) {
+          try {
+            onProgress({ phase: "download", message: "正在下载高级分析组件…" });
+            await opts.steps.download(url, archive);
+            onProgress({ phase: "extract", message: "正在解压…" });
+            await opts.steps.extract(archive, dir);
+            if (!exists(pythonPath)) {
+              lastError = new Error("解压后未找到 Python 可执行文件");
+              continue;
+            }
+            installed = true;
+            break;
+          } catch (error) {
+            lastError = error;
           }
-          installed = true;
-          break;
-        } catch (error) {
-          lastError = error;
+        }
+      } finally {
+        // 归档 50-100MB,解压完(或全部候选源失败)后即删,避免在 tmpdir 长期占盘。
+        try {
+          fs.rmSync(archive, { force: true });
+        } catch {
+          // best-effort:删不掉也不影响安装结果
         }
       }
     }

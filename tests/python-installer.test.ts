@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { existsSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { installPythonRuntime, resolvePythonAssetUrl, resolvePythonAssetUrls, type InstallSteps } from "../lib/runtime/python-installer.ts";
 
 // 按需 Python 安装编排(可注入步骤,纯逻辑可单测;真实下载/解压为残留)。
@@ -52,6 +55,26 @@ export const pythonInstallerTestPromise = (async () => {
       });
       assert.equal(r.ok, false, "dl-fail FAIL: 应不 ok");
       assert.ok(r.detail.includes("安装失败") && r.detail.includes("network down") && r.detail.includes("基础功能不受影响"), "dl-fail FAIL: detail 应降级说明");
+    }
+
+    // ── 下载归档用后即删:成功与失败路径都不残留 tmpdir 大文件 ─────────
+    {
+      const archive = path.join(tmpdir(), "fa-python-runtime.tar.gz");
+      // 成功路径:download 落盘 → extract 后归档应被删除
+      writeFileSync(archive, "fake-tarball");
+      const rOk = await installPythonRuntime({
+        steps: { download: async () => {}, extract: async () => {}, pipInstall: async () => {}, exists: (p) => p !== ABSENT },
+      });
+      assert.equal(rOk.ok, true, "archive-rm FAIL: 前提是安装成功");
+      assert.equal(existsSync(archive), false, "archive-rm FAIL: 解压成功后应删除下载归档");
+
+      // 失败路径:所有候选源下载都失败 → 归档(半截文件)也应被删除
+      writeFileSync(archive, "half-downloaded");
+      const rFail = await installPythonRuntime({
+        steps: { download: async () => { throw new Error("network down"); }, extract: async () => {}, pipInstall: async () => {}, exists: (p) => p !== ABSENT },
+      });
+      assert.equal(rFail.ok, false, "archive-rm FAIL: 前提是下载失败");
+      assert.equal(existsSync(archive), false, "archive-rm FAIL: 下载失败后也应删除残留归档");
     }
 
     // ── 解压后缺可执行文件:不 pip,明确报错 ───────────────────────────
