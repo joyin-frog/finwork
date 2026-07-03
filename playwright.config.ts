@@ -56,11 +56,12 @@ export default defineConfig({
     trace: "retain-on-failure",
     actionTimeout: 30_000,
   },
-  // 给了 BASE_URL 就认为外部已起服务;否则按所选模式自启 next dev。
+  // 给了 BASE_URL 就认为外部已起服务(npm run test:e2e:serve + test:e2e:fast,省每次冷启);
+  // 否则自启服务:默认 next dev;PW_PROD=1 用生产构建 next start(需先 next build,见 test:e2e:prod)。
   webServer: process.env.BASE_URL
     ? undefined
     : {
-        command: `npx next dev -p ${PORT}`,
+        command: process.env.PW_PROD === "1" ? `npx next start -p ${PORT}` : `npx next dev -p ${PORT}`,
         url: `http://127.0.0.1:${PORT}`,
         timeout: 120_000,
         reuseExistingServer: true,
