@@ -63,6 +63,7 @@
 | `e2e/mock/pages.spec.ts` | 修改 | 更新记忆深链并覆盖旧 key 重定向 |
 | `e2e/mock/telemetry.spec.ts` | 修改 | 覆盖非 dev 隐藏调试区 |
 | `tests/settings-skills-redesign.test.ts` | 修改 | 覆盖 5 tab 与映射契约 |
+| `tests/nav-v3.test.ts` | 修改 | 更新技能高级入口的既有导航契约 |
 | `docs/spec/audit-settings-skills-redesign-pr2.md` | 新增 | PR-2 实施审计 |
 
 ## 3. 实施步骤
