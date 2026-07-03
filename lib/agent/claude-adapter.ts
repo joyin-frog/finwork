@@ -119,12 +119,14 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   const settings = await readClaudeSettings();
   const startedAt = Date.now();
 
+  // 生效模型 = 「深度思考」档位 override 优先;日志必须打真实生效值,否则排障会被误导
+  const effectiveModel = runOptions.modelOverride || settings.mainModel || settings.model;
   log.info("start", {
     traceId: requestId,
     messageCount: messages.length,
     attachmentCount: runOptions.attachments?.length ?? 0,
     hasApiKey: Boolean(settings.apiKey.trim()),
-    model: settings.mainModel || settings.model || "(default)",
+    model: effectiveModel || "(default)",
     claudeSessionId: runOptions.claudeSessionId ?? null,
     resumeSession: Boolean(runOptions.resumeSession),
   });
@@ -154,7 +156,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     ...(pythonVenvRoot ? { VIRTUAL_ENV: pythonVenvRoot } : {}),
     ANTHROPIC_BASE_URL: settings.apiUrl,
     ANTHROPIC_API_KEY: settings.apiKey,
-    ANTHROPIC_MODEL: settings.mainModel || settings.model,
+    ANTHROPIC_MODEL: effectiveModel,
     CLAUDE_AGENT_SDK_CLIENT_APP: "finance-agent/0.1.0",
     // persistSession:true 的会话 transcript 由 CLI 写到 CLAUDE_CONFIG_DIR/projects/(不设则 ~/.claude,
     // 无限增长)。重定向到应用数据目录,retention 周期清理(见 lib/maintenance/retention.ts)。
@@ -295,9 +297,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
         log.error("stderr", { traceId: requestId, data: text.slice(0, 300) });
       }
     },
-    ...(runOptions.modelOverride || settings.mainModel || settings.model
-      ? { model: runOptions.modelOverride || settings.mainModel || settings.model }
-      : {}),
+    ...(effectiveModel ? { model: effectiveModel } : {}),
     ...(runOptions.claudeSessionId && runOptions.resumeSession
       ? { resume: runOptions.claudeSessionId }
       : {}),

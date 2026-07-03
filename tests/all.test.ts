@@ -511,4 +511,7 @@ void (async () => {
   const { rendererVoucherFixesTestPromise } = await import("./renderer-voucher-fixes.test.ts");
   await rendererVoucherFixesTestPromise;
 
+  const { flagsDbOverrideTestPromise } = await import("./flags-db-override.test.ts");
+  await flagsDbOverrideTestPromise;
+
 })();

@@ -23,7 +23,7 @@ import { getConversationFilesDir } from "@/lib/runtime/paths";
 import { sanitizeFileName, uniqueFilePath } from "@/lib/files/unique-name";
 import { cleanupUnfinalizedFiles, recordNewGeneratedFiles, snapshotGeneratedFiles } from "@/lib/chat/generated-files";
 import { filterIdentity, createStreamingIdentityFilter } from "@/lib/safety/identity-filter";
-import { normalizeTier, resolveModelByTier, runRouter } from "@/lib/agent/router";
+import { matchTrivialMessage, normalizeTier, resolveModelByTier, runRouter } from "@/lib/agent/router";
 import { injectSkillHint } from "@/lib/agent/skill-hint";
 import { getUsageStatus } from "@/lib/usage/store";
 import { buildBlockedNotice, type BlockedNotice } from "@/lib/usage/quota";
@@ -149,9 +149,13 @@ export async function POST(request: Request) {
   }
 
   // --- Router ---
+  // 路由器关闭时仍先过零成本本地问候直答(matchTrivialMessage),只跳过 LLM 分类调用
+  const localTrivial = !isEnabled("ROUTER_ENABLED") && lastUserContent ? matchTrivialMessage(lastUserContent) : null;
   const routerResult = isEnabled("ROUTER_ENABLED") && lastUserContent
     ? await runRouter(lastUserContent, messages, traceId, { claudeSessionId: existingClaudeSessionId, conversationId })
-    : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
+    : localTrivial
+      ? { path: "cheap" as const, decision: localTrivial, latencyMs: 0 }
+      : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
   log.info("router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
   writeSpan({
     traceId, spanType: "router", name: "router",
