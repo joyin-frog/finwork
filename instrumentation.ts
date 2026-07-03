@@ -16,7 +16,15 @@ export async function register() {
       // 启动保留治理是 best-effort,不得阻断应用启动。
     }
     try {
-      const { appendServerLog } = await import("@/lib/runtime/server-log");
+      const { purgeStaleOutputDirs } = await import("@/lib/runtime/cleanup");
+      purgeStaleOutputDirs();
+    } catch {
+      // 启动清理陈旧输出目录是 best-effort,不得阻断应用启动。
+    }
+    try {
+      const { appendServerLog, purgeOldServerLogs } = await import("@/lib/runtime/server-log");
+      // 日志按日新建,启动时顺手清掉过期的 server-*.log,封住无限增长。
+      await purgeOldServerLogs();
       // cold_boot≈ = 从 Node 进程启动到本钩子(Next bootstrap)的耗时,约等于打包态"白屏阶段"的
       // 主成本(④ Node+Next 冷启)。用来量化决定是否值得做 P1(服务常驻)。
       await appendServerLog(`[startup] next-server 已启动 pid=${process.pid} platform=${process.platform} node=${process.version} cold_boot≈${Math.round(process.uptime() * 1000)}ms`);
