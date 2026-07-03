@@ -13,21 +13,33 @@ function isInside(root: string, resolved: string): boolean {
 }
 
 /**
- * 判定一个 storagePath 是否指向本会话允许 agent 访问的文件。
+ * 把一个 storagePath 解析成本会话目录内的**绝对路径**;越权 / 逃逸 / 无法锚定会话返回 null。
  * 合法两形:会话目录下的绝对路径(新上传)、会话目录相对路径(引用,如 upload/x、generate/x)。
- * 绝对越权路径 / ../ 逃逸一律不允许。附件只承载会话文件(知识库走 search_knowledge/read_file
- * 工具,不经此路径),故根目录只认会话目录 —— fail-closed。
- * conversationId 缺失(新会话首条消息还没建会话)时无法锚定会话目录 → 一律拒绝带 storagePath 的附件。
+ * 附件只承载会话文件(知识库走 search_knowledge/read_file 工具,不经此路径),故根目录只认会话目录 —— fail-closed。
+ * conversationId 缺失(新会话首条消息还没建会话)时无法锚定会话目录 → null(拒绝带 storagePath 的附件)。
  */
-export function isAllowedAttachmentPath(storagePath: string, conversationId: number | string | undefined): boolean {
-  if (!storagePath || typeof storagePath !== "string") return false;
-  if (conversationId == null || String(conversationId).length === 0) return false;
+export function resolveInScopeAttachmentPath(
+  storagePath: string,
+  conversationId: number | string | undefined
+): string | null {
+  if (!storagePath || typeof storagePath !== "string") return null;
+  if (conversationId == null || String(conversationId).length === 0) return null;
   const root = getConversationFilesDir(conversationId);
   // 相对路径按会话目录解析;绝对路径 path.resolve 原样返回(后由前缀判定拦在根外)。
-  return isInside(root, path.resolve(root, storagePath));
+  const resolved = path.resolve(root, storagePath);
+  return isInside(root, resolved) ? resolved : null;
 }
 
-/** 丢弃 storagePath 逃逸出合法根目录的附件;无 storagePath 的(纯 dataUrl 远程/内联)原样保留。 */
+/** 判定一个 storagePath 是否指向本会话允许 agent 访问的文件。 */
+export function isAllowedAttachmentPath(storagePath: string, conversationId: number | string | undefined): boolean {
+  return resolveInScopeAttachmentPath(storagePath, conversationId) !== null;
+}
+
+/**
+ * 丢弃 storagePath 逃逸出会话目录的附件;无 storagePath 的(纯 dataUrl 远程/内联)原样保留。
+ * **关键**:保留的附件把 storagePath 规范化成会话目录内的绝对路径 —— 下游 prompt 里给 agent 的是绝对路径,
+ * 否则裸相对串(如 ".env")会被 agent(cwd=项目根)从项目根解析、读到会话目录外的文件。
+ */
 export function sanitizeAttachments<T extends { storagePath?: string }>(
   attachments: T[],
   conversationId: number | string | undefined
@@ -35,7 +47,12 @@ export function sanitizeAttachments<T extends { storagePath?: string }>(
   const kept: T[] = [];
   const dropped: T[] = [];
   for (const a of attachments) {
-    if (!a.storagePath || isAllowedAttachmentPath(a.storagePath, conversationId)) kept.push(a);
+    if (!a.storagePath) {
+      kept.push(a);
+      continue;
+    }
+    const resolved = resolveInScopeAttachmentPath(a.storagePath, conversationId);
+    if (resolved) kept.push({ ...a, storagePath: resolved });
     else dropped.push(a);
   }
   return { kept, dropped };

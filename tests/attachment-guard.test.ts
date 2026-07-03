@@ -52,9 +52,29 @@ export const attachmentGuardTestPromise = (async () => {
   assert.deepEqual(kept.map((a) => a.name), ["a", "c"], "A9 FAIL: 应保留合法与无路径附件");
   assert.deepEqual(dropped.map((a) => a.name), ["b"], "A9 FAIL: 应丢弃逃逸附件");
 
+  // ── A10: sanitize 把保留附件的相对路径规范化成会话目录内的绝对路径 ──
+  //   (agent cwd 是项目根,prompt 里若留裸相对串会被 agent 从项目根解析 → 读错文件)
+  {
+    const keptA = kept.find((a) => a.name === "a")!;
+    assert.equal(keptA.storagePath, path.join(convDir, "upload", "a.pdf"), "A10 FAIL: 相对路径应规范化为会话目录内绝对路径");
+    assert.ok(path.isAbsolute(keptA.storagePath!), "A10 FAIL: 应为绝对路径");
+    // 无 storagePath 的附件不受影响
+    const keptC = kept.find((a) => a.name === "c")!;
+    assert.equal(keptC.storagePath, undefined, "A10 FAIL: 无 storagePath 的附件应原样保留");
+  }
+
+  // ── A11: 裸相对路径(.env / package.json)虽解析进会话目录仍被规范化,
+  //   下游 prompt 不再拿到裸相对串,agent 无从用项目根解析读到机密文件 ──
+  {
+    const { kept: k2 } = sanitizeAttachments([{ name: "env", storagePath: ".env" }], cid);
+    assert.equal(k2.length, 1, "A11 FAIL: .env 解析进会话目录内,保留");
+    assert.equal(k2[0].storagePath, path.join(convDir, ".env"), "A11 FAIL: 裸相对应重写为会话目录内绝对路径");
+    assert.notEqual(k2[0].storagePath, ".env", "A11 FAIL: 下游不应再拿到裸相对串");
+  }
+
   // 恢复 env,避免污染后续测试。
   if (prevAppDataDir === undefined) delete process.env.FINANCE_AGENT_APP_DATA_DIR;
   else process.env.FINANCE_AGENT_APP_DATA_DIR = prevAppDataDir;
 
-  console.log("attachment-guard: all 9 checks passed ✓");
+  console.log("attachment-guard: all 11 checks passed ✓");
 })();
