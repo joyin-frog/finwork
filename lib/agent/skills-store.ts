@@ -6,10 +6,10 @@ import { getBundledPluginRoot, getUserPluginRoot, getSkillsStatePath } from "@/l
  * 技能数据层:把 SDK 原生 plugin(SKILL.md 文件)暴露成可管理的列表。
  *
  * 模型(用户拍板):
- * - 内置技能 = agent-skills/(只读,随 app 分发):可看、可启停,**不可编辑/删除/改文件**。
- * - 用户技能 = <AppDataDir>/user-skills/(可写):新建、编辑描述/正文、编辑目录下任意文件、删除。
+ * - 内置技能 = agent-skills/(只读,随 app 分发):可看,恒启用,**不可启停/编辑/删除/改文件**。
+ * - 用户技能 = <AppDataDir>/user-skills/(可写):新建、编辑描述/正文、编辑目录下任意文件、删除、启停。
  * - 名字内置/用户互斥(新建时与内置或已有用户技能重名则拒绝),不存在"覆盖内置"。
- * - 启停 = skills-state.json 里的 disabled 名单(SDK context filter,不删文件)。
+ * - 启停 = skills-state.json 里的 disabled 名单(SDK context filter,不删文件),仅对用户技能生效。
  */
 
 export type SkillSource = "bundled" | "user";
@@ -17,11 +17,15 @@ export type SkillSource = "bundled" | "user";
 export type SkillSummary = {
   /** 机器名(= SKILL.md frontmatter 的 name / 目录名),全局唯一,作为主键 */
   name: string;
+  /** 展示名(中文人话);缺失时 UI 回退显示 name */
+  title: string;
+  /** 一句给财务用户看的说明(纯展示,不给 LLM) */
+  summary: string;
   description: string;
   source: SkillSource;
   /** 是否可编辑(= 用户技能);内置技能为 false */
   editable: boolean;
-  /** 是否启用(未在 disabled 名单里) */
+  /** 是否启用(内置技能恒为 true;用户技能看 disabled 名单) */
   enabled: boolean;
 };
 
@@ -61,16 +65,18 @@ export class SkillError extends Error {
 
 // ── frontmatter 解析/序列化 ────────────────────────────────────────────
 
-type ParsedSkill = { name: string; description: string; body: string };
+type ParsedSkill = { name: string; title: string; summary: string; description: string; body: string };
 
-/** 解析 SKILL.md:取首个 `---...---` 块里的 name/description,其余为正文。description 仅按首个冒号
- *  切分,容忍内容里的中文冒号;支持双引号 YAML 标量(我们写回时用)。 */
+/** 解析 SKILL.md:取首个 `---...---` 块里的 name/title/summary/description,其余为正文。值仅按首个
+ *  冒号切分,容忍内容里的中文冒号;支持双引号 YAML 标量(我们写回时用)。 */
 function parseSkillMd(raw: string): ParsedSkill {
   const m = /^﻿?---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
-  if (!m) return { name: "", description: "", body: raw };
+  if (!m) return { name: "", title: "", summary: "", description: "", body: raw };
   const fm = m[1];
   const body = m[2] ?? "";
   let name = "";
+  let title = "";
+  let summary = "";
   let description = "";
   for (const line of fm.split(/\r?\n/)) {
     const idx = line.indexOf(":");
@@ -78,9 +84,11 @@ function parseSkillMd(raw: string): ParsedSkill {
     const key = line.slice(0, idx).trim();
     const val = line.slice(idx + 1).trim();
     if (key === "name") name = decodeScalar(val);
+    else if (key === "title") title = decodeScalar(val);
+    else if (key === "summary") summary = decodeScalar(val);
     else if (key === "description") description = decodeScalar(val);
   }
-  return { name, description, body };
+  return { name, title, summary, description, body };
 }
 
 function decodeScalar(val: string): string {
@@ -182,7 +190,7 @@ async function scanAll(): Promise<{
 // ── 读 ─────────────────────────────────────────────────────────────────
 
 function toSummary(s: ScannedSkill, source: SkillSource, enabled: boolean): SkillSummary {
-  return { name: s.name, description: s.description, source, editable: source === "user", enabled };
+  return { name: s.name, title: s.title, summary: s.summary, description: s.description, source, editable: source === "user", enabled };
 }
 
 export async function listSkills(): Promise<SkillSummary[]> {
@@ -191,7 +199,8 @@ export async function listSkills(): Promise<SkillSummary[]> {
   const list: SkillSummary[] = [];
   for (const [name, s] of bundled) {
     if (user.has(name)) continue; // 互斥;理论上不会发生,用户版优先
-    list.push(toSummary(s, "bundled", !disabled.has(name)));
+    // 内置技能一律视为启用(忽略历史误关的停用标记):误关会让算薪等静默退化为 LLM 徒手算
+    list.push(toSummary(s, "bundled", true));
   }
   for (const [name, s] of user) {
     list.push(toSummary(s, "user", !disabled.has(name)));
@@ -208,7 +217,8 @@ export async function getSkill(name: string): Promise<SkillDetail | null> {
   const eff = u ?? b;
   if (!eff) return null;
   const source: SkillSource = u ? "user" : "bundled";
-  return { ...toSummary(eff, source, !state.disabled.includes(name)), body: eff.body };
+  const enabled = source === "bundled" ? true : !state.disabled.includes(name);
+  return { ...toSummary(eff, source, enabled), body: eff.body };
 }
 
 // ── 写 ─────────────────────────────────────────────────────────────────
@@ -265,9 +275,14 @@ export async function deleteSkill(name: string): Promise<void> {
   await fs.rm(path.join(getUserPluginRoot(), "skills", name), { recursive: true, force: true });
 }
 
-/** 启用/停用技能(写 disabled 名单);停用是 SDK context filter,不动文件。 */
+/** 启用/停用技能(写 disabled 名单);停用是 SDK context filter,不动文件。
+ *  内置技能不可启停(恒启用):误关 payroll-calc 等会让算薪静默退化为 LLM 徒手算。 */
 export async function setSkillEnabled(name: string, enabled: boolean): Promise<void> {
   if (!isValidSkillName(name)) throw new SkillError(`技能名不合法:${name}`, "invalid_name");
+  const { bundled, user } = await scanAll();
+  if (bundled.has(name) && !user.has(name)) {
+    throw new SkillError(`内置技能不可停用:${name}`, "read_only");
+  }
   const state = await readState();
   const set = new Set(state.disabled);
   if (enabled) set.delete(name);
@@ -362,7 +377,8 @@ export async function getSkillSdkConfig(): Promise<SkillSdkConfig> {
 
   const skills: string[] = [];
   for (const name of bundled.keys()) {
-    if (!user.has(name) && !disabled.has(name)) skills.push(`${BUNDLED_PLUGIN_NAME}:${name}`);
+    // 内置技能不受 disabled 名单影响(历史误关的停用标记一律忽略)
+    if (!user.has(name)) skills.push(`${BUNDLED_PLUGIN_NAME}:${name}`);
   }
   for (const name of user.keys()) {
     if (!disabled.has(name)) skills.push(`${USER_PLUGIN_NAME}:${name}`);

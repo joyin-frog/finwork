@@ -19,23 +19,6 @@ export function SettingsSection({ title, description, children }: {
   );
 }
 
-/** 设置卡片:带边框+圆角的独立卡,用于「关于」页把版本/环境/上报三大块各自框起来。 */
-export function SettingsCard({ title, description, children }: {
-  title: string;
-  description?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-      <div className="flex flex-col gap-0.5">
-        <h3 className="text-body font-medium">{title}</h3>
-        {description ? <p className="text-meta text-muted-foreground max-w-prose">{description}</p> : null}
-      </div>
-      <div className="flex flex-col gap-3">{children}</div>
-    </section>
-  );
-}
-
 /** 设置行:label 左、控件右;短值控件自动限宽,避免整行过长。 */
 export function SettingsRow({ label, htmlFor, hint, wide, children }: {
   label: string;
@@ -74,3 +57,15 @@ export function SettingsField({ label, htmlFor, hint, children }: {
 /** 与 Input 视觉一致的原生 select 样式(28px、bg-input/20、无阴影)。 */
 export const settingsSelectClass =
   "h-8 w-full rounded-md border border-input bg-input/20 px-2.5 text-body transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30";
+
+/** 防抖自动保存的统一状态语言:idle 不渲染,saving/saved/error 用文字表达。 */
+export type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+/** 保存状态文字指示(全设置页统一,「已保存 ✓」风格)。 */
+export function SaveStatusText({ status }: { status: SaveStatus }) {
+  if (status === "idle") return null;
+  const text = status === "saving" ? "保存中…" : status === "saved" ? "已保存 ✓" : "保存失败,请重试";
+  const tone =
+    status === "error" ? "text-destructive" : status === "saved" ? "text-[color:var(--tone-ok)]" : "text-muted-foreground";
+  return <span className={`text-meta ${tone}`}>{text}</span>;
+}

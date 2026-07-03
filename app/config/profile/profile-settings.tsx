@@ -2,12 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { SettingsSection } from "@/app/config/settings-ui";
+import { SettingsSection, SettingsField, SaveStatusText, settingsSelectClass, type SaveStatus } from "@/app/config/settings-ui";
 import { toast } from "sonner";
 import type { CompanyProfile } from "@/lib/profile/file-store";
 import { INDUSTRY_OPTIONS } from "@/lib/profile/industry-options";
-
-type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 export function ProfileSettings() {
   const [profile, setProfile] = useState<CompanyProfile>({});
@@ -105,19 +103,6 @@ export function ProfileSettings() {
     }
   }
 
-  const fieldLabel = (label: string, hint?: string) => (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-body font-medium">{label}</span>
-      {hint && <span className="text-meta text-muted-foreground">{hint}</span>}
-    </div>
-  );
-
-  const statusText =
-    status === "saving" ? "保存中…"
-      : status === "saved" ? "已保存 ✓"
-        : status === "error" ? "保存失败,请重试"
-          : "";
-
   return (
     <div className="flex flex-col">
       <SettingsSection
@@ -126,26 +111,20 @@ export function ProfileSettings() {
       >
         <div className="-mt-1 flex items-center gap-2 text-meta text-muted-foreground">
           {updatedAt && <span>上次更新：{new Date(updatedAt).toLocaleString("zh-CN")}</span>}
-          {statusText && (
-            <span className={status === "error" ? "text-destructive" : status === "saved" ? "text-[color:var(--tone-ok)]" : ""}>
-              {statusText}
-            </span>
-          )}
+          <SaveStatusText status={status} />
         </div>
 
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            {fieldLabel("所在地区", "如「上海市松江区」")}
+          <SettingsField label="所在地区" hint="如「上海市松江区」">
             <Input
               value={profile.region ?? ""}
               onChange={(e) => updateField("region", e.target.value)}
               placeholder="上海市松江区"
               disabled={loading}
             />
-          </div>
+          </SettingsField>
 
-          <div className="flex flex-col gap-2">
-            {fieldLabel("所在园区", "多个用逗号分隔，如「临港新片区」")}
+          <SettingsField label="所在园区" hint="多个用逗号分隔，如「临港新片区」">
             <Input
               value={(profile.zones ?? []).join("、")}
               onChange={(e) => {
@@ -155,12 +134,11 @@ export function ProfileSettings() {
               placeholder="临港新片区"
               disabled={loading}
             />
-          </div>
+          </SettingsField>
 
-          <div className="flex flex-col gap-2">
-            {fieldLabel("纳税人类型")}
+          <SettingsField label="纳税人类型">
             <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-body shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              className={settingsSelectClass}
               value={profile.taxpayerType ?? ""}
               onChange={(e) => {
                 const val = e.target.value as "" | "小规模" | "一般纳税人";
@@ -173,7 +151,7 @@ export function ProfileSettings() {
               <option value="小规模">小规模纳税人</option>
               <option value="一般纳税人">一般纳税人</option>
             </select>
-          </div>
+          </SettingsField>
 
           <div className="flex items-center gap-3">
             <input
@@ -189,8 +167,7 @@ export function ProfileSettings() {
             </label>
           </div>
 
-          <div className="flex flex-col gap-2">
-            {fieldLabel("所属行业", "可从列表选择，也可直接输入")}
+          <SettingsField label="所属行业" hint="可从列表选择，也可直接输入">
             <Input
               list="industry-options"
               value={profile.industry ?? ""}
@@ -203,10 +180,9 @@ export function ProfileSettings() {
                 <option key={opt} value={opt} />
               ))}
             </datalist>
-          </div>
+          </SettingsField>
 
-          <div className="flex flex-col gap-2">
-            {fieldLabel("年营收（万元）", "近一年含税营业收入")}
+          <SettingsField label="年营收（万元）" hint="近一年含税营业收入">
             <Input
               type="number"
               min={0}
@@ -220,10 +196,9 @@ export function ProfileSettings() {
             {revenueError && (
               <span className="text-meta text-destructive">请输入大于 0 的数字，当前值未保存。</span>
             )}
-          </div>
+          </SettingsField>
 
-          <div className="flex flex-col gap-2">
-            {fieldLabel("收入拆分维度", "多个用逗号分隔，如「事业部」「产品线」——经营分析下钻用")}
+          <SettingsField label="收入拆分维度" hint="多个用逗号分隔，如「事业部」「产品线」——经营分析下钻用">
             <Input
               value={(profile.revenueDimensions ?? []).join("、")}
               onChange={(e) => {
@@ -236,7 +211,7 @@ export function ProfileSettings() {
               placeholder="事业部、产品线"
               disabled={loading}
             />
-          </div>
+          </SettingsField>
         </div>
 
         <p className="text-meta text-muted-foreground">
