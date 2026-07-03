@@ -459,9 +459,19 @@
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  padding: 10px 14px;
+  /* 上 1px / 下 6px:卡片缝 4px + 描边 1px 已垫在上方,再加 1px 后 32px 按钮行的中线
+     恰与左列 h-11 标题行中线(22px)持平,分隔线也落在 44px 与左标题行底边对齐 */
+  padding: 1px 14px 6px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);  /* 白色标题区,下方 border-bottom 为分隔横线,紧接灰色表格区 */
+}
+
+/* 空态/加载态分支的收起入口(资料页/知识库页):与 .preview-head-card 内按钮同一视觉基线,
+   即中线对齐左列 h-11 标题行(22px):卡缝 4px + 描边 1px + top 3px + 28px 按钮半高 14px = 22px */
+.preview-empty-collapse-btn {
+  position: absolute;
+  top: 3px;
+  right: 14px;
 }
 
 .preview-head-title {

@@ -10,7 +10,9 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import type ExcelJS from "exceljs";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowExpand01Icon, ArrowShrink01Icon, FileSearchIcon, Folder02Icon, LibraryIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowLeft01Icon, ArrowRight01Icon, ArrowExpand01Icon, ArrowShrink01Icon, FileSearchIcon, Folder02Icon, LibraryIcon, PanelRightIcon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/ui/button";
+import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import DocxPreviewWrapper from "@/app/shared/docx-preview-wrapper";
@@ -139,6 +141,7 @@ export function FilePreviewPage({
   onMaximize,
   isMaximized,
   docked,
+  onCollapse,
 }: {
   selection: PreviewFileSelection | null;
   onSelectionChange?: (selection: PreviewFileSelection | null) => void;
@@ -154,6 +157,8 @@ export function FilePreviewPage({
   /** 停靠在内容右侧时(对话页 / 资料页)做成浮起卡片:顶部脱离标题栏 + 上方圆角 + 描边 + 柔影;
    *  全屏(isMaximized)时自动铺满。独立 /preview 整页不传,保持满铺。 */
   docked?: boolean;
+  /** 收起预览侧栏:docked 态由父级提供;给定时头部右侧按钮群末尾显示收起按钮。 */
+  onCollapse?: () => void;
 }) {
   const [currentSelection, setCurrentSelection] = useState<PreviewFileSelection | null>(selection);
   const [preview, setPreview] = useState<LoadedPreview | null>(null);
@@ -516,6 +521,31 @@ export function FilePreviewPage({
             >
               <HugeiconsIcon icon={isMaximized ? ArrowShrink01Icon : ArrowExpand01Icon} size={16} />
             </button>
+          ) : null}
+          {onCollapse ? (
+            docked ? (
+              <ShortcutHint label="收起右侧栏" combo="alt+mod+b">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onCollapse}
+                  aria-label="收起右侧栏"
+                  aria-expanded={true}
+                >
+                  <HugeiconsIcon icon={PanelRightIcon} size={16} />
+                </Button>
+              </ShortcutHint>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onCollapse}
+                aria-label="收起右侧栏"
+                aria-expanded={true}
+              >
+                <HugeiconsIcon icon={PanelRightIcon} size={16} />
+              </Button>
+            )
           ) : null}
           </div>
         </div>
