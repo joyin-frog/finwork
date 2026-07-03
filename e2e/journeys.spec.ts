@@ -59,7 +59,7 @@ test("config shows configured key + model (展示)", async ({ page }) => {
   await page.goto("/config?tab=model", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
   await assertNoCrash(page);
-  await expect(page.getByText("模型连接")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "模型连接", level: 3 })).toBeVisible();
   await expect(page.getByText("已配置")).toBeVisible();
 });
 

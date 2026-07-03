@@ -5,6 +5,7 @@ import { formatAppVersion } from "@/lib/version/format";
 import { UpdaterBody } from "@/app/config/general/updater-settings";
 import { RuntimeEnvBody } from "@/app/config/environment/environment-settings";
 import { TelemetryBody } from "@/app/config/environment/telemetry-settings";
+import { UsageSettings } from "@/app/config/usage/usage-settings";
 
 /** 「关于」页:版本信息 → 运行环境 → 使用数据上报,三大块用统一的分组区块。 */
 export function AboutSettings() {
@@ -26,7 +27,14 @@ export function AboutSettings() {
       </SettingsSection>
 
       <SettingsSection
-        title="使用数据上报（可选）"
+        title="用量"
+        description="查看当前用量保护状态和重置周期。"
+      >
+        <UsageSettings />
+      </SettingsSection>
+
+      <SettingsSection
+        title="数据与隐私"
         description="将匿名运行指标（token 用量/耗时/成本/错误/路由）上报以改进产品，不含财务数据。默认开启，可随时关闭。"
       >
         <TelemetryBody />

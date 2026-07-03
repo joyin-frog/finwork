@@ -16,7 +16,7 @@ test("总览(cockpit)渲染 + 导航", async ({ page }) => {
 test("设置-填 API Key → 保存回路 → 已配置", async ({ page }) => {
   await page.goto("/config?tab=model", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
-  await expect(page.getByText("模型连接")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "模型连接", level: 3 })).toBeVisible();
   // 隔离 app-data + file 密钥后端:初始未配置;填 Key 失焦触发 PUT 保存 → 徽标翻到「已配置」。
   // hydration 前 fill 不会被 React 跟踪、blur 不触发保存 → 重试"填→失焦→等 PUT"直到保存真的发生。
   const key = page.getByLabel("API Key");
@@ -33,11 +33,25 @@ test("设置-填 API Key → 保存回路 → 已配置", async ({ page }) => {
   await assertNoCrash(page);
 });
 
-test("设置-记忆页渲染(编辑区在场)", async ({ page }) => {
-  await page.goto("/config?tab=memory", { waitUntil: "domcontentloaded" });
+test("设置-小财的了解渲染画像与记忆", async ({ page }) => {
+  await page.goto("/config?tab=understanding", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
+  await expect(page.getByText("公司画像", { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder(/还没有|规矩|加载中/)).toBeVisible();
   await assertNoCrash(page);
+});
+
+test("设置-旧 tab 深链显式重定向", async ({ page }) => {
+  const cases = [
+    ["appearance", "general"],
+    ["memory", "understanding"],
+    ["profile", "understanding"],
+    ["usage", "about"],
+  ] as const;
+  for (const [legacy, target] of cases) {
+    await page.goto(`/config?tab=${legacy}`, { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(new RegExp(`/config\\?tab=${target}$`));
+  }
 });
 
 test("文件库页渲染不崩", async ({ page }) => {
