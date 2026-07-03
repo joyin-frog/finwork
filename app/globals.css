@@ -79,10 +79,10 @@
   --text-title--line-height: 1.35;
   --text-title--font-weight: 600;
 
-  --text-body: 0.9375rem;
+  --text-body: 0.875rem;
   --text-body--line-height: 1.6;
-  --text-body--font-weight: 400;
-
+  --text-body--font-weight: 450;
+    
   --text-small: 0.8125rem;
   --text-small--line-height: 1.3;
   --text-small--font-weight: 500;
