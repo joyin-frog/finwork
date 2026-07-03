@@ -19,6 +19,7 @@ test("chat: 添加附件 → 发送 → 附件随消息落库渲染", async ({ p
     await box.click();
     await box.fill("");
     await box.pressSequentially("请帮我看看这份资料", { delay: 5 });
+    await expect(box).toHaveValue("请帮我看看这份资料", { timeout: 2_000 }); // 全文提交,防截头
     await expect(sendBtn).toBeEnabled({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
 
