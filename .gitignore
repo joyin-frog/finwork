@@ -25,6 +25,7 @@ data/local-settings.json
 .codegraph/
 excel/
 test-results/
+docs/audits/overlay-consistency/
 playwright-report/
 .loop-sandbox/
 agent-skills/skills/*/output/
@@ -40,5 +41,4 @@ docs/SDK_*/
 **/conf.ini
 # 内部规划文档不进公开仓库(本地另有备份)
 plans/
-
 
