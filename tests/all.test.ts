@@ -359,6 +359,9 @@ void (async () => {
   const { skillsStoreTestPromise } = await import("./skills-store.test.ts");
   await skillsStoreTestPromise;
 
+  const { settingsRefactorTestPromise } = await import("./settings-refactor.test.ts");
+  await settingsRefactorTestPromise;
+
   const { agentQueryHelpersTestPromise } = await import("./agent-query-helpers.test.ts");
   await agentQueryHelpersTestPromise;
 

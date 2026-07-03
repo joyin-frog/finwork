@@ -14,6 +14,7 @@ import { AboutSettings } from "./about/about-settings";
 import { ProfileSettings } from "./profile/profile-settings";
 import { UsageSettings } from "./usage/usage-settings";
 import { SkillsManager } from "@/app/skills/skills-manager";
+import { SaveStatusText, type SaveStatus } from "@/app/config/settings-ui";
 import { Input } from "@/components/ui/input";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
@@ -43,6 +44,7 @@ export default function SkillCenter({
   const [roleMode, setRoleMode] = useState(initialClaudeSettings.roleMode);
   const [activeTab, setActiveTab] = useState<SettingsTab>(isSettingsTab(initialTab) ? initialTab : "general");
   const [menuQuery, setMenuQuery] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const identity = useUserIdentity();
   const router = useRouter();
 
@@ -60,23 +62,29 @@ export default function SkillCenter({
   );
 
   async function saveClaudeSettings(clearApiKey = false) {
-    const res = await fetch("/api/settings/claude", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ apiUrl, model, apiKey: apiKey.trim() || undefined, clearApiKey, routerModel, subagentModel, companyName, agentName, userName, userAvatar, roleMode }),
-    });
-    const payload = (await res.json()) as { data: PublicClaudeSettings };
-    setClaudeSettings(payload.data);
-    setApiUrl(payload.data.apiUrl);
-    setModel(payload.data.model);
-    setRouterModel(payload.data.routerModel);
-    setSubagentModel(payload.data.subagentModel);
-    setCompanyName(payload.data.companyName);
-    setAgentName(payload.data.agentName);
-    setUserName(payload.data.userName);
-    setUserAvatar(payload.data.userAvatar);
-    setRoleMode(payload.data.roleMode);
-    setApiKey("");
+    setSaveStatus("saving");
+    try {
+      const res = await fetch("/api/settings/claude", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ apiUrl, model, apiKey: apiKey.trim() || undefined, clearApiKey, routerModel, subagentModel, companyName, agentName, userName, userAvatar, roleMode }),
+      });
+      const payload = (await res.json()) as { data: PublicClaudeSettings };
+      setClaudeSettings(payload.data);
+      setApiUrl(payload.data.apiUrl);
+      setModel(payload.data.model);
+      setRouterModel(payload.data.routerModel);
+      setSubagentModel(payload.data.subagentModel);
+      setCompanyName(payload.data.companyName);
+      setAgentName(payload.data.agentName);
+      setUserName(payload.data.userName);
+      setUserAvatar(payload.data.userAvatar);
+      setRoleMode(payload.data.roleMode);
+      setApiKey("");
+      setSaveStatus("saved");
+    } catch {
+      setSaveStatus("error");
+    }
   }
 
   function openTab(tab: SettingsTab) {
@@ -142,6 +150,7 @@ export default function SkillCenter({
         <main className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
             <h2 className="text-title font-semibold">{activeTabMeta.label}</h2>
+            <SaveStatusText status={saveStatus} />
           </div>
           <div className="flex-1 overflow-auto px-6 py-6">
             {activeTab === "appearance" && <AppearanceSettings />}
