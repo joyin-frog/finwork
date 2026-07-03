@@ -7,7 +7,7 @@ import {
   ArrowDown02Icon,
   ArrowUp02Icon,
   Clock01Icon,
-  Attachment01Icon,
+  AttachmentIcon,
   Folder01Icon,
   Add01Icon,
   StopIcon,
@@ -1089,7 +1089,7 @@ export default function ChatPage({
                       </ShortcutHint>
                       <DropdownMenuContent align="start" side="top" className="w-44">
                         <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
-                          <HugeiconsIcon icon={Attachment01Icon} size={16} />
+                          <HugeiconsIcon icon={AttachmentIcon} size={16} />
                           添加照片和文件
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => void pickReceiptFolder()}>

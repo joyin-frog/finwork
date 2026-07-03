@@ -714,17 +714,70 @@ function KnowledgePageContent() {
                 onViewLine={viewSearchResult}
                 onAddToChat={addToChat}
               />
-            ) : filteredDocs.length === 0 ? (
-              docs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-10 px-5 text-center">
-                  <h3 className="text-body font-medium">知识库为空</h3>
-                  <p className="text-body text-muted-foreground">点击右下角 + 按钮上传第一份文档</p>
-                </div>
-              ) : (
-                <div className="py-4 text-center text-body text-muted-foreground">{showArchived ? "没有已归档文档" : "无匹配文档"}</div>
-              )
             ) : (
+              <>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-3.5">
+                {/* 上传卡:常驻网格首位,空库时就是第一张卡;点开后原位变为上传表单。
+                    (替代旧右下角 FAB——右栏收起时会被全局对话浮窗圆钮遮挡,e2e 抓到过) */}
+                {uploadOpen ? (
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-border">
+                      <span className="text-body font-semibold">上传文档</span>
+                      <button
+                        className="p-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        onClick={() => { setUploadOpen(false); setFile(null); setProgress(""); }}
+                      >
+                        <HugeiconsIcon icon={Cancel01Icon} size={14} />
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2 px-3.5 py-3">
+                      <button
+                        className="p-3.5 border-2 border-dashed border-border rounded-lg text-center cursor-pointer text-body text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/50"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {file ? (
+                          <span className="font-medium">
+                            {file.name}
+                            <em className="text-meta opacity-50 ml-2 not-italic">{fmtBytes(file.size)}</em>
+                          </span>
+                        ) : "点击选择文件"}
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept={KB_SUPPORTED_EXTS.join(",")}
+                        className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f); e.target.value = ""; }}
+                      />
+                      {file && (
+                        <>
+                          <select
+                            className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-meta shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={upCat}
+                            onChange={e => setUpCat(e.target.value)}
+                          >
+                            <option value="auto">自动检测分类</option>
+                            {CATS.map(c => <option key={c} value={c}>{CAT_LABELS[c] ?? c}</option>)}
+                          </select>
+                          <Button size="sm" className="w-full" onClick={() => void doUpload()} disabled={uploading}>
+                            {uploading ? "处理中…" : "上传并索引"}
+                          </Button>
+                          {progress && <p className="text-meta text-muted-foreground text-center">{progress}</p>}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    title="上传文档"
+                    onClick={() => setUploadOpen(true)}
+                    className="flex flex-col items-center justify-center gap-1.5 min-h-[120px] border-2 border-dashed border-border rounded-xl text-muted-foreground cursor-pointer transition-colors hover:border-primary/50 hover:text-primary hover:bg-accent/50"
+                  >
+                    <HugeiconsIcon icon={Add01Icon} size={24} />
+                    <span className="text-body">上传文档</span>
+                  </button>
+                )}
                 {filteredDocs.map(doc => {
                   const archived = doc.archived === 1;
                   const stale = !archived && isStaleDoc(doc);
@@ -752,6 +805,10 @@ function KnowledgePageContent() {
                   );
                 })}
               </div>
+              {filteredDocs.length === 0 && docs.length > 0 && (
+                <div className="pb-4 text-center text-body text-muted-foreground">{showArchived ? "没有已归档文档" : "无匹配文档"}</div>
+              )}
+              </>
             )}
           </div>
         </div>
@@ -905,70 +962,6 @@ function KnowledgePageContent() {
               )
             )}
           </div>
-        )}
-      </div>
-
-      {/* Upload FAB */}
-      <div
-        className="fixed bottom-6 z-50 flex flex-col items-end gap-2"
-        style={{ right: sidebarCollapsed ? 24 : sidebarW + 24 }}
-      >
-        {uploadOpen ? (
-          <div className="w-[280px] bg-card border border-border rounded-xl shadow-[var(--elevation-3)] overflow-hidden">
-            <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-border">
-              <span className="text-body font-semibold">上传文档</span>
-              <button
-                className="p-0.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                onClick={() => { setUploadOpen(false); setFile(null); setProgress(""); }}
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={14} />
-              </button>
-            </div>
-            <div className="flex flex-col gap-2 px-3.5 py-3">
-              <button
-                className="p-3.5 border-2 border-dashed border-border rounded-lg text-center cursor-pointer text-body text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/50"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {file ? (
-                  <span className="font-medium">
-                    {file.name}
-                    <em className="text-meta opacity-50 ml-2 not-italic">{fmtBytes(file.size)}</em>
-                  </span>
-                ) : "点击选择文件"}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={KB_SUPPORTED_EXTS.join(",")}
-                className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f); e.target.value = ""; }}
-              />
-              {file && (
-                <>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-meta shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    value={upCat}
-                    onChange={e => setUpCat(e.target.value)}
-                  >
-                    <option value="auto">自动检测分类</option>
-                    {CATS.map(c => <option key={c} value={c}>{CAT_LABELS[c] ?? c}</option>)}
-                  </select>
-                  <Button size="sm" className="w-full" onClick={() => void doUpload()} disabled={uploading}>
-                    {uploading ? "处理中…" : "上传并索引"}
-                  </Button>
-                  {progress && <p className="text-meta text-muted-foreground text-center">{progress}</p>}
-                </>
-              )}
-            </div>
-          </div>
-        ) : (
-          <button
-            className="size-11 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-[var(--elevation-3)] hover:scale-105 transition-transform cursor-pointer"
-            onClick={() => setUploadOpen(true)}
-            title="上传文档"
-          >
-            <HugeiconsIcon icon={Add01Icon} size={22} />
-          </button>
         )}
       </div>
 

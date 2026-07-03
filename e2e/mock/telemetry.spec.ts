@@ -105,11 +105,11 @@ test("遥测设置: 开关默认开 + 主区无 token 输入框 + 测试区有�
     });
   });
 
-  await page.goto("/config?tab=environment", { waitUntil: "domcontentloaded" });
+  await page.goto("/config?tab=about", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
 
-  // 断言「使用数据上报」章节可见
-  await expect(page.getByText("使用数据上报(可选)")).toBeVisible();
+  // 断言「使用数据上报」章节可见(标题措辞/标点属表现层,只锁章节存在)
+  await expect(page.getByText(/使用数据上报/).first()).toBeVisible();
 
   // 开关默认应为 ON(§17.2)
   const toggle = page.getByRole("switch", { name: "启用上报" });
@@ -187,7 +187,7 @@ test("遥测设置: 测试上报按钮 → mock 成功 → 显示结果", async 
     });
   });
 
-  await page.goto("/config?tab=environment", { waitUntil: "domcontentloaded" });
+  await page.goto("/config?tab=about", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
 
   // 点击测试上报按钮
@@ -248,7 +248,7 @@ test("遥测设置: 测试上报按钮 → mock 失败 → 显示错误原因", 
     });
   });
 
-  await page.goto("/config?tab=environment", { waitUntil: "domcontentloaded" });
+  await page.goto("/config?tab=about", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
 
   const testBtn = page.getByRole("button", { name: "立即上报(测试)" });

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowReloadHorizontalIcon } from "@hugeicons/core-free-icons";
+import { RefreshIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
@@ -62,7 +62,7 @@ export default function CockpitPage() {
         <PeriodBadge calendar={calendar} />
         <div className="ml-auto">
           <Button variant="ghost" size="icon" onClick={fetchSummary} aria-label="刷新数据">
-            <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} className={loading ? "animate-spin" : ""} />
+            <HugeiconsIcon icon={RefreshIcon} size={16} className={loading ? "animate-spin" : ""} />
           </Button>
         </div>
       </header>

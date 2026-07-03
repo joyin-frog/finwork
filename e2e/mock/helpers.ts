@@ -31,11 +31,14 @@ export async function sendChat(page: Page, prompt: string): Promise<number> {
   await expect(box).toBeVisible();
   const sendBtn = page.getByRole("button", { name: "发送" });
   // React 组合框 hydration 完成后才挂上 onChange:过早键入会丢字、发送键一直 disabled。
-  // 重试"清空→键入→确认发送键可点",直到组合框真正可交互——不依赖固定等待(更稳)。
+  // 重试"清空→键入→验证全文提交",直到组合框真正可交互——不依赖固定等待(更稳)。
+  // 必须验证到"值 === 完整 prompt":hydration 中途完成会丢掉开头几个字符,只查"发送键可点"
+  // 就会把截了头的 prompt 发出去,命中错误的 mock 脚本(CI 上「工具演示」曾被截成「演示」)。
   await expect(async () => {
     await box.click();
     await box.fill("");
     await box.pressSequentially(prompt, { delay: 5 }); // 真实键入,可靠提交 React 草稿态
+    await expect(box).toHaveValue(prompt, { timeout: 2_000 });
     await expect(sendBtn).toBeEnabled({ timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
   const respPromise = page.waitForResponse((r) => r.url().includes("/api/agent/query"), { timeout: 60_000 });

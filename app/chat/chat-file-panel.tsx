@@ -1,7 +1,7 @@
 "use client";
 
 import { HugeiconsIcon } from "@hugeicons/react";
-import { PanelRightIcon, LayoutAlignRightIcon, Attachment01Icon } from "@hugeicons/core-free-icons";
+import { PanelRightIcon, LayoutAlignRightIcon, AttachmentIcon } from "@hugeicons/core-free-icons";
 import type { StoredChatAttachment } from "@/lib/db/sqlite";
 import { FileGroup, type PreviewableConversationFile } from "@/app/chat/chat-file-browser";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
@@ -44,7 +44,7 @@ export function ChatFilePanel({
             aria-label={filePanelOpen ? "关闭文件面板" : "打开文件面板"}
             aria-expanded={filePanelOpen}
           >
-            <HugeiconsIcon icon={Attachment01Icon} size={16} />
+            <HugeiconsIcon icon={AttachmentIcon} size={16} />
           </Button>
         </ShortcutHint>
         {filePanelOpen ? (
