@@ -3,6 +3,12 @@
 ## UIUX前端设计
 参考 app/globals.css，最好围绕token设计
 
+## 复杂任务处理
+Orchestrator：编写计划、技能、目标 
+Executor：实施 Orchestrator 编写的计划
+使用 Claude Fable 5（High）作为 orchestrator或降级Opus 4.8(xhigh)
+使用 Sonnet 5 作为 executor
+
 ## 一、先读，再写
 
 模型生成的劣质代码，最大的来源就是还没读懂代码库便开始动手。
