@@ -273,5 +273,32 @@ export const summarizeToolSegmentTestPromise = (async () => {
     assert.ok(!summary.includes("测试单据C"), `S6 FAIL: 只取前 2 个对象,实际: ${summary}`);
   }
 
+  // ── S7: 混合工具组不再冒用占比最高工具的名字 ──
+  {
+    // 三种工具各一步 → 动词列举,步数=种类数时省略 ×N
+    const mixed: SegmentTimelineItem[] = [];
+    for (const name of ["Skill", "run_python", "search_knowledge"]) {
+      const [u, r] = pair(name, false); mixed.push(u, r);
+    }
+    const s1 = summarizeToolSegment(mixed);
+    assert.ok(s1.includes("、"), `S7 FAIL: 混合组应列举动词,实际: ${s1}`);
+    assert.ok(!s1.includes("×3"), `S7 FAIL: 步数=种类数时不重复 ×N,实际: ${s1}`);
+    assert.ok(!/：/.test(s1), `S7 FAIL: 混合组不给对象列表(不同动词的对象混列误导),实际: ${s1}`);
+
+    // 超过 3 种 → 首动词 + 等 ×N
+    const many: SegmentTimelineItem[] = [];
+    for (const name of ["Skill", "run_python", "search_knowledge", "WebSearch", "Edit"]) {
+      const [u, r] = pair(name, false); many.push(u, r);
+    }
+    const s2 = summarizeToolSegment(many);
+    assert.ok(s2.includes("等") && s2.includes("×5"), `S7 FAIL: >3 种应「首动词 等 ×N」,实际: ${s2}`);
+
+    // 同工具多步:行为不变(仍带 ×N 与对象)
+    const homo: SegmentTimelineItem[] = [];
+    for (let k = 0; k < 3; k++) { const [u, r] = pair("search_knowledge", false); homo.push(u, r); }
+    const s3 = summarizeToolSegment(homo);
+    assert.ok(s3.includes("×3"), `S7 FAIL: 同工具组保持 ×N,实际: ${s3}`);
+  }
+
   console.log("summarize-tool-segment: all checks passed ✓");
 })();

@@ -157,40 +157,41 @@ export function summarizeToolSegment(items: SegmentTimelineItem[]): string {
   const steps = parseLogicalSteps(items);
   if (!steps.length) return "";
 
-  // 统计各工具步数
-  const countByTool = new Map<string, number>();
+  // 各工具动词标签,按首次出现序去重
+  const distinctLabels: string[] = [];
   for (const s of steps) {
-    countByTool.set(s.toolName, (countByTool.get(s.toolName) ?? 0) + 1);
-  }
-
-  // 占比最高的工具
-  let topTool = steps[0].toolName;
-  let topCount = 0;
-  for (const [name, cnt] of countByTool) {
-    if (cnt > topCount) { topTool = name; topCount = cnt; }
+    const l = toolLabel(s.toolName);
+    if (!distinctLabels.includes(l)) distinctLabels.push(l);
   }
 
   const totalSteps = steps.length;
   const failCount = steps.filter((s) => s.isError).length;
   const totalMs = steps.reduce((acc, s) => acc + s.durationMs, 0);
 
-  const label = toolLabel(topTool);
-  let summary = totalSteps === 1 ? label : `${label} ×${totalSteps}`;
-
-  // 对象列表:取各步 renderer 文案的对象部分(「动词：对象」按冒号切,「识别单据 x.pdf」剥标签前缀),
-  // 去重取前 2 个,让摘要能看出在处理什么
-  const objects: string[] = [];
-  for (const s of steps) {
-    const input = (s.items[0].event as { input?: Record<string, unknown> }).input ?? {};
-    const raw = getToolSummary(s.toolName, input);
-    const m = raw.match(/[:：](.+)$/);
-    let obj = m ? m[1] : raw.startsWith(toolLabel(s.toolName)) ? raw.slice(toolLabel(s.toolName).length) : "";
-    obj = obj.replace(/[「『」』]/g, "").trim();
-    if (obj && !objects.includes(obj)) objects.push(obj);
-  }
-  if (objects.length > 0) {
-    const shown = objects.slice(0, 2).map((o) => (o.length > 14 ? `${o.slice(0, 14)}…` : o));
-    summary += `：${shown.join("、")}${objects.length > 2 ? "…" : ""}`;
+  let summary: string;
+  if (distinctLabels.length === 1) {
+    // 同质组:动词 ×N：对象列表(取各步 renderer 文案的对象部分,去重取前 2)
+    summary = totalSteps === 1 ? distinctLabels[0] : `${distinctLabels[0]} ×${totalSteps}`;
+    const objects: string[] = [];
+    for (const s of steps) {
+      const input = (s.items[0].event as { input?: Record<string, unknown> }).input ?? {};
+      const raw = getToolSummary(s.toolName, input);
+      const m = raw.match(/[:：](.+)$/);
+      let obj = m ? m[1] : raw.startsWith(toolLabel(s.toolName)) ? raw.slice(toolLabel(s.toolName).length) : "";
+      obj = obj.replace(/[「『」』]/g, "").trim();
+      if (obj && !objects.includes(obj)) objects.push(obj);
+    }
+    if (objects.length > 0) {
+      const shown = objects.slice(0, 2).map((o) => (o.length > 14 ? `${o.slice(0, 14)}…` : o));
+      summary += `：${shown.join("、")}${objects.length > 2 ? "…" : ""}`;
+    }
+  } else if (distinctLabels.length <= 3) {
+    // 混合 ≤3 种:动词列举(不冒用占比最高的名字);步数=种类数时 ×N 是废话,省略。
+    // 不给对象列表——不同动词的对象混排会误导。
+    summary = distinctLabels.join("、") + (totalSteps > distinctLabels.length ? ` ×${totalSteps}` : "");
+  } else {
+    // 混合 >3 种:首动词 等 ×N
+    summary = `${distinctLabels[0]} 等 ×${totalSteps}`;
   }
 
   if (failCount > 0) summary += ` · 含 ${failCount} 次重试`;
