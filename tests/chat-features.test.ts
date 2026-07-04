@@ -249,25 +249,33 @@ function main() {
     cssContent.includes(".preview-excel-row-header"),
     "style bundle should contain the excel row header styles"
   );
-  assert.ok(
-    cssContent.includes(".scroll-to-bottom-button"),
-    "style bundle should contain the scroll-to-bottom button styles"
+  const messageScrollerContent = fs.readFileSync(
+    path.join(import.meta.dirname, "../components/ui/message-scroller.tsx"), "utf-8"
   );
   assert.ok(
-    cssContent.includes(".attachment-chip-main"),
-    "style bundle should contain clickable attachment-chip-main styles"
+    messageScrollerContent.includes('data-slot="message-scroller-button"'),
+    "message scroller should provide the scroll-to-bottom control"
+  );
+  // 统一附件卡片(输入框 + 消息共用):图片满卡预览 / 文件语义色卡 / 点图片 lightbox
+  assert.ok(
+    cssContent.includes(".attach-card-main"),
+    "style bundle should contain the clickable attachment card button"
   );
   assert.ok(
-    cssContent.includes(".attachment-chip .file-type-icon"),
-    "style bundle should keep document file icons out of the image crop rule"
+    cssContent.includes(".attach-card-img"),
+    "style bundle should crop image cards with object-fit cover"
   );
   assert.ok(
-    cssContent.includes(".attachment-chip-close"),
-    "style bundle should contain the attachment close-button positioning styles"
+    cssContent.includes(".attach-card-file"),
+    "style bundle should tint file cards with the file semantic color"
   );
   assert.ok(
-    cssContent.includes(".attachment-chip-main"),
-    "style bundle should explicitly style the attachment main button"
+    cssContent.includes(".attach-card-close"),
+    "style bundle should contain the card remove-button positioning styles"
+  );
+  assert.ok(
+    cssContent.includes(".image-lightbox"),
+    "style bundle should contain the click-to-view image lightbox styles"
   );
   assert.ok(
     panelContent.includes("showOpenWith={false}"),

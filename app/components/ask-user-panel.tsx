@@ -7,6 +7,7 @@ import { Edit02Icon, HelpCircleIcon, ArrowLeft01Icon, ArrowRight01Icon } from "@
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
+import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -122,9 +123,11 @@ export function AskUserPanel({
 
   return (
     <div className="rounded-2xl border border-border bg-card px-4 pt-3 pb-3 flex flex-col gap-3">
-      {/* 顶部:走光「正在询问」+ header;多题显示进度点 */}
-      <div className="flex items-center justify-between gap-2 text-meta">
-        <span className="fa-shimmer-text">正在询问{sub.header ? ` · ${sub.header}` : ""}</span>
+      {/* 顶部:走光「正在询问」+ header;多题显示进度点。
+          aria-label 给这个 live region 一个可访问名(否则内容只算 description、SR 与
+          getByRole({name}) 都取不到),扫光统一用品牌色。 */}
+      <Marker role="status" aria-label={`正在询问${sub.header ? ` · ${sub.header}` : ""}`} className="justify-between text-meta">
+        <MarkerContent className="shimmer shimmer-color-primary text-muted-foreground">正在询问{sub.header ? ` · ${sub.header}` : ""}</MarkerContent>
         {multiQ ? (
           <div className="flex items-center gap-1.5">
             <span className="text-caption text-muted-foreground tabular-nums">{curIdx + 1}/{subs.length}</span>
@@ -141,7 +144,7 @@ export function AskUserPanel({
             </div>
           </div>
         ) : null}
-      </div>
+      </Marker>
 
       {/* 问题 */}
       <div className="text-title whitespace-pre-line">{sub.question}</div>

@@ -2,7 +2,7 @@
 
 import type { ReactNode, Ref } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MagicWand01Icon, BrainIcon } from "@hugeicons/core-free-icons";
+import { NoteIcon, BrainIcon } from "@hugeicons/core-free-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { SkillRef } from "@/app/chat/chat-types";
@@ -46,7 +46,7 @@ export function SkillPopup({
       onClick={() => selectSkill({ name, description })}
       onMouseEnter={() => setSelectedIndex(index)}
     >
-      <HugeiconsIcon icon={MagicWand01Icon} size={16} className="shrink-0 text-muted-foreground" />
+      <HugeiconsIcon icon={NoteIcon} size={16} className="shrink-0 text-muted-foreground" />
       <span className="skill-name">{name}</span>
       <span className="skill-desc">{description}</span>
       {tag ? <span className="skill-tag">{tag}</span> : null}

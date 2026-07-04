@@ -499,6 +499,9 @@ void (async () => {
   const { cockpitTickerTestPromise } = await import("./cockpit-ticker.test.ts");
   await cockpitTickerTestPromise;
 
+  const { attachmentCardTestPromise } = await import("./attachment-card.test.ts");
+  await attachmentCardTestPromise;
+
   const { voucherBuildIncomeTestPromise } = await import("./voucher-build-income.test.ts");
   await voucherBuildIncomeTestPromise;
 
