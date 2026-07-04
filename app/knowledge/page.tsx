@@ -14,7 +14,7 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ResourceTabs } from "@/app/shared/resource-tabs";
 import { ResourceCard, type ResourceCardMenuItem } from "@/app/shared/resource-card";
-import { PageSearchDialog } from "@/app/shared/page-search-dialog";
+import { PageSearchBar } from "@/app/shared/page-search-dialog";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { Button } from "@/components/ui/button";
@@ -679,6 +679,19 @@ function KnowledgePageContent() {
             )}
           </div>
 
+          <PageSearchBar
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            value={query}
+            onValueChange={(value) => {
+              setQuery(value);
+              if (!value) { setResults(null); setSearchError(""); }
+            }}
+            onSubmit={() => void doSearch()}
+            placeholder="搜索知识库…"
+            label="搜索知识库"
+          />
+
           {/* Doc grid / search results */}
           <div className="flex-1 overflow-y-auto">
             {isSearchMode ? (
@@ -931,19 +944,6 @@ function KnowledgePageContent() {
       </div>
 
       {/* Delete confirm */}
-      <PageSearchDialog
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        value={query}
-        onValueChange={(value) => {
-          setQuery(value);
-          if (!value) { setResults(null); setSearchError(""); }
-        }}
-        onSubmit={() => void doSearch()}
-        placeholder="搜索知识库…"
-        label="搜索知识库"
-      />
-
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={open => { if (!open) setDeleteTarget(null); }}
