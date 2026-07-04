@@ -83,7 +83,7 @@
 
   --text-body: 0.875rem;
   --text-body--line-height: 1.6;
-  --text-body--font-weight: 450;
+  --text-body--font-weight: 400;
     
   --text-small: 0.8125rem;
   --text-small--line-height: 1.3;
@@ -537,25 +537,6 @@ html button.composer-send-button.stop {
 @keyframes fa-think-breathe { 0%, 100% { transform: scale(0.6); opacity: 0; } 50% { transform: scale(1); opacity: 0.22; } }
 @keyframes fa-dot-pulse { 0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--tone-alarm) l c h / 35%); } 55% { box-shadow: 0 0 0 5px oklch(from var(--tone-alarm) l c h / 0%); } }
 
-/* 正在执行步骤的文字「走光」:一道高亮从左到右循环扫过文字(逐字变亮) */
-.fa-shimmer-text {
-  background: linear-gradient(
-    90deg,
-    var(--muted-foreground) 0%,
-    var(--muted-foreground) 35%,
-    var(--primary) 50%,
-    var(--muted-foreground) 65%,
-    var(--muted-foreground) 100%
-  );
-  background-size: 220% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: fa-shimmer 1.6s linear infinite;
-}
-@keyframes fa-shimmer { 0% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
-
 /* 思考/处理中的星芒图标:8 条射线 scaleY 呼吸 + 逐条延迟,描边走主色。
    --fa-spark-speed 控制呼吸快慢(A 思考慢、B 处理快一档)。 */
 .fa-spark .ray {
@@ -578,7 +559,6 @@ html button.composer-send-button.stop {
   .fa-dot-pulse, .fa-spark .ray { animation: none; }
   .fa-spark .ray { transform: scaleY(0.7); opacity: 0.8; }
   .fa-pulse::after { animation: none; opacity: 0.18; }
-  .fa-shimmer-text { animation: none; color: var(--foreground); -webkit-text-fill-color: var(--foreground); }
 }
 
 /* 团队面板新角色入场动效(fa- 族命名;§5.2 生长时刻;一次性不循环) */
