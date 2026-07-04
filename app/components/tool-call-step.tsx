@@ -416,9 +416,10 @@ function RetryGroupRow({
             exit={{ height: 0, opacity: 0 }}
             transition={{ height: { duration: 0.22, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.18 } }}
             style={{ overflow: "hidden" }}
-            className="ml-[3px] border-l border-border/60 pl-3 py-0.5"
+            className="py-0.5"
           >
-            <div className="flex flex-col gap-0.5">
+            {/* fa-thread 必须挂在逐行的直接父级(伪元素按直接子项画弯钩) */}
+            <div className="fa-thread flex flex-col gap-0.5">
               {subPairs.map((p) => (
                 <ToolCallStep key={p.id} pair={p} degraded={recovered} />
               ))}
@@ -566,7 +567,7 @@ export function ToolStepList({
             className="details-chevron shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
           />
         </summary>
-        <div className="ml-[3px] flex flex-col gap-0.5 border-l border-border/60 pl-3">{rows}</div>
+        <div className="fa-thread flex flex-col gap-0.5">{rows}</div>
       </details>
     );
   }
