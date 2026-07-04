@@ -799,6 +799,8 @@ export default function ChatPage({
       if (!line) return;
       const newDraft = draft ? `${draft}\n${line}\n` : `${line}\n`;
       setDraft(newDraft);
+      setMentionActive(false);
+      setSkillMenuActive(false);
       const caret = newDraft.length;
       const el = textareaRef.current;
       requestAnimationFrame(() => el?.setSelectionRange(caret, caret));
