@@ -50,16 +50,14 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
           aria-label={label}
           className="min-w-0 flex-1 border-0 bg-transparent text-body outline-none placeholder:text-muted-foreground"
         />
-        {value ? (
-          <button
-            type="button"
-            aria-label="清空搜索"
-            onClick={() => { onValueChange(""); inputRef.current?.focus(); }}
-            className="inline-grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={14} />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          aria-label="关闭搜索"
+          onClick={() => onOpenChange(false)}
+          className="inline-grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <HugeiconsIcon icon={Cancel01Icon} size={14} />
+        </button>
       </form>
     </div>
   );
