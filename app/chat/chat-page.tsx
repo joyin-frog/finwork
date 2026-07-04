@@ -37,7 +37,7 @@ import { useNavState } from "@/app/shared/nav-state";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import {
   buildUserContent,
-  buildFolderIngestPrompt,
+  formatFolderPathLine,
   readAttachment,
   shouldReadAsText,
   getClipboardFiles,
@@ -788,15 +788,21 @@ export default function ChatPage({
     }
   }
 
-  // 选「单据文件夹」:桌面端选本地目录,把路径注入一条消息发给 agent(不走上传,无大小限制)。
-  // agent 据路径 run_python 列目录逐张识别 → 汇总 → 生成凭证草稿。
+  // 选文件夹:桌面端选本地目录,把路径插入输入框,不自动发送。
+  // 用户接着在输入框打字表达意图,主 agent 自行路由。
   async function pickReceiptFolder() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const folder = await open({ directory: true, multiple: false, title: "选择单据文件夹" });
+      const folder = await open({ directory: true, multiple: false, title: "选择文件夹" });
       if (!folder || typeof folder !== "string") return;
-      const prompt = buildFolderIngestPrompt(folder);
-      if (prompt) void sendMessage(prompt);
+      const line = formatFolderPathLine(folder);
+      if (!line) return;
+      const newDraft = draft ? `${draft}\n${line}\n` : `${line}\n`;
+      setDraft(newDraft);
+      const caret = newDraft.length;
+      const el = textareaRef.current;
+      requestAnimationFrame(() => el?.setSelectionRange(caret, caret));
+      textareaRef.current?.focus();
     } catch (err) {
       console.error("[pick-folder] failed", err);
       toast.error("选择文件夹失败(桌面端可用)");
@@ -1086,7 +1092,7 @@ export default function ChatPage({
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => void pickReceiptFolder()}>
                           <HugeiconsIcon icon={Folder01Icon} size={16} />
-                          选择单据文件夹
+                          选择文件夹
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={openSkillMenu}>
                           <HugeiconsIcon icon={NoteIcon} size={16} />
