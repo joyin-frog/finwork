@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ChevronRightIcon } from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
+import {
+  ChevronRightIcon,
+  Search01Icon,
+  CommandLineIcon,
+  File01Icon,
+  PencilEdit01Icon,
+  NoteIcon,
+  HelpSquareIcon,
+  Calculator01Icon,
+} from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion } from "motion/react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -60,6 +70,35 @@ const TOOL_VISUAL: Record<string, { strip?: RegExp; relabel?: string }> = {
 };
 function toolVisual(name: string): { strip?: RegExp; relabel?: string } {
   return TOOL_VISUAL[name] ?? {};
+}
+
+// 动作家族 → 淡色小图标(参考 Claude:图标不缺席,但按类型归并到 6 个家族,
+// 同族连续行共用同一图标 → 有结构感又不"碎")。默认回落文档图标。
+const STEP_ICON_BY_FAMILY: Record<string, IconSvgElement> = {
+  search: Search01Icon,     // 检索/查询/grep/web 搜索/科目匹配
+  command: CommandLineIcon, // Bash / run_python
+  read: File01Icon,         // 读取文件/识别单据/抓取网页
+  write: PencilEdit01Icon,  // 写入/编辑
+  skill: NoteIcon,          // 技能/子代理
+  ask: HelpSquareIcon,      // 询问用户
+  finance: Calculator01Icon,// 金额核对等财务动作
+};
+
+const TOOL_FAMILY: Record<string, keyof typeof STEP_ICON_BY_FAMILY> = {
+  search_knowledge: "search", query_knowledge: "search", Grep: "search", Glob: "search",
+  WebSearch: "search", query_kingdee_accounts: "search", map_voucher_account: "search",
+  Bash: "command", run_python: "command",
+  Read: "read", read_file: "read", read_document: "read", WebFetch: "read", scan_slip_folder: "read",
+  Write: "write", Edit: "write", MultiEdit: "write",
+  Skill: "skill", spawn_subagent: "skill",
+  AskUserQuestion: "ask",
+  check_voucher_amount: "finance",
+};
+
+function stepIcon(name: string): IconSvgElement {
+  const bare = name.replace(/^mcp__\w+__/, "");
+  const family = TOOL_FAMILY[bare];
+  return family ? STEP_ICON_BY_FAMILY[family] : File01Icon;
 }
 
 // 把路径/文件名这类技术 token 嵌成等宽小芯片(参考 Claude Code 的行内 code 风格),人话里更分得清。
@@ -233,15 +272,19 @@ function ToolCallStep({ pair, degraded = false }: { pair: ToolPair; degraded?: b
         onClick={() => hasDetail && setExpanded((v) => !v)}
       >
         {/* 每行一个类型图标是视觉噪音(Claude 过程行几乎无图标):仅运行中保留星芒,静止行无图标 */}
-        {running ? (
-          <span className="inline-flex shrink-0 w-4 h-4 items-center justify-center" style={{ color: "var(--muted-foreground)" }}>
-            <ThinkingSpark size={13} speed="1.0s" />
-          </span>
-        ) : null}
+        {/* 运行中→星芒;否则→淡色家族图标(与竖线对齐,给过程行结构感) */}
+        <span
+          className="inline-flex shrink-0 w-4 h-4 items-center justify-center"
+          style={{ color: isError && !isDegraded ? "var(--tone-alarm)" : "var(--muted-foreground)" }}
+        >
+          {running
+            ? <ThinkingSpark size={13} speed="1.0s" />
+            : <HugeiconsIcon icon={stepIcon(pair.name)} size={13} className="opacity-70" />}
+        </span>
         <span
           className={cn(
             "min-w-0 truncate",
-            running ? "fa-shimmer-text"
+            running ? "shimmer shimmer-color-primary text-muted-foreground"
               : (isError && !isDegraded) ? ""
               : "text-muted-foreground group-hover:text-foreground transition-colors"
           )}
@@ -315,6 +358,12 @@ function RetryGroupRow({
         type="button"
         onClick={() => setExpanded((v) => !v)}
       >
+        <span
+          className="inline-flex shrink-0 w-4 h-4 items-center justify-center"
+          style={{ color: recovered ? "var(--muted-foreground)" : "var(--tone-alarm)" }}
+        >
+          <HugeiconsIcon icon={stepIcon(group.toolName)} size={13} className="opacity-70" />
+        </span>
         <span
           className={cn(
             "min-w-0 truncate",
@@ -493,6 +542,7 @@ export function ToolStepList({
   if (!isActive && aggregated.length >= 2) {
     return (
       <details className="flex flex-col gap-0.5">
+        {/* 父行(组摘要)不带图标——图标留给子行,避免父子重复(倾向子 icon) */}
         <summary className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
           <span className="min-w-0 truncate">{summarizeToolSegment(toolItems)}</span>
           <HugeiconsIcon

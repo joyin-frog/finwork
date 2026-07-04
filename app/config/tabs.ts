@@ -1,7 +1,7 @@
 import {
   ConfigurationIcon,
   BotIcon,
-  MagicWand01Icon,
+  NoteIcon,
   BrainIcon,
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
@@ -13,7 +13,7 @@ import {
 export const CONFIG_TABS = [
   { key: "general", label: "常规", icon: ConfigurationIcon },
   { key: "model", label: "模型连接", icon: BotIcon },
-  { key: "skills", label: "技能", icon: MagicWand01Icon },
+  { key: "skills", label: "技能", icon: NoteIcon },
   { key: "understanding", label: "小财的了解", icon: BrainIcon },
   { key: "about", label: "关于", icon: InformationCircleIcon },
 ] as const;
