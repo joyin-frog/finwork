@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { SPRING_DEFAULT } from "@/app/shared/motion-presets";
 import type { AskUserQuestionPayload } from "@/app/chat/chat-types";
 import { cn } from "@/lib/utils";
+import { extractAnswerSnippet } from "@/app/chat/answer-snippet";
 
 const FALLBACK_OPTIONS: Array<{ label: string; description?: string }> = [{ label: "确认" }, { label: "取消" }];
 
@@ -145,12 +146,16 @@ export function AskAnsweredSummary({ header, answer }: { header?: string; answer
   }
 
   const multi = parseMultiAnswer(answer!);
-  // 多问:折叠成一行「已确认 N 项」,点开看逐条 —— 不再把 JSON 平铺成一坨。
+  // 多问:折叠成一行「已确认 N 项」+ 答案摘要灰字,点开看逐条 —— 不再把 JSON 平铺成一坨。
   if (multi && multi.length > 1) {
+    const snippet = extractAnswerSnippet(answer!);
     return (
-      <details className="py-0.5 text-meta min-w-0">
-        <summary className="flex items-center gap-1.5 cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
-          <span>{header ? `${header}：已确认 ${multi.length} 项` : `已确认 ${multi.length} 项`}</span>
+      <details className="py-0.5 text-body min-w-0">
+        <summary className="flex items-center gap-1.5 cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors min-w-0">
+          <span className="shrink-0">{header ? `${header}：已确认 ${multi.length} 项` : `已确认 ${multi.length} 项`}</span>
+          {snippet ? (
+            <span className="truncate text-muted-foreground/60 min-w-0">{snippet}</span>
+          ) : null}
           <HugeiconsIcon icon={ChevronRightIcon} size={12} className="details-chevron transition-transform shrink-0 text-muted-foreground/60" aria-hidden="true" />
         </summary>
         <div className="mt-1 flex flex-col gap-1 pl-1">
@@ -162,7 +167,7 @@ export function AskAnsweredSummary({ header, answer }: { header?: string; answer
 
   // 单问:原样一行 chip。
   return (
-    <div className="py-0.5 text-meta min-w-0">
+    <div className="py-0.5 text-body min-w-0">
       <AnswerPair question={header} answer={answer!} />
     </div>
   );

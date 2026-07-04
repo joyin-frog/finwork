@@ -1,9 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod/v4";
 import { getPythonPath, getProjectRoot } from "@/lib/runtime/paths";
 import type { SdkLike } from "./sdk-types";
+import { DocCache } from "./doc-cache";
+
+/** 进程内单例缓存;同一进程跨调用共享 */
+const docCache = new DocCache(32);
 
 // 文档类(有文字层用 pdfplumber/openpyxl;扫描件 PDF 走 OCR 兜底)
 const TEXT_EXTS = [".pdf", ".xlsx", ".xls", ".docx", ".pptx"];
@@ -34,14 +38,22 @@ export function createReadDocumentTool(sdk: SdkLike) {
         };
       }
       try {
+        const stat = statSync(filePath);
         const worker = path.join(getProjectRoot(), "workers", "finance_worker.py");
-        const out = execFileSync(getPythonPath(), [worker, cmd, filePath], {
-          encoding: "utf-8",
-          maxBuffer: 20 * 1024 * 1024,
-          timeout: 180_000,
-          env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
-        });
-        const text = out.trim();
+        const text = await docCache.getOrCompute(
+          filePath,
+          stat.mtimeMs,
+          stat.size,
+          async (fp) => {
+            const out = execFileSync(getPythonPath(), [worker, cmd, fp], {
+              encoding: "utf-8",
+              maxBuffer: 20 * 1024 * 1024,
+              timeout: 180_000,
+              env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+            });
+            return out.trim();
+          }
+        );
         return { content: [{ type: "text" as const, text: text || "(未提取到文本;若为扫描件请确认清晰度)" }] };
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };

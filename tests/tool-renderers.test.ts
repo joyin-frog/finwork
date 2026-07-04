@@ -20,7 +20,7 @@ function main() {
   );
   assert.equal(getToolSummary("mcp__finance_worker__confirm_payroll_period", { year: 2026, month: 6 }), "确认 2026年6月 工资生效");
   assert.equal(getToolSummary("mcp__finance_worker__check_reimbursement_batch", { items: [{}, {}] }), "核对报销单(2 条)");
-  assert.equal(getToolSummary("mcp__finance_worker__search_knowledge", { query: "差旅标准" }), "检索知识库「差旅标准」");
+  assert.equal(getToolSummary("mcp__finance_worker__search_knowledge", { query: "差旅标准" }), "检索知识库：差旅标准");
   assert.ok(getToolSummary("mcp__finance_worker__tax_calculator", { type: "vat", amount: 11300 }).includes("增值税"));
   assert.ok(getToolSummary("mcp__kingdee_worker__export_kingdee_draft", { period: "2026-06" }).includes("2026-06"));
 

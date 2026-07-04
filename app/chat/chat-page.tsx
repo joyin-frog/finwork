@@ -18,9 +18,11 @@ import {
   MagicWand01Icon,
 } from "@hugeicons/core-free-icons";
 import { RefreshIcon, SuccessIcon, CopyIcon } from "@/lib/icons";
+import { messageTimestamp } from "@/app/chat/message-timestamp";
+import { extractVoucherChips } from "@/app/chat/voucher-chips";
 import { useRouter } from "next/navigation";
 import type { StoredAgentEvent, StoredChatAttachment } from "@/lib/db/sqlite";
-import { ToolStepList, ThinkingStep } from "@/app/components/tool-call-step";
+import { ToolStepList } from "@/app/components/tool-call-step";
 import { RoleModeProvider, type RoleMode } from "@/app/chat/role-mode";
 import { AskAnsweredSummary } from "@/app/components/ask-user-card";
 import { AskUserPanel } from "@/app/components/ask-user-panel";
@@ -455,11 +457,19 @@ export default function ChatPage({
     if (!conversationFilesLoaded) return;
     if (panelDefaultResolvedRef.current) return;
     setFilePanelOpen(shouldDefaultOpenFilePanel(conversationFiles.length));
+    // 基线在此一并记录:历史产出不算"新产出",下方 auto-open effect 只对基线之后的增量弹出
+    outputCountRef.current = conversationFiles.filter((file) => file.role === "assistant").length;
     panelDefaultResolvedRef.current = true;
   }, [conversationFiles, conversationFilesLoaded]);
 
   useEffect(() => {
     const outputs = conversationFiles.filter((file) => file.role === "assistant");
+    // 历史会话首次加载只记基线:既有产出不是"新产出",不触发弹出(浮层会盖住回答首行);
+    // 基线就绪后回合中新增产出照常自动弹出。
+    if (!panelDefaultResolvedRef.current) {
+      outputCountRef.current = outputs.length;
+      return;
+    }
     if (!userClosedPanelRef.current && shouldAutoOpenOutputPanel(outputCountRef.current, outputs.length)) {
       setFilePanelOpen(true);
     }
@@ -1253,6 +1263,11 @@ function AssistantTurn({
   const { processSegments, answerText } = useMemo(() => buildTurnSegments(timeline), [timeline]);
   // thinking 段是否存在:决定纯思考回合(无工具步)也显示过程块,思考按时序穿插在步骤间。
   const hasThinkingSegment = useMemo(() => processSegments.some((s) => s.kind === "thinking"), [processSegments]);
+  // 过程区是否有可见内容(正文进展句):thinking 段不再渲染后,details 的显隐以此为准
+  const hasProcessText = useMemo(
+    () => processSegments.some((s) => s.kind === "text" && s.content.trim() !== ""),
+    [processSegments]
+  );
   const askUserItems = useMemo(() => timeline.filter(
     (t): t is TimelineItem & { event: Extract<AgentEvent, { type: "ask_user" }> } => t.event.type === "ask_user"
   ), [timeline]);
@@ -1319,9 +1334,27 @@ function AssistantTurn({
   }, [message, timeline]);
   // C3 溯源:仅报销流程返回非空;机械事实打底,口径叙述仍由模型写在正文。
   const reimbursementProvenance = useMemo(() => buildReimbursementProvenance(timeline), [timeline]);
+  // export_voucher_list chips:从 timeline tool_result 读取 sheets/voucherCount,按产物文件名索引。
+  // extractVoucherChips 按文件名查找;这里预先收集所有产物文件名 → chips,渲染时直接按名查。
+  const voucherChipsMap = useMemo((): Map<string, { sheets: number; voucherCount: number }> => {
+    const m = new Map<string, { sheets: number; voucherCount: number }>();
+    // 遍历所有 export_voucher_list tool_result,以 fileName 为 key 缓存 chips
+    for (const item of timeline) {
+      const ev = item.event;
+      if (ev.type !== "tool_result") continue;
+      const toolName = (ev as { name?: string }).name ?? "";
+      if (!toolName.includes("export_voucher_list")) continue;
+      const content = (ev as { content?: string }).content ?? "";
+      try {
+        const parsed = JSON.parse(content) as Record<string, unknown>;
+        if (typeof parsed.fileName !== "string") continue;
+        const chips = extractVoucherChips([item], parsed.fileName as string);
+        if (chips) m.set(parsed.fileName as string, chips);
+      } catch { /* ignore malformed JSON */ }
+    }
+    return m;
+  }, [timeline]);
   const lastSegIdx = processSegments.length - 1;
-  // 时间线尾巴是思考行时,流动星芒由该行自己亮,底部不再重复挂一个。
-  const lastSegIsThinking = processSegments[lastSegIdx]?.kind === "thinking";
 
   // F2: 反馈状态
   const [reasonPickerOpen, setReasonPickerOpen] = useState(false);
@@ -1362,8 +1395,12 @@ function AssistantTurn({
       {/* 起手纯思考阶段(还没任何产出)的状态行:正在思考 + 实时计时。产出一开始就交给过程块,
           思考原文作为 thinking 段按真实时序穿插在工具步骤之间,不再单独聚合展示。 */}
       <ThinkingStatusLine active={isActive && !hasOutput} />
-      {/* 过程块在有工具步骤或思考段时显示;步骤与思考按真实时序交错列出。 */}
-      {toolStepCount > 0 || hasThinkingSegment ? (
+      {/* 纯思考回合(无工具/无过程正文):思考行已不渲染,details 会是空壳,退化为一行定格标签 */}
+      {toolStepCount === 0 && !hasProcessText && hasThinkingSegment && !isActive ? (
+        <div className="py-1 text-body text-muted-foreground">{processedLabel}</div>
+      ) : null}
+      {/* 过程块在有工具步骤或过程正文时显示;进行中的纯思考回合也先挂上(产出随时到来) */}
+      {toolStepCount > 0 || hasProcessText || (hasThinkingSegment && isActive) ? (
         <>
         <details
           className="overflow-hidden text-small"
@@ -1384,7 +1421,7 @@ function AssistantTurn({
           {/* 无边框、不缩进:摘要左缘与正文对齐。结束显示实际处理时长(已处理 7m / 1h7m1s)。
               标题与正文同字号同色;流式中叠走光(思考→处理两段式由 isActive 决定文案)。 */}
           <summary className="flex items-center gap-2 cursor-pointer py-1 list-none">
-            <span className={cn("min-w-0 flex-1 truncate", isActive ? "fa-shimmer-text" : "text-muted-foreground")}>
+            <span className={cn("min-w-0 flex-1 truncate text-body", isActive ? "fa-shimmer-text" : "text-muted-foreground")}>
               {isActive ? "正在处理" : processedLabel}
             </span>
             <HugeiconsIcon icon={ChevronRightIcon} size={15} className="details-chevron transition-transform shrink-0" />
@@ -1409,35 +1446,54 @@ function AssistantTurn({
                 );
               }
               if (seg.kind === "thinking") {
-                // 思考行是当前尾巴且回合进行中 → 星芒落在这一行(动画);否则无图标。
-                return <ThinkingStep key={`thinking-${seg.id}`} content={seg.content} active={segActive && !anyToolRunning} />;
+                // 思考段不渲染(对齐 Claude:thinking 不进过程叙事,节奏由正文进展句+动作组承担)。
+                // 数据仍在 timeline 里,需要时可恢复;进行中的思考由 ThinkingStatusLine/星芒表达。
+                return null;
               }
+              // 跨段恢复信号:该段之后所有 tools 段的事件(失败与重试成功常被 thinking 段隔开)
+              const laterToolItems = processSegments
+                .slice(segIdx + 1)
+                .filter((s) => s.kind === "tools")
+                .flatMap((s) => s.items as TimelineItem[]);
               return (
                 <div key={`tools-${segIdx}`}>
-                  <ToolStepList timeline={seg.items as TimelineItem[]} isActive={segActive} />
+                  <ToolStepList timeline={seg.items as TimelineItem[]} isActive={segActive} laterTimeline={laterToolItems} />
                   {(seg.items as TimelineItem[]).filter((t) => t.event.type === "system").map((item) => (
                     <TimelineRow key={item.id} item={item} />
                   ))}
                 </div>
               );
             })}
+            {/* 已答的确认项折叠在过程块内(它们是过程的一部分);待答且回合进行中 → 输入框上方浮层,不在此重复 */}
+            {askUserItems.map((item) => {
+              const ans = askAnswers.get(item.event.questionId);
+              if (ans === undefined && isActive) return null;
+              return (
+                <AskAnsweredSummary
+                  key={item.event.questionId}
+                  header={item.event.question.header}
+                  answer={ans}
+                />
+              );
+            })}
           </div>
           )}
         </details>
         </>
-      ) : null}
-      {askUserItems.map((item) => {
-        const ans = askAnswers.get(item.event.questionId);
-        // 待答且本回合进行中 → 交给输入框上方的浮层,时间线不重复渲染
-        if (ans === undefined && isActive) return null;
-        return (
-          <AskAnsweredSummary
-            key={item.event.questionId}
-            header={item.event.question.header}
-            answer={ans}
-          />
-        );
-      })}
+      ) : (
+        // 无过程块的回合(纯直答)兜底:已答确认项仍要有处落脚
+        askUserItems.map((item) => {
+          const ans = askAnswers.get(item.event.questionId);
+          if (ans === undefined && isActive) return null;
+          return (
+            <AskAnsweredSummary
+              key={item.event.questionId}
+              header={item.event.question.header}
+              answer={ans}
+            />
+          );
+        })
+      )}
       {/* 答案正文:占位态(还没产出)不渲染;answerText=最后一段无工具的 text,否则回退 message.content。
           流式期间文本已进过程段时不回退 message.content(避免与过程块里中间文本重复)。 */}
       {(() => {
@@ -1460,8 +1516,8 @@ function AssistantTurn({
         );
       })()}
       {/* 「还活着」跟随星芒:已开始产出、回合未结束且没有工具在跑(答案流式 / 处理空档)→ 底部动的星芒。
-          起手纯思考由「正在思考」状态行负责;尾巴是思考行且过程块展开时星芒已落在该行,这里都不重复。 */}
-      {isActive && !anyToolRunning && hasOutput && !(processOpen && lastSegIsThinking) ? (
+          思考行已不渲染,尾巴是思考段时星芒统一落底部,不再有"落在思考行"的分支。 */}
+      {isActive && !anyToolRunning && hasOutput ? (
         <div className="flex items-center gap-2 py-0.5" role="status" aria-label="处理中">
           <ThinkingSpark size={18} />
         </div>
@@ -1482,6 +1538,7 @@ function AssistantTurn({
               setOpenMenuKey={setOpenMenuKey}
               onPreviewFile={onPreviewFile}
               bordered
+              voucherChips={voucherChipsMap.get(file.name) ?? null}
             />
           ))}
         </div>
@@ -1506,10 +1563,10 @@ function AssistantTurn({
             <button
               type="button"
               className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors",
+                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors transition-opacity",
                 answerCopied
                   ? "text-[color:var(--tone-ok)] bg-[color:var(--tone-ok)]/10"
-                  : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted"
+                  : "msg-toolbar-btn-fade text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground hover:bg-muted"
               )}
               aria-label={answerCopied ? "已复制" : "复制全文"}
               onClick={copyAnswer}
@@ -1519,10 +1576,10 @@ function AssistantTurn({
             <button
               type="button"
               className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors",
+                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors transition-opacity",
                 feedback?.rating === "up"
                   ? "text-[color:var(--tone-ok)] bg-[color:var(--tone-ok)]/10"
-                  : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted"
+                  : "msg-toolbar-btn-fade text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground hover:bg-muted"
               )}
               aria-label="有帮助"
               onClick={() => {
@@ -1535,10 +1592,10 @@ function AssistantTurn({
             <button
               type="button"
               className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors",
+                "flex items-center gap-1 px-2 py-1 rounded text-meta transition-colors transition-opacity",
                 feedback?.rating === "down"
                   ? "text-[color:var(--tone-alarm)] bg-[color:var(--tone-alarm)]/10"
-                  : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted"
+                  : "msg-toolbar-btn-fade text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground hover:bg-muted"
               )}
               aria-label="没帮上"
               onClick={() => {
@@ -1548,6 +1605,12 @@ function AssistantTurn({
             >
               <HugeiconsIcon icon={ThumbsDownIcon} size={13} />
             </button>
+            {/* 相对时间戳:hover/键盘聚焦时淡入,灰字小字,离开后消失 */}
+            {message.createdAt ? (
+              <span className="msg-toolbar-timestamp text-caption text-muted-foreground/60 px-1 select-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                {messageTimestamp(message.createdAt)}
+              </span>
+            ) : null}
           </div>
           {reasonPickerOpen ? (
             <div className="mt-1 flex flex-col gap-2 max-w-xs text-meta">
@@ -1615,7 +1678,7 @@ function useLiveElapsed(startedAt?: number): number {
 }
 
 /** 起手纯思考阶段的状态行:「正在思考 + 实时计时」(星芒呼吸)。产出一开始即消失,
- *  思考原文由过程块里按时序穿插的 ThinkingStep 展示,不在此聚合。 */
+ *  思考原文不再进过程叙事(thinking 段不渲染),此处只负责起手计时行。 */
 function ThinkingStatusLine({ active }: { active: boolean }) {
   // 思考开始时刻:首次进入"思考态"时记一次,供进行中实时计时。
   const startRef = useRef<number | null>(null);

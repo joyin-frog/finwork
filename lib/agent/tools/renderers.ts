@@ -51,9 +51,16 @@ const summaries: Record<string, SummaryFn> = {
   },
 
   // ─── 财务工具(finance_worker) ───
-  search_knowledge: (i) => { const q = str(i, "query"); return q ? `检索知识库「${q.slice(0, 30)}」` : "检索知识库"; },
-  query_knowledge: (i) => { const c = str(i, "command"); return c ? `知识库命令检索:${c.slice(0, 50)}` : "知识库命令检索"; },
-  read_file: (i) => { const f = str(i, "fileName"); return f ? `读取知识库文件 ${f}` : "读取知识库文件"; },
+  search_knowledge: (i) => { const q = str(i, "query"); return q ? `检索知识库：${q.slice(0, 24)}` : "检索知识库"; },
+  query_knowledge: (i) => {
+    const c = str(i, "command");
+    if (!c) return "查询知识库";
+    // 优先提取 rg 模式(rg '...' 或 rg "..." 形式);否则截断命令
+    const rgMatch = c.match(/\brg\s+['"](.*?)['"]/);
+    const display = rgMatch ? `(rg) ${rgMatch[1].slice(0, 32)}` : c.slice(0, 32);
+    return `查询知识库：${display}`;
+  },
+  read_file: (i) => { const f = str(i, "fileName"); return f ? `读取资料：${f}` : "读取资料"; },
   remember_convention: (i) => { const t = str(i, "text"); const r = str(i, "replaces"); return t ? (r ? `更新约定「${t.slice(0, 40)}」` : `记住约定「${t.slice(0, 40)}」`) : (r ? `取消约定「${r.slice(0, 40)}」` : "更新工作约定"); },
   record_business_metrics: (i) => {
     const rows = Array.isArray((i as Record<string, unknown>)?.rows) ? (i as Record<string, unknown>).rows as unknown[] : [];
@@ -146,7 +153,8 @@ const summaries: Record<string, SummaryFn> = {
   },
   build_voucher_sheet: (i) => { const n = arrayLen(i, "vouchers"); return `生成对照清单${n ? `(${n} 张凭证)` : ""}`; },
   summarize_vouchers: (i) => { const n = arrayLen(i, "results"); return `汇总凭证${n ? `(${n} 张)` : ""}`; },
-  process_voucher_batch: (i) => { const n = arrayLen(i, "slips"); return `批量处理单据${n ? `(${n} 张)` : ""}`; },
+  process_voucher_batch: (i) => { const n = arrayLen(i, "slips"); return `批量处理${n ? `${n} 笔业务` : "单据"}`; },
+  export_voucher_list: (i) => { const n = arrayLen(i, "vouchers"); return `导出凭证清单${n ? `(${n} 笔)` : ""}`; },
 };
 
 /** 从 Python 代码提炼一句人话「目的」:仅当能认出操作的具名数据文件时给「处理《X》」,否则返回空(UI 兜底「运行代码」)。 */

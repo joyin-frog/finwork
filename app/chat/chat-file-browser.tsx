@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { StoredChatAttachment } from "@/lib/db/sqlite";
 import { FileTypeIcon } from "@/app/shared/file-type-icon";
+import { getFileTypeLabel } from "@/app/chat/file-type-label";
 
 type OpenWithApp = {
   name: string;
@@ -86,7 +87,8 @@ export function OpenableFileRow({
   compact,
   bordered,
   onPreviewFile,
-  showOpenWith = true
+  showOpenWith = true,
+  voucherChips,
 }: {
   menuKey: string;
   /** 会话附件 id;给定时多一个「加入知识库」入口(只有真正落库的附件才有 id,内联产物没有)。 */
@@ -103,6 +105,8 @@ export function OpenableFileRow({
   bordered?: boolean;
   onPreviewFile?: (file: PreviewableConversationFile) => void;
   showOpenWith?: boolean;
+  /** export_voucher_list 摘要 chips:来自 tool_result 中的结构化数据,旧会话无此数据时不显示。 */
+  voucherChips?: { sheets: number; voucherCount: number } | null;
 }) {
   const menuOpen = openMenuKey === menuKey;
   const [apps, setApps] = useState<OpenWithApp[] | null>(null);
@@ -165,7 +169,27 @@ export function OpenableFileRow({
         disabled={disabled}
       >
         {getFileIcon(mimeType, name)}
-        <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground">{name}</span>
+        {bordered ? (
+          <span className="min-w-0 flex-1 flex flex-col gap-0.5">
+            <span className="truncate text-small text-foreground">{name}</span>
+            <span className="truncate text-caption text-muted-foreground">
+              {getFileTypeLabel(mimeType, name, sizeBytes)}
+              {voucherChips ? (
+                <span className="ml-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0 text-caption text-muted-foreground">
+                    {voucherChips.sheets} sheets
+                  </span>
+                  {" "}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0 text-caption text-muted-foreground">
+                    {voucherChips.voucherCount} 笔凭证
+                  </span>
+                </span>
+              ) : null}
+            </span>
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground">{name}</span>
+        )}
       </button>
       {showOpenWith ? (
         <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>

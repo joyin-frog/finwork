@@ -499,4 +499,44 @@ void (async () => {
   const { cockpitTickerTestPromise } = await import("./cockpit-ticker.test.ts");
   await cockpitTickerTestPromise;
 
+  const { voucherBuildIncomeTestPromise } = await import("./voucher-build-income.test.ts");
+  await voucherBuildIncomeTestPromise;
+
+  const { voucherDimensionValidateTestPromise } = await import("./voucher-dimension-validate.test.ts");
+  await voucherDimensionValidateTestPromise;
+
+  const { exportVoucherListTestPromise } = await import("./export-voucher-list.test.ts");
+  await exportVoucherListTestPromise;
+
+  const { knowledgeMcpFixesTestPromise } = await import("./knowledge-mcp-fixes.test.ts");
+  await knowledgeMcpFixesTestPromise;
+
+  const { docCacheTestPromise } = await import("./doc-cache.test.ts");
+  await docCacheTestPromise;
+
+  const { routerContinuationTestPromise } = await import("./router-continuation.test.ts");
+  await routerContinuationTestPromise;
+
+  const { rendererVoucherFixesTestPromise } = await import("./renderer-voucher-fixes.test.ts");
+  await rendererVoucherFixesTestPromise;
+
+  const { flagsDbOverrideTestPromise } = await import("./flags-db-override.test.ts");
+  await flagsDbOverrideTestPromise;
+
+  const { chatProcessRenderersTestPromise } = await import("./chat-process-renderers.test.ts");
+  await chatProcessRenderersTestPromise;
+
+  const { errorDetailTestPromise } = await import("./error-detail.test.ts");
+  await errorDetailTestPromise;
+
+  const { stepAggregateTestPromise, summarizeToolSegmentTestPromise } = await import("./step-aggregate.test.ts");
+  await stepAggregateTestPromise;
+  await summarizeToolSegmentTestPromise;
+
+  const { toolCallStepUiTestPromise } = await import("./tool-call-step-ui.test.ts");
+  await toolCallStepUiTestPromise;
+
+  const { chatProcessPolishTestPromise } = await import("./chat-process-polish.test.ts");
+  await chatProcessPolishTestPromise;
+
 })();

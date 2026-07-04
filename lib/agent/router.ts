@@ -96,22 +96,62 @@ export function matchTrivialMessage(message: string): RouterDecision | null {
   return null;
 }
 
+/** 续轮快速路径上下文:有 claudeSessionId（会话可 resume）且提供 conversationId 时,
+ *  可查上一轮路由日志决定是否跳过 LLM 分类。 */
+export type RouterContext = {
+  claudeSessionId?: string | null;
+  conversationId?: number;
+};
+
 /**
  * 用 Messages API 直连做一次意图分类(JSON 文本输出,单次 HTTP)。
  * 任何失败(超时/网络/解析)都回退到"main 路径全 skills",不阻塞主流程。
+ *
+ * context.claudeSessionId 有值 + 上一轮路由 intent 是 complex_workflow/tool_task 时,
+ * 跳过 LLM 路由,沿用上一轮 intent,节省 5–11s。
  */
 export async function runRouter(
   message: string,
   history: AgentMessage[],
-  traceId?: string
+  traceId?: string,
+  context?: RouterContext
 ): Promise<RouterResult> {
   const startedAt = Date.now();
 
   const trivial = matchTrivialMessage(message);
   if (trivial) {
     const latencyMs = Date.now() - startedAt;
-    logRouterDecision(message, trivial, "cheap", latencyMs, traceId);
+    logRouterDecision(message, trivial, "cheap", latencyMs, traceId, undefined, context?.conversationId);
     return { decision: trivial, path: "cheap", latencyMs };
+  }
+
+  // 续轮快速路径:本会话已有 claudeSessionId（可 resume）且上一轮路由是 complex/tool 时跳过 LLM。
+  if (context?.claudeSessionId && context.conversationId != null) {
+    const prevRow = getLastRoutingRow(context.conversationId);
+    if (prevRow && prevRow.path !== "cheap") {
+      let prevIntent: RouterDecision["intent"] | null = null;
+      let prevNeedsRag = false;
+      try {
+        const parsed = JSON.parse(prevRow.decision_json) as { intent?: string; needsRag?: boolean };
+        if (parsed.intent === "complex_workflow" || parsed.intent === "tool_task") {
+          prevIntent = parsed.intent as RouterDecision["intent"];
+          prevNeedsRag = parsed.needsRag === true;
+        }
+      } catch { /* ignore parse error, fall through to normal routing */ }
+
+      if (prevIntent) {
+        const decision: RouterDecision = {
+          intent: prevIntent,
+          needsRag: prevNeedsRag,
+          mainModelTier: "main",
+          reasoning: "router skipped (continuation)",
+        };
+        const latencyMs = Date.now() - startedAt;
+        console.log("[router] skipped (continuation)", { traceId, intent: prevIntent });
+        logRouterDecision(message, decision, "main", latencyMs, traceId, undefined, context.conversationId);
+        return { decision, path: "main", latencyMs };
+      }
+    }
   }
 
   const fallbackDecision: RouterDecision = {
@@ -128,7 +168,7 @@ export async function runRouter(
     if (isMockAgentEnabled() || !settings.apiKey.trim()) {
       const latencyMs = Date.now() - startedAt;
       const why = isMockAgentEnabled() ? "mock agent" : "missing api key";
-      logRouterDecision(message, fallbackDecision, "fallback", latencyMs, traceId, why);
+      logRouterDecision(message, fallbackDecision, "fallback", latencyMs, traceId, why, context?.conversationId);
       return { decision: fallbackDecision, path: "fallback", latencyMs };
     }
 
@@ -184,13 +224,13 @@ export async function runRouter(
 
     const latencyMs = Date.now() - startedAt;
     const path = decision.intent === "greeting" || decision.intent === "trivial_qa" ? "cheap" : "main";
-    logRouterDecision(message, decision, path, latencyMs, traceId);
+    logRouterDecision(message, decision, path, latencyMs, traceId, undefined, context?.conversationId);
     return { decision, path, latencyMs };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.warn("[router] failed, falling back to main path", { error: errorMessage });
     const latencyMs = Date.now() - startedAt;
-    logRouterDecision(message, fallbackDecision, "fallback", latencyMs, traceId, errorMessage);
+    logRouterDecision(message, fallbackDecision, "fallback", latencyMs, traceId, errorMessage, context?.conversationId);
     return { decision: fallbackDecision, path: "fallback", latencyMs };
   }
 }
@@ -330,17 +370,33 @@ function logRouterDecision(
   path: "cheap" | "main" | "fallback",
   latencyMs: number,
   traceId?: string,
-  error?: string
+  error?: string,
+  conversationId?: number
 ) {
   try {
     const db = getDb();
     // error 走 decision_json,避免改 schema;观测层可据此区分"主动 fallback"与"故障 fallback"
     const decisionJson = JSON.stringify(error ? { ...decision, _error: error } : decision);
     db.prepare(
-      `INSERT INTO model_routing_log (trace_id, user_message, decision_json, path, router_latency_ms)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(traceId ?? null, redact(userMessage).slice(0, 500), decisionJson, path, latencyMs);
+      `INSERT INTO model_routing_log (trace_id, conversation_id, user_message, decision_json, path, router_latency_ms)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(traceId ?? null, conversationId ?? null, redact(userMessage).slice(0, 500), decisionJson, path, latencyMs);
   } catch {
     // best-effort logging
+  }
+}
+
+/** 取该会话最近一条路由日志行(用于续轮快速路径决策)。 */
+function getLastRoutingRow(conversationId: number): { path: string; decision_json: string } | null {
+  try {
+    const db = getDb();
+    return db
+      .prepare(
+        `SELECT path, decision_json FROM model_routing_log
+         WHERE conversation_id = ? ORDER BY id DESC LIMIT 1`
+      )
+      .get(conversationId) as { path: string; decision_json: string } | null;
+  } catch {
+    return null;
   }
 }

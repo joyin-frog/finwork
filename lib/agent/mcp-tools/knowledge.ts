@@ -1,6 +1,6 @@
 import { searchKnowledge } from "@/lib/knowledge/rg-search";
 import { readTextMirror } from "@/lib/knowledge/storage";
-import { syncNamedMirror, getKnowledgeNamedDir } from "@/lib/knowledge/named-mirror";
+import { syncNamedMirror, getKnowledgeNamedDir, sanitizeDocFileName } from "@/lib/knowledge/named-mirror";
 import { executeKnowledgeQuery } from "@/lib/knowledge/query-sandbox";
 import { getKnowledgeDocumentById, listKnowledgeDocuments, markKnowledgeHits } from "@/lib/db/sqlite";
 // markKnowledgeHits 仍用于 read_file 的命中埋点;search 的埋点已下沉到 searchKnowledge
@@ -16,9 +16,21 @@ function resolveDoc(fileName: string) {
   if (Number.isFinite(idNum) && idNum > 0) {
     return getKnowledgeDocumentById(idNum) ?? null;
   }
-  // Then by file name
+  // Then by exact file_name or title
   const docs = listKnowledgeDocuments();
-  return docs.find(d => d.file_name === fileName || d.title === fileName) ?? null;
+  const exact = docs.find(d => d.file_name === fileName || d.title === fileName);
+  if (exact) return exact;
+
+  // Fallback: compare request name against sanitized title (same transform as syncNamedMirror).
+  // Handles the case where the model calls read_file with the mirror file name it saw via rg
+  // (e.g. "科目--新系统.txt") while the DB has file_name "科目--新系统.xlsx".
+  const requestBase = fileName.replace(/\.txt$/i, "");
+  return (
+    docs.find(d => {
+      const sanitized = sanitizeDocFileName(d.title, d.id);
+      return sanitized === requestBase || sanitized === fileName;
+    }) ?? null
+  );
 }
 
 // MCP 工具结果必须是 {content:[...]} object;这三个知识库工具原先直接返回 string,
@@ -29,14 +41,15 @@ const knowledgeText = (text: string) => ({ content: [{ type: "text" as const, te
 export function createSearchKnowledgeTool(sdk: Sdk) {
   return sdk.tool(
     "search_knowledge",
-    "当用户询问知识、政策、文档内容、操作规范时调用。先用 ripgrep 在知识库中精确搜索关键词，返回 top3 文件的匹配片段（含前后各 5 行上下文）。闲聊、问候、纯计算类问题不要调用此工具。无结果时返回明确的空提示。",
+    "关键词/字面匹配检索知识库（底层 ripgrep），适合数字、专有名词、科目编码等精确词汇，不做相似度推断。当用户询问知识、政策、文档内容、操作规范时调用。返回命中文件的匹配片段（含前后各 5 行上下文）。如需精确文件操作或多步钻取，请改用 query_knowledge。闲聊、问候、纯计算类问题不要调用此工具。无结果时返回明确的空提示。topK 最大 5，超出自动取 5。",
     {
-      query: z.string().describe("自然语言或关键词；可用 'A OR B' 表达多关键词"),
-      topK: z.number().int().min(1).max(5).default(3),
+      query: z.string().describe("关键词或字面字符串；可用 'A OR B' 表达多关键词"),
+      topK: z.number().int().min(1).default(3).describe("返回文件数，最大 5，超出自动取 5"),
     },
     async (args: { query: string; topK?: number }) => {
+      const topK = Math.min(args.topK ?? 3, 5);
       try {
-        const res = await searchKnowledge({ query: args.query, topK: args.topK ?? 3 });
+        const res = await searchKnowledge({ query: args.query, topK });
         if (!res.ok) return knowledgeText(`知识库搜索失败：${res.error}`);
         if (!res.data.files.length) return knowledgeText("知识库中未找到相关内容。");
         // 命中埋点已在 searchKnowledge 内统一处理

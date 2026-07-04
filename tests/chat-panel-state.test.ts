@@ -10,7 +10,8 @@ import {
 
 function main() {
   assert.equal(shouldDefaultOpenFilePanel(0), false, "panel should stay closed when the conversation has no files");
-  assert.equal(shouldDefaultOpenFilePanel(3), true, "panel should default open when the conversation has files");
+  // 打开历史会话时浮层面板不再自动展开(盖住正文);有新产出仍由 shouldAutoOpenOutputPanel 弹出
+  assert.equal(shouldDefaultOpenFilePanel(3), false, "panel should stay closed on load even with files (no content overlay)");
 
   assert.equal(shouldAutoOpenOutputPanel(0, 1), true, "new outputs should auto-open the panel");
   assert.equal(shouldAutoOpenOutputPanel(2, 2), false, "unchanged output count should not auto-open the panel");

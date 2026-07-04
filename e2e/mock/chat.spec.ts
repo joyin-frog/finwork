@@ -78,11 +78,10 @@ test("chat: 代码块语言标签 + 复制全文 + 思考折叠块", async ({ pa
   // #1 代码块语言标签:从 ```python 提取的语言名随代码块呈现
   await expect(answer.getByText("python", { exact: true })).toBeVisible();
 
-  // #3 思考折叠块:回合结束后可展开 → 思考原文出现(经 route 脱敏后落库)
+  // #3 思考定格标签:thinking 已从过程叙事移除(对齐 Claude),纯思考回合只显示
+  // 「已思考 Xs」定格标签,原文不再在 UI 暴露(仍脱敏落库,DB 可查)
   const thinking = page.getByText(/^已思考/);
   await expect(thinking).toBeVisible();
-  await thinking.click();
-  await expect(page.getByText("我先把标题、列表、表格和代码块组织好")).toBeVisible();
 
   // #2 复制全文:按钮存在,点击后切到「已复制」态(clipboard 写入成功才会切)
   const copyBtn = page.getByRole("button", { name: "复制全文" }).last();
@@ -118,12 +117,19 @@ test("chat: ask_user 面板 → 选项 → 继续提交", async ({ page }) => {
   await page.screenshot({ path: "test-results/ask-summary.png" }).catch(() => {});
 });
 
-test("chat: 多工具流程 → 类型图标时间线", async ({ page }) => {
+test("chat: 多工具流程 → 分组时间线可下钻", async ({ page }) => {
   await sendChat(page, "工具演示");
   await page.getByText(/已处理/).first().click(); // 展开过程块(折叠摘要为「已处理 N 步 · 时长」)
   const details = page.locator("details").first();
-  await expect(details.getByText("【财务分析】")).toBeVisible();                     // Skill:友好名(不露 finance-skills: id);带括号以区别于思考行里的「财务分析技能」
-  await expect(details.getByText("差旅住宿标准")).toBeVisible();                    // search_knowledge:mcp 归一化
+  // 已完成的多步段默认收成一行组摘要(密度对齐 Claude);过程块内容是展开后才挂载的,
+  // 嵌套组用轮询展开(先点开所有未开的组,再断言目标可见)避免惰性挂载竞态
+  await expect(async () => {
+    for (const s of await details.locator("details:not([open]) > summary").elementHandles()) {
+      await s.click();
+    }
+    await expect(details.getByText("【财务分析】")).toBeVisible({ timeout: 500 });   // Skill:友好名(不露 finance-skills: id)
+  }).toPass({ timeout: 20_000 });
+  await expect(details.getByText("差旅住宿标准").first()).toBeVisible();             // search_knowledge:mcp 归一化(组摘要与子行都含对象名,取 first)
   await expect(details.getByText("运行代码").first()).toBeVisible();                 // run_python:友好文案
   await details.screenshot({ path: "test-results/tool-steps.png" }).catch(() => {});
 });

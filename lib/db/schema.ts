@@ -149,6 +149,7 @@ export function initializeSchema(db: DatabaseSync): void {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_model_routing_log_trace ON model_routing_log(trace_id);
+    CREATE INDEX IF NOT EXISTS idx_model_routing_log_conv ON model_routing_log(conversation_id, id DESC);
   `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS knowledge_documents (
