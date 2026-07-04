@@ -7,7 +7,6 @@ import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Cancel01Icon,
   Delete02Icon,
   Folder02Icon,
   Search01Icon,
@@ -24,6 +23,9 @@ import { FilePreviewPage, type ConversationPreviewFile, type KnowledgePreviewFil
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ResourceCard, type ResourceCardMenuItem } from "@/app/shared/resource-card";
+import { PageSearchDialog } from "@/app/shared/page-search-dialog";
+import { ShortcutHint } from "@/app/shared/shortcut-hint";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { cn } from "@/lib/utils";
 import type { UnifiedFileEntry } from "@/lib/db/sqlite";
@@ -117,12 +119,12 @@ function FilesPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [sort, setSort] = useState<SortKey>("date");
   const [selected, setSelected] = useState<UnifiedFileEntry | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UnifiedFileEntry | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   const addingChatRef = useRef(false);
 
   // 去重清理状态(B 功能)
@@ -477,18 +479,32 @@ function FilesPageContent() {
             <SidebarToggle />
             <ResourceTabs active="files" />
             <div className="ml-auto flex items-center gap-2 shrink-0">
-              <span className="text-meta text-muted-foreground whitespace-nowrap shrink-0">{displayFiles.length} 个文件</span>
+              <ShortcutHint label="搜索" combo="mod+f">
+                <button
+                  type="button"
+                  className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", q && "bg-accent text-foreground")}
+                  onClick={() => setSearchOpen(true)}
+                  aria-label="搜索"
+                >
+                  <HugeiconsIcon icon={Search01Icon} size={16} />
+                </button>
+              </ShortcutHint>
               {/* 去重清理按钮(B 功能) */}
-              <button
-                type="button"
-                className="flex items-center gap-2 px-2.5 py-1 rounded-md text-meta text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
-                onClick={() => void handleDedupAnalyze()}
-                disabled={dedupCleaning}
-                title="清理重复文件"
-              >
-                <HugeiconsIcon icon={CleanIcon} size={14} />
-                {dedupCleaning ? "清理中…" : "清理重复"}
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => void handleDedupAnalyze()}
+                    disabled={dedupCleaning}
+                    aria-label={dedupCleaning ? "清理中" : "清理重复文件"}
+                  >
+                    <HugeiconsIcon icon={CleanIcon} size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{dedupCleaning ? "清理中…" : "清理重复文件"}</TooltipContent>
+              </Tooltip>
+              <span className="text-meta text-muted-foreground whitespace-nowrap shrink-0">{displayFiles.length} 个文件</span>
               {previewCollapsed ? (
                 <button
                   type="button"
@@ -503,31 +519,6 @@ function FilesPageContent() {
               ) : null}
             </div>
           </header>
-
-          {/* Search */}
-          <div className="px-3.5 pt-3 pb-2 shrink-0">
-            <div className="relative max-w-sm">
-              <HugeiconsIcon icon={Search01Icon} size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <input
-                ref={searchRef}
-                type="text"
-                placeholder="搜索文件..."
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                className="w-full h-8 pl-8 pr-7 text-body border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
-                aria-label="搜索文件"
-              />
-              {q && (
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => { setQ(""); searchRef.current?.focus(); }}
-                >
-                  <HugeiconsIcon icon={Cancel01Icon} size={13} />
-                </button>
-              )}
-            </div>
-          </div>
 
           {/* Filter chips + sort */}
           <div className="flex items-center gap-2 px-3.5 py-2 border-b border-border overflow-x-auto [scrollbar-width:none] shrink-0">
@@ -691,6 +682,15 @@ function FilesPageContent() {
         confirmLabel="确认删除"
         destructive
         onConfirm={confirmDelete}
+      />
+
+      <PageSearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        value={q}
+        onValueChange={setQ}
+        placeholder="搜索对话文件…"
+        label="搜索对话文件"
       />
 
       {/* 去重清理确认框(B 功能) */}
