@@ -67,22 +67,15 @@ export const toolCallStepUiTestPromise = (async () => {
   }
   console.log("C2: chevron hover 显现 ✓");
 
-  // ── 3b. thinking 降权（spec 3b）────────────────────────────────────────────
+  // ── 3b. thinking 移除（密度第二轮后升级为彻底不渲染,组件删除防死代码）───────
   {
-    // ThinkingStep 折叠标题固定显示「思考」而非模型原文首行
     assert.ok(
-      stepSrc.includes("「思考」") || stepSrc.includes('"思考"') || stepSrc.includes("'思考'") || stepSrc.includes("`思考`") || stepSrc.includes(": \"思考\"") || stepSrc.includes("= \"思考\"") || (stepSrc.includes("思考") && stepSrc.includes("thinkingSummary")),
-      "C3b-1 FAIL: ThinkingStep 折叠标题应含「思考」固定文案"
+      !stepSrc.includes("function ThinkingStep") && !stepSrc.includes("export function ThinkingStep"),
+      "C3b-1 FAIL: ThinkingStep 组件应已删除(thinking 不再进过程叙事)"
     );
-    // 不应在折叠标题展示模型英文原文（thinkingSummary 不再提取首行）
-    // 验证方式：thinkingSummary 函数已被移除或不再被标题所用
-    // （标题改为固定「思考」，原函数仍可保留但不用于标题）
-    assert.ok(
-      !stepSrc.includes("thinkingSummary(content)") || stepSrc.includes("思考"),
-      "C3b-2 FAIL: ThinkingStep 折叠标题不应直接展示 thinkingSummary 原文（应固定为「思考」）"
-    );
+    assert.ok(!stepSrc.includes("thinkingSummary"), "C3b-2 FAIL: thinkingSummary 不应残留");
   }
-  console.log("C3b: thinking 降权 ✓");
+  console.log("C3b: thinking 移除(组件已删) ✓");
 
   // ── 4 & 7. 失败聚合接线（spec 4/7）─────────────────────────────────────────
   {

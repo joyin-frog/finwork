@@ -51,6 +51,17 @@ export const exportVoucherListTestPromise = (async () => {
         { summary: "付款", account: "1002", accountName: "银行存款", creditYuan: 3700 },
       ],
     },
+    {
+      // needs_confirm 不得混入对照清单/汇总口径,只进「待确认与跳过」sheet(H2)
+      file: "待确认单.pdf",
+      date: "2024-06-29",
+      status: "needs_confirm",
+      issues: ["科目待确认:「测试摘要」"],
+      lines: [
+        { summary: "测试摘要", account: "", debitYuan: 50 },
+        { summary: "付款", account: "1002", accountName: "银行存款", creditYuan: 50 },
+      ],
+    },
   ];
 
   const skipped = [
@@ -91,18 +102,26 @@ sheets = wb.sheetnames
 # 读第一 sheet 前3行
 ws1 = wb[sheets[0]]
 rows = list(ws1.iter_rows(values_only=True))
-print(json.dumps({"sheets": sheets, "sheet1_rows": len(rows), "sheet1_header": list(rows[0]) if rows else []}))
+sheet1_text = "|".join(str(c) for r in rows for c in r if c is not None)
+ws3 = wb["待确认与跳过"]
+sheet3_text = "|".join(str(c) for r in ws3.iter_rows(values_only=True) for c in r if c is not None)
+print(json.dumps({"sheets": sheets, "sheet1_rows": len(rows), "sheet1_header": list(rows[0]) if rows else [], "sheet1_text": sheet1_text, "sheet3_text": sheet3_text}))
 `;
     const verifyOut = execFileSync(PYTHON_PATH, ["-c", verifyCode], {
       encoding: "utf-8",
       env: { ...process.env, PYTHONUTF8: "1" },
     }).trim();
-    const { sheets, sheet1_rows } = JSON.parse(verifyOut) as { sheets: string[]; sheet1_rows: number };
+    const { sheets, sheet1_rows, sheet1_text, sheet3_text } = JSON.parse(verifyOut) as {
+      sheets: string[]; sheet1_rows: number; sheet1_text: string; sheet3_text: string;
+    };
 
     assert.ok(sheets.includes("对照清单"), `C1 FAIL: 缺少「对照清单」sheet,实际 sheets:${JSON.stringify(sheets)}`);
     assert.ok(sheets.includes("汇总"), `C1 FAIL: 缺少「汇总」sheet`);
     assert.ok(sheets.includes("待确认与跳过"), `C1 FAIL: 缺少「待确认与跳过」sheet`);
     assert.ok(sheet1_rows >= 3, `C1 FAIL: 对照清单至少有表头+2凭证行,实际${sheet1_rows}行`);
+    // H2: needs_confirm 凭证不进对照清单,只进待确认 sheet
+    assert.ok(!sheet1_text.includes("待确认单.pdf"), "C1-H2 FAIL: needs_confirm 凭证不应出现在对照清单");
+    assert.ok(sheet3_text.includes("待确认单.pdf"), "C1-H2 FAIL: needs_confirm 凭证应出现在待确认与跳过 sheet");
 
     // ── C2: 借贷不平衡 → isError,不落文件 ──
     const unbalancedVouchers = [

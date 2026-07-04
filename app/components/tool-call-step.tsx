@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  ChevronRightIcon,
-  CommandLineIcon, FlashIcon, PencilEdit01Icon, File01Icon,
-  Search01Icon, InternetIcon, Calculator01Icon, HelpCircleIcon,
-} from "@hugeicons/core-free-icons";
+import { ChevronRightIcon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion } from "motion/react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -35,38 +31,35 @@ function isImagePath(p: string): boolean {
   return Boolean(p && IMAGE_EXT.test(p));
 }
 
-// 工具类型 → 图标(代替"运行 Python / 调用技能"等文案)+ 可剥的中文前缀。
-type IconSpec = typeof CommandLineIcon;
-// strip:剥掉类型动词前缀(图标已表达);relabel:剥空后用此固定文案兜底(而非只剩图标)。
-const TOOL_VISUAL: Record<string, { icon: IconSpec; strip?: RegExp; relabel?: string }> = {
+// 工具类型 → 可剥的中文动词前缀(行图标已移除,组头/renderer 文案承担类型语义)。
+// strip:剥掉类型动词前缀;relabel:剥空后用此固定文案兜底。
+const TOOL_VISUAL: Record<string, { strip?: RegExp; relabel?: string }> = {
   // run_python 只剥前缀动词,保留后续业务描述(如"处理《X》");裸"执行 Python"剥空后兜底 relabel。
-  run_python: { icon: CommandLineIcon, strip: /^(?:运行|执行) Python[:：]?\s*/, relabel: "运行代码" },
-  Bash:       { icon: CommandLineIcon, strip: /^执行[:：]?\s*/ },
-  Skill:      { icon: FlashIcon,       strip: /^调用技能[:：]?\s*/ },
-  Write:      { icon: PencilEdit01Icon, strip: /^写入\s*/ },
-  Edit:       { icon: PencilEdit01Icon, strip: /^编辑\s*/ },
-  MultiEdit:  { icon: PencilEdit01Icon, strip: /^编辑\s*/ },
-  Read:       { icon: File01Icon, strip: /^读取\s*/ },
-  read_file:  { icon: File01Icon, strip: /^读取资料[:：]?\s*/ },
-  WebSearch:  { icon: InternetIcon, strip: /^搜索/ },
-  WebFetch:   { icon: InternetIcon, strip: /^获取\s*/ },
-  Grep:       { icon: Search01Icon, strip: /^搜索/ },
-  Glob:       { icon: Search01Icon, strip: /^查找文件\s*/ },
-  search_knowledge: { icon: Search01Icon, strip: /^检索知识库[:：]?\s*/ },
-  query_knowledge:  { icon: Search01Icon, strip: /^查询知识库[:：]?\s*/ },
-  AskUserQuestion:  { icon: HelpCircleIcon, strip: /^询问[:：]?\s*/ },
-  spawn_subagent:   { icon: FlashIcon, strip: /^执行子任务[:：]?\s*/ },
-  remember_convention: { icon: File01Icon },
+  run_python: { strip: /^(?:运行|执行) Python[:：]?\s*/, relabel: "运行代码" },
+  Bash:       { strip: /^执行[:：]?\s*/ },
+  Skill:      { strip: /^调用技能[:：]?\s*/ },
+  Write:      { strip: /^写入\s*/ },
+  Edit:       { strip: /^编辑\s*/ },
+  MultiEdit:  { strip: /^编辑\s*/ },
+  Read:       { strip: /^读取\s*/ },
+  read_file:  { strip: /^读取资料[:：]?\s*/ },
+  WebSearch:  { strip: /^搜索/ },
+  WebFetch:   { strip: /^获取\s*/ },
+  Grep:       { strip: /^搜索/ },
+  Glob:       { strip: /^查找文件\s*/ },
+  search_knowledge: { strip: /^检索知识库[:：]?\s*/ },
+  query_knowledge:  { strip: /^查询知识库[:：]?\s*/ },
+  AskUserQuestion:  { strip: /^询问[:：]?\s*/ },
+  spawn_subagent:   { strip: /^执行子任务[:：]?\s*/ },
   // 单据→凭证系:组头已带动词(「匹配科目 ×8」),子行剥前缀只留对象,避免逐行重复
-  map_voucher_account:    { icon: Calculator01Icon, strip: /^匹配科目\s*/ },
-  query_kingdee_accounts: { icon: Search01Icon,     strip: /^查询金蝶科目[表]?\s*/ },
-  check_voucher_amount:   { icon: Calculator01Icon, strip: /^核对金额\s*/ },
-  scan_slip_folder:       { icon: Search01Icon,     strip: /^扫描单据文件夹\s*/ },
-  read_document:          { icon: File01Icon,       strip: /^识别单据\s*/ },
+  map_voucher_account:    { strip: /^匹配科目\s*/ },
+  query_kingdee_accounts: { strip: /^查询金蝶科目[表]?\s*/ },
+  check_voucher_amount:   { strip: /^核对金额\s*/ },
+  scan_slip_folder:       { strip: /^扫描单据文件夹\s*/ },
+  read_document:          { strip: /^识别单据\s*/ },
 };
-const FINANCE_TOOLS = /payroll|reimbursement|reconcile|business|expense_policy|invoice/i;
-function toolVisual(name: string): { icon: IconSpec; strip?: RegExp; relabel?: string } {
-  return TOOL_VISUAL[name] ?? (FINANCE_TOOLS.test(name) ? { icon: Calculator01Icon } : { icon: CommandLineIcon });
+function toolVisual(name: string): { strip?: RegExp; relabel?: string } {
+  return TOOL_VISUAL[name] ?? {};
 }
 
 // 把路径/文件名这类技术 token 嵌成等宽小芯片(参考 Claude Code 的行内 code 风格),人话里更分得清。
@@ -97,65 +90,6 @@ function PlainBlock({ text, error }: { text: string; error?: boolean }) {
   return (
     <div className="md-content text-small [&_pre]:my-0 [&_pre]:max-h-64 [&_pre]:overflow-auto">
       <pre><code className="hljs" style={error ? { color: "var(--tone-alarm)" } : undefined}>{text}</code></pre>
-    </div>
-  );
-}
-
-/** 思考步骤行:折叠标题固定显示「思考」+ 时长徽章；原文进入展开详情。
- *  星芒是流动的:只有该行是当前进行中的尾巴(active)才亮动画星芒,处理完图标即消失(留空槽对齐)。 */
-export function ThinkingStep({ content, active = false }: { content: string; active?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  // spec 3b: 标题固定「思考」，不展示模型原文首行（统一与 Claude 行为一致）
-  const title = "思考";
-  return (
-    <div className="w-full">
-      <button
-        className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer transition-colors"
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <span className="inline-flex shrink-0 w-4 h-4 items-center justify-center text-muted-foreground">
-          {/* 进行中=流动星芒;完成态=安静小圆点(非旋转、明确不是"工作中"),给思考行一个左锚点,
-              使它读作"动作之间的旁白"而非缺了图标的错位文字。 */}
-          {active
-            ? <ThinkingSpark size={13} speed="1.0s" />
-            : <span className="w-[5px] h-[5px] rounded-full bg-muted-foreground/45" />}
-        </span>
-        <span
-          className={cn(
-            "min-w-0 truncate",
-            active ? "fa-shimmer-text" : "text-muted-foreground group-hover:text-foreground transition-colors"
-          )}
-          title={title}
-        >
-          {title}
-        </span>
-        {/* spec 2: chevron 默认隐藏，hover/focus 显现；触屏兜底 */}
-        <motion.span
-          animate={{ rotate: expanded ? 90 : 0 }}
-          transition={{ duration: 0.18 }}
-          className="inline-flex shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
-        >
-          <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
-        </motion.span>
-      </button>
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ height: { duration: 0.22, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.18 } }}
-            style={{ overflow: "hidden" }}
-            className="px-2 pb-1"
-          >
-            {/* spec 3b: 展开详情展示原文，走 small 号 + 弱化色 */}
-            <div className="md-content" style={{ fontSize: "var(--text-small)", color: "var(--muted-foreground)" }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

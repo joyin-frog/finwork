@@ -1678,7 +1678,7 @@ function useLiveElapsed(startedAt?: number): number {
 }
 
 /** 起手纯思考阶段的状态行:「正在思考 + 实时计时」(星芒呼吸)。产出一开始即消失,
- *  思考原文由过程块里按时序穿插的 ThinkingStep 展示,不在此聚合。 */
+ *  思考原文不再进过程叙事(thinking 段不渲染),此处只负责起手计时行。 */
 function ThinkingStatusLine({ active }: { active: boolean }) {
   // 思考开始时刻:首次进入"思考态"时记一次,供进行中实时计时。
   const startRef = useRef<number | null>(null);
