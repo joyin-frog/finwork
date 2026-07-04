@@ -7,7 +7,7 @@
 import { parseChineseAmount, reconcileAmount, type ReconcileResult } from "@/lib/domain/voucher-reconcile";
 import { yuanToFen } from "@/lib/domain/money";
 import { resolveAccount, type MappingEntry } from "@/lib/domain/account-mapping";
-import { buildVoucherLines, type VoucherLine } from "@/lib/domain/voucher-build";
+import { buildVoucherLines, type ExpenseLine, type VoucherLine } from "@/lib/domain/voucher-build";
 import { validateVoucherDimensions } from "@/lib/domain/voucher-dimension-validate";
 import { summarizeVouchers, type SlipResult, type VoucherSummary } from "@/lib/domain/voucher-summary";
 import { buildVoucherSheet, type VoucherSheet } from "@/lib/domain/voucher-sheet";
@@ -82,18 +82,27 @@ export function processVoucherBatch(input: BatchInput): BatchOutput {
     if (amountIssue) issues.push(amountIssue);
 
     // ② 逐费用明细映射科目(未命中不阻断,清编码待人工填)
-    const expenses: Array<{ summary: string; account: string; accountName?: string; amountYuan: number }> = [];
+    const expenses: ExpenseLine[] = [];
     let allMapped = true;
     let accountIssue: string | undefined;
     for (const item of slip.lineItems) {
       const m = resolveAccount(item.summary, mappings, chart);
       if (m.ok) {
-        expenses.push({ summary: item.summary, account: m.code, accountName: m.name, amountYuan: item.amountYuan });
+        // dimensionType 键始终显式携带(值取科目表声明,可为 undefined):
+        // 告知 buildVoucherLines 以科目表为准,无维度科目不强加「部门」(否则维度校验误判 needs_confirm)
+        expenses.push({
+          summary: item.summary,
+          account: m.code,
+          accountName: m.name,
+          amountYuan: item.amountYuan,
+          dimensionType: m.dimensionType,
+          ...(m.dimensionValue ? { dimensionValue: m.dimensionValue } : {}),
+        });
       } else {
         allMapped = false;
         accountIssue = `科目待确认:「${item.summary}」`;
         issues.push(accountIssue);
-        expenses.push({ summary: item.summary, account: "", amountYuan: item.amountYuan });
+        expenses.push({ summary: item.summary, account: "", amountYuan: item.amountYuan, dimensionType: undefined });
       }
     }
 

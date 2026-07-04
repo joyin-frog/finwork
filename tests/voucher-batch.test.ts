@@ -68,5 +68,26 @@ export const voucherBatchTestPromise = (async () => {
   assert.ok(invalidDefaultAccounts.vouchers[0].issues.some((issue) => issue.includes("付款科目待确认")), "PB5 FAIL: 应提示付款科目待确认");
   assert.ok(invalidDefaultAccounts.vouchers[1].issues.some((issue) => issue.includes("预借款科目待确认")), "PB5 FAIL: 冲销时应提示预借款科目待确认");
 
+  // ── PB6: 无核算维度的费用科目不被强加「部门」,合法凭证保持 auto(P1 评论回归) ──
+  const noDimChart: KingdeeAccount[] = [
+    { code: "6603.04", name: "财务费用-手续费", type: "费用" }, // 科目表未声明维度
+    { code: "1002", name: "银行存款", type: "资产", dimension: "银行账号" },
+  ];
+  const noDim = processVoucherBatch({
+    slips: [
+      { file: "wangyin.pdf", date: "2025-12-05", lineItems: [{ summary: "网银手续费", amountYuan: 25 }], totalYuan: 25, capitalText: "贰拾伍元整", departmentName: "财务部" },
+    ],
+    mappings: [{ keyword: "手续费", code: "6603.04" }],
+    chart: noDimChart,
+    paymentAccount: { code: "1002", name: "银行存款" },
+  });
+  assert.equal(noDim.vouchers[0].status, "auto", `PB6 FAIL: 无维度科目+部门名不应被维度校验拦下,实际 ${noDim.vouchers[0].status}(${noDim.vouchers[0].issues.join(";")})`);
+  const feeLine = noDim.vouchers[0].lines.find((l) => l.account === "6603.04");
+  assert.ok(feeLine && !feeLine.dimensionType && !feeLine.dimensionValue, "PB6 FAIL: 无维度科目的行不应携带任何维度");
+  // 有维度科目行为不变:6602.08 声明「部门」→ 行带 部门/行政部(上方 ① 用例已覆盖 auto,这里补维度值断言)
+  const shuidianLine = out.vouchers[0].lines.find((l) => l.account === "6602.08");
+  assert.equal(shuidianLine?.dimensionType, "部门", "PB6 FAIL: 声明「部门」的科目应保留维度类型");
+  assert.equal(shuidianLine?.dimensionValue, "行政部", "PB6 FAIL: 维度值应取报销部门");
+
   console.log("voucher-batch: 批量勾稽/映射/预借款冲销/汇总/清单一次出 ✓");
 })();

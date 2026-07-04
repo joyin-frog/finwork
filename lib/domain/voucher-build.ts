@@ -14,6 +14,9 @@ export type ExpenseLine = {
   summary: string;
   account: string;
   accountName?: string;
+  /** 科目表声明的核算维度类型。调用方显式提供该键(含 undefined)时以之为准——
+   * 无维度科目不再被强加「部门」;省略该键走旧默认(直连工具/老调用兼容)。 */
+  dimensionType?: string;
   dimensionValue?: string;
   amountYuan: number;
 };
@@ -60,13 +63,21 @@ export function buildVoucherLines(input: BuildVoucherInput): BuiltVoucher {
   for (const e of expenses) {
     const fen = yuanToFen(e.amountYuan);
     expenseTotalFen += fen;
+    // 维度:调用方显式给了 dimensionType 键(batch 路径,来自科目表)→ 以之为准,
+    // 无维度科目不填任何维度(否则确定性校验会把合法凭证误判 needs_confirm);
+    // 未给该键(直连工具/老调用)→ 沿用旧默认「部门」。
+    const declared = Object.prototype.hasOwnProperty.call(e, "dimensionType");
+    const dimType = declared ? e.dimensionType : "部门";
+    const dimValue = dimType
+      ? (e.dimensionValue ?? (dimType === "部门" ? departmentName : undefined))
+      : undefined;
     if (isIncome) {
       lines.push({
         summary: e.summary,
         account: e.account,
         accountName: e.accountName,
-        dimensionType: e.dimensionValue != null ? "部门" : undefined,
-        dimensionValue: e.dimensionValue,
+        dimensionType: e.dimensionValue != null || declared ? dimType : undefined,
+        dimensionValue: declared ? dimValue : e.dimensionValue,
         creditYuan: fenToYuan(fen),
       });
     } else {
@@ -74,8 +85,8 @@ export function buildVoucherLines(input: BuildVoucherInput): BuiltVoucher {
         summary: e.summary,
         account: e.account,
         accountName: e.accountName,
-        dimensionType: "部门",
-        dimensionValue: e.dimensionValue ?? departmentName,
+        dimensionType: dimType,
+        dimensionValue: dimValue,
         debitYuan: fenToYuan(fen),
       });
     }

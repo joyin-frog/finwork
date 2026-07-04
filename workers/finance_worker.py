@@ -490,7 +490,9 @@ def cmd_export_voucher_xlsx():
     import openpyxl
 
     payload = json.loads(sys.stdin.read())
-    output_path = payload["outputPath"]
+    # 防覆盖:同名已存在则版本化为 _v2/_v3…(与 run_python 守卫同规),
+    # 否则第二次导出会原地改写上一份交付物(附件按路径去重,旧回答的附件被静默篡改)
+    output_path = str(_next_versioned_path(Path(payload["outputPath"])))
     vouchers = payload.get("vouchers", [])
     skipped = payload.get("skipped", [])
     # needs_confirm 只进 sheet3,不混入对照清单与汇总口径

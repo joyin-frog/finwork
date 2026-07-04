@@ -7,7 +7,9 @@ import os from "node:os";
 // C. export_voucher_list MCP 工具:三 sheet xlsx 生成 + 借贷平衡校验拒绝 + 维度校验
 // 通过 mockSdk 捕获 handler,直接调用;不依赖运行中的 MCP server。
 
-const PYTHON_PATH = process.env.FINANCE_AGENT_PYTHON_PATH ?? "python3";
+// 与工具同源解析解释器(env 优先,回落 workers/.venv):裸 "python3" 在 CI 上没有 openpyxl
+import { getPythonPath } from "../lib/runtime/paths";
+const PYTHON_PATH = getPythonPath();
 const PROJECT_ROOT = path.resolve(new URL("../", import.meta.url).pathname);
 
 export const exportVoucherListTestPromise = (async () => {
@@ -52,14 +54,15 @@ export const exportVoucherListTestPromise = (async () => {
       ],
     },
     {
-      // needs_confirm 不得混入对照清单/汇总口径,只进「待确认与跳过」sheet(H2)
+      // needs_confirm 不得混入对照清单/汇总口径,只进「待确认与跳过」sheet(H2);
+      // 且故意不平衡(50≠40):待确认凭证本就不完整,不应阻断确认凭证的导出(P2 评论)
       file: "待确认单.pdf",
       date: "2024-06-29",
       status: "needs_confirm",
       issues: ["科目待确认:「测试摘要」"],
       lines: [
         { summary: "测试摘要", account: "", debitYuan: 50 },
-        { summary: "付款", account: "1002", accountName: "银行存款", creditYuan: 50 },
+        { summary: "付款", account: "1002", accountName: "银行存款", creditYuan: 40 },
       ],
     },
   ];
@@ -161,6 +164,16 @@ print(json.dumps({"sheets": sheets, "sheet1_rows": len(rows), "sheet1_header": l
     }) as { isError?: boolean; content: Array<{ text: string }> };
     assert.ok(c3Result.isError, "C3 FAIL: 维度错误应返回 isError");
     assert.ok(c3Result.content[0].text.includes("6603.02"), `C3 FAIL: 错误信息应含违规科目 6603.02`);
+
+    // ── C4: 同名重复导出 → 版本化 _v2,不原地覆盖上一份交付物(P2 评论) ──
+    const c4Result = await handler({ vouchers, skipped, chart, fileName }) as {
+      isError?: boolean; content: Array<{ text: string }>;
+    };
+    assert.ok(!c4Result.isError, `C4 FAIL: 重复导出不应报错:${c4Result.content?.[0]?.text?.slice(0, 200)}`);
+    const c4Parsed = JSON.parse(c4Result.content[0].text) as { filePath: string; fileName: string };
+    assert.ok(c4Parsed.fileName.includes("_v2"), `C4 FAIL: 第二次导出应版本化 _v2,实际 ${c4Parsed.fileName}`);
+    assert.ok(existsSync(c4Parsed.filePath), "C4 FAIL: _v2 文件应存在");
+    assert.ok(existsSync(path.join(outputDir, fileName)), "C4 FAIL: 第一份文件不应被覆盖删除");
 
   } finally {
     // 清理临时目录

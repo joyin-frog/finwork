@@ -520,9 +520,13 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
       fileName?: string;
     };
 
+    // 阻断性校验只作用于将写入「对照清单」的确认凭证;needs_confirm 本就不完整,
+    // 只进「待确认与跳过」sheet,不应阻断整批导出
+    const confirmedVouchers = vouchers.filter((v) => v.status !== "needs_confirm");
+
     // ① 借贷平衡校验(整数分)
     const balanceErrors: string[] = [];
-    for (const v of vouchers) {
+    for (const v of confirmedVouchers) {
       let debitFen = 0;
       let creditFen = 0;
       for (const l of v.lines) {
@@ -542,10 +546,10 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
       };
     }
 
-    // ② 维度合法性校验(有科目表时)
+    // ② 维度合法性校验(有科目表时,同样只校验确认凭证)
     if (chart && chart.length > 0) {
       const dimErrors: string[] = [];
-      for (const v of vouchers) {
+      for (const v of confirmedVouchers) {
         const result = validateVoucherDimensions(v.lines, chart);
         for (const err of result.errors) {
           dimErrors.push(`${v.file}: ${err}`);
@@ -578,20 +582,22 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
         env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
       });
       const result = JSON.parse(out.trim()) as { filePath: string };
+      // worker 侧防覆盖可能版本化为 _v2:回显真实落盘文件名,别让模型/附件流拿旧名找不到文件
+      const savedName = path.basename(result.filePath);
       return {
         content: [
           {
             type: "text" as const,
             text: JSON.stringify({
               filePath: result.filePath,
-              fileName: outFileName,
+              fileName: savedName,
               sheets: ["对照清单", "汇总", "待确认与跳过"],
               voucherCount: vouchers.length,
               skippedCount: (skipped ?? []).length,
             }, null, 2),
           },
         ],
-        structuredContent: { filePath: result.filePath, fileName: outFileName },
+        structuredContent: { filePath: result.filePath, fileName: savedName },
       };
     } catch (err: unknown) {
       const e = err as { stderr?: string; message?: string };
