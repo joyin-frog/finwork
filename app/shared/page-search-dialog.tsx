@@ -19,7 +19,8 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
     function handleShortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
-        onOpenChange(true);
+        if (open) inputRef.current?.focus();
+        else onOpenChange(true);
       } else if (event.key === "Escape" && open) {
         onOpenChange(false);
       }
