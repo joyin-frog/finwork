@@ -14,6 +14,8 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ResourceTabs } from "@/app/shared/resource-tabs";
 import { ResourceCard, type ResourceCardMenuItem } from "@/app/shared/resource-card";
+import { PageSearchDialog } from "@/app/shared/page-search-dialog";
+import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -202,6 +204,7 @@ function KnowledgePageContent() {
 
   // search
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [results, setResults] = useState<SearchData | null>(null);
   const [searchError, setSearchError] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -232,7 +235,6 @@ function KnowledgePageContent() {
   // 列表列至少留 360:头部(对话文件｜知识库 + 文档数 + 收起)在更窄时会换行。
   const { collapsed: sidebarCollapsed, previewW: sidebarW, dragging, mainRef, beginResize, toggle: toggleSidebar, open: openSidebar, resetWidth, maximize, maximized } = usePreviewResize(360);
 
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const addingRef = useRef(false);
 
   const isSearchMode = results !== null && query.trim() !== "";
@@ -620,6 +622,16 @@ function KnowledgePageContent() {
             <SidebarToggle />
             <ResourceTabs active="knowledge" />
             <div className="ml-auto flex items-center gap-2 shrink-0">
+              <ShortcutHint label="搜索" combo="mod+f">
+                <button
+                  type="button"
+                  className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", query && "bg-accent text-foreground")}
+                  onClick={() => setSearchOpen(true)}
+                  aria-label="搜索"
+                >
+                  <HugeiconsIcon icon={Search01Icon} size={16} />
+                </button>
+              </ShortcutHint>
               <span className="text-meta text-muted-foreground whitespace-nowrap shrink-0">{docs.length} 份文档</span>
               {sidebarCollapsed ? (
                 <button
@@ -635,30 +647,6 @@ function KnowledgePageContent() {
               ) : null}
             </div>
           </header>
-
-          {/* In-panel search */}
-          <div className="px-3.5 pt-3 pb-2 shrink-0">
-            <div className="relative max-w-sm">
-              <HugeiconsIcon icon={Search01Icon} size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <input
-                ref={searchInputRef}
-                className="w-full h-8 pl-8 pr-7 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
-                value={query}
-                onChange={e => { setQuery(e.target.value); if (!e.target.value) { setResults(null); setSearchError(""); } }}
-                onKeyDown={e => { if (e.key === "Enter") doSearch(); }}
-                placeholder="搜索知识库…"
-                aria-label="搜索知识库"
-              />
-              {query && (
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => { setQuery(""); setResults(null); setSearchError(""); searchInputRef.current?.focus(); }}
-                >
-                  <HugeiconsIcon icon={Cancel01Icon} size={13} />
-                </button>
-              )}
-            </div>
-          </div>
 
           {/* Category chips */}
           <div className="flex gap-2 px-3.5 py-2 border-b border-border overflow-x-auto [scrollbar-width:none] shrink-0">
@@ -943,6 +931,19 @@ function KnowledgePageContent() {
       </div>
 
       {/* Delete confirm */}
+      <PageSearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        value={query}
+        onValueChange={(value) => {
+          setQuery(value);
+          if (!value) { setResults(null); setSearchError(""); }
+        }}
+        onSubmit={() => void doSearch()}
+        placeholder="搜索知识库…"
+        label="搜索知识库"
+      />
+
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={open => { if (!open) setDeleteTarget(null); }}
