@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { FileTypeIcon } from "@/app/shared/file-type-icon";
 import { FILE_TYPE_COLORS } from "@/lib/files/file-type-colors";
 
@@ -81,20 +82,26 @@ export function AttachmentCard({
   );
 }
 
-/** 点击图片卡后的直接查看层:居中原图 + 深色遮罩,点空白/× / Esc 关闭。 */
+/** 点击图片卡后的直接查看层:居中原图 + 深色遮罩,点空白/× / Esc 关闭。
+ *  用 Portal 挂到 body:消息里的 lightbox 若留在 MessageScrollerItem(content-visibility/contain)
+ *  内部,position:fixed 会相对该容器定位并被裁剪 → 必须逃出 containment 祖先。 */
 export function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  if (!mounted) return null;
+  return createPortal(
     <div className="image-lightbox" role="dialog" aria-modal="true" aria-label={alt} onClick={onClose}>
       <button type="button" className="image-lightbox-close" onClick={onClose} aria-label="关闭">&times;</button>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img className="image-lightbox-img" src={src} alt={alt} onClick={(e) => e.stopPropagation()} />
-    </div>
+    </div>,
+    document.body
   );
 }
 
