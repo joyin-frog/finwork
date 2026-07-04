@@ -23,7 +23,7 @@ import { FilePreviewPage, type ConversationPreviewFile, type KnowledgePreviewFil
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ResourceCard, type ResourceCardMenuItem } from "@/app/shared/resource-card";
-import { PageSearchDialog } from "@/app/shared/page-search-dialog";
+import { PageSearchBar } from "@/app/shared/page-search-dialog";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
@@ -559,6 +559,15 @@ function FilesPageContent() {
             </div>
           </div>
 
+          <PageSearchBar
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            value={q}
+            onValueChange={setQ}
+            placeholder="搜索对话文件…"
+            label="搜索对话文件"
+          />
+
           {/* Card grid with grouping */}
           <div className="flex-1 overflow-y-auto">
             {loading && (
@@ -682,15 +691,6 @@ function FilesPageContent() {
         confirmLabel="确认删除"
         destructive
         onConfirm={confirmDelete}
-      />
-
-      <PageSearchDialog
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        value={q}
-        onValueChange={setQ}
-        placeholder="搜索对话文件…"
-        label="搜索对话文件"
       />
 
       {/* 去重清理确认框(B 功能) */}

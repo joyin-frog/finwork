@@ -24,7 +24,7 @@ export const knowledgeUiTestPromise = (async () => {
   assert.ok(!page.includes("DocMimeIcon"), "T2 FAIL: 行式渲染辅助应已移除/下沉到组件");
 
   // ── T3: 搜索入口移入右上角，输入框复用当前页搜索弹层 ───────────────
-  assert.ok(page.includes("PageSearchDialog") && page.includes('combo="mod+f"'), "T3 FAIL: 知识库应使用右上角当前页搜索与 mod+F 快捷键");
+  assert.ok(page.includes("PageSearchBar") && page.includes('combo="mod+f"'), "T3 FAIL: 知识库应使用右上角当前页搜索与 mod+F 快捷键");
 
   // ── T4: 归档操作存在 ────────────────────────────────────────────────
   assert.ok(page.includes("toggleArchive") && page.includes("已归档"), "T4 FAIL: 应有归档/已归档视图");

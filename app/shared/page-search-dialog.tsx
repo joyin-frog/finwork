@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Dialog as DialogPrimitive } from "radix-ui";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
-import { Button } from "@/components/ui/button";
 
-export function PageSearchDialog({ open, onOpenChange, value, onValueChange, placeholder, label, onSubmit }: {
+export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeholder, label, onSubmit }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   value: string;
@@ -18,56 +16,50 @@ export function PageSearchDialog({ open, onOpenChange, value, onValueChange, pla
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    function handleFind(event: KeyboardEvent) {
+    function handleShortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
         event.preventDefault();
-        onOpenChange(true);
+        if (open) inputRef.current?.focus();
+        else onOpenChange(true);
+      } else if (event.key === "Escape" && open) {
+        onOpenChange(false);
       }
     }
-    window.addEventListener("keydown", handleFind);
-    return () => window.removeEventListener("keydown", handleFind);
-  }, [onOpenChange]);
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [onOpenChange, open]);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  if (!open) return null;
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-scrim-modal duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
-        <DialogPrimitive.Content
-          onOpenAutoFocus={(event) => { event.preventDefault(); inputRef.current?.focus(); }}
-          className="fixed top-[18%] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border-2 border-border bg-popover text-body text-popover-foreground outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+    <div className="flex shrink-0 justify-end border-b border-border px-3.5 py-2">
+      <form
+        role="search"
+        className="flex h-9 w-full max-w-[280px] items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-xs"
+        onSubmit={(event) => { event.preventDefault(); onSubmit?.(); }}
+      >
+        <HugeiconsIcon icon={Search01Icon} size={16} className="shrink-0 text-muted-foreground" />
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(event) => onValueChange(event.target.value)}
+          placeholder={placeholder}
+          aria-label={label}
+          className="min-w-0 flex-1 border-0 bg-transparent text-body outline-none placeholder:text-muted-foreground"
+        />
+        <button
+          type="button"
+          aria-label="关闭搜索"
+          onClick={() => onOpenChange(false)}
+          className="inline-grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          <DialogPrimitive.Title className="sr-only">{label}</DialogPrimitive.Title>
-          <form
-            className="flex items-center gap-2.5 px-4"
-            onSubmit={(event) => { event.preventDefault(); onSubmit?.(); onOpenChange(false); }}
-          >
-            <HugeiconsIcon icon={Search01Icon} size={18} className="shrink-0 text-muted-foreground" />
-            <input
-              ref={inputRef}
-              value={value}
-              onChange={(event) => onValueChange(event.target.value)}
-              placeholder={placeholder}
-              aria-label={label}
-              className="h-12 flex-1 border-0 bg-transparent text-body outline-none placeholder:text-muted-foreground"
-            />
-            {value ? (
-              <button
-                type="button"
-                aria-label="清空搜索"
-                onClick={() => { onValueChange(""); inputRef.current?.focus(); }}
-                className="inline-grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={16} />
-              </button>
-            ) : null}
-            <DialogPrimitive.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="关闭" className="-mr-1.5 shrink-0">
-                <HugeiconsIcon icon={Cancel01Icon} size={18} />
-              </Button>
-            </DialogPrimitive.Close>
-          </form>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+          <HugeiconsIcon icon={Cancel01Icon} size={14} />
+        </button>
+      </form>
+    </div>
   );
 }
