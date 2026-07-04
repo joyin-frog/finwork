@@ -181,6 +181,24 @@ export const stepAggregateTestPromise = (async () => {
     assert.equal((singleAgg[0] as { degraded: boolean }).degraded, true, "A-X FAIL: 单失败步跨段成功应 degraded=true");
   }
 
+  // ── A-P: 并行批量调用(u,u,u,u,r,r,r,r 事件序)按 toolUseId 配对,不产孤儿行 ──
+  {
+    const uses: SegmentTimelineItem[] = [];
+    const results: SegmentTimelineItem[] = [];
+    for (let k = 0; k < 4; k++) {
+      uses.push({ id: `pu-${k}`, event: { type: "tool_use", name: "search_knowledge", id: `pu-${k}` }, createdAt: Date.now() });
+      results.push({ id: `pr-${k}`, event: { type: "tool_result", name: "search_knowledge", isError: true, toolUseId: `pu-${k}`, durationMs: 20 }, createdAt: Date.now() });
+    }
+    const batch = [...uses, ...results]; // 并行批量:先 4 个 use 再 4 个 result
+    const later: SegmentTimelineItem[] = [];
+    { const [u, r] = pair("search_knowledge", false); later.push(u, r); }
+    const agg = aggregateToolSegment(batch, later);
+    assert.equal(agg.length, 1, `A-P FAIL: 4 组并行失败应聚成 1 个 retry-group,实际 ${agg.length} 项: ${agg.map(a => a.kind).join(",")}`);
+    assert.equal(agg[0].kind, "retry-group", "A-P FAIL: 应为 retry-group");
+    assert.equal((agg[0] as { count: number }).count, 4, "A-P FAIL: count 应为 4");
+    assert.equal((agg[0] as { recovered: boolean }).recovered, true, "A-P FAIL: 跨段成功应 recovered=true");
+  }
+
   console.log("step-aggregate: all checks passed ✓");
 })();
 

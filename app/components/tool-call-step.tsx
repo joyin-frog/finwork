@@ -57,6 +57,12 @@ const TOOL_VISUAL: Record<string, { icon: IconSpec; strip?: RegExp; relabel?: st
   AskUserQuestion:  { icon: HelpCircleIcon, strip: /^询问[:：]?\s*/ },
   spawn_subagent:   { icon: FlashIcon, strip: /^执行子任务[:：]?\s*/ },
   remember_convention: { icon: File01Icon },
+  // 单据→凭证系:组头已带动词(「匹配科目 ×8」),子行剥前缀只留对象,避免逐行重复
+  map_voucher_account:    { icon: Calculator01Icon, strip: /^匹配科目\s*/ },
+  query_kingdee_accounts: { icon: Search01Icon,     strip: /^查询金蝶科目[表]?\s*/ },
+  check_voucher_amount:   { icon: Calculator01Icon, strip: /^核对金额\s*/ },
+  scan_slip_folder:       { icon: Search01Icon,     strip: /^扫描单据文件夹\s*/ },
+  read_document:          { icon: File01Icon,       strip: /^识别单据\s*/ },
 };
 const FINANCE_TOOLS = /payroll|reimbursement|reconcile|business|expense_policy|invoice/i;
 function toolVisual(name: string): { icon: IconSpec; strip?: RegExp; relabel?: string } {
@@ -104,7 +110,7 @@ export function ThinkingStep({ content, active = false }: { content: string; act
   return (
     <div className="w-full">
       <button
-        className="group flex w-full items-center gap-2 py-0.5 text-body text-left cursor-pointer transition-colors"
+        className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer transition-colors"
         type="button"
         onClick={() => setExpanded((v) => !v)}
       >
@@ -286,7 +292,7 @@ function ToolCallStep({ pair, degraded = false }: { pair: ToolPair; degraded?: b
     <div className="w-full">
       <button
         className={cn(
-          "group flex w-full items-center gap-2 py-0.5 text-body text-left transition-colors",
+          "group flex w-full items-center gap-2 py-1 text-body text-left transition-colors",
           hasDetail ? "cursor-pointer" : "cursor-default"
         )}
         type="button"
@@ -371,7 +377,7 @@ function RetryGroupRow({
   return (
     <div className="w-full">
       <button
-        className="group flex w-full items-center gap-2 py-0.5 text-body text-left cursor-pointer transition-colors"
+        className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer transition-colors"
         type="button"
         onClick={() => setExpanded((v) => !v)}
       >
@@ -410,7 +416,7 @@ function RetryGroupRow({
             exit={{ height: 0, opacity: 0 }}
             transition={{ height: { duration: 0.22, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.18 } }}
             style={{ overflow: "hidden" }}
-            className="pl-6 py-0.5"
+            className="ml-[3px] border-l border-border/60 pl-3 py-0.5"
           >
             <div className="flex flex-col gap-0.5">
               {subPairs.map((p) => (
@@ -552,7 +558,7 @@ export function ToolStepList({
   if (!isActive && aggregated.length >= 2) {
     return (
       <details className="flex flex-col gap-0.5">
-        <summary className="group flex w-full items-center gap-2 py-0.5 text-body text-left cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
+        <summary className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
           <span className="min-w-0 truncate">{summarizeToolSegment(toolItems)}</span>
           <HugeiconsIcon
             icon={ChevronRightIcon}
@@ -560,7 +566,7 @@ export function ToolStepList({
             className="details-chevron shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
           />
         </summary>
-        <div className="flex flex-col gap-0.5 pl-3">{rows}</div>
+        <div className="ml-[3px] flex flex-col gap-0.5 border-l border-border/60 pl-3">{rows}</div>
       </details>
     );
   }

@@ -241,6 +241,10 @@ export const toolCallStepUiTestPromise = (async () => {
     // ask-user 摘要行 body 字号
     const askSrc = src("app/components/ask-user-card.tsx");
     assert.ok(askSrc.includes('details className="py-0.5 text-body'), "C-D5 FAIL: 已确认摘要行应为 text-body");
+    // C-E: 呼吸感与连接线(第三轮)
+    assert.ok(!/py-0\.5 text-body/.test(stepSrc2), "C-E1 FAIL: 步骤/组行应为 py-1(呼吸感对齐 Claude)");
+    assert.ok((stepSrc2.match(/border-l border-border\/60/g) ?? []).length >= 2, "C-E2 FAIL: 组展开子命令应有左侧连接线");
+    assert.ok(/map_voucher_account:\s*\{[^}]*strip:/.test(stepSrc2), "C-E3 FAIL: 金蝶系工具应有 strip 前缀(子行只留对象)");
   }
 
   console.log("\ntool-call-step-ui: 全部断言通过 ✓");

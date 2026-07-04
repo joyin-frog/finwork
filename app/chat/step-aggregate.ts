@@ -28,42 +28,54 @@ type LogicalStep = {
  * 配对策略：tool_use 之后紧接着同工具名(或 toolUseId 匹配)的 tool_result。
  * 无法配对的孤儿事件包装为单独逻辑步(isError=false, durationMs=0)。 */
 function parseLogicalSteps(items: SegmentTimelineItem[]): LogicalStep[] {
+  // 并行批量调用时事件序是 u,u,u,u,r,r,r,r(而非 u,r 相邻),相邻配对会整段错位、
+  // 产出成排孤儿"执行失败"行。配对以 toolUseId 为准;无 id 的 result 回退到
+  // "后续第一个未认领的同名 result"。步骤顺序跟随 tool_use 的时序。
+  const resultByUseId = new Map<string, SegmentTimelineItem>();
+  for (const it of items) {
+    const ev = it.event;
+    const useId = ev.type === "tool_result" ? (ev.toolUseId as string | undefined) : undefined;
+    if (useId && !resultByUseId.has(useId)) resultByUseId.set(useId, it);
+  }
+
   const steps: LogicalStep[] = [];
-  let i = 0;
-  while (i < items.length) {
+  const consumed = new Set<string>();
+  for (let i = 0; i < items.length; i++) {
     const item = items[i];
     const ev = item.event;
     if (ev.type === "tool_use") {
       const name = (ev.name as string | undefined) ?? "tool";
       const useId = ev.id as string | undefined;
-      // 找紧接着的 tool_result（同 toolUseId 或同名且为下一个 tool_result）
-      let j = i + 1;
-      while (j < items.length && items[j].event.type !== "tool_result" && items[j].event.type !== "tool_use") {
-        j++;
-      }
-      if (j < items.length && items[j].event.type === "tool_result") {
-        const resEv = items[j].event;
-        const resultUseId = resEv.toolUseId as string | undefined;
-        // 接受：toolUseId 匹配，或 toolUseId 缺失且下一个就是 tool_result
-        if (!resultUseId || resultUseId === useId) {
-          steps.push({
-            toolName: name,
-            isError: Boolean(resEv.isError),
-            durationMs: (resEv.durationMs as number | undefined) ?? 0,
-            items: [item, items[j]],
-          });
-          i = j + 1;
-          continue;
+      let match: SegmentTimelineItem | undefined = useId ? resultByUseId.get(useId) : undefined;
+      if (!match) {
+        // 无 id 关联:向后找第一个未认领、自身也无 toolUseId 的同名 result
+        for (let j = i + 1; j < items.length; j++) {
+          const rev = items[j].event;
+          if (
+            rev.type === "tool_result" && !consumed.has(items[j].id) &&
+            !rev.toolUseId && ((rev.name as string | undefined) ?? "tool") === name
+          ) { match = items[j]; break; }
         }
       }
-      // 无法配对：作为孤儿 tool_use
-      steps.push({ toolName: name, isError: false, durationMs: 0, items: [item, item] });
-    } else if (ev.type === "tool_result") {
-      // 孤儿 tool_result（无前置 tool_use）
+      if (match && !consumed.has(match.id)) {
+        consumed.add(match.id);
+        const resEv = match.event;
+        steps.push({
+          toolName: name,
+          isError: Boolean(resEv.isError),
+          durationMs: (resEv.durationMs as number | undefined) ?? 0,
+          items: [item, match],
+        });
+      } else {
+        // 无法配对：作为孤儿 tool_use(进行中或 result 丢失)
+        steps.push({ toolName: name, isError: false, durationMs: 0, items: [item, item] });
+      }
+    } else if (ev.type === "tool_result" && !consumed.has(item.id)) {
+      // 真孤儿 tool_result(它的 use 不在本段):保留可见
+      consumed.add(item.id);
       const name = (ev.name as string | undefined) ?? "tool";
       steps.push({ toolName: name, isError: Boolean(ev.isError), durationMs: (ev.durationMs as number | undefined) ?? 0, items: [item, item] });
     }
-    i++;
   }
   return steps;
 }
