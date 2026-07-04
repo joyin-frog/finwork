@@ -92,10 +92,6 @@ export function previewSelectionFromDisplayFile(
   return null;
 }
 
-export function shouldShowScrollToBottom(scrollTop: number, clientHeight: number, scrollHeight: number, threshold = 96) {
-  return scrollHeight - (scrollTop + clientHeight) > threshold;
-}
-
 /**
  * Parse a file link href from model-generated markdown into a { name, storagePath } pair.
  *

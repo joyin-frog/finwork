@@ -4,8 +4,7 @@ import {
   previewSelectionFromConversationFile,
   previewSelectionFromDisplayFile,
   previewSelectionFromDraftAttachment,
-  previewSelectionFromReferencedFile,
-  shouldShowScrollToBottom
+  previewSelectionFromReferencedFile
 } from "../app/chat/chat-preview-selection";
 
 function main() {
@@ -54,10 +53,7 @@ function main() {
   }, null);
   assert.equal(displayDraft?.kind, "draft");
 
-  assert.equal(shouldShowScrollToBottom(0, 600, 640), false, "near-bottom threads should not show the scroll button");
-  assert.equal(shouldShowScrollToBottom(0, 600, 900), true, "scrolled-up threads should show the scroll button");
-
-  console.log("✓ PASS: preview selection helpers cover conversation, draft and scroll-button states");
+  console.log("✓ PASS: preview selection helpers cover conversation and draft states");
 }
 
 main();

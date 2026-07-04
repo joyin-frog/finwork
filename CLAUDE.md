@@ -3,6 +3,20 @@
 ## UIUX前端设计
 参考 app/globals.css，最好围绕token设计
 
+## Agent skills
+
+### Issue tracker
+
+问题与 PRD 使用 `joyin-frog/finwork` 的 GitHub Issues 管理。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用 `needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix` 五个标准标签。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+采用 single-context 布局：根级 `CONTEXT.md`（存在时）与 `docs/adr/`。详见 `docs/agents/domain.md`。
+
 ## 复杂任务处理
 
 主循环只做协调（Orchestrator）：理解需求、编写计划、定成功标准、调度子代理、汇总结果。三个子代理定义在 `.claude/agents/`（scout / implementer / reviewer）。

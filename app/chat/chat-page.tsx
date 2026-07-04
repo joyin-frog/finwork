@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  ArrowDown02Icon,
   ArrowUp02Icon,
   Clock01Icon,
   AttachmentIcon,
@@ -15,7 +14,7 @@ import {
   ThumbsUpIcon,
   Loading03Icon,
   ChevronRightIcon,
-  MagicWand01Icon,
+  NoteIcon,
 } from "@hugeicons/core-free-icons";
 import { RefreshIcon, SuccessIcon, CopyIcon } from "@/lib/icons";
 import { messageTimestamp } from "@/app/chat/message-timestamp";
@@ -70,12 +69,12 @@ import { buildReimbursementProvenance } from "@/app/chat/provenance";
 import { ProvenancePanel } from "@/app/chat/provenance-panel";
 import type { ChatQuickPrompt } from "@/lib/domain/tax-calendar";
 import { ChatPreviewSidebar } from "@/app/chat/chat-preview-sidebar";
+import { AttachmentCard, ImageLightbox, useImageLightbox, isRenderableImage } from "@/app/chat/attachment-card";
 import {
   previewSelectionFromConversationFile,
   previewSelectionFromDisplayFile,
   previewSelectionFromDraftAttachment,
   previewSelectionFromReferencedFile,
-  shouldShowScrollToBottom,
 } from "@/app/chat/chat-preview-selection";
 import {
   getDefaultSidebarWidth,
@@ -88,7 +87,6 @@ import {
   formatBytes,
   getConversationFileUrl,
   getFileIcon,
-  isImageFile,
   OpenableFileRow,
   type PreviewableConversationFile
 } from "@/app/chat/chat-file-browser";
@@ -97,6 +95,15 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ThinkingSpark } from "@/app/shared/thinking-spark";
 import { Button } from "@/components/ui/button";
+import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -244,8 +251,7 @@ export default function ChatPage({
   const [skillSelectedIdx, setSkillSelectedIdx] = useState(0);
   // 模型档位:跨消息粘滞(本会话沿用),默认快速;「深度思考」开 = reasoning。
   const [modelTier, setModelTier] = useState<ModelTier>("fast");
-  const threadEndRef = useRef<HTMLDivElement>(null);
-  const threadRef = useRef<HTMLElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerHighlightRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -256,13 +262,11 @@ export default function ChatPage({
   const [sidebarMaximized, setSidebarMaximized] = useState(false);
   const [filePanelOpen, setFilePanelOpen] = useState(false);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [feedbackMap, setFeedbackMap] = useState<Record<number, { rating: "up" | "down"; reason: string | null }>>({});
   const [findOpen, setFindOpen] = useState(false);
   const [findInitial, setFindInitial] = useState("");
   const draggingRef = useRef(false);
   const sidebarTouchedRef = useRef(false);
-  const shouldStickToBottomRef = useRef(true);
   const startXRef = useRef(0);
   const startSidebarRef = useRef(0);
   const outputCountRef = useRef(0);
@@ -327,12 +331,6 @@ export default function ChatPage({
     observer.observe(main);
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => {
-    if (!shouldStickToBottomRef.current) return;
-    threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    setShowScrollToBottom(false);
-  }, [displayMessages]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -577,30 +575,6 @@ export default function ChatPage({
 
   function previewDisplayFile(file: DisplayFile) {
     openPreview(previewSelectionFromDisplayFile(file, conversationId));
-  }
-
-  function previewDataUrlFile(name: string, dataUrl: string, mimeType: string, sizeBytes?: number) {
-    openPreview({
-      kind: "draft",
-      name,
-      mimeType,
-      sizeBytes,
-      dataUrl
-    });
-  }
-
-  function handleThreadScroll() {
-    const node = threadRef.current;
-    if (!node) return;
-    const nextShowScrollToBottom = shouldShowScrollToBottom(node.scrollTop, node.clientHeight, node.scrollHeight);
-    shouldStickToBottomRef.current = !nextShowScrollToBottom;
-    setShowScrollToBottom(nextShowScrollToBottom);
-  }
-
-  function scrollThreadToBottom() {
-    shouldStickToBottomRef.current = true;
-    threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    setShowScrollToBottom(false);
   }
 
   function toggleFilePanel() {
@@ -937,24 +911,33 @@ export default function ChatPage({
                 />
               ) : null}
               {displayMessages.length ? (
-                <section
-                  // both-edges:滚动条出现时在两侧各留同宽留白,内容中心不偏 → 与下方(不滚动的)输入框 mx-auto 对齐。
-                  className="flex-1 min-h-0 overflow-y-auto pt-10 pb-4 [scrollbar-gutter:stable_both-edges]"
-                  ref={threadRef}
-                  onScroll={handleThreadScroll}
+                <MessageScrollerProvider
+                  autoScroll
+                  defaultScrollPosition="end"
+                  scrollEdgeThreshold={96}
                 >
-                 <div className="w-full max-w-[800px] mx-auto px-6">
+                 <MessageScroller className="flex-1">
+                  <MessageScrollerViewport ref={threadRef}>
+                   <MessageScrollerContent className="w-full max-w-[800px] mx-auto gap-0 px-6 pt-10 pb-4">
                   {displayMessages.map((message, index) => (
-                    <article
-                      className={cn("py-3", message.role === "user" && "flex justify-end")}
+                    <MessageScrollerItem
+                      // 用户气泡短而等高:保留 content-visibility 轻虚拟化。
+                      // 助手回合含可展开的过程块(高度大、且展开/折叠会突变),固定 10rem 占位会导致
+                      // 滚动跳动与离屏内容(fa-thread 连接线)闪失 → 显式 content-visibility:visible 退出虚拟化。
+                      // 注:这里覆盖组件基类 [content-visibility:auto] 靠 tailwind-merge 对同一 CSS 属性
+                      // 的任意值去重(后者胜);若 tailwind-merge 降级或规则变更需复核此覆盖仍生效。
+                      className={cn(
+                        "py-3",
+                        message.role === "user" ? "flex justify-end" : "[content-visibility:visible]"
+                      )}
                       key={`${message.role}-${message.id ?? index}`}
+                      messageId={message.id != null ? `message:${message.id}` : undefined}
                     >
                       {message.role === "user" ? (
                         <UserBubble
                           message={message}
                           files={getMessageFiles(message, conversationFiles)}
                           conversationId={conversationId}
-                          onPreviewDataUrlFile={previewDataUrlFile}
                           onPreviewDisplayFile={previewDisplayFile}
                           onPreviewFile={previewConversationFile}
                         />
@@ -975,11 +958,13 @@ export default function ChatPage({
                           onFeedback={submitFeedback}
                         />
                       )}
-                    </article>
+                    </MessageScrollerItem>
                   ))}
-                  <div ref={threadEndRef} />
-                 </div>
-                </section>
+                   </MessageScrollerContent>
+                  </MessageScrollerViewport>
+                  <MessageScrollerButton aria-label="滚动到最新消息" />
+                 </MessageScroller>
+                </MessageScrollerProvider>
               ) : (
                 <div className="w-full max-w-[800px] mx-auto px-6 flex flex-col items-center gap-3 text-center mb-8">
                   <h2 className="text-display">今天要处理什么?</h2>
@@ -1003,11 +988,6 @@ export default function ChatPage({
               )}
 
               <section className="relative w-full max-w-[800px] mx-auto px-6 pb-6">
-                {showScrollToBottom ? (
-                  <button className="scroll-to-bottom-button" type="button" onClick={scrollThreadToBottom} aria-label="滚动到最新消息">
-                    <HugeiconsIcon icon={ArrowDown02Icon} size={16} />
-                  </button>
-                ) : null}
                 {pendingAsk ? (
                   <AskUserPanel
                     key={pendingAsk.questionId}
@@ -1109,7 +1089,7 @@ export default function ChatPage({
                           选择单据文件夹
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={openSkillMenu}>
-                          <HugeiconsIcon icon={MagicWand01Icon} size={16} />
+                          <HugeiconsIcon icon={NoteIcon} size={16} />
                           引用技能
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -1158,34 +1138,49 @@ function UserBubble({
   message,
   files,
   conversationId,
-  onPreviewDataUrlFile,
   onPreviewDisplayFile,
-  onPreviewFile
+  onPreviewFile,
 }: {
   message: Message;
   files: DisplayFile[];
   conversationId: number | null;
-  onPreviewDataUrlFile: (name: string, dataUrl: string, mimeType: string, sizeBytes?: number) => void;
   onPreviewDisplayFile: (file: DisplayFile) => void;
   onPreviewFile: (file: PreviewableConversationFile) => void;
 }) {
-  const imageFiles = files.filter((file) => isImageFile(file.mimeType));
-  const documentFiles = files.filter((file) => !isImageFile(file.mimeType));
+  const { lightbox, openImage, closeImage } = useImageLightbox();
+  // 无对应 DisplayFile 的遗留 imageDataUrls(仅在没有 files 时兜底展示)
+  const legacyImages = files.length ? [] : (message.imageDataUrls ?? []);
+  const hasAttachments = files.length > 0 || legacyImages.length > 0;
   return (
     <div className="flex flex-col items-end gap-2 max-w-[85%]">
-      {documentFiles.length ? (
+      {/* 附件统一成同尺寸卡片,置于消息上方(参考 Claude);图片点击直接看,文件点击去预览页 */}
+      {hasAttachments ? (
         <div className="flex flex-wrap gap-2 justify-end">
-          {documentFiles.map((file) => (
-            <button
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted border border-border text-meta cursor-pointer hover:bg-accent transition-colors max-w-[200px]"
-              key={`${file.name}-${file.sizeBytes}-${file.storagePath ?? file.id ?? ""}`}
-              type="button"
-              onClick={() => onPreviewDisplayFile(file)}
-              title={file.name}
-            >
-              {getFileIcon(file.mimeType, file.name)}
-              <span className="truncate">{file.name}</span>
-            </button>
+          {files.map((file) => {
+            const src = file.dataUrl ?? (file.storagePath && conversationId ? getConversationFileUrl(conversationId, file.storagePath) : "");
+            return (
+              <AttachmentCard
+                key={`${file.name}-${file.storagePath ?? file.id ?? ""}`}
+                name={file.name}
+                mimeType={file.mimeType}
+                previewSrc={src || undefined}
+                meta={file.sizeBytes ? formatBytes(file.sizeBytes) : undefined}
+                onOpen={() =>
+                  isRenderableImage(file.name, file.mimeType) && src
+                    ? openImage(src, file.name)
+                    : onPreviewDisplayFile(file)
+                }
+              />
+            );
+          })}
+          {legacyImages.map((url, index) => (
+            <AttachmentCard
+              key={url}
+              name={`附件图片 ${index + 1}`}
+              mimeType="image/png"
+              previewSrc={url}
+              onOpen={() => openImage(url, `附件图片 ${index + 1}`)}
+            />
           ))}
         </div>
       ) : null}
@@ -1194,24 +1189,7 @@ function UserBubble({
           <MarkdownMessage content={getDisplayContent(message)} conversationId={conversationId} files={files} onPreviewFile={onPreviewFile} />
         </div>
       ) : null}
-      {imageFiles.length || message.imageDataUrls?.length ? (
-        <div className="flex flex-wrap gap-2 justify-end">
-          {imageFiles.map((file) => {
-            const src = file.dataUrl ?? (file.storagePath && conversationId ? getConversationFileUrl(conversationId, file.storagePath) : "");
-            if (!src) return null;
-            return (
-              <button className="cursor-pointer rounded-lg overflow-hidden" key={`${file.name}-${file.storagePath ?? file.id ?? ""}`} type="button" onClick={() => onPreviewDisplayFile(file)}>
-                <img src={src} alt={file.name} className="max-h-32 max-w-[200px] object-cover block" loading="lazy" />
-              </button>
-            );
-          })}
-          {!imageFiles.length ? message.imageDataUrls?.map((url, index) => (
-            <button className="cursor-pointer rounded-lg overflow-hidden" key={url} type="button" onClick={() => onPreviewDataUrlFile(`附件图片 ${index + 1}`, url, "image/png")}>
-              <img src={url} alt={`附件图片 ${index + 1}`} className="max-h-32 max-w-[200px] object-cover block" loading="lazy" />
-            </button>
-          )) : null}
-        </div>
-      ) : null}
+      {lightbox ? <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeImage} /> : null}
     </div>
   );
 }
@@ -1421,7 +1399,7 @@ function AssistantTurn({
           {/* 无边框、不缩进:摘要左缘与正文对齐。结束显示实际处理时长(已处理 7m / 1h7m1s)。
               标题与正文同字号同色;流式中叠走光(思考→处理两段式由 isActive 决定文案)。 */}
           <summary className="flex items-center gap-2 cursor-pointer py-1 list-none">
-            <span className={cn("min-w-0 flex-1 truncate text-body", isActive ? "fa-shimmer-text" : "text-muted-foreground")}>
+            <span className={cn("min-w-0 flex-1 truncate text-body", isActive ? "shimmer shimmer-color-primary text-muted-foreground" : "text-muted-foreground")}>
               {isActive ? "正在处理" : processedLabel}
             </span>
             <HugeiconsIcon icon={ChevronRightIcon} size={15} className="details-chevron transition-transform shrink-0" />
@@ -1688,10 +1666,10 @@ function ThinkingStatusLine({ active }: { active: boolean }) {
 
   const timer = liveMs >= 1000 ? ` ${formatDuration(liveMs)}` : "";
   return (
-    <div className="flex items-center gap-2 py-1 text-small">
-      <ThinkingSpark size={14} />
-      <span className="truncate fa-shimmer-text">正在思考{timer}</span>
-    </div>
+    <Marker role="status" className="py-1 text-small">
+      <MarkerIcon><ThinkingSpark size={14} /></MarkerIcon>
+      <MarkerContent className="truncate shimmer shimmer-color-primary text-muted-foreground">正在思考{timer}</MarkerContent>
+    </Marker>
   );
 }
 
@@ -1705,13 +1683,13 @@ function TimelineRow({ item }: { item: TimelineItem }) {
   const { event } = item;
   // System events are rendered separately from compact tool steps.
   return (
-    <div className="flex items-start gap-2 text-meta text-muted-foreground py-0.5">
-      <HugeiconsIcon icon={Clock01Icon} size={15} className="shrink-0 mt-0.5" />
-      <div>
+    <Marker className="items-start py-0.5 text-meta">
+      <MarkerIcon className="mt-0.5"><HugeiconsIcon icon={Clock01Icon} size={15} /></MarkerIcon>
+      <MarkerContent>
         <strong>{event.type === "system" ? event.message : ""}</strong>
-        {event.type === "system" && event.subtype ? <p>{event.subtype}</p> : null}
-      </div>
-    </div>
+        {event.type === "system" && event.subtype ? <span className="block">{event.subtype}</span> : null}
+      </MarkerContent>
+    </Marker>
   );
 }
 
@@ -1740,70 +1718,38 @@ function FileTray({
   removeAttachment: (id: string) => void;
   removeReference: (storagePath: string) => void;
 }) {
+  const { lightbox, openImage, closeImage } = useImageLightbox();
   if (!attachments.length && !referencedAttachments.length) return null;
   return (
     <div className="attachment-tray" aria-label="已添加文件">
       {attachments.map((attachment) => (
-        <AttachmentChip
+        <AttachmentCard
           key={attachment.id}
           name={attachment.name}
           mimeType={attachment.mimeType}
-          icon={attachment.mimeType.startsWith("image/")
-            ? <img src={attachment.dataUrl} alt="" />
-            : getFileIcon(attachment.mimeType, attachment.name)}
-          onPreview={() => onPreviewAttachment(attachment)}
+          previewSrc={attachment.dataUrl}
+          meta={attachment.size ? formatBytes(attachment.size) : undefined}
+          // 图片点击直接看(lightbox),文件点击去预览页
+          onOpen={() =>
+            isRenderableImage(attachment.name, attachment.mimeType)
+              ? openImage(attachment.dataUrl, attachment.name)
+              : onPreviewAttachment(attachment)
+          }
           onRemove={() => removeAttachment(attachment.id)}
         />
       ))}
       {referencedAttachments.map((file) => (
-        <AttachmentChip
+        <AttachmentCard
           key={file.storagePath}
           name={file.name}
           mimeType={file.mimeType}
-          icon={getFileIcon(file.mimeType, file.name)}
-          onPreview={() => onPreviewReference(file)}
+          meta={file.sizeBytes ? formatBytes(file.sizeBytes) : undefined}
+          onOpen={() => onPreviewReference(file)}
           onRemove={() => removeReference(file.storagePath)}
         />
       ))}
+      {lightbox ? <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeImage} /> : null}
     </div>
-  );
-}
-
-/** 文件类型标签:优先扩展名(XLSX/PNG/PPTX),无扩展名退回 mime 子类型。 */
-function fileTypeLabel(name: string, mimeType: string): string {
-  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "";
-  if (ext) return ext.toUpperCase();
-  const sub = mimeType.split("/")[1] ?? "";
-  return sub ? sub.toUpperCase() : "文件";
-}
-
-/** 输入框里的附件卡片:边框卡 + 图标 + 名字(过长省略)+ 类型;点卡预览(预览标题用完整名,title 也带完整名)。 */
-function AttachmentChip({
-  name,
-  mimeType,
-  icon,
-  onPreview,
-  onRemove,
-}: {
-  name: string;
-  mimeType: string;
-  icon: React.ReactNode;
-  onPreview: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <span className="attachment-chip" title={name}>
-      <button type="button" className="attachment-chip-main" onClick={onPreview} aria-label={`预览 ${name}`}>
-        <span className="attachment-chip-icon">{icon}</span>
-        <span className="attachment-chip-text">
-          <span className="attachment-chip-name">{name}</span>
-          <span className="attachment-chip-type">{fileTypeLabel(name, mimeType)}</span>
-        </span>
-      </button>
-      <button type="button" className="attachment-chip-close" onClick={onRemove} aria-label={`移除 ${name}`}>
-        &times;
-      </button>
-    </span>
   );
 }
 

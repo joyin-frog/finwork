@@ -69,134 +69,148 @@
 .attachment-tray {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 6px;
 }
 
-/* 输入框附件卡片:边框卡 + 图标 + 名字(过长省略)+ 类型标签 + 关闭。 */
-.attachment-chip {
+/* ── 统一附件卡片(输入框草稿 + 已发送消息共用;参考 Claude:同宽同高)── */
+.attach-card {
   position: relative;
   display: inline-flex;
-  align-items: center;
-  max-width: 220px;
-  padding: 6px 24px 6px 8px; /* 右留位给关闭按钮 */
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--text);
-  font-size: var(--font-caption);
+  width: 132px;
+  height: 132px;
 }
 
-.attachment-chip-main {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.attach-card-main {
+  display: block;
+  width: 100%;
+  height: 100%;
   padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--card);
   cursor: pointer;
-}
-
-.attachment-chip-main:hover .attachment-chip-name {
-  color: var(--primary);
-}
-
-.attachment-chip-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-}
-
-/* 全局基础尺寸(其它处的 FileTypeIcon 也用),勿改 */
-.file-type-icon {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  object-fit: contain;
-}
-
-.attachment-chip-icon img:not(.file-type-icon) {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  object-fit: cover;
-}
-
-.attachment-chip .file-type-icon {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-}
-
-.attachment-chip-text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
   text-align: left;
 }
 
-.attachment-chip-name {
-  min-width: 0;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
+.attach-card-main:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
 }
 
-.attachment-chip-type {
+.attach-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 文件卡:语义色淡染底 + 文件名(2行截断) + 副信息 + 底部格式徽章 */
+.attach-card-file {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  gap: 3px;
+  background: color-mix(in srgb, var(--file-color) 7%, var(--card));
+}
+
+.attach-card-name {
+  font-size: var(--font-caption);
+  line-height: 1.35;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.attach-card-meta {
   font-size: 11px;
   line-height: 1.2;
   color: var(--text-2);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
 }
 
-.attachment-chip-close {
+.attach-card-badge {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.attach-card-close {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: -7px;
+  right: -7px;
   display: grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text-2);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+  box-shadow: var(--elevation-1, 0 1px 3px rgba(0,0,0,0.12));
+}
+
+.attach-card:hover .attach-card-close,
+.attach-card-close:focus-visible {
+  opacity: 1;
+}
+
+.attach-card-close:hover { color: var(--text); }
+
+@media (hover: none) {
+  .attach-card-close { opacity: 1; }
+}
+
+/* ── 图片直接查看层(点图片卡打开)── */
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 40px;
+  background: color-mix(in srgb, black 72%, transparent);
+  cursor: zoom-out;
+}
+
+.image-lightbox-img {
+  max-width: min(92vw, 1200px);
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
   border: 0;
   border-radius: 999px;
-  background: transparent;
-  color: var(--text-2);
-  font-size: 13px;
+  background: color-mix(in srgb, white 14%, transparent);
+  color: white;
+  font-size: 26px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.attachment-chip-close:hover {
-  background: var(--control-hover);
-  color: var(--text);
-}
-
-.scroll-to-bottom-button {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  margin: 0 auto 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--control-bg);
-  color: var(--text);
-  pointer-events: auto;
-}
-
-.scroll-to-bottom-button:hover {
-  background: var(--control-hover);
-}
+.image-lightbox-close:hover { background: color-mix(in srgb, white 24%, transparent); }
 
 .mention-popup {
   position: absolute;
@@ -1068,4 +1082,3 @@
 /* ── 对话内查找高亮(CSS Custom Highlight API) ── */
 ::highlight(find-all)    { background: color-mix(in srgb, var(--primary) 22%, transparent); }
 ::highlight(find-active) { background: color-mix(in srgb, var(--primary) 45%, transparent); }
-
