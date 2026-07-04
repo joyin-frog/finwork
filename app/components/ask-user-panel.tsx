@@ -123,9 +123,11 @@ export function AskUserPanel({
 
   return (
     <div className="rounded-2xl border border-border bg-card px-4 pt-3 pb-3 flex flex-col gap-3">
-      {/* 顶部:走光「正在询问」+ header;多题显示进度点 */}
-      <Marker role="status" className="justify-between text-meta">
-        <MarkerContent className="shimmer text-muted-foreground">正在询问{sub.header ? ` · ${sub.header}` : ""}</MarkerContent>
+      {/* 顶部:走光「正在询问」+ header;多题显示进度点。
+          aria-label 给这个 live region 一个可访问名(否则内容只算 description、SR 与
+          getByRole({name}) 都取不到),扫光统一用品牌色。 */}
+      <Marker role="status" aria-label={`正在询问${sub.header ? ` · ${sub.header}` : ""}`} className="justify-between text-meta">
+        <MarkerContent className="shimmer shimmer-color-primary text-muted-foreground">正在询问{sub.header ? ` · ${sub.header}` : ""}</MarkerContent>
         {multiQ ? (
           <div className="flex items-center gap-1.5">
             <span className="text-caption text-muted-foreground tabular-nums">{curIdx + 1}/{subs.length}</span>

@@ -11,8 +11,12 @@
 - `components/ui/marker.tsx`
 - `app/chat/chat-page.tsx`
 - `app/chat/chat-preview-selection.ts`
+- `app/chat/attachment-card.tsx`（后续扩展，见下）
+- `app/chat/composer-skills.tsx`（后续扩展，见下）
 - `app/components/ask-user-panel.tsx`
 - `app/components/tool-call-step.tsx`
+- `app/config/tabs.ts`（后续扩展，见下）
+- `app/dev/message-scroller/page.tsx`（评估 demo，/dev 路由不进导航）
 - `app/globals.css`
 - `app/styles/preview.css`
 - `package.json`
@@ -20,6 +24,21 @@
 - `tests/chat-preview-selection.test.ts`
 - `tests/chat-features.test.ts`
 - `e2e/mock/chat-scroller.spec.ts`
+
+## 后续扩展（在 shadcn 基元集成之上按用户当场迭代追加，非原 spec 范围）
+
+原 spec 只覆盖滚动/marker/shimmer 三项展示层基元。以下几项是用户在同一分支上
+逐步提出、当场实现并实机验证的 UI 改进，记录于此以对齐审计范围：
+
+- **字重**：`--text-body--font-weight` 450→400,正文/加粗对比更分明。
+- **统一附件卡片**（`app/chat/attachment-card.tsx` + `preview.css` + chat-page 的
+  `FileTray`/`UserBubble`):图片满卡预览 + 点击 lightbox(Portal 挂 body,逃出
+  MessageScrollerItem 的 content-visibility 裁剪);文件语义色卡 + 文件名 + 格式
+  徽章 + 点击去预览页。删除旧 `AttachmentChip`/`ImageThumb` 与相关死代码。
+  行为变更:点图片从"进预览侧栏"改为"lightbox 直接看"。
+- **过程行图标**：按 6 个动作家族(检索/命令/读取/编辑/技能/询问)加淡色图标,
+  父行(组摘要)不带、子行带;技能图标全局统一为 `NoteIcon`(过程行 + 技能选择
+  浮层 `composer-skills.tsx` + 引用技能菜单 + 配置技能 tab `config/tabs.ts`)。
 
 ## Implementation summary
 

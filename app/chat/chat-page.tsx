@@ -924,6 +924,8 @@ export default function ChatPage({
                       // 用户气泡短而等高:保留 content-visibility 轻虚拟化。
                       // 助手回合含可展开的过程块(高度大、且展开/折叠会突变),固定 10rem 占位会导致
                       // 滚动跳动与离屏内容(fa-thread 连接线)闪失 → 显式 content-visibility:visible 退出虚拟化。
+                      // 注:这里覆盖组件基类 [content-visibility:auto] 靠 tailwind-merge 对同一 CSS 属性
+                      // 的任意值去重(后者胜);若 tailwind-merge 降级或规则变更需复核此覆盖仍生效。
                       className={cn(
                         "py-3",
                         message.role === "user" ? "flex justify-end" : "[content-visibility:visible]"

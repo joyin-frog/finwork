@@ -8,7 +8,7 @@
  * 移除按钮仅在输入框草稿区出现(传 onRemove)。
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { FileTypeIcon } from "@/app/shared/file-type-icon";
 import { FILE_TYPE_COLORS } from "@/lib/files/file-type-colors";
@@ -22,10 +22,11 @@ function extOf(name: string): string {
 }
 
 export function isRenderableImage(name: string, mimeType: string): boolean {
-  if (mimeType.startsWith("image/") && !/heic|heif/i.test(mimeType)) {
-    // 有明确图片 mime 且非 heic:再要求扩展名可渲染(避免 image/heic 漏网)
-    return RENDERABLE_IMAGE.test(name) || (!name.includes(".") && !/heic|heif/i.test(mimeType));
-  }
+  // HEIC/HEIF 浏览器一律解不了 → 当文件卡(mime 与文件名任一命中即判死,防两者不一致漏网)
+  if (/heic|heif/i.test(mimeType) || /\.hei[cf]$/i.test(name)) return false;
+  // 明确图片 mime:扩展名可渲染即可;无扩展名(纯图片 mime)也当图片
+  if (mimeType.startsWith("image/")) return RENDERABLE_IMAGE.test(name) || !name.includes(".");
+  // 无图片 mime:仅凭可渲染扩展名判定
   return RENDERABLE_IMAGE.test(name);
 }
 
@@ -97,7 +98,7 @@ export function ImageLightbox({ src, alt, onClose }: { src: string; alt: string;
   if (!mounted) return null;
   return createPortal(
     <div className="image-lightbox" role="dialog" aria-modal="true" aria-label={alt} onClick={onClose}>
-      <button type="button" className="image-lightbox-close" onClick={onClose} aria-label="关闭">&times;</button>
+      <button type="button" className="image-lightbox-close" onClick={(e) => { e.stopPropagation(); onClose(); }} aria-label="关闭">&times;</button>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img className="image-lightbox-img" src={src} alt={alt} onClick={(e) => e.stopPropagation()} />
     </div>,
@@ -108,9 +109,7 @@ export function ImageLightbox({ src, alt, onClose }: { src: string; alt: string;
 /** 供父组件持有 lightbox 状态的小 hook。 */
 export function useImageLightbox() {
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
-  return {
-    lightbox,
-    openImage: (src: string, alt: string) => setLightbox({ src, alt }),
-    closeImage: () => setLightbox(null),
-  };
+  const openImage = useCallback((src: string, alt: string) => setLightbox({ src, alt }), []);
+  const closeImage = useCallback(() => setLightbox(null), []);
+  return { lightbox, openImage, closeImage };
 }
