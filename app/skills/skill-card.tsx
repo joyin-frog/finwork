@@ -24,12 +24,14 @@ export function SkillCard({ skill }: { skill: SkillSummary }) {
       </div>
       <p className="text-meta text-muted-foreground line-clamp-3">{skill.summary || skill.description}</p>
       <div className="flex justify-end pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* 停用的用户技能不进 SDK 白名单,禁用「进入对话」入口(避免带一个加载不了的技能进对话) */}
         <button
           type="button"
-          title="进入对话"
+          title={skill.enabled ? "进入对话" : "技能已停用，启用后可进入对话"}
           aria-label="进入对话"
-          onClick={(e) => { e.preventDefault(); router.push(`/chat/new?skill=${encodeURIComponent(skill.name)}`); }}
-          className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
+          disabled={!skill.enabled}
+          onClick={(e) => { e.preventDefault(); if (skill.enabled) router.push(`/chat/new?skill=${encodeURIComponent(skill.name)}`); }}
+          className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-accent transition-colors disabled:pointer-events-none disabled:opacity-40"
         >
           <HugeiconsIcon icon={BubbleChatAddIcon} size={14} />
         </button>

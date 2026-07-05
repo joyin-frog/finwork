@@ -102,9 +102,14 @@ export function SkillDetailPage({ name }: { name: string }) {
             aria-label={skill.enabled ? "停用" : "启用"}
           />
         )}
-        <Button asChild size="sm">
-          <Link href={`/chat/new?skill=${encodeURIComponent(skill.name)}`}>开始对话</Link>
-        </Button>
+        {/* 停用的用户技能不进 SDK 白名单,带它进对话会让 agent 拿到加载不了的技能 → 停用时禁用入口 */}
+        {skill.enabled ? (
+          <Button asChild size="sm">
+            <Link href={`/chat/new?skill=${encodeURIComponent(skill.name)}`}>开始对话</Link>
+          </Button>
+        ) : (
+          <Button size="sm" disabled title="技能已停用，启用后可开始对话">开始对话</Button>
+        )}
         {skill.editable && (
           <IconButton
             icon={Delete02Icon}
