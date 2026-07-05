@@ -1407,10 +1407,10 @@ function AssistantTurn({
           {/* 无边框、不缩进:摘要左缘与正文对齐。结束显示实际处理时长(已处理 7m / 1h7m1s)。
               标题与正文同字号同色;流式中叠走光(思考→处理两段式由 isActive 决定文案)。 */}
           <summary className="flex items-center gap-2 cursor-pointer py-1 list-none">
-            <span className={cn("min-w-0 flex-1 truncate text-body", isActive ? "shimmer shimmer-color-primary text-muted-foreground" : "text-muted-foreground")}>
+            <span className={cn("min-w-0 truncate text-body", isActive ? "shimmer shimmer-color-primary text-muted-foreground" : "text-muted-foreground")}>
               {isActive ? "正在处理" : processedLabel}
             </span>
-            <HugeiconsIcon icon={ChevronRightIcon} size={15} className="details-chevron transition-transform shrink-0" />
+            <HugeiconsIcon icon={ChevronRightIcon} size={15} className="details-chevron shrink-0 transition-transform" />
           </summary>
           {/* 折叠态不挂载过程段子元素:<details open=false> 只视觉隐藏、React 仍会 mount 全部,
               重会话(数千事件)由此一次性渲染卡顿。改为展开时才渲染,打开会话瞬时、点开再挂载。

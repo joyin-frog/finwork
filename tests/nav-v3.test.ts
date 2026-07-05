@@ -1,10 +1,13 @@
 /**
- * nav-v3.test.ts — v3-P0 先行失败测试
+ * nav-v3.test.ts — 导航契约测试（随导航演进更新）
  *
- * 覆盖契约 5-7（spec-cockpit-v3.md §4 导航）：
- * 契约 5 — app/shared/app-nav.tsx：新增「智能体」项 href="/agents"（位于总览之后）；
- *           「技能」项移除（导航项区域不含 href="/skills"）；新对话/总览/资料/设置保留
- * 契约 6 — /skills 路由保留但重定向：app/skills/page.tsx 源码含 redirect("/config")
+ * 覆盖契约 5-7（导航结构）。注:cockpit-v3 曾把「技能」移出导航、让 /skills 重定向到 /config、
+ * 并保留设置内的 skill-catalog 能力目录;后续迭代按用户要求把「技能」升为一级导航项(独立卡片页,
+ * /skills 渲染 SkillsManager 不再重定向)、删除 skill-catalog.tsx、并把「资料」改名「知识库」指向
+ * /knowledge。本测试已同步到当前契约:
+ * 契约 5 — app/shared/app-nav.tsx：「智能体」href="/agents"(总览之后)；「技能」href="/skills" 为一级项；
+ *           新对话/总览/知识库(/knowledge)/技能(/skills)/设置 保留
+ * 契约 6 — app/skills/page.tsx 渲染 SkillsManager(卡片首页,不再重定向);skill-catalog.tsx 已删除
  * 契约 7 — app/shared/app-shell.tsx：active 映射含 "/agents"
  *
  * 运行：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true npx tsx tests/nav-v3.test.ts
@@ -58,17 +61,20 @@ export const navV3TestPromise = (async () => {
     );
   }
 
-  // ── 契约 5c: 「技能」项移除（导航项 Link 区域不含 href="/skills"）─────────
+  // ── 契约 5c: 「技能」为一级导航项（导航区含 href="/skills"）─────────────────
   {
     const navSrc = src("app/shared/app-nav.tsx");
-    // 检查 href="/skills" 的 Link 不存在
     assert.ok(
-      !navSrc.includes('href="/skills"'),
-      "C5c FAIL: app-nav.tsx 不应含 href=\"/skills\" 导航项（「技能」项已移除）"
+      navSrc.includes('href="/skills"'),
+      "C5c FAIL: app-nav.tsx 应含 href=\"/skills\" 导航项（「技能」已升为一级项）"
+    );
+    assert.ok(
+      navSrc.includes("技能"),
+      "C5c FAIL: app-nav.tsx 应含「技能」文案"
     );
   }
 
-  // ── 契约 5d: 保留项核验——新对话/总览/资料 ─────────────────────────────────
+  // ── 契约 5d: 保留项核验——新对话/总览/知识库(/knowledge)/技能/设置 ───────────
   {
     const navSrc = src("app/shared/app-nav.tsx");
     assert.ok(
@@ -79,10 +85,10 @@ export const navV3TestPromise = (async () => {
       navSrc.includes('href="/cockpit"'),
       "C5d FAIL: app-nav.tsx 应保留「总览」导航项 href=\"/cockpit\""
     );
-    // 资料（/files）
+    // 「资料」已改名「知识库」并指向 /knowledge
     assert.ok(
-      navSrc.includes('href="/files"'),
-      "C5d FAIL: app-nav.tsx 应保留「资料」导航项 href=\"/files\""
+      navSrc.includes('href="/knowledge"') && navSrc.includes("知识库"),
+      "C5d FAIL: app-nav.tsx 应含「知识库」导航项 href=\"/knowledge\"（原「资料」已改名并改指 /knowledge）"
     );
     // 设置（/config）
     assert.ok(
@@ -91,22 +97,25 @@ export const navV3TestPromise = (async () => {
     );
   }
 
-  // ── 契约 6: app/skills/page.tsx 含 redirect("/config") ────────────────────
+  // ── 契约 6: /skills 渲染 SkillsManager 卡片首页（不再重定向）;skill-catalog 已删 ──
   {
     assert.ok(
       exists("app/skills/page.tsx"),
-      "C6 FAIL: app/skills/page.tsx 应保留（/skills 路由不删除，只重定向）"
+      "C6 FAIL: app/skills/page.tsx 应存在（/skills 卡片首页）"
     );
     const skillsPageSrc = src("app/skills/page.tsx");
-    // 设置技能 tab 只展示能力目录；文件编辑仍由独立 /skills 全屏页承接。
     assert.ok(
       skillsPageSrc.includes("SkillsManager"),
-      "C6 FAIL: app/skills/page.tsx 应渲染 SkillsManager（独立全屏技能页）"
+      "C6 FAIL: app/skills/page.tsx 应渲染 SkillsManager（技能卡片首页）"
     );
-    const skillCatalogSrc = src("app/config/skill-catalog.tsx");
     assert.ok(
-      skillCatalogSrc.includes('href="/skills"') && skillCatalogSrc.includes("高级：技能文件管理"),
-      "C6 FAIL: 设置技能目录应含低调的高级文件管理入口"
+      !skillsPageSrc.includes('redirect('),
+      "C6 FAIL: /skills 不应再重定向（已是真实卡片页）"
+    );
+    // 旧的设置内技能能力目录 skill-catalog.tsx 已删除（技能改由 /skills 一级页承接）
+    assert.ok(
+      !exists("app/config/skill-catalog.tsx"),
+      "C6 FAIL: app/config/skill-catalog.tsx 应已删除（技能能力已迁到 /skills）"
     );
   }
 

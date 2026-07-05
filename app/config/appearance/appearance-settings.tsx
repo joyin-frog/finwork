@@ -14,7 +14,7 @@ export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-8">
       <SettingsSection title="主题" description="选择界面显示模式，跟随系统会自动匹配操作系统的明暗偏好。">
         <div className="flex gap-2">
           {THEMES.map((t) => (

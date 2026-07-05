@@ -26,6 +26,8 @@ export type SkillSummary = {
   /** 从能力目录进入聊天时预填的开场白 */
   starter: string;
   description: string;
+  /** 分类:finance/file-tool；用户技能默认空 */
+  category: string;
   source: SkillSource;
   /** 是否可编辑(= 用户技能);内置技能为 false */
   editable: boolean;
@@ -69,13 +71,13 @@ export class SkillError extends Error {
 
 // ── frontmatter 解析/序列化 ────────────────────────────────────────────
 
-type ParsedSkill = { name: string; title: string; summary: string; requires: string; starter: string; description: string; body: string };
+type ParsedSkill = { name: string; title: string; summary: string; requires: string; starter: string; description: string; category: string; body: string };
 
 /** 解析 SKILL.md:取首个 `---...---` 块里的 name/title/summary/description,其余为正文。值仅按首个
  *  冒号切分,容忍内容里的中文冒号;支持双引号 YAML 标量(我们写回时用)。 */
 function parseSkillMd(raw: string): ParsedSkill {
   const m = /^﻿?---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
-  if (!m) return { name: "", title: "", summary: "", requires: "", starter: "", description: "", body: raw };
+  if (!m) return { name: "", title: "", summary: "", requires: "", starter: "", description: "", category: "", body: raw };
   const fm = m[1];
   const body = m[2] ?? "";
   let name = "";
@@ -84,6 +86,7 @@ function parseSkillMd(raw: string): ParsedSkill {
   let requires = "";
   let starter = "";
   let description = "";
+  let category = "";
   for (const line of fm.split(/\r?\n/)) {
     const idx = line.indexOf(":");
     if (idx === -1) continue;
@@ -95,8 +98,9 @@ function parseSkillMd(raw: string): ParsedSkill {
     else if (key === "requires") requires = decodeScalar(val);
     else if (key === "starter") starter = decodeScalar(val);
     else if (key === "description") description = decodeScalar(val);
+    else if (key === "category") category = decodeScalar(val);
   }
-  return { name, title, summary, requires, starter, description, body };
+  return { name, title, summary, requires, starter, description, category, body };
 }
 
 function decodeScalar(val: string): string {
@@ -198,7 +202,7 @@ async function scanAll(): Promise<{
 // ── 读 ─────────────────────────────────────────────────────────────────
 
 function toSummary(s: ScannedSkill, source: SkillSource, enabled: boolean): SkillSummary {
-  return { name: s.name, title: s.title, summary: s.summary, requires: s.requires, starter: s.starter, description: s.description, source, editable: source === "user", enabled };
+  return { name: s.name, title: s.title, summary: s.summary, requires: s.requires, starter: s.starter, description: s.description, category: s.category, source, editable: source === "user", enabled };
 }
 
 export async function listSkills(): Promise<SkillSummary[]> {

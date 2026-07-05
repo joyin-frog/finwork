@@ -50,7 +50,10 @@ export const chatProcessPolishTestPromise = (async () => {
     );
 
     // T8c: 昨天 → "昨天 HH:mm" 格式
-    const yesterday = new Date(nowMs - 25 * 3_600_000); // 25h 前
+    // 用「今天中午 − 24h」构造昨天,避免「now − 25h」在午夜后跨到前天导致的时间敏感 flake。
+    const noonToday = new Date(nowMs);
+    noonToday.setHours(12, 0, 0, 0);
+    const yesterday = new Date(noonToday.getTime() - 24 * 3_600_000);
     const result8c = messageTimestamp(yesterday.toISOString());
     assert.ok(
       result8c.startsWith("昨天"),

@@ -11,10 +11,13 @@ test("chat: 发送 → 流式回复渲染 → 回合结束", async ({ page }) =>
 });
 
 test("skills catalog: 开始 → 新聊天技能已钉 → 发送携带技能", async ({ page }) => {
-  await page.goto("/config?tab=skills", { waitUntil: "domcontentloaded" });
-  const payrollCard = page.locator("article").filter({ hasText: "工资个税计算" });
+  await page.goto("/skills", { waitUntil: "domcontentloaded" });
+  const payrollCard = page.locator('a[href="/skills/payroll-calc"]');
   await expect(payrollCard).toBeVisible();
-  await payrollCard.getByRole("link", { name: "开始" }).click();
+  // 卡片上的「进入对话」图标按钮靠 group-hover:opacity-100 才可见,
+  // 必须先 hover 卡片再点按钮,否则会因元素视觉不可见而点击失败。
+  await payrollCard.hover();
+  await payrollCard.getByRole("button", { name: "进入对话" }).click();
 
   await expect(page).toHaveURL(/\/chat\/new\?skill=payroll-calc/);
   const box = page.getByLabel("输入消息");

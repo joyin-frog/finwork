@@ -87,7 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  let active: "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" = "cockpit";
+  let active: "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" | "skills" = "cockpit";
   let chatActive: "new" | "recent" | undefined;
 
   if (pathname.startsWith("/chat")) {
@@ -99,6 +99,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     active = "files";
   } else if (pathname.startsWith("/agents")) {
     active = "agents";
+  } else if (pathname.startsWith("/skills")) {
+    active = "skills";
   } else if (pathname.startsWith("/config")) {
     active = "config";
   }

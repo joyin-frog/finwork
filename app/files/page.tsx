@@ -655,7 +655,7 @@ function FilesPageContent() {
                 <FilePreviewPage
                   selection={previewSelection}
                   onSelectionChange={() => {}}
-                  title="资料预览"
+                  title="文件预览"
                   description="文件内容预览"
                   onMaximize={maximize}
                   isMaximized={maximized}

@@ -1,9 +1,10 @@
 import {
   ConfigurationIcon,
   BotIcon,
-  NoteIcon,
   BrainIcon,
   InformationCircleIcon,
+  PaintBoardIcon,
+  KeyboardIcon,
 } from "@hugeicons/core-free-icons";
 
 /**
@@ -12,9 +13,10 @@ import {
  */
 export const CONFIG_TABS = [
   { key: "general", label: "常规", icon: ConfigurationIcon },
-  { key: "model", label: "模型连接", icon: BotIcon },
-  { key: "skills", label: "技能", icon: NoteIcon },
-  { key: "understanding", label: "小财的了解", icon: BrainIcon },
+  { key: "appearance", label: "外观", icon: PaintBoardIcon },
+  { key: "personalization", label: "个性化", icon: BrainIcon },
+  { key: "model", label: "模型", icon: BotIcon },
+  { key: "shortcuts", label: "键盘快捷键", icon: KeyboardIcon },
   { key: "about", label: "关于", icon: InformationCircleIcon },
 ] as const;
 
@@ -24,8 +26,8 @@ export const CONFIG_TAB_KEYS: readonly ConfigTabKey[] = CONFIG_TABS.map((t) => t
 
 /** 已移除标签的深链必须显式迁移，不能与未知 key 一样静默回退。 */
 export const LEGACY_CONFIG_TAB_REDIRECTS = {
-  appearance: "general",
-  memory: "understanding",
-  profile: "understanding",
-  usage: "about",
+  understanding: "personalization",
+  memory: "personalization",
+  profile: "personalization",
+  usage: "model",
 } as const satisfies Record<string, ConfigTabKey>;

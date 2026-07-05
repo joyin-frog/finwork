@@ -2,8 +2,7 @@
 
 import type { ReactNode, Ref } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { NoteIcon, BrainIcon } from "@hugeicons/core-free-icons";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { NoteIcon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import type { SkillRef } from "@/app/chat/chat-types";
 
@@ -119,7 +118,7 @@ export function ComposerHighlightOverlay({
   );
 }
 
-/** 「深度思考」开关:选中=高亮=用推理模型;默认不选中=快速模型。无下拉箭头,hover 提示含义。 */
+/** 「深度思考」开关:快速/推理二段式 pill,选中项高亮;默认快速 = 用快速模型,选推理 = 用推理模型。 */
 export function DeepThinkToggle({
   active,
   onToggle,
@@ -128,24 +127,33 @@ export function DeepThinkToggle({
   onToggle: (next: boolean) => void;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-pressed={active}
-          aria-label="深度思考"
-          onClick={() => onToggle(!active)}
-          className={cn(
-            "inline-flex size-8 items-center justify-center rounded-full border transition-colors select-none",
-            active
-              ? "border-transparent text-primary hover:bg-muted"
-              : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
-        >
-          <HugeiconsIcon icon={BrainIcon} size={16} />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top">深度思考:用推理模型解决复杂问题;关闭则用快速模型</TooltipContent>
-    </Tooltip>
+    <div
+      role="group"
+      aria-label="模型档位"
+      className="inline-flex items-center rounded-full border border-border bg-muted p-0.5 text-small select-none"
+    >
+      <button
+        type="button"
+        aria-pressed={!active}
+        onClick={() => onToggle(false)}
+        className={cn(
+          "rounded-full px-2.5 py-1 transition-colors",
+          !active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        快速
+      </button>
+      <button
+        type="button"
+        aria-pressed={active}
+        onClick={() => onToggle(true)}
+        className={cn(
+          "rounded-full px-2.5 py-1 transition-colors",
+          active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        推理
+      </button>
+    </div>
   );
 }

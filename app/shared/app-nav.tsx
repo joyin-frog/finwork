@@ -37,6 +37,7 @@ import {
   Delete02Icon,
   Search01Icon,
   UserGroupIcon,
+  NoteIcon,
 } from "@hugeicons/core-free-icons";
 
 type ConversationSummary = {
@@ -46,7 +47,7 @@ type ConversationSummary = {
   pinned: boolean;
 };
 
-type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents";
+type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" | "skills";
 type ChatActive = "new" | "recent";
 
 /** 长条菜单项专用:hover 行时右侧纯文字显示快捷键(只读提示,不是按钮——无盒子/边框)。 */
@@ -257,9 +258,13 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               <HugeiconsIcon icon={UserGroupIcon} size={16} />
               <span>智能体</span>
             </Link>
-            <Link href="/files" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
+            <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
               <HugeiconsIcon icon={LibraryIcon} size={16} />
-              <span>资料</span>
+              <span>知识库</span>
+            </Link>
+            <Link href="/skills" onClick={() => trackFeature("nav.skills")} className={navLinkClass(active === "skills")}>
+              <HugeiconsIcon icon={NoteIcon} size={16} />
+              <span>技能</span>
             </Link>
           </div>
 

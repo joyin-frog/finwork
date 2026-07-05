@@ -93,7 +93,7 @@ export function MemorySettings() {
     <div className="flex flex-col">
       <SettingsSection
         title="记忆"
-        description="小财确认过的约定会自动写进来,你也可以直接改(自动保存)。这里的内容每次对话都会注入提示词。"
+        description="从聊天中生成新记忆，并将其带入新聊天。"
       >
         {updatedAt && (
           <p className="-mt-1 text-meta text-muted-foreground">

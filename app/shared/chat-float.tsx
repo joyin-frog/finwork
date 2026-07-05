@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MessageAdd01Icon, ArrowExpand01Icon, Cancel01Icon, ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { MessageAdd01Icon, ArrowExpand01Icon, Cancel01Icon, CornerDownLeftIcon } from "@hugeicons/core-free-icons";
 import { MarkdownMessage } from "@/app/chat/markdown-message";
 import { useChatStream, isFinished } from "@/app/shared/chat-stream";
 import type { StartTurnParams } from "@/app/shared/chat-stream";
@@ -237,31 +237,33 @@ export function ChatFloat() {
           </div>
 
           {/* 输入区 */}
-          <div className="shrink-0 border-t border-border px-3 py-2 flex items-end gap-2">
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="有什么财务问题？（Enter 发送）"
-              rows={2}
-              className="flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              aria-label="对话输入"
-            />
-            <button
-              type="button"
-              aria-label="发送"
-              disabled={!draft.trim() || isStreaming}
-              onClick={handleSend}
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground disabled:opacity-40 transition-opacity shrink-0"
-            >
-              <HugeiconsIcon icon={ArrowUp02Icon} size={15} />
-            </button>
+          <div className="shrink-0 border-t border-border px-3 py-2">
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="有什么财务问题？"
+                rows={2}
+                className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                aria-label="对话输入"
+              />
+              <button
+                type="button"
+                aria-label="发送"
+                disabled={!draft.trim() || isStreaming}
+                onClick={handleSend}
+                className="absolute bottom-2 right-2 flex items-center justify-center rounded-sm text-muted-foreground/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+              >
+                <HugeiconsIcon icon={CornerDownLeftIcon} size={14} />
+              </button>
+            </div>
           </div>
         </div>
       )}

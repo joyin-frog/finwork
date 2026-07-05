@@ -13,6 +13,7 @@ export default async function ConfigPage({
   searchParams?: Promise<{ tab?: string }>;
 }) {
   const params = await searchParams;
+  if (params?.tab === "skills") redirect("/skills");
   const legacyTarget = params?.tab && params.tab in LEGACY_CONFIG_TAB_REDIRECTS
     ? LEGACY_CONFIG_TAB_REDIRECTS[params.tab as keyof typeof LEGACY_CONFIG_TAB_REDIRECTS]
     : null;

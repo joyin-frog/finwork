@@ -57,7 +57,9 @@ export function GlobalShortcuts() {
       const id = resolveShortcut(
         event,
         { tagName: targetEl?.tagName ?? "", isContentEditable: Boolean(targetEl?.isContentEditable) },
-        { isMac: mac, scope: currentPath.startsWith("/chat") ? "chat" : undefined }
+        // search-skills 只挂在 /skills 列表页(SkillsManager);详情页 /skills/[name] 无 handler,
+        // 用精确匹配避免在详情页 preventDefault 掉浏览器查找却无人接住。
+        { isMac: mac, scope: currentPath.startsWith("/chat") ? "chat" : currentPath.startsWith("/config") ? "config" : currentPath === "/skills" ? "skills" : undefined }
       );
       if (!id) return;
       event.preventDefault();
@@ -94,9 +96,9 @@ export function GlobalShortcuts() {
   );
 }
 
-const GROUPS: Array<{ title: string; scopes: Array<"global" | "chat" | "composer"> }> = [
+const GROUPS: Array<{ title: string; scopes: Array<"global" | "chat" | "composer" | "config" | "skills"> }> = [
   { title: "对话输入", scopes: ["composer"] },
-  { title: "全局与面板", scopes: ["global", "chat"] },
+  { title: "全局与面板", scopes: ["global", "chat", "config", "skills"] },
 ];
 
 function ShortcutsHelpDialog({

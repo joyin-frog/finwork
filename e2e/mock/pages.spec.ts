@@ -8,7 +8,7 @@ test("总览(cockpit)渲染 + 导航", async ({ page }) => {
   page.on("pageerror", (e) => errs.push(e.message));
   await page.goto("/cockpit", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
-  await expect(page.getByRole("link", { name: "资料" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "知识库" })).toBeVisible();
   await assertNoCrash(page);
   expect(errs, errs.join("\n")).toHaveLength(0);
 });
@@ -29,12 +29,13 @@ test("设置-填 API Key → 保存回路 → 已配置", async ({ page }) => {
     await key.blur();
     expect((await saved).status()).toBe(200);
   }).toPass({ timeout: 30_000 });
-  await expect(page.getByText("已配置")).toBeVisible();
+  // 「模型连接」区块的整体状态说明已下线;改为直接核对 API Key 输入框的 placeholder 翻成「已配置：...」。
+  await expect(page.getByLabel("API Key")).toHaveAttribute("placeholder", /已配置/);
   await assertNoCrash(page);
 });
 
-test("设置-小财的了解渲染画像与记忆", async ({ page }) => {
-  await page.goto("/config?tab=understanding", { waitUntil: "domcontentloaded" });
+test("设置-个性化渲染画像与记忆", async ({ page }) => {
+  await page.goto("/config?tab=personalization", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
   await expect(page.getByText("公司画像", { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder(/还没有|规矩|加载中/)).toBeVisible();
@@ -43,15 +44,18 @@ test("设置-小财的了解渲染画像与记忆", async ({ page }) => {
 
 test("设置-旧 tab 深链显式重定向", async ({ page }) => {
   const cases = [
-    ["appearance", "general"],
-    ["memory", "understanding"],
-    ["profile", "understanding"],
-    ["usage", "about"],
+    ["understanding", "personalization"],
+    ["memory", "personalization"],
+    ["profile", "personalization"],
+    ["usage", "model"],
   ] as const;
   for (const [legacy, target] of cases) {
     await page.goto(`/config?tab=${legacy}`, { waitUntil: "domcontentloaded" });
     await expect(page).toHaveURL(new RegExp(`/config\\?tab=${target}$`));
   }
+  // skills 不再是设置 tab,深链应跳到独立的 /skills 编辑器,而非某个 config tab。
+  await page.goto("/config?tab=skills", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/skills$/);
 });
 
 test("文件库页渲染不崩", async ({ page }) => {

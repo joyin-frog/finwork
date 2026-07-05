@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { SettingsSection, SettingsField, SaveStatusText, settingsSelectClass, type SaveStatus } from "@/app/config/settings-ui";
+import { Switch } from "@/components/ui/switch";
+import { SettingsSection, SettingsRow, SaveStatusText, settingsSelectClass, type SaveStatus } from "@/app/config/settings-ui";
 import { toast } from "sonner";
 import type { CompanyProfile } from "@/lib/profile/file-store";
 import { INDUSTRY_OPTIONS } from "@/lib/profile/industry-options";
@@ -107,113 +108,105 @@ export function ProfileSettings() {
     <div className="flex flex-col">
       <SettingsSection
         title="公司画像"
-        description="小财会在对话中逐步补全，也可以在这里直接编辑（自动保存）。每次对话自动注入，支撑税务优惠发现和经营分析。"
+        description="支撑税务优惠发现和经营分析。"
       >
         <div className="-mt-1 flex items-center gap-2 text-meta text-muted-foreground">
           {updatedAt && <span>上次更新：{new Date(updatedAt).toLocaleString("zh-CN")}</span>}
           <SaveStatusText status={status} />
         </div>
 
-        <div className="flex flex-col gap-4">
-          <SettingsField label="所在地区" hint="如「上海市松江区」">
-            <Input
-              value={profile.region ?? ""}
-              onChange={(e) => updateField("region", e.target.value)}
-              placeholder="上海市松江区"
-              disabled={loading}
-            />
-          </SettingsField>
+        <SettingsRow label="所在地区">
+          <Input
+            value={profile.region ?? ""}
+            onChange={(e) => updateField("region", e.target.value)}
+            placeholder="上海市松江区"
+            disabled={loading}
+          />
+        </SettingsRow>
 
-          <SettingsField label="所在园区" hint="多个用逗号分隔，如「临港新片区」">
-            <Input
-              value={(profile.zones ?? []).join("、")}
-              onChange={(e) => {
-                const val = e.target.value.trim();
-                updateField("zones", val ? val.split(/[，,、]+/).map((s) => s.trim()).filter(Boolean) : []);
-              }}
-              placeholder="临港新片区"
-              disabled={loading}
-            />
-          </SettingsField>
+        <SettingsRow label="所在园区">
+          <Input
+            value={(profile.zones ?? []).join("、")}
+            onChange={(e) => {
+              const val = e.target.value.trim();
+              updateField("zones", val ? val.split(/[，,、]+/).map((s) => s.trim()).filter(Boolean) : []);
+            }}
+            placeholder="临港新片区"
+            disabled={loading}
+          />
+        </SettingsRow>
 
-          <SettingsField label="纳税人类型">
-            <select
-              className={settingsSelectClass}
-              value={profile.taxpayerType ?? ""}
-              onChange={(e) => {
-                const val = e.target.value as "" | "小规模" | "一般纳税人";
-                if (val === "") updateField("taxpayerType", undefined);
-                else updateField("taxpayerType", val);
-              }}
-              disabled={loading}
-            >
-              <option value="">（未填写）</option>
-              <option value="小规模">小规模纳税人</option>
-              <option value="一般纳税人">一般纳税人</option>
-            </select>
-          </SettingsField>
+        <SettingsRow label="纳税人类型">
+          <select
+            className={settingsSelectClass}
+            value={profile.taxpayerType ?? ""}
+            onChange={(e) => {
+              const val = e.target.value as "" | "小规模" | "一般纳税人";
+              if (val === "") updateField("taxpayerType", undefined);
+              else updateField("taxpayerType", val);
+            }}
+            disabled={loading}
+          >
+            <option value="">（未填写）</option>
+            <option value="小规模">小规模纳税人</option>
+            <option value="一般纳税人">一般纳税人</option>
+          </select>
+        </SettingsRow>
 
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="isHighTech"
-              checked={profile.isHighTech ?? false}
-              onChange={(e) => updateField("isHighTech", e.target.checked)}
-              disabled={loading}
-              className="h-4 w-4 rounded border-input"
-            />
-            <label htmlFor="isHighTech" className="text-body">
-              高新技术企业（影响所得税率和研发加计扣除）
-            </label>
-          </div>
+        <SettingsRow label="高新技术企业" hint="影响所得税率和研发加计扣除">
+          <Switch
+            id="isHighTech"
+            checked={profile.isHighTech ?? false}
+            onCheckedChange={(v) => updateField("isHighTech", v)}
+            disabled={loading}
+          />
+        </SettingsRow>
 
-          <SettingsField label="所属行业" hint="可从列表选择，也可直接输入">
-            <Input
-              list="industry-options"
-              value={profile.industry ?? ""}
-              onChange={(e) => updateField("industry", e.target.value)}
-              placeholder="软件和信息技术服务"
-              disabled={loading}
-            />
-            <datalist id="industry-options">
-              {INDUSTRY_OPTIONS.map((opt) => (
-                <option key={opt} value={opt} />
-              ))}
-            </datalist>
-          </SettingsField>
+        <SettingsRow label="所属行业">
+          <Input
+            list="industry-options"
+            value={profile.industry ?? ""}
+            onChange={(e) => updateField("industry", e.target.value)}
+            placeholder="软件和信息技术服务"
+            disabled={loading}
+          />
+          <datalist id="industry-options">
+            {INDUSTRY_OPTIONS.map((opt) => (
+              <option key={opt} value={opt} />
+            ))}
+          </datalist>
+        </SettingsRow>
 
-          <SettingsField label="年营收（万元）" hint="近一年含税营业收入">
-            <Input
-              type="number"
-              min={0}
-              value={revenueRaw}
-              onChange={(e) => onRevenueChange(e.target.value)}
-              placeholder="1000"
-              disabled={loading}
-              aria-invalid={revenueError}
-              className={revenueError ? "border-destructive focus-visible:ring-destructive" : undefined}
-            />
-            {revenueError && (
-              <span className="text-meta text-destructive">请输入大于 0 的数字，当前值未保存。</span>
-            )}
-          </SettingsField>
+        <SettingsRow label="年营收（万元）">
+          <Input
+            type="number"
+            min={0}
+            value={revenueRaw}
+            onChange={(e) => onRevenueChange(e.target.value)}
+            placeholder="1000"
+            disabled={loading}
+            aria-invalid={revenueError}
+            className={revenueError ? "border-destructive focus-visible:ring-destructive" : undefined}
+          />
+          {revenueError && (
+            <span className="block text-meta text-destructive">请输入大于 0 的数字，当前值未保存。</span>
+          )}
+        </SettingsRow>
 
-          <SettingsField label="收入拆分维度" hint="多个用逗号分隔，如「事业部」「产品线」——经营分析下钻用">
-            <Input
-              value={(profile.revenueDimensions ?? []).join("、")}
-              onChange={(e) => {
-                const val = e.target.value.trim();
-                updateField(
-                  "revenueDimensions",
-                  val ? val.split(/[，,、]+/).map((s) => s.trim()).filter(Boolean) : []
-                );
-              }}
-              placeholder="事业部、产品线"
-              disabled={loading}
-            />
-          </SettingsField>
-        </div>
-
+        <SettingsRow label="收入拆分维度">
+          <Input
+            value={(profile.revenueDimensions ?? []).join("、")}
+            onChange={(e) => {
+              const val = e.target.value.trim();
+              updateField(
+                "revenueDimensions",
+                val ? val.split(/[，,、]+/).map((s) => s.trim()).filter(Boolean) : []
+              );
+            }}
+            placeholder="事业部、产品线"
+            disabled={loading}
+          />
+        </SettingsRow>
       </SettingsSection>
     </div>
   );

@@ -7,14 +7,6 @@ import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Input } from "@/components/ui/input";
 import { SettingsSection, SettingsRow } from "@/app/config/settings-ui";
 import { UserAvatar } from "@/app/shared/user-avatar";
-import { Button } from "@/components/ui/button";
-import { useTheme } from "next-themes";
-
-const THEMES = [
-  { value: "system", label: "跟随系统" },
-  { value: "light", label: "亮色" },
-  { value: "dark", label: "暗色" },
-] as const;
 
 /** 选中的图片压到 ~96px 方形 data URL(JPEG),避免把大图塞进 settings.json。 */
 async function fileToAvatarDataUrl(file: File): Promise<string> {
@@ -42,8 +34,6 @@ export function GeneralSettings({
   onCompanyNameChange,
   onUserNameChange,
   onUserAvatarChange,
-  roleMode,
-  onRoleModeChange,
 }: {
   agentName: string;
   companyName: string;
@@ -53,11 +43,8 @@ export function GeneralSettings({
   onCompanyNameChange: (value: string) => void;
   onUserNameChange: (value: string) => void;
   onUserAvatarChange: (value: string) => void;
-  roleMode: "daily" | "tech";
-  onRoleModeChange: (value: "daily" | "tech") => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { theme, setTheme } = useTheme();
 
   async function onPickAvatar(file: File) {
     if (!file.type.startsWith("image/")) {
@@ -72,11 +59,11 @@ export function GeneralSettings({
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-8">
       <SettingsSection title="用户" description="显示在侧栏底部,仅本地保存,用于个性化。">
-        <div className="py-0.5">
+        <SettingsRow label="头像">
           {/* 点头像=换头像;右上角 × =移除(仅有头像时出现)。 */}
-          <div className="relative w-fit">
+          <div className="relative w-fit ml-auto">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -109,7 +96,7 @@ export function GeneralSettings({
               e.target.value = "";
             }}
           />
-        </div>
+        </SettingsRow>
         <SettingsRow label="用户名" htmlFor="user-name">
           <Input
             id="user-name"
@@ -136,41 +123,6 @@ export function GeneralSettings({
             onChange={(e) => onCompanyNameChange(e.target.value)}
             placeholder="例如：XX 科技"
           />
-        </SettingsRow>
-      </SettingsSection>
-
-      <SettingsSection title="主题" description="选择界面显示模式，跟随系统会自动匹配操作系统的明暗偏好。">
-        <div className="flex gap-2" role="group" aria-label="主题">
-          {THEMES.map((item) => (
-            <Button
-              key={item.value}
-              variant={theme === item.value ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTheme(item.value)}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        title="回复风格"
-        description={roleMode === "tech" ? "展示工具调用等工作过程，便于核查任务执行。" : "隐藏工作过程，只展示结论和必要说明。"}
-      >
-        <SettingsRow label="展示工作过程" hint="需要核查小财如何完成任务时开启">
-          <div className="flex justify-end gap-2" role="group" aria-label="展示工作过程">
-            {(["tech", "daily"] as const).map((mode) => (
-              <Button
-                key={mode}
-                variant={roleMode === mode ? "default" : "outline"}
-                size="sm"
-                onClick={() => onRoleModeChange(mode)}
-              >
-                {mode === "tech" ? "展示" : "隐藏"}
-              </Button>
-            ))}
-          </div>
         </SettingsRow>
       </SettingsSection>
     </div>
