@@ -229,8 +229,9 @@ export const toolCallStepUiTestPromise = (async () => {
     const askIdx = pageSrc2.indexOf("已答的确认项折叠在过程块内");
     const detailsClose = pageSrc2.indexOf("</details>", askIdx);
     assert.ok(askIdx > -1 && detailsClose > askIdx, "C-D3 FAIL: 已答确认项应位于过程块 details 内");
-    // 过程折叠头 body 字号
-    assert.ok(/min-w-0 flex-1 truncate text-body/.test(pageSrc2), "C-D4 FAIL: 「已处理 N 步」折叠头应为 text-body");
+    // 过程折叠头 body 字号(后续迭代按用户要求去掉 flex-1,让展开箭头紧贴文字右侧而非顶到最右;
+    // 这里只校验折叠头仍为 text-body 字号,不再强求 flex-1 撑满)
+    assert.ok(/min-w-0 truncate text-body/.test(pageSrc2), "C-D4 FAIL: 「已处理 N 步」折叠头应为 text-body");
     // ask-user 摘要行 body 字号
     const askSrc = src("app/components/ask-user-card.tsx");
     assert.ok(askSrc.includes('details className="py-0.5 text-body'), "C-D5 FAIL: 已确认摘要行应为 text-body");
