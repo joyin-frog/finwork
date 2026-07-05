@@ -235,6 +235,8 @@ export async function runSubagent(
 
     const chunks: string[] = [];
     let result = "";
+    // MCP 工具结果块只带 tool_use_id（无 name），用 tool_use 块建 id→name 映射来配对（P2 修复）
+    const toolUseNamesById = new Map<string, string>();
 
     try {
       for await (const message of sdk.query({
@@ -249,6 +251,8 @@ export async function runSubagent(
               type?: string;
               text?: string;
               name?: string;
+              id?: string;
+              tool_use_id?: string;
               input?: unknown;
               content?: unknown;
               is_error?: boolean;
@@ -270,32 +274,40 @@ export async function runSubagent(
         for (const block of raw.message?.content ?? []) {
           if (block.type === "text" && block.text) {
             chunks.push(block.text);
+            continue;
           }
-          if (block.type === "tool_result") {
-            const name = block.name ?? "";
-            const isError = Boolean(block.is_error ?? block.isError);
-            const stack = pendingToolCalls.get(name) ?? [];
-            const pending = stack.shift();
-            if (stack.length === 0) pendingToolCalls.delete(name);
-            else pendingToolCalls.set(name, stack);
-            const durationMs = pending ? Date.now() - pending.startTime : 0;
-            const content =
-              typeof block.content === "string"
-                ? block.content
-                : block.content != null
-                ? JSON.stringify(block.content)
-                : "";
-            // emit tool 里程碑（旁路）：pending 是刚 shift() 出的局部变量，input 只喂 getToolSummary，不进事件对象
-            opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "tool", toolName: name, summary: getToolSummary(name, pending?.input), durationMs, isError });
-            runAfterHooks(hookChain, {
-              toolName: name,
-              input: pending?.input,
-              outputDir,
-              result: content,
-              isError,
-              durationMs,
-            }).catch(console.error);
+          if (block.type === "tool_use" && block.name && block.id) {
+            toolUseNamesById.set(block.id, block.name);
+            continue;
           }
+          // 工具结果两种块：内置工具→tool_result（带 name）；MCP 工具→mcp_tool_result（只带 tool_use_id）。
+          // 子代理主要调 MCP 工具（薪税/报销/知识等），两者都要收——否则这些步骤既不进 F1 轨道也不跑 after-hook（P2 修复）。
+          let name: string | null = null;
+          if (block.type === "tool_result") name = block.name ?? "";
+          else if (block.type === "mcp_tool_result") name = (block.tool_use_id && toolUseNamesById.get(block.tool_use_id)) || null;
+          if (name === null) continue;
+          const isError = Boolean(block.is_error ?? block.isError);
+          const stack = pendingToolCalls.get(name) ?? [];
+          const pending = stack.shift();
+          if (stack.length === 0) pendingToolCalls.delete(name);
+          else pendingToolCalls.set(name, stack);
+          const durationMs = pending ? Date.now() - pending.startTime : 0;
+          const content =
+            typeof block.content === "string"
+              ? block.content
+              : block.content != null
+              ? JSON.stringify(block.content)
+              : "";
+          // emit tool 里程碑（旁路）：pending 是刚 shift() 出的局部变量，input 只喂 getToolSummary，不进事件对象
+          opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "tool", toolName: name, summary: getToolSummary(name, pending?.input), durationMs, isError });
+          runAfterHooks(hookChain, {
+            toolName: name,
+            input: pending?.input,
+            outputDir,
+            result: content,
+            isError,
+            durationMs,
+          }).catch(console.error);
         }
       }
     } finally {

@@ -273,16 +273,19 @@ export function getPriorConfirmedPeriod(
   month: number,
   db: DatabaseSync = getDb()
 ): { year: number; month: number } | null {
+  // 只看「紧邻上月」（跨年：1 月的上月是去年 12 月），不回溯更早月份。
+  // 否则 3 月草稿会与只有 1 月已确认的数据比对却标称「上月已确认」，产生误导的新增/漏算/差异。
+  // 紧邻上月无已确认工资 → 返回 null（无基线）；diff 工具据此明说「上月无已确认基线」，不静默拿更早月充当。
+  const prevYear = month === 1 ? year - 1 : year;
+  const prevMonth = month === 1 ? 12 : month - 1;
   const row = db
     .prepare(
-      `SELECT year, month FROM payroll_records
-       WHERE status = 'confirmed'
-         AND (year < ? OR (year = ? AND month < ?))
-       ORDER BY year DESC, month DESC
+      `SELECT 1 FROM payroll_records
+       WHERE year = ? AND month = ? AND status = 'confirmed'
        LIMIT 1`
     )
-    .get(year, year, month) as { year: number; month: number } | undefined;
-  return row ? { year: row.year, month: row.month } : null;
+    .get(prevYear, prevMonth);
+  return row ? { year: prevYear, month: prevMonth } : null;
 }
 
 /**
