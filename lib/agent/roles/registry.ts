@@ -54,10 +54,11 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     skills: ["payroll-calc", "xlsx"],
     tools: [
       "calculate_payroll_batch",  // high：子代理内被确认门拒；试算准备类任务仍可承接
-      "query_payroll_status", "tax_calculator",
+      "query_payroll_status", "tax_calculator", "diff_payroll_period",
+      "export_payslips",
     ],
     dataScope: ["payroll_records（全产品唯一有工资明细权限的角色）", "税率配置"],
-    deliverables: ["payroll_draft", "calc_receipt", "diff_list"],
+    deliverables: ["payroll_draft", "calc_receipt", "diff_list", "payslip_sheet"],
     rolePrompt: `你是薪税专员，负责薪酬核算域：按累计预扣预缴法算工资个税、
 五险一金核对、社保基数与专项附加扣除的口径检查。
 边界（违反即任务失败）：

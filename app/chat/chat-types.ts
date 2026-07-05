@@ -67,6 +67,8 @@ export type AskUserQuestionPayload = {
   options?: Array<{ label: string; description?: string }>;
   // 多题一次下发:非空(>1)时面板渲染为左右切换分页,逐题作答,提交时合并为 JSON。
   questions?: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>;
+  // 高风险工具确认门:confirm 时渲染为确认卡(两按钮,无文本框);缺省为普通提问。
+  kind?: "confirm" | "question";
 };
 
 export type AgentEvent =
@@ -76,7 +78,8 @@ export type AgentEvent =
   | { type: "tool_use"; id?: string; name: string; input?: unknown }
   | { type: "tool_result"; toolUseId?: string; name?: string; content?: string; isError?: boolean; durationMs?: number; structured?: unknown }
   | { type: "ask_user"; questionId: string; question: AskUserQuestionPayload }
-  | { type: "ask_user_answered"; questionId: string; answer: string };
+  | { type: "ask_user_answered"; questionId: string; answer: string }
+  | { type: "subagent"; label: string; roleId: string; phase: "start" | "tool" | "blocked" | "done"; summary?: string; toolName?: string; durationMs?: number; isError?: boolean; success?: boolean };
 
 export type { TimelineItem };
 

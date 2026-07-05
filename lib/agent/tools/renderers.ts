@@ -89,6 +89,8 @@ const summaries: Record<string, SummaryFn> = {
   },
   confirm_payroll_period: (i) => `确认${formatPeriod(i)}工资生效`,
   query_payroll_status: (i) => `查询${formatPeriod(i)}工资确认状态`,
+  diff_payroll_period: (i) => `复核${formatPeriod(i)}工资差异`,
+  export_payslips: (i) => `导出${formatPeriod(i)}工资明细表`,
   check_reimbursement_batch: (i) => { const count = arrayLen(i, "items"); return `核对报销单${count ? `(${count} 条)` : ""}`; },
   record_reimbursement_invoices: (i) => { const count = arrayLen(i, "items"); return `登记报销发票${count ? `(${count} 张)` : ""}进台账`; },
   reconcile_bank_statement: (i) => { const bank = arrayLen(i, "bankRows"); const book = arrayLen(i, "bookRows"); return `银行流水对账(银行 ${bank} 笔 / 账面 ${book} 笔)`; },

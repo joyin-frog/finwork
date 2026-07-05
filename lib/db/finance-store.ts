@@ -260,6 +260,32 @@ export function listPayrollRecords(year: number, month: number, db: DatabaseSync
 }
 
 /**
+ * 取严格早于当前期（year, month）的最近一个有 confirmed 记录的期间。
+ *
+ * 与既有 `getLatestConfirmedPayroll` 的区别：
+ * - `getLatestConfirmedPayroll(name, year, month)` 的 SQL 是 `WHERE year=? AND month<?`（年内），
+ *   1 月计薪时 `month<1` 恒空，无法跨年回溯去年 12 月——只能用于接力本年累计。
+ * - 本函数跨越年份边界（`year < ? OR (year=? AND month<?)`），专供差异复核取上月花名册，
+ *   不再受年内口径约束。**绝不要用 `getLatestConfirmedPayroll` 替代本函数。**
+ */
+export function getPriorConfirmedPeriod(
+  year: number,
+  month: number,
+  db: DatabaseSync = getDb()
+): { year: number; month: number } | null {
+  const row = db
+    .prepare(
+      `SELECT year, month FROM payroll_records
+       WHERE status = 'confirmed'
+         AND (year < ? OR (year = ? AND month < ?))
+       ORDER BY year DESC, month DESC
+       LIMIT 1`
+    )
+    .get(year, year, month) as { year: number; month: number } | undefined;
+  return row ? { year: row.year, month: row.month } : null;
+}
+
+/**
  * 把某期间的草稿确认生效(只有 confirmed 才会作为下月累计基础),写审计日志。
  * 指定 employeeNames 时只确认这些员工;没有可确认的草稿时报错,不静默成功。
  * 幂等:范围内全部已确认时返回 alreadyConfirmed,不报错、不重写审计日志。

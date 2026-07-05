@@ -22,7 +22,8 @@ export type SegmentTimelineItem = {
 export type ProcessSegment =
   | { kind: "text"; content: string; id: string }
   | { kind: "thinking"; content: string; id: string }
-  | { kind: "tools"; items: SegmentTimelineItem[] };
+  | { kind: "tools"; items: SegmentTimelineItem[] }
+  | { kind: "subagent"; label: string; items: SegmentTimelineItem[] };
 
 export type TurnSegments = {
   processSegments: ProcessSegment[];
@@ -116,6 +117,16 @@ export function buildTurnSegments(timeline: SegmentTimelineItem[]): TurnSegments
         segments.push({ kind: "thinking", content, id: item.id });
       }
       breakThinkingMerge = false;
+    } else if (type === "subagent") {
+      // subagent 事件：按 label 归并为子轨道段（不进工具段 catch-all）
+      flushTools();
+      const label = typeof item.event.label === "string" ? item.event.label : "";
+      const last = segments[segments.length - 1];
+      if (last?.kind === "subagent" && last.label === label) {
+        last.items.push(item);
+      } else {
+        segments.push({ kind: "subagent", label, items: [item] });
+      }
     } else {
       // tool_use / tool_result / system 归并为工具段
       pendingTools.push(item);

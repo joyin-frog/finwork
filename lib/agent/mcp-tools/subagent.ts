@@ -2,10 +2,11 @@ import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import { listDispatchableRoleIds } from "@/lib/agent/roles/availability";
+import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
 
 type Sdk = SdkLike;
 
-export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string) {
+export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string, onSubagentEvent?: (event: AgentRunEvent) => void) {
   // 从 ROLE_REGISTRY 按 available 过滤，再经 listDispatchableRoleIds 排除用户停用的角色
   const dispatchableIds = listDispatchableRoleIds();
   const ROLE_IDS = dispatchableIds as [string, ...string[]];
@@ -47,15 +48,16 @@ ${ROLE_CHEATSHEET}
           files: args.files ?? undefined,
           label: args.label,
         },
-        { parentOutputDir: outputDir, traceId, conversationId }
+        { parentOutputDir: outputDir, traceId, conversationId, onEvent: onSubagentEvent }
       );
-      return [
+      const text = [
         `子任务执行结果 [${result.label}]`,
         `状态：${result.success ? "成功" : "失败"}`,
         `耗时：${(result.durationMs / 1000).toFixed(1)}s`,
         "",
         result.content,
       ].join("\n");
+      return { content: [{ type: "text" as const, text }], ...(result.success ? {} : { isError: true as const }) };
     }
   );
 }

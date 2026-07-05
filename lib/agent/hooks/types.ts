@@ -13,6 +13,8 @@ export type HookContext = {
     question: string;
     header?: string;
     questions?: Array<{ question: string; header?: string; options?: Array<{ label: string; description?: string }>; multiSelect?: boolean }>;
+    // 高风险工具确认门:confirm 时前端渲染为确认卡(两按钮,无文本框);缺省为普通提问。
+    kind?: "confirm";
   }) => Promise<string>;
 };
 
