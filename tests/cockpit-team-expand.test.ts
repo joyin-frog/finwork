@@ -36,57 +36,59 @@ export const cockpitTeamExpandTestPromise = (async () => {
       "T1 FAIL: app/agents/page.tsx 应存在"
     );
 
-    const pageSrc = src("app/agents/page.tsx");
+    // 团队看板拆成子组件后，启停开关（Switch）+ 派活落在 agent-card.tsx；契约按 agents 组件集检查。
+    const agentsFeatureSrc = [
+      "app/agents/page.tsx",
+      "app/agents/agent-card.tsx",
+      "app/agents/agent-detail-drawer.tsx",
+      "app/agents/attention-panel.tsx",
+    ].filter(exists).map(src).join("\n");
 
     // 1a：调用 /api/agents/toggle（POST 启停接口）
     assert.ok(
-      pageSrc.includes("/api/agents/toggle"),
-      "T1 FAIL: app/agents/page.tsx 应调用 /api/agents/toggle（启停接口）"
+      agentsFeatureSrc.includes("/api/agents/toggle"),
+      "T1 FAIL: agents 页应调用 /api/agents/toggle（启停接口）"
     );
 
-    // 1b：含 POST 方法调用（fetch 的 method: "POST" 或等价写法）
+    // 1b：POST 方法
     assert.ok(
-      pageSrc.includes("POST") || pageSrc.includes("method"),
-      "T1 FAIL: app/agents/page.tsx 调用 toggle 接口时应使用 POST 方法"
+      agentsFeatureSrc.includes("POST") || agentsFeatureSrc.includes("method"),
+      "T1 FAIL: agents 页调用 toggle 接口时应使用 POST 方法"
     );
 
-    // 1c：「已停用」文案（userDisabled 角色的标签）
+    // 1c：启停状态可见——右上角 Switch，checked 绑定 userDisabled（取代旧「已停用」文案标签）
     assert.ok(
-      pageSrc.includes("已停用"),
-      "T1 FAIL: app/agents/page.tsx 应含「已停用」文案（userDisabled 角色行的标签）"
+      agentsFeatureSrc.includes("Switch") && agentsFeatureSrc.includes("userDisabled"),
+      "T1 FAIL: agents 页应有启停开关（Switch 绑 userDisabled，取代已停用文案）"
     );
 
-    // 1d：「停用」或「启用」控件文案（切换操作按钮）
+    // 1d：「停用」/「启用」控件文案（Switch aria-label / title）
     assert.ok(
-      pageSrc.includes("停用") || pageSrc.includes("启用"),
-      "T1 FAIL: app/agents/page.tsx 应含「停用」/「启用」控件文案"
+      agentsFeatureSrc.includes("停用") || agentsFeatureSrc.includes("启用"),
+      "T1 FAIL: agents 页应含「停用」/「启用」控件文案"
     );
 
-    // 1e：userDisabled 状态判断（来自 API）
+    // 1e：userDisabled 状态处理
     assert.ok(
-      pageSrc.includes("userDisabled"),
-      "T1 FAIL: app/agents/page.tsx 应处理 userDisabled 字段（决定标签与按钮）"
+      agentsFeatureSrc.includes("userDisabled"),
+      "T1 FAIL: agents 页应处理 userDisabled 字段"
     );
 
-    // 1f：已停用角色无派活按钮——
-    // 从实现契约：「userDisabled 的行显示「已停用」标签、无派活按钮」
-    // 源码断言：派活按钮受 userDisabled 条件控制（!isDisabled 或 !userDisabled 之类）
+    // 1f：派活受 disabled 条件控制（已停用/未启用不显示）
     assert.ok(
-      pageSrc.includes("userDisabled") &&
-      (pageSrc.includes("!agent.userDisabled") ||
-       pageSrc.includes("!userDisabled") ||
-       pageSrc.includes("isDisabled") ||
-       pageSrc.includes("!isDisabled")),
-      "T1 FAIL: app/agents/page.tsx 的「派活」按钮应受 userDisabled 条件控制（已停用时不显示）"
+      agentsFeatureSrc.includes("isDisabled") ||
+      agentsFeatureSrc.includes("!card.userDisabled") ||
+      agentsFeatureSrc.includes("canDispatch"),
+      "T1 FAIL: agents 页「派活」应受 disabled 条件控制（已停用/未启用不显示）"
     );
 
-    // 1g：刷新（toggle 成功后重新 fetch 花名册）
+    // 1g：toggle 成功后刷新花名册（onToggled → fetchRoster）
     assert.ok(
-      pageSrc.includes("fetchRoster") || pageSrc.includes("fetch(\"/api/agents\")") || pageSrc.includes("fetch('/api/agents')"),
-      "T1 FAIL: app/agents/page.tsx toggle 后应刷新花名册（调用 fetchRoster 或重新 fetch /api/agents）"
+      agentsFeatureSrc.includes("fetchRoster") || agentsFeatureSrc.includes("onToggled"),
+      "T1 FAIL: agents 页 toggle 后应刷新花名册（fetchRoster / onToggled 回调）"
     );
 
-    console.log("cockpit-team-expand T1: agents/page.tsx toggle 接口 + 已停用文案 ✓");
+    console.log("cockpit-team-expand T1: agents 启停开关 + 派活控件（子组件集）✓");
   }
 
   // ─── T2：app/cockpit/team-panel.tsx — inline 展开 + blocked 样式 + 派活次动作 ──

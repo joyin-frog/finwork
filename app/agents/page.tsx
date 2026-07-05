@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
@@ -36,67 +35,6 @@ type AgentRosterItem = {
   conversationId?: string | null;
   invoiceStats?: InvoiceStats;
 };
-
-// ─── RoleControls (toggle/dispatch 操作行，嵌在卡片下方) ─────────────────────
-
-function RoleControls({
-  card,
-  onToggle,
-}: {
-  card: RoleCard;
-  onToggle: () => void;
-}) {
-  const [toggling, setToggling] = useState(false);
-  const isDisabled = !card.available || card.userDisabled;
-
-  async function handleToggle(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (toggling) return;
-    setToggling(true);
-    try {
-      await fetch("/api/agents/toggle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleId: card.roleId, disabled: !card.userDisabled }),
-      });
-      onToggle();
-    } finally {
-      setToggling(false);
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-2 px-1 pb-0.5">
-      {/* 已停用 标记 */}
-      {card.userDisabled && (
-        <span className="text-meta px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-          已停用
-        </span>
-      )}
-      {/* 启停控件：仅对 available:true 的角色显示 */}
-      {card.available && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleToggle}
-          disabled={toggling}
-          className="shrink-0 text-muted-foreground"
-        >
-          {card.userDisabled ? "启用" : "停用"}
-        </Button>
-      )}
-      {/* 派活按钮：userDisabled 时隐藏 */}
-      {!card.userDisabled && !isDisabled && (
-        <Link
-          href={`/chat/new?prompt=${encodeURIComponent(`让${card.name}帮我处理…`)}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Button variant="outline" size="sm">派活</Button>
-        </Link>
-      )}
-    </div>
-  );
-}
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
@@ -195,20 +133,14 @@ export default function AgentsPage() {
 
   function renderCardGroup(cards: RoleCard[], compact: boolean) {
     return cards.map((card) => (
-      <div key={card.roleId} className="flex flex-col gap-0.5">
-        <AgentCard
-          card={card}
-          compact={compact}
-          selected={selectedRoleId === card.roleId}
-          onClick={() => void handleSelectRole(card.roleId)}
-        />
-        {/* 尚未启用 标注（available:false 但未被 userDisabled） */}
-        {!card.available && !card.userDisabled && (
-          <span className="text-meta text-muted-foreground px-1">尚未启用</span>
-        )}
-        {/* 启停 + 派活 控件行 */}
-        <RoleControls card={card} onToggle={fetchRoster} />
-      </div>
+      <AgentCard
+        key={card.roleId}
+        card={card}
+        compact={compact}
+        selected={selectedRoleId === card.roleId}
+        onClick={() => void handleSelectRole(card.roleId)}
+        onToggled={fetchRoster}
+      />
     ));
   }
 
