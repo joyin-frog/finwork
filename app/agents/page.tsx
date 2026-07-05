@@ -1,26 +1,23 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
-import { ROLE_UI } from "@/lib/domain/role-ui";
+import { usePreviewResize } from "@/app/shared/use-preview-resize";
+import { cn } from "@/lib/utils";
+import { AgentCard } from "./agent-card";
+import { AgentDetailDrawer } from "./agent-detail-drawer";
+import { AttentionPanel } from "./attention-panel";
+import { partitionRoles, type RoleCard } from "@/lib/domain/agent-board";
+import type { AttentionItem } from "@/lib/domain/attention";
 import type { DispatchRow } from "@/lib/db/dispatch-store";
-import { relativeTime } from "@/lib/utils/relative-time";
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+// ─── Types (mirrors /api/agents response) ──────────────────────────────────
 
-type SkillEntry = {
-  name: string;
-  description: string;
-};
-
-type InvoiceStats = {
-  total: number;
-  addedThisMonth: number;
-};
+type SkillEntry = { name: string; description: string };
+type InvoiceStats = { total: number; addedThisMonth: number };
 
 type AgentRosterItem = {
   roleId: string;
@@ -33,103 +30,24 @@ type AgentRosterItem = {
   userDisabled: boolean;
   dispatchCount: number;
   lastAt: string | null;
+  lastSummary?: string | null;
+  status?: string | null;
+  blockedReason?: string | null;
+  conversationId?: string | null;
   invoiceStats?: InvoiceStats;
 };
 
-// ─── DispatchList（台账区，按需懒加载） ────────────────────────────────────
+// ─── RoleControls (toggle/dispatch 操作行，嵌在卡片下方) ─────────────────────
 
-function DispatchList({ roleId, initialDispatches }: { roleId: string; initialDispatches?: DispatchRow[] }) {
-  const [rows, setRows] = useState<DispatchRow[] | null>(initialDispatches ?? null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    if (rows !== null) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/agents/dispatches?roleId=${encodeURIComponent(roleId)}&limit=5`);
-      const json = await res.json();
-      if (json.ok) setRows(json.data.rows);
-    } catch {
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [roleId, rows]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading) {
-    return <p className="text-meta text-muted-foreground py-2">加载中…</p>;
-  }
-
-  if (!rows || rows.length === 0) {
-    return <p className="text-meta text-muted-foreground py-2">暂无工作记录</p>;
-  }
-
-  // 「停在确认门」的 blocked 行前置
-  const sorted = [...rows].sort((a, b) => {
-    const aBlocked = a.blockedReason != null ? 0 : 1;
-    const bBlocked = b.blockedReason != null ? 0 : 1;
-    return aBlocked - bBlocked;
-  });
-
-  return (
-    <div className="flex flex-col gap-1.5 mt-1">
-      {sorted.map((row) => {
-        const isBlocked = row.blockedReason != null;
-        const href = row.conversationId ? `/chat/recent?id=${row.conversationId}` : undefined;
-
-        const inner = (
-          <div
-            className={`flex items-start gap-2 rounded px-2 py-1.5 text-meta ${isBlocked ? "fa-toned" : "bg-muted/40"}`}
-            style={isBlocked ? ({ "--tone": "var(--tone-notice)" } as CSSProperties) : undefined}
-          >
-            {isBlocked && (
-              <span
-                className="fa-tone-pill shrink-0 font-medium whitespace-nowrap"
-                style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
-              >
-                停在确认门
-              </span>
-            )}
-            <span className="flex-1 min-w-0 truncate text-foreground">
-              {row.label ?? row.summary ?? `#${row.id}`}
-            </span>
-            <span className="shrink-0 text-muted-foreground whitespace-nowrap">
-              {relativeTime(row.startedAt)}
-            </span>
-          </div>
-        );
-
-        return href ? (
-          <Link key={row.id} href={href} className="block hover:no-underline">
-            {inner}
-          </Link>
-        ) : (
-          <div key={row.id}>{inner}</div>
-        );
-      })}
-
-      <p className="text-meta text-muted-foreground pt-1">
-        已显示最近 {rows.length} 条派发记录
-      </p>
-    </div>
-  );
-}
-
-// ─── AgentRow（花名册行 + 展开详情） ────────────────────────────────────────
-
-function AgentRow({ agent, onToggle }: { agent: AgentRosterItem; onToggle: () => void }) {
-  const [expanded, setExpanded] = useState(false);
+function RoleControls({
+  card,
+  onToggle,
+}: {
+  card: RoleCard;
+  onToggle: () => void;
+}) {
   const [toggling, setToggling] = useState(false);
-  const ui = ROLE_UI[agent.roleId as keyof typeof ROLE_UI];
-  const tone = ui?.tone ?? "--tone-neutral";
-  const isDisabled = !agent.available || agent.userDisabled;
-
-  const promptText = encodeURIComponent(`让${agent.name}帮我处理…`);
-  const dispatchHref = `/chat/new?prompt=${promptText}`;
+  const isDisabled = !card.available || card.userDisabled;
 
   async function handleToggle(e: React.MouseEvent) {
     e.stopPropagation();
@@ -139,7 +57,7 @@ function AgentRow({ agent, onToggle }: { agent: AgentRosterItem; onToggle: () =>
       await fetch("/api/agents/toggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleId: agent.roleId, disabled: !agent.userDisabled }),
+        body: JSON.stringify({ roleId: card.roleId, disabled: !card.userDisabled }),
       });
       onToggle();
     } finally {
@@ -148,130 +66,33 @@ function AgentRow({ agent, onToggle }: { agent: AgentRosterItem; onToggle: () =>
   }
 
   return (
-    <div
-      className={`rounded-lg border border-border bg-card transition-colors ${isDisabled ? "opacity-60" : ""}`}
-    >
-      {/* 主行 */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
-        onClick={() => setExpanded((v) => !v)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === "Enter" && setExpanded((v) => !v)}
-        aria-expanded={expanded}
-      >
-        {/* 圆形域图标 */}
-        <span
-          className="fa-toned shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-body font-semibold select-none"
-          style={{ "--tone": `var(${tone})` } as CSSProperties}
-          aria-hidden="true"
-        >
-          {agent.name.slice(0, 1)}
+    <div className="flex items-center gap-2 px-1 pb-0.5">
+      {/* 已停用 标记 */}
+      {card.userDisabled && (
+        <span className="text-meta px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+          已停用
         </span>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-body font-semibold">{agent.name}</span>
-            <span className="text-meta text-muted-foreground">{agent.domain}</span>
-            {agent.userDisabled && (
-              <span className="text-meta px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                已停用
-              </span>
-            )}
-            {!agent.available && !agent.userDisabled && (
-              <span className="text-meta px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                尚未启用
-              </span>
-            )}
-          </div>
-          <p className="text-meta text-muted-foreground truncate">{agent.charter}</p>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-meta text-muted-foreground whitespace-nowrap">
-            {agent.dispatchCount} 次
-            {agent.lastAt ? ` · ${relativeTime(agent.lastAt)}` : ""}
-          </span>
-          {/* 启停控件：仅对 available:true 的角色显示 */}
-          {agent.available && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleToggle}
-              disabled={toggling}
-              className="shrink-0 text-muted-foreground"
-            >
-              {agent.userDisabled ? "启用" : "停用"}
-            </Button>
-          )}
-          {/* 派活按钮：userDisabled 时隐藏 */}
-          {!agent.userDisabled && !isDisabled && (
-            <Link
-              href={dispatchHref}
-              onClick={(e) => e.stopPropagation()}
-              className="shrink-0"
-            >
-              <Button variant="outline" size="sm">
-                派活
-              </Button>
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* 展开详情 */}
-      {expanded && (
-        <div className="border-t border-border px-4 py-3 flex flex-col gap-4">
-          {/* 数据权限域 */}
-          <div>
-            <p className="text-meta font-medium text-muted-foreground mb-1.5">数据权限</p>
-            <div className="flex flex-wrap gap-1.5">
-              {agent.dataScope.map((scope) => (
-                <span
-                  key={scope}
-                  className="text-meta px-2 py-0.5 rounded-full border border-border bg-muted/50"
-                >
-                  {scope}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* 会做的活（技能） */}
-          {agent.skills.length > 0 && (
-            <div>
-              <p className="text-meta font-medium text-muted-foreground mb-1.5">会做的活</p>
-              <div className="flex flex-wrap gap-1.5">
-                {agent.skills.map((skill) => (
-                  <span
-                    key={skill.name}
-                    title={skill.description}
-                    className="text-meta px-2 py-0.5 rounded-full border border-border bg-muted/50 cursor-help"
-                  >
-                    {skill.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* bookkeeper 专项：发票台账计数 */}
-          {agent.invoiceStats && (
-            <div>
-              <p className="text-meta font-medium text-muted-foreground mb-1.5">发票台账</p>
-              <div className="flex gap-4 text-body">
-                <span>本月新增 {agent.invoiceStats.addedThisMonth} 张</span>
-                <span className="text-muted-foreground">累计 {agent.invoiceStats.total} 张</span>
-              </div>
-            </div>
-          )}
-
-          {/* 工作台账 */}
-          <div>
-            <p className="text-meta font-medium text-muted-foreground mb-1">工作台账</p>
-            <DispatchList roleId={agent.roleId} />
-          </div>
-        </div>
+      )}
+      {/* 启停控件：仅对 available:true 的角色显示 */}
+      {card.available && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleToggle}
+          disabled={toggling}
+          className="shrink-0 text-muted-foreground"
+        >
+          {card.userDisabled ? "启用" : "停用"}
+        </Button>
+      )}
+      {/* 派活按钮：userDisabled 时隐藏 */}
+      {!card.userDisabled && !isDisabled && (
+        <Link
+          href={`/chat/new?prompt=${encodeURIComponent(`让${card.name}帮我处理…`)}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button variant="outline" size="sm">派活</Button>
+        </Link>
       )}
     </div>
   );
@@ -281,8 +102,16 @@ function AgentRow({ agent, onToggle }: { agent: AgentRosterItem; onToggle: () =>
 
 export default function AgentsPage() {
   const [roster, setRoster] = useState<AgentRosterItem[] | null>(null);
+  const [attention, setAttention] = useState<AttentionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [dispatches, setDispatches] = useState<DispatchRow[] | null>(null);
+  const [dispatchLoading, setDispatchLoading] = useState(false);
+
+  // listMinW >= 400 per spec (评审 P2 要求：默认 300 太小，参照 files 页 460)
+  const { collapsed, previewW, dragging, maximized, mainRef, beginResize, open, toggle, maximize } =
+    usePreviewResize(460);
 
   const fetchRoster = useCallback(async () => {
     setLoading(true);
@@ -290,8 +119,12 @@ export default function AgentsPage() {
     try {
       const res = await fetch("/api/agents");
       const json = await res.json();
-      if (json.ok) setRoster(json.data.roster);
-      else setError(json.error || "加载失败");
+      if (json.ok) {
+        setRoster(json.data.roster);
+        setAttention(json.data.attention ?? []);
+      } else {
+        setError(json.error || "加载失败");
+      }
     } catch {
       setError("网络错误");
     } finally {
@@ -299,32 +132,164 @@ export default function AgentsPage() {
     }
   }, []);
 
+  // 进入/切回重取（MVP 实时状态）
   useEffect(() => {
     void fetchRoster();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchRoster();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [fetchRoster]);
+
+  // running 时轻量轮询（仅有 running 派发时，每 8s）
+  useEffect(() => {
+    if (!roster) return;
+    const hasRunning = roster.some((r) => r.status === "running");
+    if (!hasRunning) return;
+    const timer = setInterval(() => void fetchRoster(), 8000);
+    return () => clearInterval(timer);
+  }, [roster, fetchRoster]);
+
+  // 选中角色时加载派发详情
+  const handleSelectRole = useCallback(
+    async (roleId: string) => {
+      if (selectedRoleId === roleId) {
+        // 再次点击同一卡片 → 关闭抽屉
+        setSelectedRoleId(null);
+        toggle();
+        return;
+      }
+      setSelectedRoleId(roleId);
+      open();
+      setDispatches(null);
+      setDispatchLoading(true);
+      try {
+        const res = await fetch(`/api/agents/dispatches?roleId=${encodeURIComponent(roleId)}&limit=8`);
+        const json = await res.json();
+        if (json.ok) setDispatches(json.data.rows);
+        else setDispatches([]);
+      } catch {
+        setDispatches([]);
+      } finally {
+        setDispatchLoading(false);
+      }
+    },
+    [selectedRoleId, open, toggle]
+  );
+
+  const handleCloseDrawer = useCallback(() => {
+    setSelectedRoleId(null);
+    toggle();
+  }, [toggle]);
+
+  // 分组（partition）
+  const { active, rest } = roster
+    ? partitionRoles(roster)
+    : { active: [], rest: [] };
+
+  const selectedCard: RoleCard | null =
+    selectedRoleId
+      ? ([...active, ...rest].find((c) => c.roleId === selectedRoleId) ?? null)
+      : null;
+
+  function renderCardGroup(cards: RoleCard[], compact: boolean) {
+    return cards.map((card) => (
+      <div key={card.roleId} className="flex flex-col gap-0.5">
+        <AgentCard
+          card={card}
+          compact={compact}
+          selected={selectedRoleId === card.roleId}
+          onClick={() => void handleSelectRole(card.roleId)}
+        />
+        {/* 尚未启用 标注（available:false 但未被 userDisabled） */}
+        {!card.available && !card.userDisabled && (
+          <span className="text-meta text-muted-foreground px-1">尚未启用</span>
+        )}
+        {/* 启停 + 派活 控件行 */}
+        <RoleControls card={card} onToggle={fetchRoster} />
+      </div>
+    ));
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0">
+      {/* Topbar */}
+      <header
+        className={cn(
+          "relative flex items-center gap-3 pr-5 h-11 shrink-0",
+          maximized && "hidden"
+        )}
+      >
         <DragHandle />
         <SidebarToggle />
         <h1 className="text-title">智能体</h1>
       </header>
 
-      <div className="flex-1 overflow-auto p-6 flex flex-col gap-4">
-        {error ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
-            <p>{error}</p>
-            <Button variant="outline" size="sm" onClick={fetchRoster}>重试</Button>
+      {/* Main area — left cards + right drawer */}
+      <div className="flex flex-1 overflow-hidden" ref={mainRef}>
+        {/* Left column — hidden when drawer is maximized */}
+        <div
+          className={cn(
+            "flex flex-col flex-1 min-w-[420px] overflow-hidden",
+            maximized && "hidden"
+          )}
+        >
+          <div className="flex-1 overflow-auto p-6 flex flex-col gap-5">
+            {error ? (
+              <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
+                <p>{error}</p>
+                <Button variant="outline" size="sm" onClick={fetchRoster}>
+                  重试
+                </Button>
+              </div>
+            ) : loading ? (
+              <div className="flex items-center justify-center py-16 text-body text-muted-foreground">
+                加载中…
+              </div>
+            ) : (
+              <>
+                {/* 等你拍板区 */}
+                <AttentionPanel items={attention} />
+
+                {/* 在忙·待拍板组 */}
+                {active.length > 0 && (
+                  <section className="flex flex-col gap-2">
+                    <h2 className="text-title font-semibold">在忙 · 待拍板</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {renderCardGroup(active, false)}
+                    </div>
+                  </section>
+                )}
+
+                {/* 其他角色组（含尚未启用/已停用的弱化卡） */}
+                {rest.length > 0 && (
+                  <section className="flex flex-col gap-2">
+                    {active.length > 0 && (
+                      <h2 className="text-title font-semibold text-muted-foreground">其他</h2>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {renderCardGroup(rest, active.length > 0)}
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
           </div>
-        ) : loading ? (
-          <div className="flex items-center justify-center py-16 text-body text-muted-foreground">
-            加载中…
-          </div>
-        ) : (
-          roster?.map((agent) => (
-            <AgentRow key={agent.roleId} agent={agent} onToggle={fetchRoster} />
-          ))
+        </div>
+
+        {/* Right drawer — rendered when a card is selected and not collapsed */}
+        {!collapsed && selectedCard && (
+          <AgentDetailDrawer
+            card={selectedCard}
+            dispatches={dispatchLoading ? null : dispatches}
+            previewW={previewW}
+            maximized={maximized}
+            dragging={dragging}
+            onBeginResize={beginResize}
+            onMaximize={maximize}
+            onClose={handleCloseDrawer}
+          />
         )}
       </div>
     </div>

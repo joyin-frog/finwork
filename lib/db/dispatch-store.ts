@@ -253,3 +253,60 @@ export function listBlockedDispatches(sinceDays = 7): BlockedDispatchRow[] {
     endedAt: r.ended_at ?? null,
   }));
 }
+
+export type RoleLatestStatus = {
+  roleId: string;
+  /** 该角色当前是否有 running 状态的派发 */
+  isRunning: boolean;
+  /** 该角色最新一条有 blocked_reason 的派发（若有） */
+  blockedReason: string | null;
+  conversationId: string | null;
+};
+
+/**
+ * 按角色取最新派发状态（running + blocked），供 /api/agents 路由用于动态分组。
+ * - isRunning: 该角色是否有 status='running' 的行
+ * - blockedReason: 最新一条 blocked_reason 非空的行的原因（可能已 ended）
+ * - conversationId: 对应那条 blocked 行的会话 id
+ */
+export function listRoleLatestStatus(): RoleLatestStatus[] {
+  const db = getDb();
+
+  // 找出所有有记录的角色
+  const roleIds = db
+    .prepare(`SELECT DISTINCT role_id FROM subagent_dispatches`)
+    .all() as Array<{ role_id: string }>;
+
+  return roleIds.map(({ role_id }) => {
+    // running 检查
+    const runningRow = db
+      .prepare(
+        `SELECT id FROM subagent_dispatches
+         WHERE role_id = ? AND status = 'running'
+         ORDER BY id DESC LIMIT 1`
+      )
+      .get(role_id) as { id: number } | undefined;
+
+    // 最新 blocked 行
+    const blockedRow = db
+      .prepare(
+        `SELECT sd.blocked_reason,
+                COALESCE(sd.conversation_id, CAST(at.conversation_id AS TEXT)) AS conversation_id
+         FROM subagent_dispatches sd
+         LEFT JOIN agent_traces at ON at.trace_id = sd.trace_id
+         WHERE sd.role_id = ?
+           AND sd.blocked_reason IS NOT NULL
+           AND sd.ended_at IS NULL
+         ORDER BY sd.id DESC
+         LIMIT 1`
+      )
+      .get(role_id) as { blocked_reason: string; conversation_id: string | null } | undefined;
+
+    return {
+      roleId: role_id,
+      isRunning: runningRow != null,
+      blockedReason: blockedRow?.blocked_reason ?? null,
+      conversationId: blockedRow?.conversation_id ?? null,
+    };
+  });
+}

@@ -3,6 +3,8 @@
 // 团队面板（CV-3 §5.2 + v3-P2 行内展开）
 // 低拟人红线：无头像、无性格文案、无第一人称；唯一的「人味」是中文岗位名。
 // prefers-reduced-motion: fa-team-enter 只在 globals.css @media(no-preference) 内定义，降级时直接出现。
+//
+// agent-team-board 收敛：页脚"查看全部"改为"查看看板"→ /agents（团队看板页）。
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -200,7 +202,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
       </div>
       <div className="pt-1 border-t border-border">
         <Link href="/agents" className="text-meta text-muted-foreground hover:text-foreground transition-colors">
-          查看全部 →
+          查看看板 →
         </Link>
       </div>
     </section>
