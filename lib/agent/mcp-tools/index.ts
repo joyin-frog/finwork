@@ -15,16 +15,17 @@ import { createRecordDocumentMetadataTool } from "./document-metadata";
 import { createUpdateCompanyProfileTool } from "./profile";
 import { createFinalizeDeliverableTool } from "./finalize-deliverable";
 import type { SdkLike } from "./sdk-types";
+import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
 
 type Sdk = SdkLike & { createSdkMcpServer: NonNullable<SdkLike["createSdkMcpServer"]> };
 
-export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string) {
+export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string, onSubagentEvent?: (event: AgentRunEvent) => void) {
   return sdk.createSdkMcpServer({
     name: "finance_worker",
     version: "0.1.0",
     tools: [
       createRunPythonTool(sdk, outputDir, traceId),
-      createSpawnSubagentTool(sdk, outputDir, traceId, conversationId),
+      createSpawnSubagentTool(sdk, outputDir, traceId, conversationId, onSubagentEvent),
       createSearchKnowledgeTool(sdk),
       createQueryKnowledgeTool(sdk),
       createReadFileTool(sdk),
@@ -33,7 +34,7 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createRememberConventionTool(sdk),
       createRecordBusinessMetricsTool(sdk),
       createBusinessAnalysisTool(sdk),
-      ...createPayrollTools(sdk),
+      ...createPayrollTools(sdk, outputDir),
       ...createReimbursementTools(sdk),
       ...createReconciliationTools(sdk),
       ...createFinanceTools(sdk, outputDir),
@@ -59,9 +60,10 @@ export async function buildFinanceMcpServers(
   outputDir: string,
   traceId?: string,
   conversationId?: string,
+  onSubagentEvent?: (event: AgentRunEvent) => void,
 ) {
   return {
-    finance_worker: await createFinanceMcpServer(sdk, outputDir, traceId, conversationId),
+    finance_worker: await createFinanceMcpServer(sdk, outputDir, traceId, conversationId, onSubagentEvent),
     kingdee_worker: await createKingdeeMcpServer(sdk, outputDir),
   };
 }

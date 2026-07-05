@@ -37,6 +37,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__calculate_payroll_batch",       category: "finance", riskLevel: "high" },
   { name: "mcp__finance_worker__confirm_payroll_period",        category: "finance", riskLevel: "high" },
   { name: "mcp__finance_worker__query_payroll_status",          category: "finance", riskLevel: "safe" },
+  { name: "mcp__finance_worker__diff_payroll_period",           category: "finance", riskLevel: "safe" },
+  { name: "mcp__finance_worker__export_payslips",               category: "finance", riskLevel: "medium" },
   { name: "mcp__finance_worker__check_reimbursement_batch",     category: "finance", riskLevel: "safe" },
   { name: "mcp__finance_worker__record_reimbursement_invoices", category: "finance", riskLevel: "medium" },
   // Reconciliation (read-only, never touches payment)
@@ -64,11 +66,24 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__finalize_deliverable",      category: "finance", riskLevel: "safe" },
 ];
 
+// 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。
+// always-confirm 两名与 built-in.ALWAYS_CONFIRM_TOOLS 同步（confirm-gate-fix.test 守无漂移）。
+// 注意：不 import built-in（会循环依赖，built-in 已依赖本模块的 getToolRiskLevel）。
+const CONFIRM_REQUIRED_TOOL_NAMES = new Set<string>([
+  "mcp__finance_worker__remember_convention",
+  "mcp__finance_worker__update_company_profile",
+]);
+
 /**
  * 静态工具全集:迁移到 SDK 原生 skill 后,工具不再按 skill 收敛。
  * 模型可见全部已登记工具,由 skill 描述引导选用、高风险工具经确认门兜底(见 createRiskConfirmHook)。
+ * 高风险财务工具（riskLevel==="high" && category==="finance"）与 always-confirm 工具移出此列表，
+ * 使其经 canUseTool → risk-confirm hook → 弹确认卡，而非被 SDK 自动放行。
+ * Bash（riskLevel:"high" 但 category:"builtin"）保留在此，由 createUnwiredToolHook 在链首 deny。
  */
-export const ALLOWED_TOOLS: string[] = TOOL_REGISTRY.map((t) => t.name);
+export const ALLOWED_TOOLS: string[] = TOOL_REGISTRY
+  .filter((t) => !((t.riskLevel === "high" && t.category === "finance") || CONFIRM_REQUIRED_TOOL_NAMES.has(t.name)))
+  .map((t) => t.name);
 
 /**
  * SDK 实际加载的内置工具定义集合 —— 只发 agent 真正用得到的内置工具,

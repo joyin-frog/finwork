@@ -562,6 +562,65 @@ def cmd_export_voucher_xlsx():
     print(json.dumps({"filePath": output_path}, ensure_ascii=False))
 
 
+def cmd_export_payslips_xlsx():
+    """export-payslips-xlsx: 从 stdin 读 JSON payload，生成工资明细 xlsx。
+    JSON 结构:
+      { outputPath: str, year: int, month: int,
+        rows: [{employeeName, grossPay, socialInsurance, housingFund,
+                specialDeduction, taxCurrent, netPay}, ...],
+        totals: {grossPay, socialInsurance, housingFund, specialDeduction,
+                 taxCurrent, netPay} }
+    输出到 stdout: JSON { filePath: str }
+    """
+    import openpyxl
+
+    payload = json.loads(sys.stdin.read())
+    # 防覆盖：同名已存在则版本化为 _v2/_v3…（照抄 cmd_export_voucher_xlsx，
+    # 显式调 _next_versioned_path，不依赖 _guarded_save 猴子补丁）
+    output_path = str(_next_versioned_path(Path(payload["outputPath"])))
+    year = payload.get("year", "")
+    month = payload.get("month", "")
+    rows = payload.get("rows", [])
+    totals = payload.get("totals", {})
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "工资明细"
+
+    # 第 1 行：标注期间与状态
+    ws.append([f"{year}年{month}月工资明细 · 已确认"])
+
+    # 表头
+    header = ["姓名", "税前工资", "五险(个人)", "公积金(个人)", "专项附加扣除", "本期个税", "实发工资"]
+    ws.append(header)
+
+    # 每人一行
+    for r in rows:
+        ws.append([
+            r.get("employeeName", ""),
+            r.get("grossPay", 0),
+            r.get("socialInsurance", 0),
+            r.get("housingFund", 0),
+            r.get("specialDeduction", 0),
+            r.get("taxCurrent", 0),
+            r.get("netPay", 0),
+        ])
+
+    # 合计行
+    ws.append([
+        "合计",
+        totals.get("grossPay", 0),
+        totals.get("socialInsurance", 0),
+        totals.get("housingFund", 0),
+        totals.get("specialDeduction", 0),
+        totals.get("taxCurrent", 0),
+        totals.get("netPay", 0),
+    ])
+
+    wb.save(output_path)
+    print(json.dumps({"filePath": output_path}, ensure_ascii=False))
+
+
 def main():
     _force_utf8_stdio()
     if len(sys.argv) >= 2 and sys.argv[1] == "--selfcheck":
@@ -588,8 +647,11 @@ def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "export-voucher-xlsx":
         cmd_export_voucher_xlsx()
         return
+    if len(sys.argv) >= 2 and sys.argv[1] == "export-payslips-xlsx":
+        cmd_export_payslips_xlsx()
+        return
     raise SystemExit(
-        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | ocr-image <path> | run | export-voucher-xlsx"
+        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | ocr-image <path> | run | export-voucher-xlsx | export-payslips-xlsx"
     )
 
 

@@ -545,4 +545,22 @@ void (async () => {
   const { chatProcessPolishTestPromise } = await import("./chat-process-polish.test.ts");
   await chatProcessPolishTestPromise;
 
+  const { confirmGateTestPromise } = await import("./confirm-gate.test.ts");
+  await confirmGateTestPromise;
+
+  const { subagentTransparencyTestPromise } = await import("./subagent-transparency.test.ts");
+  await subagentTransparencyTestPromise;
+
+  const { confirmGateFixTestPromise } = await import("./confirm-gate-fix.test.ts");
+  await confirmGateFixTestPromise;
+
+  const { payrollDiffTestPromise } = await import("./payroll-diff.test.ts");
+  await payrollDiffTestPromise;
+
+  const { payslipExportTestPromise } = await import("./payslip-export.test.ts");
+  await payslipExportTestPromise;
+
+  const { subagentResultShapeTestPromise } = await import("./subagent-result-shape.test.ts");
+  await subagentResultShapeTestPromise;
+
 })();

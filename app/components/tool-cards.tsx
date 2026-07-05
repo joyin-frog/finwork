@@ -4,6 +4,8 @@ import { SuccessIcon, WarningIcon } from "@/lib/icons";
 import { formatCny } from "@/lib/format";
 import { parsePayrollStructured } from "./payroll-card-data";
 import { PayrollResultCard } from "./payroll-result-card";
+import { parsePayrollDiffStructured } from "./payroll-diff-card-data";
+import { PayrollDiffCard } from "./payroll-diff-card";
 import { parseReimbursementStructured, type ReimbursementCardData } from "./reimbursement-card-data";
 import {
   parseVoucherDraftStructured,
@@ -19,6 +21,7 @@ export const TOOLS_WITH_RESULT_CARD = [
   "check_reimbursement_batch",
   "export_kingdee_draft",
   "validate_kingdee_voucher",
+  "diff_payroll_period",
 ] as const;
 
 /**
@@ -41,6 +44,9 @@ export function ToolResultCard({ name, structured }: { name: string; structured:
   } else if (bare === "validate_kingdee_voucher") {
     const data = parseVoucherValidationStructured(structured);
     card = data ? <VoucherValidationCard data={data} /> : null;
+  } else if (bare === "diff_payroll_period") {
+    const data = parsePayrollDiffStructured(structured);
+    card = data ? <PayrollDiffCard data={data} /> : null;
   } else {
     // 通用兜底:任何带 CalcReceipt 形状结构化结果的工具(如 tax_calculator)渲染可下钻回执卡片。
     const receipt = parseCalcReceiptStructured(structured);

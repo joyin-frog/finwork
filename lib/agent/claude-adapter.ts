@@ -53,12 +53,15 @@ export type AgentQuestion = {
   options?: Array<{ label: string; description?: string; preview?: string }>;
   // 多题一次下发:非空时前端渲染为一个浮层、左右切换逐题作答(单题走 question/options 原路径)。
   questions?: AgentQuestion[];
+  // 高风险工具确认门:confirm 时渲染为确认卡(两按钮,无文本框);缺省为普通提问。
+  kind?: "confirm";
 };
 
 export type AgentRunEvent =
   | { type: "system"; subtype?: string; message: string; data?: unknown }
   | { type: "tool_use"; id?: string; name: string; input?: unknown }
-  | { type: "tool_result"; toolUseId?: string; name?: string; content?: string; isError?: boolean; durationMs?: number; structured?: unknown };
+  | { type: "tool_result"; toolUseId?: string; name?: string; content?: string; isError?: boolean; durationMs?: number; structured?: unknown }
+  | { type: "subagent"; label: string; roleId: string; phase: "start" | "tool" | "blocked" | "done"; summary?: string; toolName?: string; durationMs?: number; isError?: boolean; success?: boolean };
 
 export type ClaudeAgentRunOptions = {
   claudeSessionId?: string | null;
@@ -158,6 +161,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     ANTHROPIC_API_KEY: settings.apiKey,
     ANTHROPIC_MODEL: effectiveModel,
     CLAUDE_AGENT_SDK_CLIENT_APP: "finance-agent/0.1.0",
+    CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: "300000",
     // persistSession:true 的会话 transcript 由 CLI 写到 CLAUDE_CONFIG_DIR/projects/(不设则 ~/.claude,
     // 无限增长)。重定向到应用数据目录,retention 周期清理(见 lib/maintenance/retention.ts)。
     // 首次切换后旧会话 resume 会报「No conversation found」→ shouldRetryStaleSession 用全量历史
@@ -202,7 +206,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     sdk,
     outputDir,
     requestId,
-    runOptions.conversationId != null ? String(runOptions.conversationId) : undefined
+    runOptions.conversationId != null ? String(runOptions.conversationId) : undefined,
+    runOptions.onAgentEvent
   );
   // 静态工具全集(含 Bash/Write 供 skill 脚本);不再按 skill 收敛,高风险工具经确认门兜底。
   const allowedTools = ALLOWED_TOOLS;

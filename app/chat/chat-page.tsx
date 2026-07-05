@@ -51,6 +51,7 @@ import {
   getMessageFiles,
   getPersistedTimeline,
 } from "@/app/chat/chat-types";
+import { SubagentTrack } from "@/app/chat/subagent-track";
 import { useChatStream, activeAssistantContent, mergeFinalMessages, overlayMessages } from "@/app/shared/chat-stream";
 import { MarkdownMessage } from "./markdown-message";
 import type {
@@ -1435,6 +1436,17 @@ function AssistantTurn({
                 // 思考段不渲染(对齐 Claude:thinking 不进过程叙事,节奏由正文进展句+动作组承担)。
                 // 数据仍在 timeline 里,需要时可恢复;进行中的思考由 ThinkingStatusLine/星芒表达。
                 return null;
+              }
+              if (seg.kind === "subagent") {
+                // 子代理子轨道：显示角色名 + 逐步工具步骤 + blocked 高亮
+                return (
+                  <SubagentTrack
+                    key={`subagent-${seg.label}-${segIdx}`}
+                    label={seg.label}
+                    items={seg.items as TimelineItem[]}
+                    isActive={segActive}
+                  />
+                );
               }
               // 跨段恢复信号:该段之后所有 tools 段的事件(失败与重试成功常被 thinking 段隔开)
               const laterToolItems = processSegments

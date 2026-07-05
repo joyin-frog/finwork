@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -120,6 +121,66 @@ export function AskUserPanel({
     return () => window.removeEventListener("keydown", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── 确认卡分支 ────────────────────────────────────────────────────────────
+  // kind==="confirm" 时渲染高风险动作确认卡:后果告警色、两按钮、无文本输入框。
+  // 非取消文本 = 放行(chain.ts 语义),故绝不能给自由文本框(见 spec §5)。
+  if (question.kind === "confirm") {
+    // 将 prompt 按换行分段,最后一段视为「后果」用告警色渲染
+    const lines = question.question.split("\n").filter((l) => l.trim() !== "");
+    const bodyLines = lines.slice(0, -1);
+    const consequenceLine = lines[lines.length - 1] ?? "";
+
+    return (
+      <div className="rounded-2xl border border-border bg-card px-4 pt-3 pb-3 flex flex-col gap-3">
+        {/* 顶部走光「操作确认」 */}
+        <Marker role="status" aria-label="操作确认" className="justify-between text-meta">
+          <MarkerContent
+            className="shimmer shimmer-color-primary text-muted-foreground fa-toned"
+            style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
+          >
+            操作确认
+          </MarkerContent>
+        </Marker>
+
+        {/* 动作摘要(除最后一段) */}
+        {bodyLines.length > 0 && (
+          <div className="text-title whitespace-pre-line">{bodyLines.join("\n")}</div>
+        )}
+
+        {/* 后果(最后一段,告警色) */}
+        {consequenceLine && (
+          <div
+            className="text-body whitespace-pre-line fa-toned rounded px-2 py-1.5"
+            style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
+          >
+            <span className="fa-tone-pill font-medium">后果</span>{" "}
+            {consequenceLine}
+          </div>
+        )}
+
+        {/* 两按钮:确认执行 / 取消 */}
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void submit("取消")}
+            disabled={submitting}
+            className="text-muted-foreground"
+          >
+            取消
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => void submit("确认")}
+            disabled={submitting}
+          >
+            确认执行
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-border bg-card px-4 pt-3 pb-3 flex flex-col gap-3">

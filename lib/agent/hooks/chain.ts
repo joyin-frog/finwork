@@ -19,6 +19,7 @@ export async function runBeforeHooks(
         const answer = await ctx.resolveUserQuestion({
           question: result.prompt,
           header: "操作确认",
+          kind: "confirm",
         });
         // 空回答(超时/通道中断)按未确认处理:宁可拒绝,不可放行
         const cancelled = !answer.trim() || /^(n|no|取消|否)$/i.test(answer.trim());

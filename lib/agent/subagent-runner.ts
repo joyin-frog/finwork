@@ -11,6 +11,8 @@ import { Semaphore } from "@/lib/utils/semaphore";
 import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
 import { getToolRiskLevel } from "./tools/registry";
 import * as _dispatchStore from "@/lib/db/dispatch-store";
+import type { AgentRunEvent } from "./claude-adapter";
+import { getToolSummary } from "./tools/renderers";
 
 export type SubagentTask = {
   roleId: string;
@@ -56,7 +58,7 @@ export function buildSubagentSystemPrompt(role: RoleDefinition): string {
 
 export async function runSubagent(
   task: SubagentTask,
-  opts: { parentOutputDir: string; signal?: AbortSignal; conversationId?: string; traceId?: string }
+  opts: { parentOutputDir: string; signal?: AbortSignal; conversationId?: string; traceId?: string; onEvent?: (event: AgentRunEvent) => void }
 ): Promise<SubagentResult> {
   const startedAt = Date.now();
   const safeLabel = task.label.replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
@@ -117,6 +119,9 @@ export async function runSubagent(
     } catch (e) {
       console.warn("[dispatch] dispatch-start 失败(不影响任务):", e);
     }
+
+    // emit start 里程碑（旁路，不影响主流程）
+    opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "start", summary: task.label });
 
     const settings = await readClaudeSettings();
 
@@ -196,6 +201,8 @@ export async function runSubagent(
       // 捕获高风险工具被 deny 的情况 → 累入 blockedTools
       if (hookResult.behavior === "deny" && getToolRiskLevel(toolName) === "high") {
         blockedTools.add(toolName);
+        // emit blocked 里程碑（旁路，不影响主流程）
+        opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "blocked", toolName, summary: "高风险动作已拦截，待主对话人工确认" });
       }
       return hookResult;
     };
@@ -278,6 +285,8 @@ export async function runSubagent(
                 : block.content != null
                 ? JSON.stringify(block.content)
                 : "";
+            // emit tool 里程碑（旁路）：pending 是刚 shift() 出的局部变量，input 只喂 getToolSummary，不进事件对象
+            opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "tool", toolName: name, summary: getToolSummary(name, pending?.input), durationMs, isError });
             runAfterHooks(hookChain, {
               toolName: name,
               input: pending?.input,
@@ -294,11 +303,14 @@ export async function runSubagent(
     }
 
     const content = result || chunks.join("\n").trim() || "子 Agent 已执行，但没有返回文本结果。";
+    const successDurationMs = Date.now() - startedAt;
+    // emit done 里程碑（旁路，不夹带子代理正文）
+    opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "done", success: true, durationMs: successDurationMs });
     const subagentResult: SubagentResult = {
       label: task.label,
       content,
       success: true,
-      durationMs: Date.now() - startedAt,
+      durationMs: successDurationMs,
     };
     if (dispatchId != null) {
       try {
@@ -314,11 +326,14 @@ export async function runSubagent(
     return subagentResult;
   } catch (error) {
     const content = error instanceof Error ? error.message : String(error);
+    const failDurationMs = Date.now() - startedAt;
+    // emit done 里程碑（失败，旁路，不夹带子代理正文）
+    opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "done", success: false, durationMs: failDurationMs });
     const subagentResult: SubagentResult = {
       label: task.label,
       content,
       success: false,
-      durationMs: Date.now() - startedAt,
+      durationMs: failDurationMs,
     };
     if (dispatchId != null) {
       try {
@@ -337,7 +352,7 @@ export async function runSubagent(
 
 export async function runSubagentsParallel(
   tasks: SubagentTask[],
-  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal; conversationId?: string; traceId?: string }
+  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal; conversationId?: string; traceId?: string; onEvent?: (event: AgentRunEvent) => void }
 ): Promise<SubagentResult[]> {
   const concurrency = opts.concurrency ?? 5;
   const semaphore = new Semaphore(concurrency);
@@ -350,6 +365,7 @@ export async function runSubagentsParallel(
         signal: opts.signal,
         conversationId: opts.conversationId,
         traceId: opts.traceId,
+        onEvent: opts.onEvent,
       });
     } finally {
       release();

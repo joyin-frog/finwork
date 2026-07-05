@@ -7,15 +7,21 @@ import {
 import {
   confirmPayrollPeriod,
   getLatestConfirmedPayroll,
+  getPriorConfirmedPeriod,
   listPayrollRecords,
   loadTaxConfig,
   savePayrollDraft
 } from "@/lib/db/finance-store";
+import { computePayrollDiff } from "@/lib/domain/payroll-diff";
 import { backupDatabase, getDb } from "@/lib/db/sqlite";
 import { withIdempotency } from "@/lib/agent/tools/idempotency";
 import { checkSumConsistent, checkMoneyPrecision, collectNumericIssues } from "@/lib/safety/numeric-check";
-import { getDatabasePath } from "@/lib/runtime/paths";
+import { getDatabasePath, getAppDataDir, getProjectRoot, getPythonPath } from "@/lib/runtime/paths";
 import { redact } from "@/lib/safety/pii";
+import { buildPayslipExport } from "@/lib/domain/payslip-export";
+import { execFileSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod/v4";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,7 +43,7 @@ type EmployeeInput = {
   } | null;
 };
 
-export function createPayrollTools(sdk: Sdk) {
+export function createPayrollTools(sdk: Sdk, outputDir?: string) {
   const calculate = sdk.tool(
     "calculate_payroll_batch",
     "按累计预扣预缴法计算员工某月工资个税(确定性引擎,非估算)。自动接力本年度已确认月份的累计数;本年度首次使用时需提供 ytd 累计数(从扣缴端抄录)。结果保存为草稿,财务核对后用 confirm_payroll_period 确认生效。",
@@ -280,5 +286,170 @@ export function createPayrollTools(sdk: Sdk) {
     }
   );
 
-  return [calculate, confirm, queryStatus];
+  const diffPeriod = sdk.tool(
+    "diff_payroll_period",
+    "只读差异复核：把某月工资草稿与上月已确认数据做逐人逐字段对比，返回按变动幅度排序的差异清单（税前/五险/公积金/专项/个税/实发 delta + 新增员工 + 漏算/离职嫌疑）。申报/确认前的必做检查，结果标注「草稿 vs 已确认」，不可当环比趋势读。只读，不写库。",
+    {
+      year: z.number().int().describe("年份，如 2026"),
+      month: z.number().int().min(1).max(12).describe("月份 1-12")
+    },
+    async (args: { year: number; month: number }) => {
+      try {
+        const current = listPayrollRecords(args.year, args.month);
+        if (current.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: `${args.year}年${args.month}月没有任何工资记录（尚未用 calculate_payroll_batch 计算）。` }],
+            structuredContent: { year: args.year, month: args.month, comparedFromPeriod: null, rows: [], newEmployees: [], dropped: [] }
+          };
+        }
+
+        // ⚠ P1 跨年修正：用 getPriorConfirmedPeriod（跨年）而非 getLatestConfirmedPayroll（年内）。
+        // priorByName 与 priorRoster 必须来自同一来源期间，保证比较口径一致。
+        const p = getPriorConfirmedPeriod(args.year, args.month);
+        const priorRecords = p
+          ? listPayrollRecords(p.year, p.month).filter((r) => r.status === "confirmed")
+          : [];
+        const priorByName = new Map(priorRecords.map((r) => [r.employeeName, r]));
+        const priorRoster = priorRecords.map((r) => r.employeeName);
+
+        const comparedFromPeriod = p ? `${p.year}年${p.month}月` : null;
+        const diff = computePayrollDiff(current, priorByName, priorRoster, comparedFromPeriod);
+
+        // 构建文本摘要
+        const changedCount = diff.rows.filter((r) => r.changed && !r.flags.includes("new")).length;
+        const topRow = diff.rows.find((r) => r.changed && !r.flags.includes("new"));
+        const topDesc = topRow
+          ? `${topRow.employeeName} 实发 ${topRow.fields.netPay.delta >= 0 ? "+" : ""}${topRow.fields.netPay.delta.toFixed(2)}`
+          : "";
+        const lines: string[] = [
+          `【草稿复核，非环比趋势】${args.year}年${args.month}月工资 vs ${comparedFromPeriod ?? "无上月已确认期间"}`,
+          `变动人数：${changedCount} 人${topDesc ? `，最大变动：${topDesc}` : ""}`,
+        ];
+        if (diff.newEmployees.length > 0) {
+          lines.push(`新增员工（本月有、上月无）：${diff.newEmployees.join("、")}（需核累计起点）`);
+        }
+        if (diff.dropped.length > 0) {
+          lines.push(`⚠ 漏算/离职嫌疑（上月有、本月无）：${diff.dropped.join("、")}（请人工核实）`);
+        }
+        if (diff.rows.length > 0) {
+          lines.push("");
+          lines.push("━ 差异清单（实发 delta 排序）━");
+          for (const row of diff.rows) {
+            const flagDesc = row.flags.length ? `[${row.flags.join(",")}] ` : "";
+            const f = row.fields;
+            lines.push(
+              `${flagDesc}${row.employeeName}：税前${fmtDelta(f.grossPay.delta)} 五险${fmtDelta(f.socialInsurance.delta)} 公积金${fmtDelta(f.housingFund.delta)} 专项${fmtDelta(f.specialDeduction.delta)} 个税${fmtDelta(f.taxCurrent.delta)} 实发${fmtDelta(f.netPay.delta)}`
+            );
+          }
+        }
+
+        const text = redact(lines.join("\n"));
+        return {
+          content: [{ type: "text" as const, text }],
+          structuredContent: {
+            year: args.year,
+            month: args.month,
+            comparedFromPeriod: diff.comparedFromPeriod,
+            rows: diff.rows,
+            newEmployees: diff.newEmployees,
+            dropped: diff.dropped,
+          }
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: `差异复核失败：${error instanceof Error ? error.message : String(error)}` }],
+          isError: true as const
+        };
+      }
+    }
+  );
+
+  const exportPayslips = sdk.tool(
+    "export_payslips",
+    "把某月已确认工资导出为工资明细表 xlsx（每人一行：税前/五险/公积金/专项/个税/实发，含合计行）。只导 confirmed 记录，draft 明确排除并提示。生成确定性 xlsx，完成后建议调用 finalize_deliverable。",
+    {
+      year: z.number().int().describe("年份，如 2026"),
+      month: z.number().int().min(1).max(12).describe("月份 1-12"),
+      fileName: z.string().nullish().describe("输出文件名（可选），默认为「工资明细-YYYY年MM月.xlsx」"),
+    },
+    async (args: { year: number; month: number; fileName?: string | null }) => {
+      try {
+        const recs = listPayrollRecords(args.year, args.month);
+        const ex = buildPayslipExport(recs, args.year, args.month);
+
+        if (!ex.hasConfirmed) {
+          const msg = `${args.year}年${args.month}月没有已确认的工资记录，无法导出工资条。` +
+            (ex.skippedDrafts.length > 0
+              ? `\n仍是草稿未确认：${ex.skippedDrafts.join("、")}。请先用 calculate_payroll_batch 计算，财务核对后用 confirm_payroll_period 确认，再导出。`
+              : "\n请先用 calculate_payroll_batch 计算工资，确认后再导出。");
+          return {
+            content: [{ type: "text" as const, text: redact(msg) }],
+            isError: true as const,
+          };
+        }
+
+        // 确定输出目录和文件路径（照 kingdee-tools.ts:566 模式）
+        const outDir = outputDir ?? process.env.FINANCE_AGENT_OUTPUT_DIR ?? path.join(getAppDataDir(), "exports");
+        mkdirSync(outDir, { recursive: true });
+        let outFileName = path.basename(
+          args.fileName ?? `工资明细-${args.year}年${String(args.month).padStart(2, "0")}月.xlsx`
+        );
+        if (!outFileName.toLowerCase().endsWith(".xlsx")) outFileName += ".xlsx";
+        const outputPath = path.join(outDir, outFileName);
+
+        // 调用 Python worker 生成 xlsx（payload 只含姓名+金额，无 PII）
+        const payload = JSON.stringify({
+          outputPath,
+          year: args.year,
+          month: args.month,
+          rows: ex.rows,
+          totals: ex.totals,
+        });
+        const workerPath = path.join(getProjectRoot(), "workers", "finance_worker.py");
+
+        const out = execFileSync(getPythonPath(), [workerPath, "export-payslips-xlsx"], {
+          input: payload,
+          encoding: "utf-8",
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 60_000,
+          env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+        });
+        const result = JSON.parse(out.trim()) as { filePath: string };
+        const savedName = path.basename(result.filePath);
+
+        const lines: string[] = [
+          `${args.year}年${args.month}月工资明细已导出（${ex.rows.length} 人，仅已确认）：${result.filePath}`,
+        ];
+        if (ex.skippedDrafts.length > 0) {
+          lines.push(`⚠ 仍是草稿未导出：${ex.skippedDrafts.join("、")}。请先确认后再导出。`);
+        }
+        if (ex.numericWarnings.length > 0) {
+          lines.push(`⚠ 数值勾稽告警（请人工核对）：`, ...ex.numericWarnings.map((w) => `  - ${w}`));
+        }
+        lines.push(`完成后可调用 finalize_deliverable 声明本次交付物。`);
+
+        return {
+          content: [{ type: "text" as const, text: redact(lines.join("\n")) }],
+          structuredContent: {
+            filePath: result.filePath,
+            fileName: savedName,
+            skippedDrafts: ex.skippedDrafts,
+          },
+        };
+      } catch (err: unknown) {
+        const e = err as { stderr?: string; message?: string };
+        const hint = (e.stderr ?? "").toString().trim() || (e as { message?: string }).message || "未知错误";
+        return {
+          content: [{ type: "text" as const, text: `工资条导出失败：${hint.slice(0, 1000)}` }],
+          isError: true as const,
+        };
+      }
+    }
+  );
+
+  return [calculate, confirm, queryStatus, diffPeriod, exportPayslips];
+}
+
+function fmtDelta(d: number): string {
+  return (d >= 0 ? "+" : "") + d.toFixed(2);
 }

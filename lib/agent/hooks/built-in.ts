@@ -143,7 +143,7 @@ export function createStuckGuardHook(): Hook {
 }
 
 // 无论如何都必须经用户确认的工具(写入用户约定等不可静默的动作)
-const ALWAYS_CONFIRM_TOOLS = new Set([
+export const ALWAYS_CONFIRM_TOOLS = new Set([
   "mcp__finance_worker__remember_convention",
   // P3: 公司画像写入需用户确认
   "mcp__finance_worker__update_company_profile",
