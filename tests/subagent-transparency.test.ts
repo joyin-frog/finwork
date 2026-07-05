@@ -186,5 +186,16 @@ export const subagentTransparencyTestPromise = (async () => {
     console.log("C20: shouldHideAgentEvent 不隐藏 subagent ✓");
   }
 
+  // ─── §2g：MCP 工具结果也要收（P2 修复）──────────────────────────────────
+  // 子代理主要调 MCP 工具，其结果块是 mcp_tool_result（只带 tool_use_id）。若只收 tool_result，
+  // MCP 步骤既不进 F1 轨道也不跑 after-hook——回归锁。
+  {
+    const runnerSrc = src("lib/agent/subagent-runner.ts");
+    assert.ok(runnerSrc.includes('"mcp_tool_result"'), 'C21 FAIL: subagent-runner.ts 应处理 mcp_tool_result 块（否则漏 MCP 工具步骤）');
+    assert.ok(runnerSrc.includes('"tool_use"') && runnerSrc.includes("toolUseNamesById"),
+      'C22 FAIL: subagent-runner.ts 应捕获 tool_use 块建 id→name 映射，供 mcp_tool_result 配对');
+    console.log("C21-C22: MCP 工具结果被收（P2）✓");
+  }
+
   console.log("\nsubagent-transparency: 全部断言通过 ✓");
 })();

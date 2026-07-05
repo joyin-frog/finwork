@@ -3,6 +3,7 @@ import { initializeFinanceDatabase, openFinanceDatabase } from "../lib/db/sqlite
 import {
   confirmPayrollPeriod,
   getLatestConfirmedPayroll,
+  getPriorConfirmedPeriod,
   listPayrollRecords,
   savePayrollDraft
 } from "../lib/db/finance-store.ts";
@@ -122,6 +123,24 @@ export const payrollStoreTestPromise = (async () => {
     .get() as { n: number };
   assert.equal(auditAfter.n, auditBefore.n, "T7 FAIL: 失败路径不应增加审计日志");
 
+  // ── T8: getPriorConfirmedPeriod 只取紧邻上月（P2 修复）─────────────────
+  {
+    const c = calculateCumulativePayroll({
+      employeeName: "李四", grossPay: 20000, socialInsurance: 2000, housingFund: 0,
+      specialDeduction: 0, monthsEmployed: 1, prior: ZERO_PRIOR_CUMULATIVE
+    });
+    savePayrollDraft(2027, 1, c, 1, { db }); confirmPayrollPeriod(2027, 1, undefined, db);
+    savePayrollDraft(2026, 12, c, 12, { db }); confirmPayrollPeriod(2026, 12, undefined, db);
+
+    assert.deepEqual(getPriorConfirmedPeriod(2027, 2, db), { year: 2027, month: 1 },
+      "T8 FAIL: 紧邻上月已确认应返回该月");
+    assert.deepEqual(getPriorConfirmedPeriod(2027, 1, db), { year: 2026, month: 12 },
+      "T8 FAIL: 1 月的上月应跨年到去年 12 月");
+    // 关键回归：2027-04 的紧邻上月是 2027-03（无已确认）→ 必须 null，不得回溯到更早的 2027-01
+    assert.equal(getPriorConfirmedPeriod(2027, 4, db), null,
+      "T8 FAIL: 紧邻上月无已确认时返回 null，不得回溯更早月份充当「上月」");
+  }
+
   db.close();
-  console.log("payroll-store: all 7 checks passed ✓");
+  console.log("payroll-store: all 8 checks passed ✓");
 })();
