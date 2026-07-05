@@ -69,6 +69,13 @@ export function fileLang(path: string): string | null {
   return EXT_LANG[path.slice(i + 1).toLowerCase()] ?? null;
 }
 
+/** 按分类 chip 过滤:all=全部;user=用户技能;其余按 category 精确匹配。 */
+export function filterByCategory<T extends { source: "bundled" | "user"; category: string }>(skills: T[], key: string): T[] {
+  if (key === "all") return skills;
+  if (key === "user") return skills.filter((s) => s.source === "user");
+  return skills.filter((s) => s.category === key);
+}
+
 /** 按名字或描述过滤技能(忽略大小写);空查询返回全部。 */
 export function filterSkills<T extends { name: string; title?: string; description: string }>(skills: T[], query: string): T[] {
   const q = query.trim().toLowerCase();
