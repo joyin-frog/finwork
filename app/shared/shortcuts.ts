@@ -2,7 +2,7 @@
 // mod = mac ⌘ / windows Ctrl。显示:mac 用符号(⌘⇧↩),windows 用文字(Ctrl+Shift+Enter)。
 // composer 条目是 chat 输入框的既有行为,只入册用于展示(一览表/tooltip),不进全局监听。
 
-export type ShortcutScope = "global" | "chat" | "composer";
+export type ShortcutScope = "global" | "chat" | "composer" | "config" | "skills";
 
 export type ShortcutDef = {
   id: string;
@@ -44,6 +44,12 @@ export const SHORTCUTS: ShortcutDef[] = [
     scope: "chat", allowInInput: true },
   { id: "find-in-chat", combo: "mod+f", description: "在对话内查找",
     scope: "chat", allowInInput: true, webLimited: true },
+  // ── 设置页 ──
+  { id: "search-settings", combo: "mod+f", description: "搜索设置",
+    scope: "config", allowInInput: true, webLimited: true },
+  // ── 技能页 ──
+  { id: "search-skills", combo: "mod+f", description: "搜索技能",
+    scope: "skills", allowInInput: true, webLimited: true },
 ];
 
 export function isMacLike(userAgent: string): boolean {
@@ -139,12 +145,12 @@ export function isEditableTarget(target: ShortcutTarget): boolean {
 export function resolveShortcut(
   event: ShortcutKeyEvent,
   target: ShortcutTarget,
-  options: { isMac: boolean; scope?: "chat" },
+  options: { isMac: boolean; scope?: "chat" | "config" | "skills" },
   registry: ShortcutDef[] = SHORTCUTS
 ): string | null {
   for (const shortcut of registry) {
     if (shortcut.scope === "composer") continue;
-    if (shortcut.scope === "chat" && options.scope !== "chat") continue;
+    if ((shortcut.scope === "chat" || shortcut.scope === "config" || shortcut.scope === "skills") && options.scope !== shortcut.scope) continue;
     if (!shortcut.allowInInput && isEditableTarget(target)) continue;
     if (matchesShortcut(event, shortcut.combo, options.isMac)) return shortcut.id;
   }

@@ -15,12 +15,12 @@ export function ResourceTabs({ active }: { active: "files" | "knowledge" }) {
     );
   return (
     <div className="flex items-center gap-2 shrink-0">
-      <Link href="/files" className={cls(active === "files")}>
-        对话文件
-      </Link>
-      <span className="text-title font-normal text-muted-foreground/40 select-none">｜</span>
       <Link href="/knowledge" className={cls(active === "knowledge")}>
         知识库
+      </Link>
+      <span className="text-title font-normal text-muted-foreground/40 select-none">｜</span>
+      <Link href="/files" className={cls(active === "files")}>
+        对话文件
       </Link>
     </div>
   );

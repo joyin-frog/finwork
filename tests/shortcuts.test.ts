@@ -100,7 +100,7 @@ function main() {
   for (const s of SHORTCUTS) {
     assert.ok(s.description.trim().length >= 2, `AC6 FAIL: ${s.id} 缺少中文说明`);
     assert.ok(/[一-鿿]/.test(s.description), `AC6 FAIL: ${s.id} 说明应为中文`);
-    const key = `${s.scope === "composer" ? "composer" : "active"}:${s.combo}`;
+    const key = `${s.scope}:${s.combo}`;
     assert.ok(!seen.has(key), `AC6 FAIL: 组合冲突 ${key}`);
     seen.add(key);
     if (s.scope !== "composer") {
@@ -109,8 +109,30 @@ function main() {
     // id 唯一
     assert.equal(SHORTCUTS.filter((x) => x.id === s.id).length, 1, `AC6 FAIL: id 重复 ${s.id}`);
   }
-  assert.ok(SHORTCUTS.length <= 12, "AC6 FAIL: 快捷键总数超过克制上限(12)");
+  assert.ok(SHORTCUTS.length <= 14, "AC6 FAIL: 快捷键总数超过克制上限(14)");
   assert.ok(SHORTCUTS.some((s) => s.id === "show-shortcuts"), "AC6 FAIL: 必须有快捷键一览入口");
+
+  // ── AC7: skills 作用域快捷键 ──
+  assert.equal(
+    resolveShortcut(evt("f", { meta: true }), body, { isMac: true, scope: "skills" }),
+    "search-skills",
+    "AC7 FAIL: skills 页 mod+f 应命中 search-skills"
+  );
+  assert.equal(
+    resolveShortcut(evt("f", { meta: true }), body, { isMac: true }),
+    null,
+    "AC7 FAIL: 无 scope 时 mod+f 不应命中任何 scoped 快捷键"
+  );
+  assert.equal(
+    resolveShortcut(evt("f", { meta: true }), body, { isMac: true, scope: "chat" }),
+    "find-in-chat",
+    "AC7 FAIL: chat 页 mod+f 应命中 find-in-chat,不串 skills"
+  );
+  assert.equal(
+    resolveShortcut(evt("f", { meta: true }), body, { isMac: true, scope: "skills" }),
+    "search-skills",
+    "AC7 FAIL: skills 页 mod+f 应命中 search-skills,不串 chat"
+  );
 
   console.log("shortcuts: all 6 checks passed ✓");
 }

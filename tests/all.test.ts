@@ -302,6 +302,9 @@ void (async () => {
   await import("./shortcuts.test.ts");
   await import("./shortcuts-wiring.test.ts");
 
+  const { skillsCategoryTestPromise } = await import("./skills-category.test.ts");
+  await skillsCategoryTestPromise;
+
   const { agentContextTestPromise } = await import("./agent-context.test.ts");
   await agentContextTestPromise;
 
