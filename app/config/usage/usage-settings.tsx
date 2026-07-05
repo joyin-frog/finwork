@@ -13,9 +13,6 @@ export function UsageSettings() {
 
   return (
     <div className="flex max-w-md flex-col gap-4">
-      <p className="text-small text-muted-foreground">
-        为避免任务异常时持续消耗 API 额度，系统设有 5 小时与每周两档用量上限。达到上限会暂停问答，到重置时刻自动恢复。
-      </p>
       {usage ? <UsageDetail usage={usage} /> : <p className="text-small text-muted-foreground">加载中…</p>}
     </div>
   );

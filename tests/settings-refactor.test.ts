@@ -26,18 +26,20 @@ export const settingsRefactorTestPromise = (async () => {
   assert.ok(!about.includes("SettingsCard"), "F5-1 FAIL: about-settings.tsx 不应再用 SettingsCard");
   assert.ok(about.includes("SettingsSection"), "F5-1 FAIL: about-settings.tsx 应改用 SettingsSection");
 
-  // ── F5-2: model 页改用 SettingsRow/SettingsField,Badge 换文字状态 ────────
+  // ── F5-2: model 页用共享设置原语(SettingsRow),不手拼 Badge/grid ────────
+  // 注:后续迭代按用户要求把 model 页统一成 SettingsRow(标签左/控件右),
+  // 并移除了「已配置✓/未配置」状态行(用户认为无需展示),故这里只校验仍用共享原语、不手拼布局。
   const model = src("app/config/model/model-settings.tsx");
   assert.ok(!model.includes("Badge"), "F5-2 FAIL: model-settings.tsx 不应再用 Badge");
-  assert.ok(model.includes("SettingsField") && model.includes("SettingsRow"), "F5-2 FAIL: model 页应用 SettingsRow/SettingsField");
+  assert.ok(model.includes("SettingsRow"), "F5-2 FAIL: model 页应用共享的 SettingsRow 原语");
   assert.ok(!model.includes("grid grid-cols-2"), "F5-2 FAIL: model 页不应再手拼 grid");
-  assert.ok(model.includes("已配置 ✓") && model.includes("未配置"), "F5-2 FAIL: API Key 状态应为统一文字表达");
 
-  // ── F5-3: profile 页用 settingsSelectClass + SettingsField,本地 fieldLabel 已删 ──
+  // ── F5-3: profile 页用 settingsSelectClass + 共享设置原语(SettingsRow),本地 fieldLabel 已删 ──
+  // 注:后续迭代按用户要求把公司画像各字段统一成 SettingsRow(标签左/控件右),原 SettingsField 被替换。
   const profile = src("app/config/profile/profile-settings.tsx");
   assert.ok(profile.includes("settingsSelectClass"), "F5-3 FAIL: profile 页 select 应用 settingsSelectClass");
   assert.ok(!profile.includes("fieldLabel"), "F5-3 FAIL: profile 页本地 fieldLabel 应已删除");
-  assert.ok(profile.includes("SettingsField"), "F5-3 FAIL: profile 页应改用 SettingsField");
+  assert.ok(profile.includes("SettingsRow"), "F5-3 FAIL: profile 页应用共享的 SettingsRow 原语");
 
   // ── F5-4: 环境页状态不再用 emoji,统一文字 ────────────────────────────────
   const env = src("app/config/environment/environment-settings.tsx");

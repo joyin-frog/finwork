@@ -1,20 +1,28 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
-/** 设置分组:纸面上的区块(顶部发丝线分隔),取代白卡——消除"白块跳眼"。 */
+/** 设置分组:标题+说明在上,内容放圆角卡片,卡片内多项之间横线分隔(macOS/Codex 风格)。 */
 export function SettingsSection({ title, description, children }: {
   title: string;
   description?: ReactNode;
   children: ReactNode;
 }) {
+  const items = Children.toArray(children).filter(Boolean);
   return (
-    <section className="flex flex-col gap-3 border-t border-border pt-6 first:border-t-0 first:pt-0">
+    <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <h3 className="text-body font-medium">{title}</h3>
         {description ? <p className="text-meta text-muted-foreground max-w-prose">{description}</p> : null}
       </div>
-      <div className="flex flex-col gap-3">{children}</div>
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        {items.map((child, i) => (
+          <div key={i} className={cn("px-4 py-3", i > 0 && "border-t border-border")}>
+            {child}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -33,7 +41,7 @@ export function SettingsRow({ label, htmlFor, hint, wide, children }: {
         <span className="text-body">{label}</span>
         {hint ? <span className="text-meta text-muted-foreground">{hint}</span> : null}
       </label>
-      <div className={wide ? "shrink-0 w-72 max-w-[60%]" : "shrink-0 w-56 max-w-[55%]"}>{children}</div>
+      <div className={cn("shrink-0 flex justify-end", wide ? "w-72 max-w-[60%]" : "w-44 max-w-[55%]")}>{children}</div>
     </div>
   );
 }

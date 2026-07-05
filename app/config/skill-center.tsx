@@ -3,17 +3,19 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import type { PublicClaudeSettings } from "@/lib/settings/claude-settings";
 import { CONFIG_TABS, type ConfigTabKey } from "@/app/config/tabs";
 import { GeneralSettings } from "./general/general-settings";
+import { AppearanceSettings } from "./appearance/appearance-settings";
+import { PersonalizationSettings } from "./personalization/personalization-settings";
 import { ModelSettings } from "./model/model-settings";
+import { ShortcutsSettings } from "./shortcuts/shortcuts-settings";
 import { AboutSettings } from "./about/about-settings";
-import { UnderstandingSettings } from "./understanding/understanding-settings";
-import { SkillCatalog } from "@/app/config/skill-catalog";
 import { SaveStatusText, type SaveStatus } from "@/app/config/settings-ui";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
+import { useShortcutEvent } from "@/app/shared/global-shortcuts";
 import { useUserIdentity } from "@/app/shared/user-identity";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -40,8 +42,14 @@ export default function SkillCenter({
   const [roleMode, setRoleMode] = useState(initialClaudeSettings.roleMode);
   const [activeTab, setActiveTab] = useState<SettingsTab>(isSettingsTab(initialTab) ? initialTab : "general");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [query, setQuery] = useState("");
   const identity = useUserIdentity();
   const router = useRouter();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useShortcutEvent("search-settings", () => {
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  });
 
   const saveClaudeRef = useRef(saveClaudeSettings);
   saveClaudeRef.current = saveClaudeSettings;
@@ -84,6 +92,7 @@ export default function SkillCenter({
   }
 
   const activeTabMeta = CONFIG_TABS.find((t) => t.key === activeTab) ?? CONFIG_TABS[0];
+  const filteredTabs = CONFIG_TABS.filter((t) => t.label.includes(query.trim()));
 
   return (
     <div
@@ -91,50 +100,71 @@ export default function SkillCenter({
       onClick={() => router.push("/cockpit")}
     >
       <div
-        className="flex flex-col w-full max-w-3xl h-[82vh] max-h-[700px] bg-popover rounded-xl ring-1 ring-foreground/10 shadow-[var(--shadow-lg)] overflow-hidden"
+        className="relative flex w-full max-w-3xl h-[82vh] max-h-[700px] bg-popover rounded-xl ring-1 ring-foreground/10 shadow-[var(--shadow-lg)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-      <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0">
-        <DragHandle />
-        <SidebarToggle />
-        <h1 className="text-title font-semibold">设置</h1>
-        <Link href="/cockpit" className="ml-auto p-1.5 rounded-md hover:bg-accent text-muted-foreground transition-colors" aria-label="关闭设置">
-          <HugeiconsIcon icon={Cancel01Icon} size={16} />
-        </Link>
-      </header>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar */}
-        <aside className="w-52 border-r border-border flex flex-col gap-3 p-3 shrink-0">
-          <nav className="flex flex-col gap-0.5">
-            <p className="px-3 py-1 text-meta text-muted-foreground">设置</p>
-            {CONFIG_TABS.map((tab) => (
-              <a
-                key={tab.key}
-                href={tab.key === "general" ? "/config" : `/config?tab=${tab.key}`}
-                aria-current={activeTab === tab.key ? "page" : undefined}
-                onClick={(e) => { e.preventDefault(); openTab(tab.key); }}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-md text-body transition-colors",
-                  activeTab === tab.key
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                )}
-              >
-                <HugeiconsIcon icon={tab.icon} size={15} />
-                <span>{tab.label}</span>
-              </a>
-            ))}
+        {/* Left sidebar: shares the outer box with content, just a vertical divider — no gap, no separate corners */}
+        <aside className="w-52 shrink-0 flex flex-col border-r border-border overflow-hidden">
+          {/* Search box — left-flush with the tab list's own left padding below; drag/toggle sit after it so they don't push the search icon/text off-center */}
+          <div className="flex items-center gap-1 px-3 pt-3 pb-2 border-b border-border">
+            <DragHandle />
+            <div className="relative flex-1">
+              <HugeiconsIcon
+                icon={Search01Icon}
+                size={14}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索设置..."
+                className="w-full h-8 pl-7 pr-3 text-body rounded-md placeholder:text-muted-foreground focus:outline-none"
+              />
+            </div>
+            <SidebarToggle />
+          </div>
+          {/* Tab list */}
+          <nav className="flex flex-col gap-0.5 px-2 py-2 flex-1 overflow-y-auto">
+            {filteredTabs.length === 0 ? (
+              <p className="px-3 py-2 text-meta text-muted-foreground">未找到匹配项</p>
+            ) : (
+              filteredTabs.map((tab) => (
+                <a
+                  key={tab.key}
+                  href={tab.key === "general" ? "/config" : `/config?tab=${tab.key}`}
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={(e) => { e.preventDefault(); openTab(tab.key); }}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-md text-body transition-colors",
+                    activeTab === tab.key
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                >
+                  <HugeiconsIcon icon={tab.icon} size={15} />
+                  <span>{tab.label}</span>
+                </a>
+              ))
+            )}
           </nav>
         </aside>
 
-        {/* Right content */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        {/* Right content: the close button only occupies this panel's space, not the sidebar's */}
+        <div className="relative flex-1 flex flex-col overflow-hidden">
+          <Link
+            href="/cockpit"
+            className="absolute right-3 top-3 z-10 p-1.5 rounded-md hover:bg-accent text-muted-foreground transition-colors"
+            aria-label="关闭设置"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={16} />
+          </Link>
+          <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
             <h2 className="text-title font-semibold">{activeTabMeta.label}</h2>
             <SaveStatusText status={saveStatus} />
           </div>
-          <div className="flex-1 overflow-auto px-6 py-6">
+          <div className="flex-1 overflow-auto px-6 pb-6">
             {activeTab === "general" && (
               <GeneralSettings
                 agentName={agentName}
@@ -143,9 +173,13 @@ export default function SkillCenter({
                 userAvatar={userAvatar}
                 onAgentNameChange={(v) => { setAgentName(v); scheduleClaudeSave(); }}
                 onCompanyNameChange={(v) => { setCompanyName(v); scheduleClaudeSave(); }}
-                // 名字/头像改了先乐观同步到侧栏(identity),再防抖落库。
                 onUserNameChange={(v) => { setUserName(v); identity.setIdentity({ name: v, avatar: userAvatar }); scheduleClaudeSave(); }}
                 onUserAvatarChange={(v) => { setUserAvatar(v); identity.setIdentity({ name: userName, avatar: v }); scheduleClaudeSave(); }}
+              />
+            )}
+            {activeTab === "appearance" && <AppearanceSettings />}
+            {activeTab === "personalization" && (
+              <PersonalizationSettings
                 roleMode={roleMode}
                 onRoleModeChange={(v) => { setRoleMode(v); scheduleClaudeSave(); }}
               />
@@ -167,12 +201,10 @@ export default function SkillCenter({
                 onSubagentModelChange={(v) => { setSubagentModel(v); scheduleClaudeSave(); }}
               />
             )}
-            {activeTab === "skills" && <SkillCatalog />}
-            {activeTab === "understanding" && <UnderstandingSettings />}
+            {activeTab === "shortcuts" && <ShortcutsSettings />}
             {activeTab === "about" && <AboutSettings />}
           </div>
-        </main>
-      </div>
+        </div>
       </div>
     </div>
   );

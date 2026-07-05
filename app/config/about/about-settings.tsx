@@ -5,12 +5,10 @@ import { formatAppVersion } from "@/lib/version/format";
 import { UpdaterBody } from "@/app/config/general/updater-settings";
 import { RuntimeEnvBody } from "@/app/config/environment/environment-settings";
 import { TelemetryBody } from "@/app/config/environment/telemetry-settings";
-import { UsageSettings } from "@/app/config/usage/usage-settings";
-
 /** 「关于」页:版本信息 → 运行环境 → 使用数据上报,三大块用统一的分组区块。 */
 export function AboutSettings() {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-8">
       <SettingsSection title="版本信息" description="当前应用版本；桌面版可在此检查更新。">
         <div className="text-body">
           <span className="font-medium">当前版本：</span>
@@ -24,13 +22,6 @@ export function AboutSettings() {
         description="基础功能（报销、薪税、对账、报表、知识库）开箱即用。复杂 Excel / PDF 的高级分析需要一次性安装分析组件。"
       >
         <RuntimeEnvBody />
-      </SettingsSection>
-
-      <SettingsSection
-        title="用量"
-        description="查看当前用量保护状态和重置周期。"
-      >
-        <UsageSettings />
       </SettingsSection>
 
       <SettingsSection
