@@ -14,7 +14,7 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, PanelRightIcon } from "@hugeicons/core-free-icons";
+import { ArrowExpand01Icon, ArrowShrink01Icon, Cancel01Icon, PanelRightIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { FilePreviewPage, type LocalPreviewFile } from "@/app/shared/file-preview-page";
 import { ROLE_UI } from "@/lib/domain/role-ui";
@@ -55,8 +55,9 @@ export function AgentDetailDrawer({
 
   return (
     <div className="flex flex-col overflow-hidden h-full bg-card">
-        {/* 头部 */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
+        {/* 头部：单行，与列表列 h-11 标题栏对齐——padding 同 .preview-head-card（中线 22px、分隔线 44px）。
+            avatar / icon-btn 均 32px 高，名称+简介同一行（简介 truncate），不再撑成两行。 */}
+        <div className="flex items-center gap-3 px-[14px] pt-px pb-1.5 border-b border-border shrink-0">
           <span
             className="fa-toned shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-body font-semibold select-none"
             style={{ "--tone": `var(${tone})` } as CSSProperties}
@@ -64,31 +65,29 @@ export function AgentDetailDrawer({
           >
             {card.name.slice(0, 1)}
           </span>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-body font-semibold">{card.name}</span>
-              {isRunning && (
-                <span
-                  className="fa-tone-pill text-meta"
-                  style={{ "--tone": "var(--tone-analysis)" } as CSSProperties}
-                >
-                  进行中
-                </span>
-              )}
-              {isBlocked && !isRunning && (
-                <span
-                  className="fa-tone-pill text-meta"
-                  style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
-                >
-                  待拍板
-                </span>
-              )}
-            </div>
-            <p className="text-meta text-muted-foreground truncate">{card.charter}</p>
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <span className="text-body font-semibold shrink-0">{card.name}</span>
+            {isRunning && (
+              <span
+                className="fa-tone-pill text-meta shrink-0"
+                style={{ "--tone": "var(--tone-analysis)" } as CSSProperties}
+              >
+                进行中
+              </span>
+            )}
+            {isBlocked && !isRunning && (
+              <span
+                className="fa-tone-pill text-meta shrink-0"
+                style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
+              >
+                待拍板
+              </span>
+            )}
+            <span className="text-meta text-muted-foreground truncate">{card.charter}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="icon" onClick={onMaximize} aria-label={maximized ? "还原" : "放大"}>
-              <span className="text-meta">{maximized ? "⤡" : "⤢"}</span>
+              <HugeiconsIcon icon={maximized ? ArrowShrink01Icon : ArrowExpand01Icon} size={16} />
             </Button>
             {/* 收起右侧栏（保留选中，顶栏「展开预览」可再打开）——放大态下无左列可退，隐藏收起按钮 */}
             {!maximized && (
