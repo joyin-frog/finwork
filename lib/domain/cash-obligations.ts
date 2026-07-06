@@ -2,6 +2,9 @@
 // 喂给总览的财务日历(本月时间地图)与待办(临近未完成切片)。纯函数、无 LLM、可复算(红线 2)。
 // 红线 3:只认 meta_status==='confirmed'(草稿不算);每条带 status,跨期不混。
 // 红线 4:无可信到期日 / 无方向(status)→ 跳过,不编。
+//
+// WP1a 落盘出口（persistDerivedObligations）：派生结果落到 fact_obligations 表（delete+insert 幂等）。
+// 消费切换（cockpit 读 fact_obligations）归 WP1b；本期仅提供落盘入口。
 import type { DocMetadata, KeyDate, MetaStatus } from "@/lib/knowledge/types";
 
 export type ObligationKind = "付款" | "收款" | "开票";
@@ -114,6 +117,52 @@ export function daysBetween(today: Date, dueDate: string): number {
   const [y, m, d] = dueDate.split("-").map(Number);
   const due = Date.UTC(y, (m ?? 1) - 1, d ?? 1);
   return Math.round((due - t) / 86_400_000);
+}
+
+/**
+ * WP1a 落盘出口：将派生义务写入 fact_obligations 表（delete+insert 幂等）。
+ * 按 source_document_id 粒度删再插，文档 metadata 变更/meta_status 变更时重派生可安全重调。
+ * 消费切换（cockpit 读 fact_obligations）归 WP1b；现有动态消费路径（deriveCashObligations）本期不动。
+ *
+ * @param sourceDocumentId  文档 id（knowledge_documents.id）
+ * @param obligations       该文档的派生义务列表（来自 deriveCashObligations 过滤后的子集）
+ * @param db                DatabaseSync 实例
+ */
+export function persistDerivedObligations(
+  sourceDocumentId: number,
+  obligations: CashObligation[],
+  db: import("node:sqlite").DatabaseSync
+): void {
+  // 幂等：先删该文档的所有旧义务行
+  db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(sourceDocumentId);
+
+  if (obligations.length === 0) return;
+
+  const insert = db.prepare(`
+    INSERT INTO fact_obligations
+      (direction, amount_cents, due_date, counterparty, status, recurrence,
+       source_document_id, settlement_status, source, provenance, derived_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'derived', 'agent_derived', NULL, datetime('now'))
+  `);
+
+  for (const obl of obligations) {
+    // 方向映射：付款→pay，收款→receive，开票→pay（兜底，WP1b 可细化）
+    const direction = obl.kind === "收款" ? "receive" : "pay";
+    // 金额：元→分（NULL 时存 0，由消费方据 provenance 判断是否可信）
+    const amountCents = typeof obl.amount === "number" ? Math.round(obl.amount * 100) : 0;
+    // 状态映射：done→settled，否则→pending
+    const status = obl.done ? "settled" : "pending";
+
+    insert.run(
+      direction,
+      amountCents,
+      obl.dueDate,
+      obl.counterparty,
+      status,
+      obl.recurrence ?? null,
+      sourceDocumentId
+    );
+  }
 }
 
 /** 金额人话化:≥1万显示「X.X万」,否则「X元」。 */

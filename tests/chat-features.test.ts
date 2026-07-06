@@ -52,6 +52,11 @@ function main() {
     "../app/chat/chat-page.tsx",
     "../app/chat/markdown-message.tsx",
     "../app/chat/markdown-rehype-config.ts",
+    // WP9a: 私有组件已搬出为独立文件；哨兵拼接路径扩为文件集，断言字符串不变
+    "../app/chat/components/assistant-turn.tsx",
+    "../app/chat/components/user-bubble.tsx",
+    "../app/chat/components/file-tray.tsx",
+    "../app/chat/components/mention-popup.tsx",
   ]
     .map((p) => fs.readFileSync(path.join(import.meta.dirname, p), "utf-8"))
     .join("\n");

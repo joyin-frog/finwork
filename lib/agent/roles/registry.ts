@@ -74,7 +74,10 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     domain: "税务管理",
     charter: "纳税申报管理、申报前复核、税收优惠",
     available: true,
-    skills: ["tax-incentive", "rnd-deduction-check", "xlsx"],  // 待建：filing-precheck
+    skills: ["tax-incentive", "rnd-deduction-check", "xlsx"],
+    // filing-precheck v1 由主对话直接执行（主对话拥有画像注入、工具权限和问用户通道三者；
+    // 子代理 buildSubagentSystemPrompt 不注入画像，且子代理无与用户对话通道——挂载此数组
+    // 只会产出全"无法核验"清单）。子代理画像注入机制落地后，再将 "filing-precheck" 加入此数组。
     tools: ["tax_calculator", "query_payroll_status"],
     dataScope: ["invoice_ledger（读）", "company_profile（读）", "薪资状态汇总（非明细）", "知识库政策文件"],
     deliverables: ["risk_list", "checklist"],

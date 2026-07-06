@@ -82,16 +82,18 @@ export function createPayrollTools(sdk: Sdk, outputDir?: string) {
         .describe("仅当财务明确要求重算已确认月份时传 true,操作会记录审计日志")
     },
     withIdempotency("calculate_payroll_batch", async (args: { year: number; month: number; employees: EmployeeInput[]; overwriteConfirmed?: boolean | null }) => {
-      const taxConfig = loadTaxConfig();
+      // 功能3: 提前读取本期已存在记录的内部状态，供 settlementStatus 接线使用
+      const existingRecords = listPayrollRecords(args.year, args.month);
+      const existingStatusMap = new Map(existingRecords.map((r) => [r.employeeName, r.status]));
+      // asOf 用于 receipt 与 calculateCumulativePayroll 输入（保持 YYYY-MM 格式，与原行为一致）
+      const asOf = `${args.year}-${String(args.month).padStart(2, "0")}`;
+      // ruleAsOf 用于 loadTaxConfig 的 as-of 查询：用当期第 1 天，确保补算历史月份时取历史版本（reviewer N3）
+      const ruleAsOf = `${asOf}-01`;
+      const taxConfig = loadTaxConfig(undefined, ruleAsOf);
       const results: CumulativePayrollResult[] = [];
       const coldStarts: string[] = [];
       const failures: string[] = [];
       const numericWarnings: string[] = [];
-
-      // 功能3: 提前读取本期已存在记录的内部状态，供 settlementStatus 接线使用
-      const existingRecords = listPayrollRecords(args.year, args.month);
-      const existingStatusMap = new Map(existingRecords.map((r) => [r.employeeName, r.status]));
-      const asOf = `${args.year}-${String(args.month).padStart(2, "0")}`;
 
       for (const emp of args.employees) {
         try {

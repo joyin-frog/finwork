@@ -1,26 +1,43 @@
 import type { DatabaseSync } from "node:sqlite";
 import { getDb, setAppSetting } from "./sqlite";
-import { DEFAULT_TAX_CONFIG, type CumulativePayrollResult, type TaxConfig } from "@/lib/domain/tax-cumulative";
+import { type CumulativePayrollResult, type TaxConfig } from "@/lib/domain/tax-cumulative";
 import { DEFAULT_TAX_RATES, type TaxRates } from "@/lib/domain/tax-config";
+import { queryPolicyRule } from "./rule-store";
 
 /**
- * 税率配置:优先读 app_settings 的 tax_config(政策调整时无需改代码),否则用内置默认。
- * 配置损坏时显式报错,不静默回落——错的税率比报错更糟。
+ * 按计算期间 as-of 查询生效的个税规则（WP5a）。
+ *
+ * - asOf: 日期字符串 YYYY-MM-DD；无参默认今天（适合实时计算）
+ * - 查无规则时显式抛错（绝不静默回退到可能过期的常量——DEFAULT 只作为 v8 种子）
+ * - 补算历史期间用历史版本：传入 `${year}-${month}-01` 日期
  */
-export function loadTaxConfig(db: DatabaseSync = getDb()): TaxConfig {
-  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'tax_config'").get() as
-    | { value: string }
-    | undefined;
-  if (!row) return DEFAULT_TAX_CONFIG;
+export function loadTaxConfig(db: DatabaseSync = getDb(), asOf?: string): TaxConfig {
+  const effectiveDate = asOf ?? new Date().toISOString().slice(0, 10);
+  const row = queryPolicyRule(db, "iit_cumulative", effectiveDate);
+  if (!row) {
+    throw new Error(
+      `无当期个税规则（asOf=${effectiveDate}）：policy_rule_sets 中没有覆盖该日期的 iit_cumulative 规则。` +
+        `请录入对应期间的个税参数后重试，或确认数据库是否已跑 v8 迁移。`
+    );
+  }
   let parsed: TaxConfig;
   try {
-    parsed = JSON.parse(row.value) as TaxConfig;
+    parsed = JSON.parse(row.payload) as TaxConfig;
   } catch {
-    throw new Error("app_settings 中的 tax_config 不是合法 JSON,请修复或删除该配置后重试");
+    throw new Error(
+      `policy_rule_sets 中 iit_cumulative 版本 "${row.version}" 的 payload 不是合法 JSON，请检查数据完整性`
+    );
   }
   if (!parsed.version || !Array.isArray(parsed.brackets) || parsed.brackets.length === 0 || !(parsed.basicDeductionMonthly > 0)) {
-    throw new Error("app_settings 中的 tax_config 缺少 version/brackets/basicDeductionMonthly,请修复或删除该配置后重试");
+    throw new Error(
+      `policy_rule_sets 中 iit_cumulative 版本 "${row.version}" 的 payload 缺少 version/brackets/basicDeductionMonthly`
+    );
   }
+  // 恢复 Infinity（JSON 序列化时 Infinity → 最大浮点数）
+  parsed.brackets = parsed.brackets.map((b) => ({
+    ...b,
+    limit: b.limit >= 1e308 ? Number.POSITIVE_INFINITY : b.limit,
+  }));
   return parsed;
 }
 
@@ -35,22 +52,41 @@ export function loadReimbursementSingleLimit(db: DatabaseSync = getDb()): number
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_REIMBURSEMENT_SINGLE_LIMIT;
 }
 
-/** 增值税/企业所得税法定税率集:优先 app_settings 的 tax_rates(政策变更不必改代码),否则内置默认。 */
-export function loadTaxRates(db: DatabaseSync = getDb()): TaxRates {
-  const row = db.prepare("SELECT value FROM app_settings WHERE key = 'tax_rates'").get() as
-    | { value: string }
-    | undefined;
-  if (!row) return DEFAULT_TAX_RATES;
-  try {
-    const parsed = JSON.parse(row.value) as Partial<TaxRates>;
-    const ok = (xs: unknown): xs is string[] => Array.isArray(xs) && xs.length > 0 && xs.every((r) => typeof r === "string");
-    return {
-      vat: ok(parsed.vat) ? parsed.vat : DEFAULT_TAX_RATES.vat,
-      cit: ok(parsed.cit) ? parsed.cit : DEFAULT_TAX_RATES.cit,
-    };
-  } catch {
-    return DEFAULT_TAX_RATES;
+/**
+ * 按计算期间 as-of 查询生效的 VAT/CIT 合法税率集（WP5a）。
+ *
+ * - asOf: 日期字符串 YYYY-MM-DD；无参默认今天
+ * - 查无规则时显式抛错（与 loadTaxConfig 对称）
+ * - 若 payload 缺少 vat/cit 字段，回落内置默认（VAT/CIT 本身不做区间历史，通常一个版本够）
+ */
+export function loadTaxRates(db: DatabaseSync = getDb(), asOf?: string): TaxRates {
+  const effectiveDate = asOf ?? new Date().toISOString().slice(0, 10);
+  const row = queryPolicyRule(db, "vat_rates", effectiveDate);
+  if (!row) {
+    throw new Error(
+      `无当期 VAT/CIT 税率集（asOf=${effectiveDate}）：policy_rule_sets 中没有覆盖该日期的 vat_rates 规则。` +
+        `请确认数据库是否已跑 v8 迁移。`
+    );
   }
+  let parsed: Partial<TaxRates>;
+  try {
+    parsed = JSON.parse(row.payload) as Partial<TaxRates>;
+  } catch {
+    throw new Error(
+      `vat_rates 规则 payload 损坏，请检查数据完整性（版本 "${row.version}"，payload 不是合法 JSON）`
+    );
+  }
+  const ok = (xs: unknown): xs is string[] =>
+    Array.isArray(xs) && xs.length > 0 && xs.every((r) => typeof r === "string");
+  if (!ok(parsed.vat) && !ok(parsed.cit)) {
+    throw new Error(
+      `vat_rates 规则 payload 损坏，请检查数据完整性（版本 "${row.version}"，vat/cit 字段缺失或无效）`
+    );
+  }
+  return {
+    vat: ok(parsed.vat) ? parsed.vat : DEFAULT_TAX_RATES.vat,
+    cit: ok(parsed.cit) ? parsed.cit : DEFAULT_TAX_RATES.cit,
+  };
 }
 
 // ─────────── 金蝶科目表(各公司不同 → 数据驱动,不写死) ───────────
@@ -159,6 +195,24 @@ export type StoredPayrollRecord = {
  * 写入/覆盖某员工某期间的工资草稿。
  * confirmed 记录默认拒绝覆盖;只有显式 overwriteConfirmed(并留审计)才允许重算。
  */
+// ── 元↔分转换工具（内部使用；门面出口一律返回元）────────────────────────────
+/** 元 → 分（写入时），含精度校验；超差抛错而非静默吞 */
+function yuanToCents(yuan: number, ctx: string): number {
+  const raw = yuan * 100;
+  const rounded = Math.round(raw);
+  if (Math.abs(raw - rounded) >= 0.005) {
+    throw new Error(
+      `精度超差: ${ctx} 金额 ${yuan} 元，|${raw} - ${rounded}| = ${Math.abs(raw - rounded).toFixed(6)} >= 0.005 分`
+    );
+  }
+  return rounded;
+}
+
+/** 分 → 元（读取时），门面出口恢复元单位 */
+function centsToYuan(cents: number): number {
+  return cents / 100;
+}
+
 export function savePayrollDraft(
   year: number,
   month: number,
@@ -168,10 +222,10 @@ export function savePayrollDraft(
 ): void {
   const db = options?.db ?? getDb();
   const existing = db
-    .prepare("SELECT status FROM payroll_records WHERE employee_name = ? AND year = ? AND month = ?")
-    .get(result.employeeName, year, month) as { status: PayrollRecordStatus } | undefined;
+    .prepare("SELECT settlement_status FROM fact_payroll WHERE employee_name = ? AND year = ? AND month = ?")
+    .get(result.employeeName, year, month) as { settlement_status: PayrollRecordStatus } | undefined;
 
-  if (existing?.status === "confirmed") {
+  if (existing?.settlement_status === "confirmed") {
     if (!options?.overwriteConfirmed) {
       throw new Error(
         `${result.employeeName} ${year}年${month}月工资已确认生效,拒绝静默覆盖;如确需重算,请明确告知要重算已确认月份`
@@ -185,51 +239,52 @@ export function savePayrollDraft(
     });
   }
 
+  const ctx = `fact_payroll(${result.employeeName},${year},${month})`;
   db.prepare(
-    `INSERT INTO payroll_records (
+    `INSERT INTO fact_payroll (
       employee_name, year, month,
-      gross_pay, social_insurance, housing_fund, special_deduction, months_employed,
-      gross_cum, social_cum, fund_cum, special_cum,
-      taxable_income_cum, tax_due_cum, tax_current, tax_withheld_cum, net_pay,
-      tax_config_version, detail_json, status, confirmed_at
+      gross_pay_cents, social_insurance_cents, housing_fund_cents, special_deduction_cents, months_employed,
+      gross_cum_cents, social_cum_cents, fund_cum_cents, special_cum_cents,
+      taxable_income_cum_cents, tax_due_cum_cents, tax_current_cents, tax_withheld_cum_cents, net_pay_cents,
+      caliber_version, detail_json, settlement_status, confirmed_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NULL)
     ON CONFLICT(employee_name, year, month) DO UPDATE SET
-      gross_pay = excluded.gross_pay,
-      social_insurance = excluded.social_insurance,
-      housing_fund = excluded.housing_fund,
-      special_deduction = excluded.special_deduction,
+      gross_pay_cents = excluded.gross_pay_cents,
+      social_insurance_cents = excluded.social_insurance_cents,
+      housing_fund_cents = excluded.housing_fund_cents,
+      special_deduction_cents = excluded.special_deduction_cents,
       months_employed = excluded.months_employed,
-      gross_cum = excluded.gross_cum,
-      social_cum = excluded.social_cum,
-      fund_cum = excluded.fund_cum,
-      special_cum = excluded.special_cum,
-      taxable_income_cum = excluded.taxable_income_cum,
-      tax_due_cum = excluded.tax_due_cum,
-      tax_current = excluded.tax_current,
-      tax_withheld_cum = excluded.tax_withheld_cum,
-      net_pay = excluded.net_pay,
-      tax_config_version = excluded.tax_config_version,
+      gross_cum_cents = excluded.gross_cum_cents,
+      social_cum_cents = excluded.social_cum_cents,
+      fund_cum_cents = excluded.fund_cum_cents,
+      special_cum_cents = excluded.special_cum_cents,
+      taxable_income_cum_cents = excluded.taxable_income_cum_cents,
+      tax_due_cum_cents = excluded.tax_due_cum_cents,
+      tax_current_cents = excluded.tax_current_cents,
+      tax_withheld_cum_cents = excluded.tax_withheld_cum_cents,
+      net_pay_cents = excluded.net_pay_cents,
+      caliber_version = excluded.caliber_version,
       detail_json = excluded.detail_json,
-      status = 'draft',
+      settlement_status = 'draft',
       confirmed_at = NULL`
   ).run(
     result.employeeName,
     year,
     month,
-    result.grossPay,
-    result.socialInsurance,
-    result.housingFund,
-    result.specialDeduction,
+    yuanToCents(result.grossPay, ctx),
+    yuanToCents(result.socialInsurance, ctx),
+    yuanToCents(result.housingFund, ctx),
+    yuanToCents(result.specialDeduction, ctx),
     monthsEmployed,
-    result.detail.grossCum,
-    result.detail.socialCum,
-    result.detail.fundCum,
-    result.detail.specialCum,
-    result.detail.taxableIncomeCum,
-    result.detail.taxDueCum,
-    result.taxCurrent,
-    result.taxWithheldCum,
-    result.netPay,
+    yuanToCents(result.detail.grossCum, ctx),
+    yuanToCents(result.detail.socialCum, ctx),
+    yuanToCents(result.detail.fundCum, ctx),
+    yuanToCents(result.detail.specialCum, ctx),
+    yuanToCents(result.detail.taxableIncomeCum, ctx),
+    yuanToCents(result.detail.taxDueCum, ctx),
+    yuanToCents(result.taxCurrent, ctx),
+    yuanToCents(result.taxWithheldCum, ctx),
+    yuanToCents(result.netPay, ctx),
     result.detail.taxConfigVersion,
     JSON.stringify(result.detail)
   );
@@ -244,8 +299,8 @@ export function getLatestConfirmedPayroll(
 ): StoredPayrollRecord | null {
   const row = db
     .prepare(
-      `SELECT * FROM payroll_records
-       WHERE employee_name = ? AND year = ? AND month < ? AND status = 'confirmed'
+      `SELECT * FROM fact_payroll
+       WHERE employee_name = ? AND year = ? AND month < ? AND settlement_status = 'confirmed'
        ORDER BY month DESC LIMIT 1`
     )
     .get(employeeName, year, beforeMonth) as Record<string, unknown> | undefined;
@@ -254,7 +309,7 @@ export function getLatestConfirmedPayroll(
 
 export function listPayrollRecords(year: number, month: number, db: DatabaseSync = getDb()): StoredPayrollRecord[] {
   const rows = db
-    .prepare("SELECT * FROM payroll_records WHERE year = ? AND month = ? ORDER BY employee_name")
+    .prepare("SELECT * FROM fact_payroll WHERE year = ? AND month = ? ORDER BY employee_name")
     .all(year, month) as Array<Record<string, unknown>>;
   return rows.map(mapPayrollRow);
 }
@@ -280,8 +335,8 @@ export function getPriorConfirmedPeriod(
   const prevMonth = month === 1 ? 12 : month - 1;
   const row = db
     .prepare(
-      `SELECT 1 FROM payroll_records
-       WHERE year = ? AND month = ? AND status = 'confirmed'
+      `SELECT 1 FROM fact_payroll
+       WHERE year = ? AND month = ? AND settlement_status = 'confirmed'
        LIMIT 1`
     )
     .get(prevYear, prevMonth);
@@ -309,7 +364,7 @@ export function confirmPayrollPeriod(
     throw new Error(`${year}年${month}月没有待确认的工资草稿${employeeNames?.length ? `(指定员工:${employeeNames.join("、")})` : ""}`);
   }
   const update = db.prepare(
-    "UPDATE payroll_records SET status = 'confirmed', confirmed_at = datetime('now') WHERE employee_name = ? AND year = ? AND month = ? AND status = 'draft'"
+    "UPDATE fact_payroll SET settlement_status = 'confirmed', confirmed_at = datetime('now') WHERE employee_name = ? AND year = ? AND month = ? AND settlement_status = 'draft'"
   );
   db.exec("BEGIN");
   try {
@@ -343,7 +398,7 @@ export type RecordInvoicesResult = {
 export function recordInvoices(items: InvoiceLedgerEntry[], db: DatabaseSync = getDb()): RecordInvoicesResult {
   const existing = findInvoicesInLedger(items.map((i) => i.invoiceNo), db);
   const insert = db.prepare(
-    "INSERT OR IGNORE INTO invoice_ledger (invoice_no, amount, invoice_date, category, conversation_id) VALUES (?, ?, ?, ?, ?)"
+    "INSERT OR IGNORE INTO fact_invoices (invoice_no, amount_cents, invoice_date, category, conversation_id, source) VALUES (?, ?, ?, ?, ?, 'user_dictated')"
   );
   const inserted: string[] = [];
   const duplicates: RecordInvoicesResult["duplicates"] = [];
@@ -353,7 +408,8 @@ export function recordInvoices(items: InvoiceLedgerEntry[], db: DatabaseSync = g
       duplicates.push({ invoiceNo: item.invoiceNo, recordedAt: prior.recordedAt });
       continue;
     }
-    insert.run(item.invoiceNo, item.amount, item.invoiceDate ?? null, item.category ?? null, item.conversationId ?? null);
+    const ctx = `fact_invoices.${item.invoiceNo}`;
+    insert.run(item.invoiceNo, yuanToCents(item.amount, ctx), item.invoiceDate ?? null, item.category ?? null, item.conversationId ?? null);
     inserted.push(item.invoiceNo);
   }
   if (inserted.length > 0) {
@@ -371,10 +427,11 @@ export function findInvoicesInLedger(
   if (unique.length === 0) return result;
   const placeholders = unique.map(() => "?").join(", ");
   const rows = db
-    .prepare(`SELECT invoice_no, amount, recorded_at FROM invoice_ledger WHERE invoice_no IN (${placeholders})`)
-    .all(...unique) as Array<{ invoice_no: string; amount: number; recorded_at: string }>;
+    .prepare(`SELECT invoice_no, amount_cents, recorded_at FROM fact_invoices WHERE invoice_no IN (${placeholders})`)
+    .all(...unique) as Array<{ invoice_no: string; amount_cents: number; recorded_at: string }>;
   for (const row of rows) {
-    result.set(row.invoice_no, { recordedAt: row.recorded_at, amount: row.amount });
+    // 门面出口：分→元
+    result.set(row.invoice_no, { recordedAt: row.recorded_at, amount: centsToYuan(row.amount_cents) });
   }
   return result;
 }
@@ -394,8 +451,8 @@ export function getPayrollPeriodSummary(year: number, month: number, db: Databas
   const drafts = records.filter((r) => r.status === "draft");
   const latest = db
     .prepare(
-      `SELECT year, month, COUNT(*) AS count FROM payroll_records
-       WHERE status = 'confirmed'
+      `SELECT year, month, COUNT(*) AS count FROM fact_payroll
+       WHERE settlement_status = 'confirmed'
        GROUP BY year, month ORDER BY year DESC, month DESC LIMIT 1`
     )
     .get() as { year: number; month: number; count: number } | undefined;
@@ -415,10 +472,11 @@ export type InvoiceLedgerStats = {
 };
 
 export function getInvoiceLedgerStats(year: number, month: number, db: DatabaseSync = getDb()): InvoiceLedgerStats {
-  const total = (db.prepare("SELECT COUNT(*) AS n FROM invoice_ledger").get() as { n: number }).n;
+  // 转换点（reviewer B3）：getInvoiceLedgerStats 的 COUNT + recorded_at LIKE 切新表 fact_invoices
+  const total = (db.prepare("SELECT COUNT(*) AS n FROM fact_invoices").get() as { n: number }).n;
   const prefix = `${year}-${String(month).padStart(2, "0")}`;
   const added = (
-    db.prepare("SELECT COUNT(*) AS n FROM invoice_ledger WHERE recorded_at LIKE ?").get(`${prefix}%`) as { n: number }
+    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE recorded_at LIKE ?").get(`${prefix}%`) as { n: number }
   ).n;
   return { total, addedThisMonth: added };
 }
@@ -455,25 +513,26 @@ export type BusinessOverview = {
 
 export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSync = getDb()): void {
   const stmt = db.prepare(`
-    INSERT INTO business_metrics (year, month, revenue, cost, expense, profit, note, source, updated_at)
+    INSERT INTO fact_metrics (year, month, revenue_cents, cost_cents, expense_cents, profit_cents, note, source, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(year, month) DO UPDATE SET
-      revenue    = excluded.revenue,
-      cost       = excluded.cost,
-      expense    = excluded.expense,
-      profit     = excluded.profit,
-      note       = excluded.note,
-      source     = excluded.source,
-      updated_at = datetime('now')
+      revenue_cents  = excluded.revenue_cents,
+      cost_cents     = excluded.cost_cents,
+      expense_cents  = excluded.expense_cents,
+      profit_cents   = excluded.profit_cents,
+      note           = excluded.note,
+      source         = excluded.source,
+      updated_at     = datetime('now')
   `);
   for (const row of rows) {
+    const ctx = `fact_metrics(${row.year},${row.month})`;
     stmt.run(
       row.year,
       row.month,
-      row.revenue,
-      row.cost ?? null,
-      row.expense ?? null,
-      row.profit,
+      yuanToCents(row.revenue, ctx),
+      row.cost != null ? yuanToCents(row.cost, ctx) : null,
+      row.expense != null ? yuanToCents(row.expense, ctx) : null,
+      yuanToCents(row.profit, ctx),
       row.note ?? null,
       row.source ?? "user_dictated"
     );
@@ -483,8 +542,8 @@ export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSyn
 type MetricDbRow = {
   year: number;
   month: number;
-  revenue: number;
-  profit: number;
+  revenue_cents: number;
+  profit_cents: number;
 };
 
 export function getBusinessOverview(now: Date, db: DatabaseSync = getDb()): BusinessOverview {
@@ -517,29 +576,30 @@ export function getBusinessOverview(now: Date, db: DatabaseSync = getDb()): Busi
 
   // 取最近一条数据的 source（供 TrustBadge）
   const latestSource = db.prepare(
-    "SELECT source FROM business_metrics ORDER BY year DESC, month DESC LIMIT 1"
+    "SELECT source FROM fact_metrics ORDER BY year DESC, month DESC LIMIT 1"
   ).get() as { source: string } | undefined;
 
   return { month: monthView, quarter: quarterView, year: yearView, source: latestSource?.source ?? null };
 }
 
 function buildMonthView(year: number, month: number, db: DatabaseSync): BusinessPeriodView {
+  // 转换点（reviewer B3）：buildMonthView 读 fact_metrics，门面出口 /100 恢复元单位
   const cur = db.prepare(
-    "SELECT revenue, profit FROM business_metrics WHERE year = ? AND month = ?"
-  ).get(year, month) as { revenue: number; profit: number } | undefined;
+    "SELECT revenue_cents, profit_cents FROM fact_metrics WHERE year = ? AND month = ?"
+  ).get(year, month) as { revenue_cents: number; profit_cents: number } | undefined;
 
   const prevMonth = month === 1 ? 12 : month - 1;
   const prevYear = month === 1 ? year - 1 : year;
   const prev = db.prepare(
-    "SELECT revenue, profit FROM business_metrics WHERE year = ? AND month = ?"
-  ).get(prevYear, prevMonth) as { revenue: number; profit: number } | undefined;
+    "SELECT revenue_cents, profit_cents FROM fact_metrics WHERE year = ? AND month = ?"
+  ).get(prevYear, prevMonth) as { revenue_cents: number; profit_cents: number } | undefined;
 
   return {
     label: `${year}年${month}月`,
-    revenue: cur?.revenue ?? null,
-    profit: cur?.profit ?? null,
-    prevRevenue: prev?.revenue ?? null,
-    prevProfit: prev?.profit ?? null,
+    revenue: cur ? centsToYuan(cur.revenue_cents) : null,
+    profit: cur ? centsToYuan(cur.profit_cents) : null,
+    prevRevenue: prev ? centsToYuan(prev.revenue_cents) : null,
+    prevProfit: prev ? centsToYuan(prev.profit_cents) : null,
     monthsCovered: cur ? 1 : 0,
   };
 }
@@ -550,18 +610,20 @@ function buildRangeView(
   prevYear: number, prevStart: number, prevEnd: number,
   db: DatabaseSync
 ): BusinessPeriodView {
+  // 转换点（reviewer B3）：buildRangeView 读 fact_metrics，JS 端 reduce 聚合后 /100 恢复元单位
   const curRows = db.prepare(
-    "SELECT year, month, revenue, profit FROM business_metrics WHERE year = ? AND month BETWEEN ? AND ?"
+    "SELECT year, month, revenue_cents, profit_cents FROM fact_metrics WHERE year = ? AND month BETWEEN ? AND ?"
   ).all(curYear, curStart, curEnd) as MetricDbRow[];
 
   const prevRows = db.prepare(
-    "SELECT year, month, revenue, profit FROM business_metrics WHERE year = ? AND month BETWEEN ? AND ?"
+    "SELECT year, month, revenue_cents, profit_cents FROM fact_metrics WHERE year = ? AND month BETWEEN ? AND ?"
   ).all(prevYear, prevStart, prevEnd) as MetricDbRow[];
 
+  // 门面出口：累计分→元（先 reduce 分单位再 /100，避免多次浮点除法误差）
   const sumRevenue = (rows: MetricDbRow[]) =>
-    rows.length ? rows.reduce((s, r) => s + r.revenue, 0) : null;
+    rows.length ? centsToYuan(rows.reduce((s, r) => s + r.revenue_cents, 0)) : null;
   const sumProfit = (rows: MetricDbRow[]) =>
-    rows.length ? rows.reduce((s, r) => s + r.profit, 0) : null;
+    rows.length ? centsToYuan(rows.reduce((s, r) => s + r.profit_cents, 0)) : null;
 
   return {
     label,
@@ -578,27 +640,28 @@ function auditLog(db: DatabaseSync, eventType: string, payload: unknown) {
 }
 
 function mapPayrollRow(row: Record<string, unknown>): StoredPayrollRecord {
+  // 门面出口：分→元（/100），保持 StoredPayrollRecord 类型语义为元单位
   return {
     id: Number(row.id),
     employeeName: String(row.employee_name),
     year: Number(row.year),
     month: Number(row.month),
-    grossPay: Number(row.gross_pay),
-    socialInsurance: Number(row.social_insurance),
-    housingFund: Number(row.housing_fund),
-    specialDeduction: Number(row.special_deduction),
+    grossPay: centsToYuan(Number(row.gross_pay_cents)),
+    socialInsurance: centsToYuan(Number(row.social_insurance_cents)),
+    housingFund: centsToYuan(Number(row.housing_fund_cents)),
+    specialDeduction: centsToYuan(Number(row.special_deduction_cents)),
     monthsEmployed: Number(row.months_employed),
-    grossCum: Number(row.gross_cum),
-    socialCum: Number(row.social_cum),
-    fundCum: Number(row.fund_cum),
-    specialCum: Number(row.special_cum),
-    taxableIncomeCum: Number(row.taxable_income_cum),
-    taxDueCum: Number(row.tax_due_cum),
-    taxCurrent: Number(row.tax_current),
-    taxWithheldCum: Number(row.tax_withheld_cum),
-    netPay: Number(row.net_pay),
-    taxConfigVersion: String(row.tax_config_version),
-    status: row.status as PayrollRecordStatus,
+    grossCum: centsToYuan(Number(row.gross_cum_cents)),
+    socialCum: centsToYuan(Number(row.social_cum_cents)),
+    fundCum: centsToYuan(Number(row.fund_cum_cents)),
+    specialCum: centsToYuan(Number(row.special_cum_cents)),
+    taxableIncomeCum: centsToYuan(Number(row.taxable_income_cum_cents)),
+    taxDueCum: centsToYuan(Number(row.tax_due_cum_cents)),
+    taxCurrent: centsToYuan(Number(row.tax_current_cents)),
+    taxWithheldCum: centsToYuan(Number(row.tax_withheld_cum_cents)),
+    netPay: centsToYuan(Number(row.net_pay_cents)),
+    taxConfigVersion: String(row.caliber_version),  // caliber_version 承接 tax_config_version 的值域
+    status: row.settlement_status as PayrollRecordStatus,  // settlement_status 承接 status
     createdAt: String(row.created_at),
     confirmedAt: row.confirmed_at == null ? null : String(row.confirmed_at)
   };

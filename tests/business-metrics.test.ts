@@ -18,9 +18,11 @@ export const businessMetricsTestPromise = (async () => {
     // ── AC6a: upsert 同 (year,month) 二次写入为更新 ────────────────────────
     upsertBusinessMetrics([{ year: 2026, month: 1, revenue: 100000, profit: 20000 }], db);
     upsertBusinessMetrics([{ year: 2026, month: 1, revenue: 120000, profit: 25000 }], db);
-    const row = db.prepare("SELECT revenue, profit FROM business_metrics WHERE year=2026 AND month=1").get() as { revenue: number; profit: number };
-    assert.equal(row.revenue, 120000, "AC6 FAIL: 同月二次写入应更新");
-    assert.equal(row.profit, 25000, "AC6 FAIL: profit 应更新");
+    // v7 后数据在 fact_metrics（分单位），门面层（getBusinessOverview）负责 /100；
+    // 此处直接查物理表验证分单位存储正确，再通过门面验证元单位返回
+    const rawRow = db.prepare("SELECT revenue_cents, profit_cents FROM fact_metrics WHERE year=2026 AND month=1").get() as { revenue_cents: number; profit_cents: number };
+    assert.equal(rawRow.revenue_cents, 12000000, "AC6 FAIL: 同月二次写入应更新（分单位 12000000）");
+    assert.equal(rawRow.profit_cents, 2500000, "AC6 FAIL: profit 应更新（分单位 2500000）");
 
     // ── AC6b: 季度聚合 + 环比 ─────────────────────────────────────────────
     // 写入 Q1 2026 (Jan, Feb, Mar) 和 Q4 2025 (Oct, Nov, Dec)

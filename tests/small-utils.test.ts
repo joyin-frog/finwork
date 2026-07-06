@@ -65,6 +65,9 @@ export const smallUtilsTestPromise = (async () => {
     const tables = new Set(
       (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[]).map((r) => r.name)
     );
+    // initializeSchema 建的是 baseline（v6 前旧表）；v7 迁移后旧表由 fact_* 取代，
+    // 但 initializeSchema 本身（schema.ts，已冻结）仍建旧表——small-utils 只测 initializeSchema 本身，
+    // 不测 v7 迁移，所以此处仍断言旧表存在（baseline 快照的行为）。
     for (const t of ["audit_logs", "tool_executions", "business_metrics", "chat_conversations", "app_settings", "app_errors", "payroll_records"]) {
       assert.ok(tables.has(t), `schema 应建表 ${t}`);
     }

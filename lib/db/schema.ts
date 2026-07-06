@@ -1,3 +1,12 @@
+/**
+ * ⚠️  本文件已冻结 = v1..v6 时点快照。
+ *
+ * 禁止再修改本文件中的任何 DDL（表结构 / 列定义 / 索引 / 约束）。
+ * 任何新 DDL 一律追加到 lib/db/migrations.ts 的 MIGRATIONS 数组末尾。
+ *
+ * 理由：initializeFinanceDatabase 不再对存量库无条件重跑 initializeSchema，
+ * 存量库只走 migrations。修改本文件的 DDL 不会作用到存量库，只会造成漂移静默积累。
+ */
 import { DatabaseSync } from "node:sqlite";
 
 export function addColumnIfMissing(db: DatabaseSync, table: string, column: string, definition: string) {

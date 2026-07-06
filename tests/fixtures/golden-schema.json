@@ -1,0 +1,1510 @@
+{
+  "tables": [
+    "agent_spans",
+    "agent_traces",
+    "app_errors",
+    "app_settings",
+    "audit_logs",
+    "chat_agent_events",
+    "chat_attachments",
+    "chat_conversations",
+    "chat_feedback",
+    "chat_messages",
+    "fact_invoices",
+    "fact_metrics",
+    "fact_obligations",
+    "fact_payroll",
+    "feature_events",
+    "knowledge_documents",
+    "library_files",
+    "model_routing_log",
+    "policy_rule_sets",
+    "skill_snapshots",
+    "subagent_dispatches",
+    "tool_executions"
+  ],
+  "indexes": [
+    "idx_agent_spans_trace",
+    "idx_agent_traces_conv",
+    "idx_agent_traces_started",
+    "idx_app_errors_fingerprint",
+    "idx_app_errors_reported",
+    "idx_audit_logs_trace",
+    "idx_audit_logs_type_created",
+    "idx_chat_agent_events_message_id",
+    "idx_chat_agent_events_trace",
+    "idx_chat_agent_events_type_created",
+    "idx_chat_attachments_message_id",
+    "idx_chat_conversations_updated_at",
+    "idx_chat_conversations_user",
+    "idx_chat_feedback_conversation",
+    "idx_chat_feedback_trace",
+    "idx_chat_feedback_updated",
+    "idx_chat_messages_conversation_id",
+    "idx_dispatches_blocked",
+    "idx_dispatches_role_time",
+    "idx_fact_invoices_recorded_at",
+    "idx_fact_metrics_period",
+    "idx_fact_obligations_due",
+    "idx_fact_payroll_period",
+    "idx_knowledge_documents_category",
+    "idx_library_files_created",
+    "idx_model_routing_log_conv",
+    "idx_model_routing_log_trace",
+    "idx_policy_rules_type_from",
+    "idx_tool_executions_created"
+  ],
+  "indexDetails": [
+    {
+      "name": "idx_agent_spans_trace",
+      "table": "agent_spans"
+    },
+    {
+      "name": "idx_agent_traces_conv",
+      "table": "agent_traces"
+    },
+    {
+      "name": "idx_agent_traces_started",
+      "table": "agent_traces"
+    },
+    {
+      "name": "idx_app_errors_fingerprint",
+      "table": "app_errors"
+    },
+    {
+      "name": "idx_app_errors_reported",
+      "table": "app_errors"
+    },
+    {
+      "name": "idx_audit_logs_trace",
+      "table": "audit_logs"
+    },
+    {
+      "name": "idx_audit_logs_type_created",
+      "table": "audit_logs"
+    },
+    {
+      "name": "idx_chat_agent_events_message_id",
+      "table": "chat_agent_events"
+    },
+    {
+      "name": "idx_chat_agent_events_trace",
+      "table": "chat_agent_events"
+    },
+    {
+      "name": "idx_chat_agent_events_type_created",
+      "table": "chat_agent_events"
+    },
+    {
+      "name": "idx_chat_attachments_message_id",
+      "table": "chat_attachments"
+    },
+    {
+      "name": "idx_chat_conversations_updated_at",
+      "table": "chat_conversations"
+    },
+    {
+      "name": "idx_chat_conversations_user",
+      "table": "chat_conversations"
+    },
+    {
+      "name": "idx_chat_feedback_conversation",
+      "table": "chat_feedback"
+    },
+    {
+      "name": "idx_chat_feedback_trace",
+      "table": "chat_feedback"
+    },
+    {
+      "name": "idx_chat_feedback_updated",
+      "table": "chat_feedback"
+    },
+    {
+      "name": "idx_chat_messages_conversation_id",
+      "table": "chat_messages"
+    },
+    {
+      "name": "idx_dispatches_blocked",
+      "table": "subagent_dispatches"
+    },
+    {
+      "name": "idx_dispatches_role_time",
+      "table": "subagent_dispatches"
+    },
+    {
+      "name": "idx_fact_invoices_recorded_at",
+      "table": "fact_invoices"
+    },
+    {
+      "name": "idx_fact_metrics_period",
+      "table": "fact_metrics"
+    },
+    {
+      "name": "idx_fact_obligations_due",
+      "table": "fact_obligations"
+    },
+    {
+      "name": "idx_fact_payroll_period",
+      "table": "fact_payroll"
+    },
+    {
+      "name": "idx_knowledge_documents_category",
+      "table": "knowledge_documents"
+    },
+    {
+      "name": "idx_library_files_created",
+      "table": "library_files"
+    },
+    {
+      "name": "idx_model_routing_log_conv",
+      "table": "model_routing_log"
+    },
+    {
+      "name": "idx_model_routing_log_trace",
+      "table": "model_routing_log"
+    },
+    {
+      "name": "idx_policy_rules_type_from",
+      "table": "policy_rule_sets"
+    },
+    {
+      "name": "idx_tool_executions_created",
+      "table": "tool_executions"
+    }
+  ],
+  "columns": {
+    "agent_spans": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "span_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "started_at",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "duration_ms",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "input_summary",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "output_summary",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "tokens",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "error",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "metadata_json",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "agent_traces": [
+      {
+        "cid": 0,
+        "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "conversation_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "user_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "started_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "ended_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "total_ms",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "model_used",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "router_path",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "prompt_tokens",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "completion_tokens",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "cache_read_tokens",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "cache_creation_tokens",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "tool_call_count",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "retry_count",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "error_message",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "user_message",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 16,
+        "name": "final_answer",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 17,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": "'ok'",
+        "pk": 0
+      },
+      {
+        "cid": 18,
+        "name": "role_mode",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 19,
+        "name": "total_cost_usd",
+        "type": "REAL",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 20,
+        "name": "input_tokens",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 21,
+        "name": "output_tokens",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 22,
+        "name": "llm_call_count",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": "1",
+        "pk": 0
+      },
+      {
+        "cid": 23,
+        "name": "num_turns",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 24,
+        "name": "model_usage_json",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "app_errors": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "ts",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "source",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "message",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "stack",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "app_version",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "fingerprint",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "reported",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "app_settings": [
+      {
+        "cid": 0,
+        "name": "key",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "value",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "audit_logs": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "event_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "payload",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "chat_agent_events": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "message_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "event_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "payload",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "chat_attachments": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "message_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "file_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "mime_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "size_bytes",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "storage_path",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "role",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "kept",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      }
+    ],
+    "chat_conversations": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "title",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "claude_session_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "claude_session_updated_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "pinned",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "user_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'default-user'",
+        "pk": 0
+      }
+    ],
+    "chat_feedback": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "message_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "conversation_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "rating",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "reason",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ],
+    "chat_messages": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "conversation_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "role",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "content",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ],
+    "fact_invoices": [
+      { "cid": 0, "name": "invoice_no", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 1 },
+      { "cid": 1, "name": "direction", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 2, "name": "amount_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 3, "name": "tax_rate", "type": "REAL", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 4, "name": "tax_amount_cents", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 5, "name": "certification_status", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 6, "name": "counterparty", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 7, "name": "invoice_date", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 8, "name": "category", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 9, "name": "settlement_status", "type": "TEXT", "notnull": 1, "dflt_value": "'recorded'", "pk": 0 },
+      { "cid": 10, "name": "caliber_version", "type": "TEXT", "notnull": 1, "dflt_value": "'v1'", "pk": 0 },
+      { "cid": 11, "name": "source", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 12, "name": "provenance", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 13, "name": "conversation_id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 14, "name": "recorded_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 }
+    ],
+    "fact_metrics": [
+      { "cid": 0, "name": "id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 1 },
+      { "cid": 1, "name": "year", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 2, "name": "month", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 3, "name": "revenue_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 4, "name": "cost_cents", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 5, "name": "expense_cents", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 6, "name": "profit_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 7, "name": "note", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 8, "name": "settlement_status", "type": "TEXT", "notnull": 1, "dflt_value": "'stated'", "pk": 0 },
+      { "cid": 9, "name": "caliber_version", "type": "TEXT", "notnull": 1, "dflt_value": "'v1'", "pk": 0 },
+      { "cid": 10, "name": "source", "type": "TEXT", "notnull": 1, "dflt_value": "'user_dictated'", "pk": 0 },
+      { "cid": 11, "name": "provenance", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 12, "name": "created_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 },
+      { "cid": 13, "name": "updated_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 }
+    ],
+    "fact_obligations": [
+      { "cid": 0, "name": "id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 1 },
+      { "cid": 1, "name": "direction", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 2, "name": "amount_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 3, "name": "due_date", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 4, "name": "counterparty", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 5, "name": "status", "type": "TEXT", "notnull": 1, "dflt_value": "'pending'", "pk": 0 },
+      { "cid": 6, "name": "recurrence", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 7, "name": "source_document_id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 8, "name": "settlement_status", "type": "TEXT", "notnull": 1, "dflt_value": "'derived'", "pk": 0 },
+      { "cid": 9, "name": "source", "type": "TEXT", "notnull": 1, "dflt_value": "'agent_derived'", "pk": 0 },
+      { "cid": 10, "name": "provenance", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 11, "name": "derived_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 }
+    ],
+    "fact_payroll": [
+      { "cid": 0, "name": "id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 1 },
+      { "cid": 1, "name": "employee_name", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 2, "name": "year", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 3, "name": "month", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 4, "name": "gross_pay_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 5, "name": "social_insurance_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 6, "name": "housing_fund_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 7, "name": "special_deduction_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 8, "name": "months_employed", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 9, "name": "gross_cum_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 10, "name": "social_cum_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 11, "name": "fund_cum_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 12, "name": "special_cum_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 13, "name": "taxable_income_cum_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 14, "name": "tax_due_cum_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 15, "name": "tax_current_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 16, "name": "tax_withheld_cum_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 17, "name": "net_pay_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 18, "name": "settlement_status", "type": "TEXT", "notnull": 1, "dflt_value": "'draft'", "pk": 0 },
+      { "cid": 19, "name": "caliber_version", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 20, "name": "source", "type": "TEXT", "notnull": 1, "dflt_value": "'agent_derived'", "pk": 0 },
+      { "cid": 21, "name": "detail_json", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
+      { "cid": 22, "name": "created_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 },
+      { "cid": 23, "name": "confirmed_at", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 }
+    ],
+    "feature_events": [
+      {
+        "cid": 0,
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "count",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "first_at",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "last_at",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "knowledge_documents": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "title",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "file_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "mime_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "category",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'general'",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "size_bytes",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "chunk_count",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "content_hash",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "storage_path",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "last_hit_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "hit_count",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 13,
+        "name": "archived",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 14,
+        "name": "metadata",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 15,
+        "name": "meta_status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'none'",
+        "pk": 0
+      }
+    ],
+    "library_files": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "file_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "mime_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "size_bytes",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "storage_path",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "source_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'generated'",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "source_label",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "''",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "kept_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ],
+    "model_routing_log": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "conversation_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "user_message",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "decision_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "path",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "router_latency_ms",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ],
+    "policy_rule_sets": [
+      { "cid": 0, "name": "id",             "type": "INTEGER", "notnull": 0, "dflt_value": null,              "pk": 1 },
+      { "cid": 1, "name": "rule_type",      "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 2, "name": "version",        "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 3, "name": "effective_from", "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 4, "name": "effective_to",   "type": "TEXT",    "notnull": 0, "dflt_value": null,              "pk": 0 },
+      { "cid": 5, "name": "payload",        "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 6, "name": "source",         "type": "TEXT",    "notnull": 1, "dflt_value": "'builtin_seed'", "pk": 0 },
+      { "cid": 7, "name": "created_at",     "type": "TEXT",    "notnull": 1, "dflt_value": "(datetime('now'))", "pk": 0 }
+    ],
+    "skill_snapshots": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "skill_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "flow",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "enabled",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "content",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ],
+    "subagent_dispatches": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "role_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "skill",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "label",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "conversation_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'running'",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "summary",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "blocked_reason",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "started_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "datetime('now')",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "ended_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "duration_ms",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "tool_executions": [
+      {
+        "cid": 0,
+        "name": "idempotency_key",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "tool_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "input_hash",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "result_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "is_error",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "0",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ]
+  }
+}

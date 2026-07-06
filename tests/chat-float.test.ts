@@ -69,10 +69,16 @@ export const chatFloatTestPromise = (async () => {
       exists("app/chat/markdown-message.tsx"),
       "A3 FAIL: MarkdownMessage 应抽取为 app/chat/markdown-message.tsx 共享模块"
     );
-    const chatPageSrc = src("app/chat/chat-page.tsx");
+    // WP9a 拆解(2026-07-06)后 markdown-message 的引用随组件移入 app/chat/components/*，
+    // 哨兵语义不变(单一实现被真实引用)，读取范围扩为拆分后的文件集
+    const chatPageSrc = [
+      "app/chat/chat-page.tsx",
+      "app/chat/components/assistant-turn.tsx",
+      "app/chat/components/user-bubble.tsx",
+    ].map(src).join("\n");
     assert.ok(
-      chatPageSrc.includes('from "@/app/chat/markdown-message"') || chatPageSrc.includes('from "./markdown-message"'),
-      "A3 FAIL: chat-page.tsx 应改为引用共享的 markdown-message 模块（单一实现）"
+      chatPageSrc.includes('from "@/app/chat/markdown-message"') || chatPageSrc.includes('from "./markdown-message"') || chatPageSrc.includes('from "../markdown-message"'),
+      "A3 FAIL: chat 消息渲染应引用共享的 markdown-message 模块（单一实现）"
     );
   }
 

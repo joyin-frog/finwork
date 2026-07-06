@@ -100,6 +100,10 @@
 }
 
 :root {
+    /* ════ Surface 语义 token ════ */
+    /* chip 圆角（0.25rem = 4px）：承接试点里裸 rounded 8 处，像素不变 */
+    --radius-chip: 0.25rem;
+
     /* ════ 可调设计 token(亮)—— 调试台 /dev/theme 导出对应这一节,导入时整段替换 ════ */
     --background: oklch(1 0 0);
     --foreground: oklch(0.21 0 0);
@@ -647,3 +651,30 @@ html button.composer-send-button.stop {
 @media (prefers-reduced-motion: reduce) {
   ::-webkit-scrollbar-thumb { transition: none; }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   风格覆盖挂载区（WP8 Surface 底座）— 仅机制，默认风格无覆盖
+   ════════════════════════════════════════════════════════════════════
+
+   data-style 由 app/layout.tsx 的 <html data-style="default"> 挂载。
+   新增第二套风格时，在下方追加一个覆盖块：
+
+     [data-style='x'] {
+       --radius: 0rem;           ← 示例：直边风格
+       --card: oklch(0.98 0 0);  ← 示例：另一套卡片色
+     }
+
+   ⚠️  暗色必须用组合选择器，特异性 [0,2,0] 才能盖过单独 .dark：
+
+     html.dark[data-style='x'] {
+       --card: oklch(0.20 0 0);  ← 暗色下的覆盖
+     }
+
+   （注意：本块是一整段 CSS 注释，示例代码内禁止出现「星号+斜杠」的注释结束序列——
+   CSS 注释不可嵌套，会提前终结外层注释导致整站样式编译失败。2026-07-06 实测踩坑后修复。）
+
+   否则 .dark 的同名 token 会在应用顺序上盖掉 [data-style='x'] 的值。
+   Surface variant 如需随风格切换，可在同一块里追加 variant 映射注释。
+
+   默认风格（data-style="default"）：零覆盖，完全继承 :root / .dark。
+   ════════════════════════════════════════════════════════════════════ */

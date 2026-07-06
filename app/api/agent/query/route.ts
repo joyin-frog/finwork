@@ -593,6 +593,20 @@ function pickRealModel(result: AgentTurnResult, routerResult?: Awaited<ReturnTyp
 
 // ─── request parsing ────────────────────────────────────────────────
 
+/**
+ * Decode a dataUrl attachment and persist it to the conversation's upload dir.
+ * Returns the absolute file path written, or null if the dataUrl is empty/invalid.
+ * Shared by parseMultipartRequest and parseJsonRequest so both paths land files
+ * on disk with identical directory layout and naming logic.
+ */
+function saveAttachmentBuffer(conversationId: number, fileName: string, buffer: Buffer): string {
+  const uploadDir = path.join(getConversationFilesDir(conversationId), "upload");
+  mkdirSync(uploadDir, { recursive: true });
+  const filePath = uniqueFilePath(uploadDir, fileName);
+  writeFileSync(filePath, buffer);
+  return filePath;
+}
+
 async function parseMultipartRequest(request: Request, traceId: string) {
   const formData = await request.formData();
   const messages: AgentMessage[] = formData.get("messages") ? (JSON.parse(formData.get("messages") as string) as AgentMessage[]) : [];
@@ -607,12 +621,9 @@ async function parseMultipartRequest(request: Request, traceId: string) {
       log.info("conversation created for files", { traceId, conversationId });
     }
     if (conversationId) {
-      const uploadDir = path.join(getConversationFilesDir(conversationId), "upload");
-      mkdirSync(uploadDir, { recursive: true });
       for (const file of uploadedFiles) {
-        const filePath = uniqueFilePath(uploadDir, file.name);
         const buffer = Buffer.from(await file.arrayBuffer());
-        writeFileSync(filePath, buffer);
+        const filePath = saveAttachmentBuffer(conversationId, file.name, buffer);
         const storedName = path.basename(filePath);
         attachments.push({ name: storedName, mimeType: file.type || guessMimeType(storedName), size: buffer.length, dataUrl: `data:${file.type || "application/octet-stream"};base64,${buffer.toString("base64")}`, storagePath: filePath });
       }
@@ -632,7 +643,35 @@ async function parseMultipartRequest(request: Request, traceId: string) {
 
 async function parseJsonRequest(request: Request) {
   const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[]; referencedSkills?: string[]; modelTier?: string };
-  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId: body.conversationId, attachments: body.attachments ?? [], referencedSkills: body.referencedSkills ?? [], modelTier: body.modelTier };
+  let conversationId = body.conversationId;
+  const rawAttachments = body.attachments ?? [];
+
+  // Persist any dataUrl-only attachments to disk so downstream (claude-adapter,
+  // non-Anthropic gateways) can always read them via storagePath rather than
+  // relying on inline base64 blocks that some gateways silently drop.
+  const attachments: AgentAttachment[] = [];
+  for (const att of rawAttachments) {
+    if (!att.storagePath && att.dataUrl) {
+      // Decode base64 payload from the data URL (data:<mime>;base64,<payload>)
+      const commaIdx = att.dataUrl.indexOf(",");
+      const base64Payload = commaIdx >= 0 ? att.dataUrl.slice(commaIdx + 1) : att.dataUrl;
+      const buffer = Buffer.from(base64Payload, "base64");
+      if (buffer.length > 0) {
+        // Auto-create a conversation when one doesn't exist yet.
+        if (!conversationId) {
+          const lastUser = [...(body.messages ?? [])].reverse().find((m) => m.role === "user");
+          const title = lastUser?.content?.trim() ? generateShortTitle(lastUser.content.trim()) : "新对话";
+          conversationId = createChatConversation(title);
+        }
+        const filePath = saveAttachmentBuffer(conversationId, att.name, buffer);
+        attachments.push({ ...att, storagePath: filePath, size: buffer.length });
+        continue;
+      }
+    }
+    attachments.push(att);
+  }
+
+  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId, attachments, referencedSkills: body.referencedSkills ?? [], modelTier: body.modelTier };
 }
 
 // ─── string helpers ─────────────────────────────────────────────────

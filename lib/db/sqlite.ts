@@ -4,7 +4,6 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { getDatabasePath, getConversationFilesDir } from "@/lib/runtime/paths";
 import { isFeatureEventName } from "@/lib/telemetry/feature-events";
-import { initializeSchema } from "./schema";
 import { runMigrations, LATEST_VERSION, getUserVersion } from "./migrations";
 
 export * from "./schema";
@@ -121,13 +120,66 @@ function shouldBackupNow(dbPath: string): boolean {
 }
 
 export function initializeFinanceDatabase(db = openFinanceDatabase(), dbPath?: string) {
-  initializeSchema(db);
-  // 迁移系统:initializeSchema 已确保 baseline 表存在;
-  // 若 user_version=0(全新库或老库),runMigrations 会把它升到最新 version。
-  // dbPath 仅在需要备份时使用;未提供时跳过路径解析。
+  // baseline 已内嵌为 MIGRATIONS[0]（v1）；存量库只走 pending 迁移，不再无条件重跑 baseline。
+  // v0 全新库：v1 baseline → v2..LATEST 依次跑（各自幂等）。
+  // 存量库（user_version ≥ 1）：仅跑版本高于当前的迁移，v6 baseline_reconcile 愈合任何列漂移。
+  // dbPath 仅在需要备份时使用；未提供时跳过路径解析。
   const resolvedPath = dbPath ?? getDatabasePath();
   runMigrations(db, resolvedPath, backupDatabase);
   return db;
+}
+
+/**
+ * 大迁移预演（WP6）：在临时副本上跑 pending 迁移，全程不改原库。
+ *
+ * 步骤：
+ * 1. 原库 WAL checkpoint → VACUUM INTO 临时副本（含所有已提交写入）
+ * 2. 新连接打开副本 → runMigrations（no-op backupFn，副本不再备份）
+ * 3. PRAGMA quick_check 验证完整性
+ * 4. 关闭并删除副本
+ * 5. 返回 { ok, fromVersion, toVersion, error? }
+ *
+ * @param db      已打开的源库连接（与 runMigrations 一致）
+ * @param dbPath  源库文件绝对路径（用于 VACUUM INTO 目标路径命名）
+ */
+export async function rehearseMigrations(
+  db: DatabaseSync,
+  dbPath: string
+): Promise<{ ok: boolean; fromVersion: number; toVersion: number; error?: string }> {
+  const fromVersion = getUserVersion(db);
+  const tmpPath = path.join(os.tmpdir(), `finance-agent-rehearse-${process.pid}-${Date.now()}.db`);
+  let tmpDb: DatabaseSync | null = null;
+  try {
+    // WAL checkpoint：确保所有已提交写入刷入主库文件
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    // 复制到临时副本
+    db.exec(`VACUUM INTO '${tmpPath.replaceAll("'", "''")}'`);
+
+    // 在副本上跑迁移
+    tmpDb = new DatabaseSync(tmpPath);
+    tmpDb.exec("PRAGMA journal_mode = WAL");
+    tmpDb.exec("PRAGMA foreign_keys = ON");
+    runMigrations(tmpDb, tmpPath, () => null);
+
+    // 完整性校验
+    const check = tmpDb.prepare("PRAGMA quick_check").get() as { quick_check: string } | undefined;
+    if (check?.quick_check !== "ok") {
+      throw new Error(`quick_check 未通过: ${check?.quick_check ?? "无返回"}`);
+    }
+
+    const toVersion = getUserVersion(tmpDb);
+    return { ok: true, fromVersion, toVersion };
+  } catch (err) {
+    return {
+      ok: false,
+      fromVersion,
+      toVersion: fromVersion,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    try { tmpDb?.close(); } catch { /* ignore */ }
+    try { rmSync(tmpPath, { force: true }); } catch { /* ignore */ }
+  }
 }
 
 export function insertAuditLog(eventType: string, payload: unknown, db: DatabaseSync = getDb()) {
