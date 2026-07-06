@@ -121,14 +121,9 @@ export default function AgentsPage() {
     [selectedRoleId, collapsed, open, toggle]
   );
 
-  // 收起预览（保留选中角色，可从顶栏「展开预览」再打开）
+  // 收起预览（保留选中角色，可从顶栏「展开预览」再打开）。
+  // 无独立「关闭」：收起已够用（对齐 files/knowledge 预览页）；再次点选中卡即完全取消选中。
   const handleCollapseDrawer = useCallback(() => {
-    toggle();
-  }, [toggle]);
-
-  // 关闭抽屉（清空选中）
-  const handleCloseDrawer = useCallback(() => {
-    setSelectedRoleId(null);
     toggle();
   }, [toggle]);
 
@@ -239,7 +234,6 @@ export default function AgentsPage() {
               maximized={maximized}
               onMaximize={maximize}
               onCollapse={handleCollapseDrawer}
-              onClose={handleCloseDrawer}
             />
           ) : null
         }

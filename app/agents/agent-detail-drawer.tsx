@@ -14,7 +14,7 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowExpand01Icon, ArrowShrink01Icon, Cancel01Icon, PanelRightIcon } from "@hugeicons/core-free-icons";
+import { ArrowExpand01Icon, ArrowShrink01Icon, PanelRightIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { FilePreviewPage, type LocalPreviewFile } from "@/app/shared/file-preview-page";
 import { ROLE_UI } from "@/lib/domain/role-ui";
@@ -29,7 +29,6 @@ type AgentDetailDrawerProps = {
   onMaximize: () => void;
   /** 收起预览（保留选中，顶栏可再展开）——对齐 files/knowledge 的「收起右侧栏」 */
   onCollapse: () => void;
-  onClose: () => void;
 };
 
 export function AgentDetailDrawer({
@@ -38,7 +37,6 @@ export function AgentDetailDrawer({
   maximized,
   onMaximize,
   onCollapse,
-  onClose,
 }: AgentDetailDrawerProps) {
   const [filePreview, setFilePreview] = useState<LocalPreviewFile | null>(null);
 
@@ -95,9 +93,6 @@ export function AgentDetailDrawer({
                 <HugeiconsIcon icon={PanelRightIcon} size={16} />
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="关闭">
-              <HugeiconsIcon icon={Cancel01Icon} size={16} />
-            </Button>
           </div>
         </div>
 
