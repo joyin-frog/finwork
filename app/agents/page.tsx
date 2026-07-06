@@ -168,7 +168,6 @@ export default function AgentsPage() {
         dragging={dragging}
         onBeginResize={beginResize}
         listMinWidthClass="min-w-[420px]"
-        previewFrameClassName="bg-card border-l border-border overflow-hidden"
         list={
           <div className="flex-1 overflow-auto p-6 flex flex-col gap-5">
             {error ? (

@@ -37,13 +37,6 @@ type ResizablePreviewPanelProps = {
    * - agents: "min-w-[420px]"
    */
   listMinWidthClass?: string;
-  /**
-   * 右面板外框样式 class，各页不同：
-   * - files/knowledge: "preview-card-frame"（默认，浮起卡片：4px 边距+圆角+阴影，见 app/styles/preview.css）
-   * - agents: "bg-card border-l border-border overflow-hidden"（贴边抽屉，无浮起卡片）
-   * 别在壳里写死——两处外观本就不同。
-   */
-  previewFrameClassName?: string;
   /** 左列内容（列表、网格等） */
   list: ReactNode;
   /**
@@ -62,7 +55,6 @@ export function ResizablePreviewPanel({
   onBeginResize,
   onResetWidth,
   listMinWidthClass = "min-w-[280px]",
-  previewFrameClassName = "preview-card-frame",
   list,
   preview,
 }: ResizablePreviewPanelProps) {
@@ -94,7 +86,7 @@ export function ResizablePreviewPanel({
       {/* 右侧预览面板 */}
       {showRight && (
         <div
-          className={cn("flex flex-col shrink-0", previewFrameClassName, maximized && "is-maximized")}
+          className={cn("flex flex-col shrink-0 preview-card-frame", maximized && "is-maximized")}
           style={{ width: previewW }}
         >
           {preview}

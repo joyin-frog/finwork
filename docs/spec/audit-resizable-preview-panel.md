@@ -36,16 +36,13 @@
 - **修复**：壳改为 `style={{ width: previewW }}` 无条件应用（对齐原 files/knowledge，`git show HEAD:app/files/page.tsx:652` 佐证）。所有消费者共用同一 hook，`maximize()` 统一把 previewW 设为填满值。
 - **复验**：`/agents` 放大 `fillsContainer:true`；测试 + typecheck 仍绿。
 
-## 实施审查裁决处理（fix first 第 1 轮）
+## 实施审查裁决处理（fix first 第 1 轮 → 用户反馈再校正）
 
-reviewer 判 **fix first**，一个阻塞：壳无条件套 `preview-card-frame`（`app/styles/preview.css:442`：margin 4px+圆角 12px+边框+阴影，浮起卡片），但原 `AgentDetailDrawer` 是**贴边平板** `bg-card border-l border-border`——导致 `/agents` 抽屉变成浮起圆角卡片，破坏等价。（`.is-maximized` 经证实无 CSS 规则，是空标记；preview.css 注释说明放大态仍保持浮起卡片，故 files/knowledge 放大也是卡片，与原一致。）
+reviewer 判 **fix first**：壳无条件套 `preview-card-frame`（`app/styles/preview.css:442`：margin 4px+圆角 12px+边框+阴影，浮起卡片），而**改造前**的 `AgentDetailDrawer` 是贴边平板 `bg-card border-l border-border`——reviewer 以"等价重构逐像素不变"为由要求恢复贴边。当时据此加了 `previewFrameClassName` prop 让 agents 退回贴边。
 
-**修复**：壳新增 `previewFrameClassName?: string`（默认 `"preview-card-frame"`）。files/knowledge 不传 → 默认卡片（不变）；agents 传 `"bg-card border-l border-border overflow-hidden"` → 恢复贴边平板。
+**但用户随后明确反馈**：智能体预览应与对话/知识库**外观一致**（浮起卡片），这正是 B 阶段"复刻预览页样式"的原意——旧的贴边平板不是想要的目标态。故**撤销该 prop**：壳右面板统一写死 `preview-card-frame`，三处消费者共用同一外框；`agent-detail-drawer.tsx` 不自带任何外框（`bg-card`/`border-l` 由壳提供，抽屉内部只留内容）。
 
-**真机复验计算样式**（objective）：
-- `/agents` 抽屉框：`margin:0 / border-radius:0 / box-shadow:none / border-left:1px` = 原贴边平板 ✓
-- `/knowledge` 预览框：`margin:4px / border-radius:12px / box-shadow:有 / preview-card-frame` = 原浮起卡片 ✓
-- 全套 11 suites 绿；typecheck 干净。
+**真机复验计算样式**（objective）：三处预览框现**完全一致** —— `margin:4px / border-radius:12px / box-shadow:有 / preview-card-frame`（`/agents` 与 `/knowledge` 实测同款）。全套 11 suites 绿；typecheck 干净。回归守卫 B6/C5 改为"壳统一 preview-card-frame + 抽屉不自带外框"（守一致性，而非守贴边）。
 
 ## chat 是否纳入
 
@@ -53,7 +50,7 @@ reviewer 判 **fix first**，一个阻塞：壳无条件套 `preview-card-frame`
 
 ## 观感一致自查 / 遗留
 
-- files/knowledge：装配等价搬迁，`style={{width}}` 无条件应用、`preview-card-frame` 默认保留，与原一致；观感无差异（真机计算样式已核）。
-- agents 抽屉：外框经 fix 恢复为原贴边平板（真机计算样式已核）。**唯一残留观感差异**：分隔条 hover 色 `foreground/10`→`primary/30`（与 files/knowledge 统一）——细微、已披露，交产品判断是否接受此统一（非阻塞）。
+- files/knowledge：装配等价搬迁，`style={{width}}` 无条件应用、`preview-card-frame` 保留，与原一致；观感无差异（真机计算样式已核）。
+- agents 抽屉：按用户反馈统一为浮起卡片 `preview-card-frame`（与 files/knowledge/对话一致），真机计算样式三处同款已核。这是相对改造前的**有意观感变更**（旧贴边平板 → 统一卡片），非等价回归——目标就是一致。分隔条 hover 色也随之统一为 `primary/30`。
 - 放大填满机制已统一到 `width: previewW`；`flex-1` 分支不再使用。
 - 遗留 follow-up：chat 迁移；`.preview-card-frame`/`.is-maximized` 为无规则空 class（历史遗留，本期未清理，避免扩大 diff）。

@@ -129,21 +129,13 @@ export const resizablePreviewPanelTestPromise = (async () => {
   );
   console.log("B5: 壳支持 listMinWidthClass ✓");
 
-  // B6: 壳有 previewFrameClassName 支持，且默认 preview-card-frame（守住抽屉误套浮起卡片的回归）
+  // B6: 壳右面板统一用 preview-card-frame（浮起卡片），保证 files/knowledge/智能体三处观感一致。
+  //     用户明确要求三处预览外观一致；壳单一来源写死 → 所有消费者同款，无法各自漂移。
   assert.ok(
-    shellSrc.includes("previewFrameClassName"),
-    "B6a FAIL: 壳应支持 previewFrameClassName prop（各页外框样式不同）"
+    shellSrc.includes("preview-card-frame"),
+    "B6 FAIL: 壳右面板应统一用 preview-card-frame（三处预览外观必须一致，浮起卡片）"
   );
-  assert.ok(
-    /previewFrameClassName\s*=\s*"preview-card-frame"/.test(shellSrc),
-    "B6b FAIL: previewFrameClassName 默认值应为 preview-card-frame（files/knowledge 浮起卡片不变）"
-  );
-  // 壳右面板 className 不应再写死 preview-card-frame（须走 prop，否则 agents 无法退回贴边平板）
-  assert.ok(
-    !/className=\{cn\("flex flex-col shrink-0 preview-card-frame"/.test(shellSrc),
-    "B6c FAIL: 壳右面板不应写死 preview-card-frame，应用 previewFrameClassName prop"
-  );
-  console.log("B6: 壳支持 previewFrameClassName（默认 preview-card-frame）✓");
+  console.log("B6: 壳统一 preview-card-frame（三处一致）✓");
 
   // ─── C. 三处采纳源码契约 ──────────────────────────────────────────────────
 
@@ -213,24 +205,16 @@ export const resizablePreviewPanelTestPromise = (async () => {
   }
   console.log("C4: agent-detail-drawer.tsx 已删分隔条及相关 props ✓");
 
-  // C5: agents 页须传贴边平板 previewFrameClassName（原抽屉是 border-l 平板，非浮起卡片）；
-  //     files/knowledge 不覆盖该 prop（走默认 preview-card-frame，浮起卡片不变）。
+  // C5: 智能体抽屉不自己套外框样式（bg-card/border-l/preview-card-frame 都由壳统一给），
+  //     否则会与 files/knowledge 观感漂移——用户明确要求三处一致。
   {
-    const agentsPageSrc = src("app/agents/page.tsx");
+    const drawerSrc = src("app/agents/agent-detail-drawer.tsx");
     assert.ok(
-      /previewFrameClassName=/.test(agentsPageSrc) &&
-        agentsPageSrc.includes("border-l") &&
-        !agentsPageSrc.includes("preview-card-frame"),
-      "C5a FAIL: agents/page.tsx 应传 previewFrameClassName 为贴边平板类（border-l，非 preview-card-frame）"
-    );
-    const filesSrc = src("app/files/page.tsx");
-    const knowledgeSrc = src("app/knowledge/page.tsx");
-    assert.ok(
-      !filesSrc.includes("previewFrameClassName") && !knowledgeSrc.includes("previewFrameClassName"),
-      "C5b FAIL: files/knowledge 不应覆盖 previewFrameClassName（保持默认浮起卡片 preview-card-frame）"
+      !drawerSrc.includes("border-l") && !drawerSrc.includes("preview-card-frame"),
+      "C5 FAIL: agent-detail-drawer.tsx 不应自带外框（border-l/preview-card-frame），外框统一由壳提供"
     );
   }
-  console.log("C5: agents 贴边平板 / files·knowledge 默认卡片 ✓");
+  console.log("C5: 智能体抽屉外框交给壳统一（三处一致）✓");
 
   console.log("\nresizable-preview-panel: 全部断言通过 ✓");
 })();
