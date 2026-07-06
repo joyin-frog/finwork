@@ -287,7 +287,10 @@ export function listRoleLatestStatus(): RoleLatestStatus[] {
       )
       .get(role_id) as { id: number } | undefined;
 
-    // 最新 blocked 行
+    // 最新 blocked 行。blocked_reason 由 recordDispatchEnd 写入,同时也会写 ended_at——
+    // 即 blocked 派发必然是「已结束」的(ended_at 非空)。所以不能用 ended_at IS NULL(那会匹配为空);
+    // 改用近 7 天窗口(与 listBlockedDispatches / 等你拍板同源):近期停在门前的算「待拍板」,
+    // 陈旧的(几个月前)不再污染分组。
     const blockedRow = db
       .prepare(
         `SELECT sd.blocked_reason,
@@ -296,7 +299,7 @@ export function listRoleLatestStatus(): RoleLatestStatus[] {
          LEFT JOIN agent_traces at ON at.trace_id = sd.trace_id
          WHERE sd.role_id = ?
            AND sd.blocked_reason IS NOT NULL
-           AND sd.ended_at IS NULL
+           AND sd.ended_at >= datetime('now', '-7 days')
          ORDER BY sd.id DESC
          LIMIT 1`
       )

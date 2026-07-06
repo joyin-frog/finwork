@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { LayoutAlignRightIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,8 @@ export default function AgentsPage() {
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [dispatches, setDispatches] = useState<DispatchRow[] | null>(null);
   const [dispatchLoading, setDispatchLoading] = useState(false);
+  // 派发详情请求令牌：快速切换角色时，防止慢的旧请求覆盖新角色的数据
+  const dispatchReqRef = useRef(0);
 
   // listMinW >= 400 per spec (评审 P2 要求：默认 300 太小，参照 files 页 460)
   const { collapsed, previewW, dragging, maximized, mainRef, beginResize, open, toggle, maximize } =
@@ -107,15 +109,19 @@ export default function AgentsPage() {
       open();
       setDispatches(null);
       setDispatchLoading(true);
+      const reqId = ++dispatchReqRef.current;
       try {
         const res = await fetch(`/api/agents/dispatches?roleId=${encodeURIComponent(roleId)}&limit=8`);
         const json = await res.json();
+        // 已被更晚的选择抢占 → 丢弃这次(旧)响应，别覆盖新角色的数据/加载态
+        if (reqId !== dispatchReqRef.current) return;
         if (json.ok) setDispatches(json.data.rows);
         else setDispatches([]);
       } catch {
+        if (reqId !== dispatchReqRef.current) return;
         setDispatches([]);
       } finally {
-        setDispatchLoading(false);
+        if (reqId === dispatchReqRef.current) setDispatchLoading(false);
       }
     },
     [selectedRoleId, collapsed, open, toggle]

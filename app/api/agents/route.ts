@@ -7,7 +7,7 @@ import { skillLabel } from "@/lib/agent/tools/renderers";
 import { getAppSetting, listConfirmedMetaDocRows } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
-import { deriveCashObligations, obligationsInMonth, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
+import { deriveCashObligations, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
 import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
 
 function parseMeta(s: string): DocMetadata | null {
@@ -107,7 +107,9 @@ export async function GET() {
     }));
     const obligations = deriveCashObligations(oblDocs);
 
-    const ruleItems = deriveAttentionItems(calendar, payroll, obligationsInMonth(obligations, year, month));
+    // 传完整 obligations(不按月过滤)——与 cockpit 同源:逾期的往月义务也算紧急,
+    // 按月过滤会把上月未付、已逾期的合同从「等你拍板」里漏掉(cockpit 里却还在)。
+    const ruleItems = deriveAttentionItems(calendar, payroll, obligations);
     const blockedDispatches = listBlockedDispatches(7);
     const gateItems = blockedDispatches.map((row) => {
       const reg = ROLE_REGISTRY.find((r) => r.id === row.roleId);

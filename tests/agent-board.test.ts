@@ -165,14 +165,16 @@ export const agentBoardTestPromise = (async () => {
   }
   console.log("C2: listMinW >= 400 ✓");
 
-  // C3: maximized 时左侧列 hidden（评审铁律）
+  // C3: maximized 时左侧列 hidden（评审铁律）。装配已收进共享壳 ResizablePreviewPanel，
+  //     故此语义现在落在壳源码里，而非各页 page.tsx。
   {
+    const shellSrc = src("app/shared/resizable-preview-panel.tsx");
     assert.ok(
-      pageSrc.includes('maximized && "hidden"') || pageSrc.includes("maximized && 'hidden'"),
-      "C3 FAIL: maximized 时左侧应有 hidden 语义"
+      shellSrc.includes('maximized && "hidden"') || shellSrc.includes("maximized && 'hidden'"),
+      "C3 FAIL: 共享预览壳 maximized 时左列应有 hidden 语义"
     );
   }
-  console.log("C3: maximized → hidden ✓");
+  console.log("C3: maximized → hidden（壳）✓");
 
   // C4: 文件产物用 FilePreviewPage
   {
@@ -256,8 +258,10 @@ export const agentBoardTestPromise = (async () => {
   }
   console.log("C10: dispatch-store listRoleLatestStatus ✓");
 
-  // C11: 回归——blocked 查询必须过滤 ended_at IS NULL（否则历史已结束的 blocked 派发会
-  // 让角色永久判为"停在确认门/在忙"，污染动态分组。对照 listBlockedDispatches 的近期过滤语义）。
+  // C11: 回归——blocked 查询必须按「近期窗口」过滤，而非 ended_at IS NULL。
+  //   根因：recordDispatchEnd 写 blocked_reason 时必同时写 ended_at，故 blocked 派发永远是「已结束」的；
+  //   用 ended_at IS NULL 会把 blocked 判为空(角色永不显示「待拍板」)；用近期窗口(与 listBlockedDispatches
+  //   /「等你拍板」同源)才对：近期停在门前的算待拍板，陈旧的不污染分组。
   {
     const dispatchStoreSrc = src("lib/db/dispatch-store.ts");
     const fnStart = dispatchStoreSrc.indexOf("function listRoleLatestStatus");
@@ -265,13 +269,17 @@ export const agentBoardTestPromise = (async () => {
     const fnSrc = dispatchStoreSrc.slice(fnStart);
     const bi = fnSrc.indexOf("blocked_reason IS NOT NULL");
     assert.ok(bi >= 0, "C11 FAIL: listRoleLatestStatus 内找不到 blocked 查询");
-    const region = fnSrc.slice(bi, bi + 200);
+    const region = fnSrc.slice(bi, bi + 220);
     assert.ok(
-      region.includes("ended_at IS NULL"),
-      "C11 FAIL: listRoleLatestStatus 的 blocked 查询缺 ended_at IS NULL——已结束的 blocked 派发会永久污染分组"
+      !region.includes("ended_at IS NULL"),
+      "C11 FAIL: blocked 查询不应用 ended_at IS NULL（blocked 派发必已结束，会匹配为空、永不显示待拍板）"
+    );
+    assert.ok(
+      /ended_at\s*>=\s*datetime\('now'/.test(region),
+      "C11 FAIL: blocked 查询应按近期窗口过滤（ended_at >= datetime('now', '-N days')，与 listBlockedDispatches 同源）"
     );
   }
-  console.log("C11: blocked 查询过滤 ended_at ✓");
+  console.log("C11: blocked 查询按近期窗口过滤 ✓");
 
   console.log("\n所有 agent-board 测试通过 ✓");
 })();
