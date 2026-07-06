@@ -25,10 +25,7 @@ import type { DispatchRow } from "@/lib/db/dispatch-store";
 type AgentDetailDrawerProps = {
   card: RoleCard;
   dispatches: DispatchRow[] | null;
-  previewW: number;
   maximized: boolean;
-  dragging: boolean;
-  onBeginResize: (e: React.MouseEvent) => void;
   onMaximize: () => void;
   onClose: () => void;
 };
@@ -36,10 +33,7 @@ type AgentDetailDrawerProps = {
 export function AgentDetailDrawer({
   card,
   dispatches,
-  previewW,
   maximized,
-  dragging,
-  onBeginResize,
   onMaximize,
   onClose,
 }: AgentDetailDrawerProps) {
@@ -57,25 +51,7 @@ export function AgentDetailDrawer({
     ) ?? [];
 
   return (
-    <>
-      {/* 分隔拖拽条 */}
-      <div
-        className={[
-          "w-1 shrink-0 cursor-col-resize transition-colors",
-          dragging ? "bg-foreground/20" : "hover:bg-foreground/10 bg-transparent",
-        ].join(" ")}
-        onMouseDown={onBeginResize}
-        aria-hidden="true"
-      />
-
-      {/* 抽屉主体 */}
-      <div
-        className={[
-          "flex flex-col overflow-hidden bg-card border-l border-border shrink-0",
-          maximized ? "flex-1" : "",
-        ].join(" ")}
-        style={maximized ? undefined : { width: previewW }}
-      >
+    <div className="flex flex-col overflow-hidden h-full bg-card">
         {/* 头部 */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
           <span
@@ -295,6 +271,5 @@ export function AgentDetailDrawer({
           </div>
         )}
       </div>
-    </>
   );
 }

@@ -566,4 +566,7 @@ void (async () => {
   const { agentBoardTestPromise } = await import("./agent-board.test.ts");
   await agentBoardTestPromise;
 
+  const { resizablePreviewPanelTestPromise } = await import("./resizable-preview-panel.test.ts");
+  await resizablePreviewPanelTestPromise;
+
 })();

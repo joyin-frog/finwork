@@ -17,6 +17,7 @@ import { ResourceCard, type ResourceCardMenuItem } from "@/app/shared/resource-c
 import { PageSearchBar } from "@/app/shared/page-search-dialog";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
+import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { inferCategory } from "@/lib/knowledge/category";
@@ -607,14 +608,170 @@ function KnowledgePageContent() {
 
   // ─── render ────────────────────────────────────────
 
+  // 三路预览内容（依赖 knowledge 本地状态，原封不动进 preview 插槽）
+  const previewContent = !sidebarCollapsed ? (
+    metaPanelDoc ? (
+      <MetadataPanel
+        doc={metaPanelDoc}
+        onClose={() => setMetaPanelDocId(null)}
+        onConfirm={confirmMetadata}
+        onSave={saveMetadata}
+      />
+    ) : previewMode === "file" ? (
+      previewSelection ? (
+        <div className="flex flex-col h-full overflow-hidden">
+          {/* 从搜索跳入文件:顶部命中导航,↑↓ 逐个命中跳(复用 navHit→改 hitIndex→jumpTarget 派生变) */}
+          {linemap && hitLines.length > 0 ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0 min-h-[33px]">
+              <span className="text-caption text-muted-foreground whitespace-nowrap">第 {hitIndex + 1}/{hitLines.length} 个匹配</span>
+              <button
+                className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                onClick={() => navHit(-1)}
+                title="上一个匹配"
+              >
+                <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
+              </button>
+              <button
+                className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                onClick={() => navHit(1)}
+                title="下一个匹配"
+              >
+                <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
+              </button>
+              <span className="flex-1" />
+              <button
+                className="px-2 h-7 flex items-center whitespace-nowrap text-caption border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                onClick={() => setPreviewMode("search")}
+                title="回到搜索结果列表"
+              >
+                回搜索
+              </button>
+            </div>
+          ) : null}
+          <div className="flex-1 min-h-0">
+            <FilePreviewPage
+              selection={previewSelection}
+              jumpTo={jumpTarget ?? undefined}
+              title={docs.find(d => d.id === previewDocId)?.title}
+              description="知识库文档预览"
+              onMaximize={maximize}
+              isMaximized={maximized}
+              onCollapse={toggleSidebar}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+          <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
+            <HugeiconsIcon icon={PanelRightIcon} size={16} />
+          </button>
+          <h3 className="text-body font-medium text-foreground">选择文档预览</h3>
+          <p className="text-body">点击卡片查看文档内容</p>
+        </div>
+      )
+    ) : (
+      previewLoading ? (
+        <div className="relative flex items-center justify-center h-full text-body text-muted-foreground">
+          <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
+            <HugeiconsIcon icon={PanelRightIcon} size={16} />
+          </button>
+          加载中...
+        </div>
+      ) : preview ? (
+        <div className="flex flex-col h-full overflow-hidden">
+          {/* Preview nav bar */}
+          <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0 min-h-[33px]">
+            <span className="flex-1 min-w-0 text-meta font-medium truncate" title={preview.fileName}>{preview.fileName}</span>
+            {hitLines.length > 0 ? (
+              <>
+                <span className="text-caption text-muted-foreground whitespace-nowrap">第 {hitIndex + 1}/{hitLines.length} 个匹配</span>
+                {focusedJumpable ? (
+                  <button
+                    className="px-2 h-7 flex items-center whitespace-nowrap text-caption border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                    onClick={() => void jumpToSource()}
+                    title={focusedDocIsPdf ? "翻到命中所在页" : "切到表格并高亮命中所在行"}
+                  >
+                    {focusedDocIsPdf ? "在原文中查看" : "在表格中查看"}
+                  </button>
+                ) : null}
+                <button
+                  className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  onClick={() => navHit(-1)}
+                  title="上一个匹配 (↑)"
+                >
+                  <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
+                </button>
+                <button
+                  className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  onClick={() => navHit(1)}
+                  title="下一个匹配 (↓)"
+                >
+                  <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
+                </button>
+              </>
+            ) : (
+              <span className="text-caption text-muted-foreground">{lines.length} 行</span>
+            )}
+            <button type="button" className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
+              <HugeiconsIcon icon={PanelRightIcon} size={16} />
+            </button>
+          </div>
+          {/* Preview content */}
+          <div className="flex-1 overflow-y-auto font-mono text-meta leading-relaxed" ref={previewContentRef}>
+            {preview.text.length > 1_000_000 && (
+              <div className="px-3 py-2 text-meta text-muted-foreground bg-[color:var(--tone-warn)]/10 border-b border-border">
+                文件较大，仅显示前 1MB。
+                <a href={`/api/knowledge/documents/${previewDocId}/download`} className="text-primary ml-2">下载完整文件</a>
+              </div>
+            )}
+            <pre className="m-0 p-0 whitespace-pre-wrap break-all">
+              {lines.slice(0, 20000).map((line, i) => {
+                const lineNo = i + 1;
+                const isHit = hitLines.includes(lineNo);
+                const isTarget = lineNo === currentFocusLine;
+                return (
+                  <div
+                    key={lineNo}
+                    ref={el => { if (el) lineEls.current.set(lineNo, el); else lineEls.current.delete(lineNo); }}
+                    className={cn("flex min-h-[22px] pr-3 transition-colors", isTarget ? "bg-accent" : isHit ? "bg-accent/40" : "")}
+                    data-line={lineNo}
+                  >
+                    <span className="shrink-0 w-14 text-right pr-3 text-caption text-muted-foreground/50 select-none">{lineNo}</span>
+                    <span className="flex-1 text-foreground">
+                      {isHit && highlightKeywords.size > 0
+                        ? highlightLine(line, Array.from(highlightKeywords).flatMap(kw => { const idx = line.indexOf(kw); return idx >= 0 ? [[idx, idx + kw.length] as [number, number]] : []; }))
+                        : line}
+                    </span>
+                  </div>
+                );
+              })}
+            </pre>
+          </div>
+        </div>
+      ) : (
+        <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+          <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
+            <HugeiconsIcon icon={PanelRightIcon} size={16} />
+          </button>
+          <h3 className="text-body font-medium text-foreground">选择搜索结果预览</h3>
+          <p className="text-body">点击搜索结果查看文件内容</p>
+        </div>
+      )
+    )
+  ) : null;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Main panel */}
-      <div className="flex flex-1 overflow-hidden" ref={mainRef}>
-
-        {/* Left browser —— 放大时整列隐藏:预览宽=容器宽-4 已假定兄弟列消失(对齐 chat 隐藏主内容区),
-           否则 min-w 列不收缩会把预览撑出容器、右侧「还原」按钮被 overflow-hidden 裁掉(看不见取消全屏) */}
-        <div className={cn("flex flex-col flex-1 min-w-[280px] overflow-hidden", maximized && "hidden")}>
+      <ResizablePreviewPanel
+        mainRef={mainRef}
+        previewW={sidebarW}
+        maximized={maximized}
+        collapsed={sidebarCollapsed}
+        dragging={dragging}
+        onBeginResize={beginResize}
+        onResetWidth={resetWidth}
+        list={
+          <>
 
           {/* Topbar —— 只跨列表列,不横跨预览:预览卡浮在右侧、脱离标题栏。窄列时各项不换行,真放不下横向滚动(不露滚动条)。 */}
           <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -774,174 +931,10 @@ function KnowledgePageContent() {
               </>
             )}
           </div>
-        </div>
-
-        {/* Resize divider */}
-        {!sidebarCollapsed && (
-          <div
-            className={cn("w-1 shrink-0 cursor-col-resize bg-clip-content px-[1.5px] hover:bg-primary/30 transition-colors", dragging && "bg-primary/30")}
-            onMouseDown={beginResize}
-            role="separator"
-            aria-orientation="vertical"
-            tabIndex={0}
-            onDoubleClick={resetWidth}
-          />
-        )}
-
-        {/* Right preview */}
-        {!sidebarCollapsed && (
-          <div className={cn("flex flex-col shrink-0 preview-card-frame", maximized && "is-maximized")} style={{ width: sidebarW }}>
-            {metaPanelDoc ? (
-              <MetadataPanel
-                doc={metaPanelDoc}
-                onClose={() => setMetaPanelDocId(null)}
-                onConfirm={confirmMetadata}
-                onSave={saveMetadata}
-              />
-            ) : previewMode === "file" ? (
-              previewSelection ? (
-                <div className="flex flex-col h-full overflow-hidden">
-                  {/* 从搜索跳入文件:顶部命中导航,↑↓ 逐个命中跳(复用 navHit→改 hitIndex→jumpTarget 派生变) */}
-                  {linemap && hitLines.length > 0 ? (
-                    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0 min-h-[33px]">
-                      <span className="text-caption text-muted-foreground whitespace-nowrap">第 {hitIndex + 1}/{hitLines.length} 个匹配</span>
-                      <button
-                        className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                        onClick={() => navHit(-1)}
-                        title="上一个匹配"
-                      >
-                        <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
-                      </button>
-                      <button
-                        className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                        onClick={() => navHit(1)}
-                        title="下一个匹配"
-                      >
-                        <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
-                      </button>
-                      <span className="flex-1" />
-                      <button
-                        className="px-2 h-7 flex items-center whitespace-nowrap text-caption border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                        onClick={() => setPreviewMode("search")}
-                        title="回到搜索结果列表"
-                      >
-                        回搜索
-                      </button>
-                    </div>
-                  ) : null}
-                  <div className="flex-1 min-h-0">
-                    <FilePreviewPage
-                      selection={previewSelection}
-                      jumpTo={jumpTarget ?? undefined}
-                      title={docs.find(d => d.id === previewDocId)?.title}
-                      description="知识库文档预览"
-                      onMaximize={maximize}
-                      isMaximized={maximized}
-                      onCollapse={toggleSidebar}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
-                  <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
-                    <HugeiconsIcon icon={PanelRightIcon} size={16} />
-                  </button>
-                  <h3 className="text-body font-medium text-foreground">选择文档预览</h3>
-                  <p className="text-body">点击卡片查看文档内容</p>
-                </div>
-              )
-            ) : (
-              previewLoading ? (
-                <div className="relative flex items-center justify-center h-full text-body text-muted-foreground">
-                  <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
-                    <HugeiconsIcon icon={PanelRightIcon} size={16} />
-                  </button>
-                  加载中...
-                </div>
-              ) : preview ? (
-                <div className="flex flex-col h-full overflow-hidden">
-                  {/* Preview nav bar */}
-                  <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0 min-h-[33px]">
-                    <span className="flex-1 min-w-0 text-meta font-medium truncate" title={preview.fileName}>{preview.fileName}</span>
-                    {hitLines.length > 0 ? (
-                      <>
-                        <span className="text-caption text-muted-foreground whitespace-nowrap">第 {hitIndex + 1}/{hitLines.length} 个匹配</span>
-                        {focusedJumpable ? (
-                          <button
-                            className="px-2 h-7 flex items-center whitespace-nowrap text-caption border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                            onClick={() => void jumpToSource()}
-                            title={focusedDocIsPdf ? "翻到命中所在页" : "切到表格并高亮命中所在行"}
-                          >
-                            {focusedDocIsPdf ? "在原文中查看" : "在表格中查看"}
-                          </button>
-                        ) : null}
-                        <button
-                          className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                          onClick={() => navHit(-1)}
-                          title="上一个匹配 (↑)"
-                        >
-                          <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
-                        </button>
-                        <button
-                          className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                          onClick={() => navHit(1)}
-                          title="下一个匹配 (↓)"
-                        >
-                          <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-caption text-muted-foreground">{lines.length} 行</span>
-                    )}
-                    <button type="button" className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
-                      <HugeiconsIcon icon={PanelRightIcon} size={16} />
-                    </button>
-                  </div>
-                  {/* Preview content */}
-                  <div className="flex-1 overflow-y-auto font-mono text-meta leading-relaxed" ref={previewContentRef}>
-                    {preview.text.length > 1_000_000 && (
-                      <div className="px-3 py-2 text-meta text-muted-foreground bg-[color:var(--tone-warn)]/10 border-b border-border">
-                        文件较大，仅显示前 1MB。
-                        <a href={`/api/knowledge/documents/${previewDocId}/download`} className="text-primary ml-2">下载完整文件</a>
-                      </div>
-                    )}
-                    <pre className="m-0 p-0 whitespace-pre-wrap break-all">
-                      {lines.slice(0, 20000).map((line, i) => {
-                        const lineNo = i + 1;
-                        const isHit = hitLines.includes(lineNo);
-                        const isTarget = lineNo === currentFocusLine;
-                        return (
-                          <div
-                            key={lineNo}
-                            ref={el => { if (el) lineEls.current.set(lineNo, el); else lineEls.current.delete(lineNo); }}
-                            className={cn("flex min-h-[22px] pr-3 transition-colors", isTarget ? "bg-accent" : isHit ? "bg-accent/40" : "")}
-                            data-line={lineNo}
-                          >
-                            <span className="shrink-0 w-14 text-right pr-3 text-caption text-muted-foreground/50 select-none">{lineNo}</span>
-                            <span className="flex-1 text-foreground">
-                              {isHit && highlightKeywords.size > 0
-                                ? highlightLine(line, Array.from(highlightKeywords).flatMap(kw => { const idx = line.indexOf(kw); return idx >= 0 ? [[idx, idx + kw.length] as [number, number]] : []; }))
-                                : line}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </pre>
-                  </div>
-                </div>
-              ) : (
-                <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
-                  <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
-                    <HugeiconsIcon icon={PanelRightIcon} size={16} />
-                  </button>
-                  <h3 className="text-body font-medium text-foreground">选择搜索结果预览</h3>
-                  <p className="text-body">点击搜索结果查看文件内容</p>
-                </div>
-              )
-            )}
-          </div>
-        )}
-      </div>
+          </>
+        }
+        preview={previewContent}
+      />
 
       {/* Delete confirm */}
       <ConfirmDialog

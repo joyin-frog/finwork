@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
+import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { cn } from "@/lib/utils";
 import { AgentCard } from "./agent-card";
 import { AgentDetailDrawer } from "./agent-detail-drawer";
@@ -159,14 +160,16 @@ export default function AgentsPage() {
       </header>
 
       {/* Main area — left cards + right drawer */}
-      <div className="flex flex-1 overflow-hidden" ref={mainRef}>
-        {/* Left column — hidden when drawer is maximized */}
-        <div
-          className={cn(
-            "flex flex-col flex-1 min-w-[420px] overflow-hidden",
-            maximized && "hidden"
-          )}
-        >
+      <ResizablePreviewPanel
+        mainRef={mainRef}
+        previewW={previewW}
+        maximized={maximized}
+        collapsed={collapsed}
+        dragging={dragging}
+        onBeginResize={beginResize}
+        listMinWidthClass="min-w-[420px]"
+        previewFrameClassName="bg-card border-l border-border overflow-hidden"
+        list={
           <div className="flex-1 overflow-auto p-6 flex flex-col gap-5">
             {error ? (
               <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
@@ -208,22 +211,19 @@ export default function AgentsPage() {
               </>
             )}
           </div>
-        </div>
-
-        {/* Right drawer — rendered when a card is selected and not collapsed */}
-        {!collapsed && selectedCard && (
-          <AgentDetailDrawer
-            card={selectedCard}
-            dispatches={dispatchLoading ? null : dispatches}
-            previewW={previewW}
-            maximized={maximized}
-            dragging={dragging}
-            onBeginResize={beginResize}
-            onMaximize={maximize}
-            onClose={handleCloseDrawer}
-          />
-        )}
-      </div>
+        }
+        preview={
+          !collapsed && selectedCard ? (
+            <AgentDetailDrawer
+              card={selectedCard}
+              dispatches={dispatchLoading ? null : dispatches}
+              maximized={maximized}
+              onMaximize={maximize}
+              onClose={handleCloseDrawer}
+            />
+          ) : null
+        }
+      />
     </div>
   );
 }

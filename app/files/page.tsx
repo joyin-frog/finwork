@@ -27,6 +27,7 @@ import { PageSearchBar } from "@/app/shared/page-search-dialog";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
+import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { cn } from "@/lib/utils";
 import type { UnifiedFileEntry } from "@/lib/db/sqlite";
 
@@ -464,224 +465,214 @@ function FilesPageContent() {
     }
   }
 
+  const previewContent = !previewCollapsed ? (
+    selected ? (
+      previewSelection ? (
+        <FilePreviewPage
+          selection={previewSelection}
+          onSelectionChange={() => {}}
+          title="文件预览"
+          description="文件内容预览"
+          onMaximize={maximize}
+          isMaximized={maximized}
+          onCollapse={togglePreview}
+        />
+      ) : (
+        <div className="relative flex flex-col items-center justify-center gap-2 flex-1 text-center p-6 text-muted-foreground">
+          <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={togglePreview} aria-label="收起预览">
+            <HugeiconsIcon icon={PanelRightIcon} size={16} />
+          </button>
+          <h3 className="text-body font-medium text-foreground">无法预览</h3>
+          <p className="text-body">该文件暂不支持在线预览</p>
+        </div>
+      )
+    ) : (
+      <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+        <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={togglePreview} aria-label="收起预览">
+          <HugeiconsIcon icon={PanelRightIcon} size={16} />
+        </button>
+        <h3 className="text-body font-medium text-foreground">选择文件预览</h3>
+        <p className="text-body">点击左侧文件列表中的文件，在这里预览内容</p>
+      </div>
+    )
+  ) : null;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Main panel */}
-      <div className="flex flex-1 overflow-hidden" ref={mainRef}>
-
-        {/* Left list column —— 放大时整列隐藏:预览宽=容器宽-4 已假定兄弟列消失(对齐 chat 隐藏主内容区),
-           否则 min-w 列不收缩会把预览撑出容器、右侧「还原」按钮被 overflow-hidden 裁掉(看不见取消全屏) */}
-        <div className={cn("flex flex-col flex-1 min-w-[280px] overflow-hidden", maximized && "hidden")}>
-
-          {/* Topbar —— 只跨列表列,不横跨预览:预览卡浮在右侧、脱离标题栏。窄列时各项不换行,真放不下横向滚动(不露滚动条)。 */}
-          <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <DragHandle />
-            <SidebarToggle />
-            <ResourceTabs active="files" />
-            <div className="ml-auto flex items-center gap-2 shrink-0">
-              <ShortcutHint label="搜索" combo="mod+f">
-                <button
-                  type="button"
-                  className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", q && "bg-accent text-foreground")}
-                  onClick={() => setSearchOpen(true)}
-                  aria-label="搜索"
-                >
-                  <HugeiconsIcon icon={Search01Icon} size={16} />
-                </button>
-              </ShortcutHint>
-              {/* 去重清理按钮(B 功能) */}
-              <Tooltip>
-                <TooltipTrigger asChild>
+      <ResizablePreviewPanel
+        mainRef={mainRef}
+        previewW={previewW}
+        maximized={maximized}
+        collapsed={previewCollapsed}
+        dragging={dragging}
+        onBeginResize={beginResize}
+        onResetWidth={resetWidth}
+        list={
+          <>
+            {/* Topbar —— 只跨列表列,不横跨预览:预览卡浮在右侧、脱离标题栏。窄列时各项不换行,真放不下横向滚动(不露滚动条)。 */}
+            <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <DragHandle />
+              <SidebarToggle />
+              <ResourceTabs active="files" />
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                <ShortcutHint label="搜索" combo="mod+f">
                   <button
                     type="button"
-                    className="inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    onClick={() => void handleDedupAnalyze()}
-                    disabled={dedupCleaning}
-                    aria-label={dedupCleaning ? "清理中" : "清理重复文件"}
+                    className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", q && "bg-accent text-foreground")}
+                    onClick={() => setSearchOpen(true)}
+                    aria-label="搜索"
                   >
-                    <HugeiconsIcon icon={CleanIcon} size={16} />
+                    <HugeiconsIcon icon={Search01Icon} size={16} />
                   </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{dedupCleaning ? "清理中…" : "清理重复文件"}</TooltipContent>
-              </Tooltip>
-              <span className="text-meta text-muted-foreground whitespace-nowrap shrink-0">{displayFiles.length} 个文件</span>
-              {previewCollapsed ? (
-                <button
-                  type="button"
-                  className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                  onClick={togglePreview}
-                  title="展开预览"
-                  aria-label="展开预览"
-                  aria-expanded={false}
-                >
-                  <HugeiconsIcon icon={LayoutAlignRightIcon} size={16} />
-                </button>
-              ) : null}
-            </div>
-          </header>
+                </ShortcutHint>
+                {/* 去重清理按钮(B 功能) */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => void handleDedupAnalyze()}
+                      disabled={dedupCleaning}
+                      aria-label={dedupCleaning ? "清理中" : "清理重复文件"}
+                    >
+                      <HugeiconsIcon icon={CleanIcon} size={16} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{dedupCleaning ? "清理中…" : "清理重复文件"}</TooltipContent>
+                </Tooltip>
+                <span className="text-meta text-muted-foreground whitespace-nowrap shrink-0">{displayFiles.length} 个文件</span>
+                {previewCollapsed ? (
+                  <button
+                    type="button"
+                    className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    onClick={togglePreview}
+                    title="展开预览"
+                    aria-label="展开预览"
+                    aria-expanded={false}
+                  >
+                    <HugeiconsIcon icon={LayoutAlignRightIcon} size={16} />
+                  </button>
+                ) : null}
+              </div>
+            </header>
 
-          {/* Filter chips + sort */}
-          <div className="flex items-center gap-2 px-3.5 py-2 border-b border-border overflow-x-auto [scrollbar-width:none] shrink-0">
-            {(["all", "upload", "generated", "library"] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setKindFilter(k)}
-                className={cn(
-                  "px-3 py-1 rounded-full border text-meta font-medium whitespace-nowrap cursor-pointer transition-colors",
-                  kindFilter === k
-                    ? k === "all"
-                      ? "bg-foreground text-background border-transparent"
-                      : KIND_CHIP_SELECTED[k]
-                    : k === "all"
-                      ? "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                      : KIND_CHIP_UNSELECTED[k]
-                )}
-              >
-                {k === "all" ? "全部" : KIND_LABELS[k]} {kindCounts[k] ?? 0}
-              </button>
-            ))}
-            <div className="ml-auto flex items-center gap-1 shrink-0 pl-2">
-              <span className="text-meta text-muted-foreground">排序:</span>
-              {(["date", "name", "size"] as const).map((s) => (
+            {/* Filter chips + sort */}
+            <div className="flex items-center gap-2 px-3.5 py-2 border-b border-border overflow-x-auto [scrollbar-width:none] shrink-0">
+              {(["all", "upload", "generated", "library"] as const).map((k) => (
                 <button
-                  key={s}
+                  key={k}
                   type="button"
-                  onClick={() => setSort(s)}
+                  onClick={() => setKindFilter(k)}
                   className={cn(
-                    "px-2 py-0.5 rounded text-meta transition-colors",
-                    sort === s ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground"
+                    "px-3 py-1 rounded-full border text-meta font-medium whitespace-nowrap cursor-pointer transition-colors",
+                    kindFilter === k
+                      ? k === "all"
+                        ? "bg-foreground text-background border-transparent"
+                        : KIND_CHIP_SELECTED[k]
+                      : k === "all"
+                        ? "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                        : KIND_CHIP_UNSELECTED[k]
                   )}
                 >
-                  {s === "date" ? "时间" : s === "name" ? "名称" : "大小"}
+                  {k === "all" ? "全部" : KIND_LABELS[k]} {kindCounts[k] ?? 0}
                 </button>
               ))}
-            </div>
-          </div>
-
-          <PageSearchBar
-            open={searchOpen}
-            onOpenChange={setSearchOpen}
-            value={q}
-            onValueChange={setQ}
-            placeholder="搜索对话文件…"
-            label="搜索对话文件"
-          />
-
-          {/* Card grid with grouping */}
-          <div className="flex-1 overflow-y-auto">
-            {loading && (
-              <div className="flex items-center justify-center h-24 text-body text-muted-foreground">
-                正在加载...
-              </div>
-            )}
-            {!loading && error && (
-              <div className="px-4 py-6 text-body text-destructive">{error}</div>
-            )}
-            {!loading && !error && displayFiles.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
-                <span className="text-body">暂无文件</span>
-                <span className="text-meta">在对话里上传、或由 Agent 生成的文件，会在这里显示</span>
-              </div>
-            )}
-            {!loading && !error && groups.map((group) => (
-              <div key={group.groupKey} className="px-3.5 pt-4 pb-2">
-                {/* Group title */}
-                <div className="text-meta font-medium text-muted-foreground mb-2 flex items-center gap-2">
-                  <span className="truncate">{group.title}</span>
-                  <span className="text-muted-foreground/50 shrink-0">{group.files.length} 个</span>
-                </div>
-                {/* Card grid: auto-fill columns */}
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
-                  {group.files.map((file) => (
-                    <ResourceCard
-                      key={file.id}
-                      name={file.name}
-                      mimeType={file.mime}
-                      selected={selected?.id === file.id}
-                      colorCls={KIND_CARD_CLS[file.kind]}
-                      busy={actionLoading === file.id}
-                      meta={
-                        <>
-                          {file.kept && (
-                            <span className="inline-flex items-center text-amber-600 dark:text-amber-500" title="已保留">
-                              <HugeiconsIcon icon={BookmarkAdd01Icon} size={12} />
-                            </span>
-                          )}
-                          <span>{fmtBytes(file.sizeBytes)}</span>
-                          <span className="text-muted-foreground/50">·</span>
-                          <span>{fmtDate(file.createdAt)}</span>
-                        </>
-                      }
-                      onClick={() => {
-                        setSelected(selected?.id === file.id ? null : file);
-                        openPreview();
-                      }}
-                      onChat={() => void addToChat(file)}
-                      onDownload={() => void handleExport(file)}
-                      menuItems={buildMenuItems(file)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* 底部统计 */}
-            {!loading && displayFiles.length > 0 && (
-              <div className="px-3.5 py-3 text-meta text-muted-foreground">
-                共 {displayFiles.length} 个文件
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Resize divider */}
-        {!previewCollapsed && (
-          <div
-            className={cn("w-1 shrink-0 cursor-col-resize bg-clip-content px-[1.5px] hover:bg-primary/30 transition-colors", dragging && "bg-primary/30")}
-            onMouseDown={beginResize}
-            role="separator"
-            aria-orientation="vertical"
-            tabIndex={0}
-            onDoubleClick={resetWidth}
-          />
-        )}
-
-        {/* Right preview – AC1: 直接渲 FilePreviewPage,无外层 header */}
-        {!previewCollapsed && (
-          <div className={cn("flex flex-col shrink-0 preview-card-frame", maximized && "is-maximized")} style={{ width: previewW }}>
-            {selected ? (
-              previewSelection ? (
-                <FilePreviewPage
-                  selection={previewSelection}
-                  onSelectionChange={() => {}}
-                  title="文件预览"
-                  description="文件内容预览"
-                  onMaximize={maximize}
-                  isMaximized={maximized}
-                  onCollapse={togglePreview}
-                />
-              ) : (
-                <div className="relative flex flex-col items-center justify-center gap-2 flex-1 text-center p-6 text-muted-foreground">
-                  <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={togglePreview} aria-label="收起预览">
-                    <HugeiconsIcon icon={PanelRightIcon} size={16} />
+              <div className="ml-auto flex items-center gap-1 shrink-0 pl-2">
+                <span className="text-meta text-muted-foreground">排序:</span>
+                {(["date", "name", "size"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSort(s)}
+                    className={cn(
+                      "px-2 py-0.5 rounded text-meta transition-colors",
+                      sort === s ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {s === "date" ? "时间" : s === "name" ? "名称" : "大小"}
                   </button>
-                  <h3 className="text-body font-medium text-foreground">无法预览</h3>
-                  <p className="text-body">该文件暂不支持在线预览</p>
-                </div>
-              )
-            ) : (
-              <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
-                <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={togglePreview} aria-label="收起预览">
-                  <HugeiconsIcon icon={PanelRightIcon} size={16} />
-                </button>
-                <h3 className="text-body font-medium text-foreground">选择文件预览</h3>
-                <p className="text-body">点击左侧文件列表中的文件，在这里预览内容</p>
+                ))}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
+
+            <PageSearchBar
+              open={searchOpen}
+              onOpenChange={setSearchOpen}
+              value={q}
+              onValueChange={setQ}
+              placeholder="搜索对话文件…"
+              label="搜索对话文件"
+            />
+
+            {/* Card grid with grouping */}
+            <div className="flex-1 overflow-y-auto">
+              {loading && (
+                <div className="flex items-center justify-center h-24 text-body text-muted-foreground">
+                  正在加载...
+                </div>
+              )}
+              {!loading && error && (
+                <div className="px-4 py-6 text-body text-destructive">{error}</div>
+              )}
+              {!loading && !error && displayFiles.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground">
+                  <span className="text-body">暂无文件</span>
+                  <span className="text-meta">在对话里上传、或由 Agent 生成的文件，会在这里显示</span>
+                </div>
+              )}
+              {!loading && !error && groups.map((group) => (
+                <div key={group.groupKey} className="px-3.5 pt-4 pb-2">
+                  {/* Group title */}
+                  <div className="text-meta font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <span className="truncate">{group.title}</span>
+                    <span className="text-muted-foreground/50 shrink-0">{group.files.length} 个</span>
+                  </div>
+                  {/* Card grid: auto-fill columns */}
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+                    {group.files.map((file) => (
+                      <ResourceCard
+                        key={file.id}
+                        name={file.name}
+                        mimeType={file.mime}
+                        selected={selected?.id === file.id}
+                        colorCls={KIND_CARD_CLS[file.kind]}
+                        busy={actionLoading === file.id}
+                        meta={
+                          <>
+                            {file.kept && (
+                              <span className="inline-flex items-center text-amber-600 dark:text-amber-500" title="已保留">
+                                <HugeiconsIcon icon={BookmarkAdd01Icon} size={12} />
+                              </span>
+                            )}
+                            <span>{fmtBytes(file.sizeBytes)}</span>
+                            <span className="text-muted-foreground/50">·</span>
+                            <span>{fmtDate(file.createdAt)}</span>
+                          </>
+                        }
+                        onClick={() => {
+                          setSelected(selected?.id === file.id ? null : file);
+                          openPreview();
+                        }}
+                        onChat={() => void addToChat(file)}
+                        onDownload={() => void handleExport(file)}
+                        menuItems={buildMenuItems(file)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* 底部统计 */}
+              {!loading && displayFiles.length > 0 && (
+                <div className="px-3.5 py-3 text-meta text-muted-foreground">
+                  共 {displayFiles.length} 个文件
+                </div>
+              )}
+            </div>
+          </>
+        }
+        preview={previewContent}
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}
