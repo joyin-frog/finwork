@@ -14,7 +14,7 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, PanelRightIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { FilePreviewPage, type LocalPreviewFile } from "@/app/shared/file-preview-page";
 import { ROLE_UI } from "@/lib/domain/role-ui";
@@ -27,6 +27,8 @@ type AgentDetailDrawerProps = {
   dispatches: DispatchRow[] | null;
   maximized: boolean;
   onMaximize: () => void;
+  /** 收起预览（保留选中，顶栏可再展开）——对齐 files/knowledge 的「收起右侧栏」 */
+  onCollapse: () => void;
   onClose: () => void;
 };
 
@@ -35,6 +37,7 @@ export function AgentDetailDrawer({
   dispatches,
   maximized,
   onMaximize,
+  onCollapse,
   onClose,
 }: AgentDetailDrawerProps) {
   const [filePreview, setFilePreview] = useState<LocalPreviewFile | null>(null);
@@ -87,6 +90,12 @@ export function AgentDetailDrawer({
             <Button variant="ghost" size="icon" onClick={onMaximize} aria-label={maximized ? "还原" : "放大"}>
               <span className="text-meta">{maximized ? "⤡" : "⤢"}</span>
             </Button>
+            {/* 收起右侧栏（保留选中，顶栏「展开预览」可再打开）——放大态下无左列可退，隐藏收起按钮 */}
+            {!maximized && (
+              <Button variant="ghost" size="icon" onClick={onCollapse} aria-label="收起右侧栏">
+                <HugeiconsIcon icon={PanelRightIcon} size={16} />
+              </Button>
+            )}
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="关闭">
               <HugeiconsIcon icon={Cancel01Icon} size={16} />
             </Button>

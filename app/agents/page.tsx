@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { LayoutAlignRightIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
-import { cn } from "@/lib/utils";
 import { AgentCard } from "./agent-card";
 import { AgentDetailDrawer } from "./agent-detail-drawer";
 import { AttentionPanel } from "./attention-panel";
@@ -94,9 +95,12 @@ export default function AgentsPage() {
   const handleSelectRole = useCallback(
     async (roleId: string) => {
       if (selectedRoleId === roleId) {
-        // 再次点击同一卡片 → 关闭抽屉
-        setSelectedRoleId(null);
-        toggle();
+        // 再次点击同一卡片：已收起 → 重新展开；已展开 → 关闭抽屉
+        if (collapsed) open();
+        else {
+          setSelectedRoleId(null);
+          toggle();
+        }
         return;
       }
       setSelectedRoleId(roleId);
@@ -114,9 +118,15 @@ export default function AgentsPage() {
         setDispatchLoading(false);
       }
     },
-    [selectedRoleId, open, toggle]
+    [selectedRoleId, collapsed, open, toggle]
   );
 
+  // 收起预览（保留选中角色，可从顶栏「展开预览」再打开）
+  const handleCollapseDrawer = useCallback(() => {
+    toggle();
+  }, [toggle]);
+
+  // 关闭抽屉（清空选中）
   const handleCloseDrawer = useCallback(() => {
     setSelectedRoleId(null);
     toggle();
@@ -146,20 +156,8 @@ export default function AgentsPage() {
   }
 
   return (
+    // 标题栏收进 list 插槽（只跨列表列），预览卡因此能从顶端起、盖住标题栏区——对齐 files/knowledge。
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Topbar */}
-      <header
-        className={cn(
-          "relative flex items-center gap-3 pr-5 h-11 shrink-0",
-          maximized && "hidden"
-        )}
-      >
-        <DragHandle />
-        <SidebarToggle />
-        <h1 className="text-title">智能体</h1>
-      </header>
-
-      {/* Main area — left cards + right drawer */}
       <ResizablePreviewPanel
         mainRef={mainRef}
         previewW={previewW}
@@ -169,7 +167,28 @@ export default function AgentsPage() {
         onBeginResize={beginResize}
         listMinWidthClass="min-w-[420px]"
         list={
-          <div className="flex-1 overflow-auto p-6 flex flex-col gap-5">
+          <>
+            {/* Topbar —— 只跨列表列，不横跨预览：预览卡浮在右侧、脱离标题栏（对齐 files/knowledge） */}
+            <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0">
+              <DragHandle />
+              <SidebarToggle />
+              <h1 className="text-title">智能体</h1>
+              {/* 预览已收起且仍有选中角色 → 顶栏显示「展开预览」重开 */}
+              {collapsed && selectedRoleId && (
+                <button
+                  type="button"
+                  className="ml-auto p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  onClick={open}
+                  title="展开预览"
+                  aria-label="展开预览"
+                  aria-expanded={false}
+                >
+                  <HugeiconsIcon icon={LayoutAlignRightIcon} size={16} />
+                </button>
+              )}
+            </header>
+
+            <div className="flex-1 overflow-auto p-6 flex flex-col gap-5">
             {error ? (
               <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
                 <p>{error}</p>
@@ -209,7 +228,8 @@ export default function AgentsPage() {
                 )}
               </>
             )}
-          </div>
+            </div>
+          </>
         }
         preview={
           !collapsed && selectedCard ? (
@@ -218,6 +238,7 @@ export default function AgentsPage() {
               dispatches={dispatchLoading ? null : dispatches}
               maximized={maximized}
               onMaximize={maximize}
+              onCollapse={handleCollapseDrawer}
               onClose={handleCloseDrawer}
             />
           ) : null
