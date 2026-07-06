@@ -563,4 +563,10 @@ void (async () => {
   const { subagentResultShapeTestPromise } = await import("./subagent-result-shape.test.ts");
   await subagentResultShapeTestPromise;
 
+  const { agentBoardTestPromise } = await import("./agent-board.test.ts");
+  await agentBoardTestPromise;
+
+  const { resizablePreviewPanelTestPromise } = await import("./resizable-preview-panel.test.ts");
+  await resizablePreviewPanelTestPromise;
+
 })();

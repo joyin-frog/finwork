@@ -250,6 +250,14 @@ export const agentsSpaceTestPromise = (async () => {
     );
 
     const pageSrc = src("app/agents/page.tsx");
+    // 团队看板拆成子组件后（agent-card / agent-detail-drawer / attention-panel），
+    // 「尚未启用」「派活」「blocked」等文案/逻辑落在子组件里 → 契约按 agents 组件集检查，不只 page.tsx。
+    const agentsFeatureSrc = [
+      "app/agents/page.tsx",
+      "app/agents/agent-card.tsx",
+      "app/agents/agent-detail-drawer.tsx",
+      "app/agents/attention-panel.tsx",
+    ].filter(exists).map(src).join("\n");
 
     // 4b：fetch /api/agents
     assert.ok(
@@ -257,16 +265,16 @@ export const agentsSpaceTestPromise = (async () => {
       "T4 FAIL: app/agents/page.tsx 应 fetch /api/agents"
     );
 
-    // 4c：「尚未启用」弱化态文案
+    // 4c：「尚未启用」弱化态文案（子组件集）
     assert.ok(
-      pageSrc.includes("尚未启用"),
-      "T4 FAIL: app/agents/page.tsx 应含文案「尚未启用」（available:false 弱化态）"
+      agentsFeatureSrc.includes("尚未启用"),
+      "T4 FAIL: agents 页应含文案「尚未启用」（available:false 弱化态）"
     );
 
-    // 4d：「派活」按钮文案
+    // 4d：「派活」入口（现落在角色卡右下角）
     assert.ok(
-      pageSrc.includes("派活"),
-      "T4 FAIL: app/agents/page.tsx 应含「派活」入口"
+      agentsFeatureSrc.includes("派活"),
+      "T4 FAIL: agents 页应含「派活」入口"
     );
 
     // 4e：单一事实源守卫——app/agents/ 下不得硬编码任何角色名
@@ -279,13 +287,13 @@ export const agentsSpaceTestPromise = (async () => {
       );
     }
 
-    // 4f：台账区含「停在确认门」前置逻辑（blockedReason 或等价文案）
-    // 页面需要有处理 blocked 状态的逻辑
+    // 4f：含「停在确认门/待拍板」前置逻辑（blockedReason 或等价文案，现落在角色卡/等你拍板区）
     assert.ok(
-      pageSrc.includes("blocked") ||
-      pageSrc.includes("blockedReason") ||
-      pageSrc.includes("停在确认门"),
-      "T4 FAIL: app/agents/page.tsx 应含台账区「停在确认门」前置逻辑（blockedReason 字段或文案）"
+      agentsFeatureSrc.includes("blocked") ||
+      agentsFeatureSrc.includes("blockedReason") ||
+      agentsFeatureSrc.includes("停在确认门") ||
+      agentsFeatureSrc.includes("待拍板"),
+      "T4 FAIL: agents 页应含「停在确认门/待拍板」前置逻辑（blockedReason 字段或文案）"
     );
 
     // 4g：「查看全部」台账入口（触发 /api/agents/dispatches 分页）

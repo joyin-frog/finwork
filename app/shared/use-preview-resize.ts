@@ -7,6 +7,33 @@ function getDefaultW(containerW: number, pct = 0.42) {
 }
 
 /**
+ * 纯函数：把拖拽原始宽度夹制到合法范围。
+ *
+ * raw = startW - deltaX（面板向左拖拽时增宽，deltaX 为负）
+ * max = Math.max(200, containerW - handleW - listMinW)（保留列表最小宽 + 分隔条宽）
+ * result = Math.max(200, Math.min(max, raw))
+ *
+ * handleW 由 usePreviewResize 外层参数传入（默认 4），此处不写死。
+ */
+export function clampPreviewWidth({
+  startW,
+  deltaX,
+  containerW,
+  listMinW,
+  handleW,
+}: {
+  startW: number;
+  deltaX: number;
+  containerW: number;
+  listMinW: number;
+  handleW: number;
+}): number {
+  const raw = startW - deltaX;
+  const max = Math.max(200, containerW - handleW - listMinW);
+  return Math.max(200, Math.min(max, raw));
+}
+
+/**
  * 共享的预览侧栏拖拽 resize hook。
  *
  * AC2:previewW 上限 = containerW - listMinW - handleW,预览面板永不超出容器。
@@ -50,10 +77,14 @@ export function usePreviewResize(listMinW = 300, handleW = 4) {
       const onMove = (ev: MouseEvent) => {
         const containerW = mainRef.current?.clientWidth ?? 1400;
         // panel grows leftward so delta is negative when dragging left
-        const raw = startWRef.current - (ev.clientX - startXRef.current);
         // 上限留够 listMinW 给列表列:拖拽不能把预览拉到几乎全覆盖、挤塌列表;真要全屏走 maximize()。
-        const max = Math.max(200, containerW - handleW - listMinW);
-        setPreviewW(Math.max(200, Math.min(max, raw)));
+        setPreviewW(clampPreviewWidth({
+          startW: startWRef.current,
+          deltaX: ev.clientX - startXRef.current,
+          containerW,
+          listMinW,
+          handleW,
+        }));
       };
       const onUp = () => {
         setDragging(false);

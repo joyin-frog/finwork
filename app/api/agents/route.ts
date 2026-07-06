@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
-import { listRoleDispatchSummary } from "@/lib/db/dispatch-store";
-import { getInvoiceLedgerStats } from "@/lib/db/finance-store";
+import { listRoleDispatchSummary, listRoleLatestStatus, listBlockedDispatches } from "@/lib/db/dispatch-store";
+import { getInvoiceLedgerStats, getPayrollPeriodSummary } from "@/lib/db/finance-store";
 import { listSkills } from "@/lib/agent/skills-store";
 import { skillLabel } from "@/lib/agent/tools/renderers";
-import { getAppSetting } from "@/lib/db/sqlite";
+import { getAppSetting, listConfirmedMetaDocRows } from "@/lib/db/sqlite";
+import { getCalendarContext } from "@/lib/domain/tax-calendar";
+import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
+import { deriveCashObligations, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
+import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
+
+function parseMeta(s: string): DocMetadata | null {
+  try {
+    return JSON.parse(s) as DocMetadata;
+  } catch {
+    return null;
+  }
+}
 
 export async function GET() {
   try {
@@ -19,6 +31,10 @@ export async function GET() {
     // 调度汇总（count + lastAt per role）
     const dispatchSummaries = listRoleDispatchSummary();
     const dispatchMap = new Map(dispatchSummaries.map((s) => [s.roleId, s]));
+
+    // 角色最新状态（running/blocked）
+    const latestStatuses = listRoleLatestStatus();
+    const statusMap = new Map(latestStatuses.map((s) => [s.roleId, s]));
 
     // 读 agent_disabled_roles（app_settings key）
     let disabledRoles: string[] = [];
@@ -40,6 +56,7 @@ export async function GET() {
 
     const roster = ROLE_REGISTRY.map((role) => {
       const dispatch = dispatchMap.get(role.id);
+      const latestStatus = statusMap.get(role.id);
       const userDisabled = disabledSet.has(role.id);
 
       // 技能列表：中文名走 skillLabel(SKILL.md 的 name 是机器 id,不能直出给财务用户),
@@ -63,6 +80,11 @@ export async function GET() {
         userDisabled,
         dispatchCount: dispatch?.count ?? 0,
         lastAt: dispatch?.lastAt ?? null,
+        lastSummary: dispatch?.lastSummary ?? null,
+        // 动态状态字段（评审必改）：供客户端"在忙"分组使用
+        status: latestStatus?.isRunning ? "running" : null,
+        blockedReason: latestStatus?.blockedReason ?? null,
+        conversationId: latestStatus?.conversationId ?? null,
       };
 
       // bookkeeper 专项：附发票台账计数
@@ -73,7 +95,31 @@ export async function GET() {
       return entry;
     });
 
-    return NextResponse.json({ ok: true, data: { roster } });
+    // ─── 等你拍板：server 端同源，复用 cockpit 的同一套 domain 函数 ──────────
+    const calendar = getCalendarContext(now);
+    const payroll = getPayrollPeriodSummary(year, month);
+
+    const oblDocs: ObligationSourceDoc[] = listConfirmedMetaDocRows().map((r) => ({
+      id: r.id,
+      fileName: r.file_name,
+      metadata: parseMeta(r.metadata),
+      metaStatus: r.meta_status as MetaStatus,
+    }));
+    const obligations = deriveCashObligations(oblDocs);
+
+    // 传完整 obligations(不按月过滤)——与 cockpit 同源:逾期的往月义务也算紧急,
+    // 按月过滤会把上月未付、已逾期的合同从「等你拍板」里漏掉(cockpit 里却还在)。
+    const ruleItems = deriveAttentionItems(calendar, payroll, obligations);
+    const blockedDispatches = listBlockedDispatches(7);
+    const gateItems = blockedDispatches.map((row) => {
+      const reg = ROLE_REGISTRY.find((r) => r.id === row.roleId);
+      const roleName = reg?.name ?? row.roleId;
+      return blockedDispatchToAttentionItem(row, roleName);
+    });
+    const attention = [...ruleItems, ...gateItems];
+    sortAttentionItems(attention);
+
+    return NextResponse.json({ ok: true, data: { roster, attention } });
   } catch (error) {
     console.error("[api/agents] error:", error);
     return NextResponse.json(
