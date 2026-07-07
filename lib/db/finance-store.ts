@@ -507,7 +507,7 @@ export function getInvoiceLedgerStats(year: number, month: number, db: DatabaseS
 }
 
 export type InvoiceLedgerBreakdown = {
-  /** 台账总张数 */
+  /** 当月台账张数（按 invoice_date 归属该年月） */
   total: number;
   /** direction='in' 的进项发票张数与税额合计（分） */
   directionIn: { count: number; taxAmountCentsSum: number };
@@ -519,11 +519,16 @@ export type InvoiceLedgerBreakdown = {
 
 /**
  * 按年月查询发票台账明细汇总（year/month 基于 invoice_date）。
- * 若 invoice_date 为 NULL，该张发票不计入任何月份汇总（total 仍包含）。
+ * total 与 directionIn 均按 invoice_date 归属该年月统计；
+ * invoice_date 为 NULL 的发票不计入 total（filing-precheck 靠 total>0 判断"本期是否有登记"，
+ * 全库口径会把历史月份的存量误判为本期已登记）。
  */
 export function getInvoiceLedgerBreakdown(year: number, month: number, db: DatabaseSync = getDb()): InvoiceLedgerBreakdown {
-  const total = (db.prepare("SELECT COUNT(*) AS n FROM fact_invoices").get() as { n: number }).n;
   const prefix = `${year}-${String(month).padStart(2, "0")}`;
+
+  const total = (
+    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE invoice_date LIKE ?").get(`${prefix}%`) as { n: number }
+  ).n;
 
   const dirInRow = db.prepare(
     `SELECT COUNT(*) AS cnt, COALESCE(SUM(tax_amount_cents), 0) AS tax_sum

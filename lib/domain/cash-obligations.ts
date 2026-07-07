@@ -135,52 +135,59 @@ export function persistDerivedObligations(
   obligations: CashObligation[],
   db: import("node:sqlite").DatabaseSync
 ): void {
-  // 幂等：先删该文档的所有旧义务行
-  db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(sourceDocumentId);
+  // 幂等：先删该文档的所有旧义务行。delete+insert 整体包一层事务——
+  // 若某行金额精度超差导致中途抛错，旧行需能整体回滚，不能出现"删了旧的、部分插了新的"半成品状态。
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(sourceDocumentId);
 
-  if (obligations.length === 0) return;
+    const insert = db.prepare(`
+      INSERT INTO fact_obligations
+        (kind, amount_cents, due_date, counterparty, status, status_raw, source_doc, recurrence,
+         source_document_id, settlement_status, source, provenance, derived_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'derived', 'agent_derived', NULL, datetime('now'))
+    `);
 
-  const insert = db.prepare(`
-    INSERT INTO fact_obligations
-      (kind, amount_cents, due_date, counterparty, status, status_raw, source_doc, recurrence,
-       source_document_id, settlement_status, source, provenance, derived_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'derived', 'agent_derived', NULL, datetime('now'))
-  `);
+    for (const obl of obligations) {
+      // kind 映射：付款→pay / 收款→receive / 开票→invoice
+      const kind: "pay" | "receive" | "invoice" =
+        obl.kind === "付款" ? "pay" :
+        obl.kind === "收款" ? "receive" :
+        "invoice";
 
-  for (const obl of obligations) {
-    // kind 映射：付款→pay / 收款→receive / 开票→invoice
-    const kind: "pay" | "receive" | "invoice" =
-      obl.kind === "付款" ? "pay" :
-      obl.kind === "收款" ? "receive" :
-      "invoice";
-
-    // 金额：元→分，undefined→NULL，超差抛错
-    let amountCents: number | null = null;
-    if (typeof obl.amount === "number" && Number.isFinite(obl.amount)) {
-      const raw = obl.amount * 100;
-      const rounded = Math.round(raw);
-      if (Math.abs(raw - rounded) >= 0.005) {
-        throw new Error(
-          `精度超差（落盘中止）: 文档 ${sourceDocumentId} 金额 ${obl.amount} 元，|${raw} - ${rounded}| = ${Math.abs(raw - rounded).toFixed(6)} >= 0.005 分，请修正金额数据`
-        );
+      // 金额：元→分，undefined→NULL，超差抛错
+      let amountCents: number | null = null;
+      if (typeof obl.amount === "number" && Number.isFinite(obl.amount)) {
+        const raw = obl.amount * 100;
+        const rounded = Math.round(raw);
+        if (Math.abs(raw - rounded) >= 0.005) {
+          throw new Error(
+            `精度超差（落盘中止）: 文档 ${sourceDocumentId} 金额 ${obl.amount} 元，|${raw} - ${rounded}| = ${Math.abs(raw - rounded).toFixed(6)} >= 0.005 分，请修正金额数据`
+          );
+        }
+        amountCents = rounded;
       }
-      amountCents = rounded;
+
+      // 状态映射：done→settled，否则→pending
+      const status = obl.done ? "settled" : "pending";
+
+      insert.run(
+        kind,
+        amountCents,
+        obl.dueDate,
+        obl.counterparty,
+        status,
+        obl.status,          // status_raw：原始中文状态
+        obl.sourceDoc ?? null,
+        obl.recurrence ?? null,
+        sourceDocumentId
+      );
     }
 
-    // 状态映射：done→settled，否则→pending
-    const status = obl.done ? "settled" : "pending";
-
-    insert.run(
-      kind,
-      amountCents,
-      obl.dueDate,
-      obl.counterparty,
-      status,
-      obl.status,          // status_raw：原始中文状态
-      obl.sourceDoc ?? null,
-      obl.recurrence ?? null,
-      sourceDocumentId
-    );
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
   }
 }
 
