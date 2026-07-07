@@ -8,10 +8,6 @@ import { getAppSetting } from "@/lib/db/sqlite";
 const DEFAULTS: Record<string, boolean> = {
   PROMPT_CACHE_ENABLED: true,              // [wired] lib/agent/claude-adapter.ts:203
   ROUTER_ENABLED: true,                    // [wired] app/api/agent/query/route.ts:102
-  RAG_RERANK_ENABLED: true,               // [defined, not wired] — feature not implemented
-  MEMORY_AUTO_EXTRACT_ENABLED: true,      // [defined, not wired] — feature not implemented
-  TOOL_IDEMPOTENCY_ENABLED: true,         // [defined, not wired] — feature not implemented
-  SDK_RETRY_ENABLED: true,                // [defined, not wired] — feature not implemented
   SESSION_LIVENESS_CHECK_ENABLED: true,   // [wired] app/api/agent/query/route.ts:84
   USAGE_LIMIT_ENABLED: true,              // [wired] app/api/agent/query/route.ts — 用量配额拦截(默认开)
 };

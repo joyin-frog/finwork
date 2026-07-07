@@ -51,7 +51,7 @@
 | WP9 | chat-page 拆解 | 拆两刀：WP9a 纯结构搬迁（私有组件+hooks 平移，行为零变化，≤500 行）/ WP9b 消息类型注册式渲染。踩 WP8a Surface API | WP8a（已ship） | **WP9a 已ship**（1823→1073 行；实施审查零阻塞；e2e 冒烟未跑为已知接受项，第一次真实回归看下次 e2e 全跑） |
 | WP10 | query 路由管线化 | WP10a ✅已ship：POST 176 行内联→四段 Stage 管线（sessionStage 首获独立测试）+agent-ws-server 退役四件套。摸底修正：路由本已半整洁，真债=内联会话段+无管线抽象 | 无 | **WP10a 已ship** |
 | WP11 | 脏文件语料库 | 摸底定案路线 A（直喂解析器）。9 样本+GBK 编码检测（修静默乱码入库）+PII 自动门控（含 xlsx mirror）+analyze-csv column_warnings（修静默 0）。遗留：eval:golden:ci 未接 CI（独立小事待办） | 无 | **已ship** |
-| WP12 | 知识库语义检索 | 本地量化 embedding（bge-small 级，Python worker 内）+ sqlite-vec + ripgrep 混合排序；顺带清 4 个死旗标（flags.ts:11-14） | 无 | 未开始 |
+| WP12 | 知识库语义检索 | 摸底修正：sqlite-vec 系幽灵引用未安装，否决扩展路线改 BLOB+JS 余弦（Windows 打包盲区+规模无 ANN 需求）。落地：v11 knowledge_embeddings + worker embed-texts（bge-small-zh-v1.5 int8 ONNX，Xenova 仓三级候选源）+ ingest 嵌入（失败降级）+ rg/向量 RRF 融合 + reindex API/按钮 + 清 4 死旗标 | 无 | **已ship**（2026-07-07；两轮修复：默认源 404、块序号/归档过滤；真机余弦 0.91/0.30） |
 
 ### T3 扩展面
 
@@ -79,7 +79,8 @@ WP5 / WP7 / WP10 / WP11 / WP12（无前置，按资源穿插）
 - **第三批（✅ 已完成，2026-07-07）**：WP2a 节奏引擎、WP4a 可追溯契约、WP7a Windows 防线收口——均经完整流水线 ship。本批要点：三份摸底均有失真（WP4a 最重——把已实现功能当待办），计划审查全部抓回；WP9a 哨兵泄漏事故在本批开工时发现并修复（教训⑦⑧入记忆）。
 - **第四批（✅ 已完成，2026-07-07）**：WP1b（✅ 已ship——义务落盘+五路钩子+读切换；中断续接与钩子测试真实化两轮波折后收口）、WP1c（✅ 已ship——写入端补字段+query_invoice_ledger+A4 升级+dataScope 清尾）、WP8b（✅ 完成，轻量路径——六文件 8 处容器收敛+28 行豁免注释，lint 警告 203→180，orchestrator 自查 diff 通过）。**WP1b/WP1c 实施须串行（共享 finance-store.ts）**。后续：WP1b（义务落盘消费切换）、WP1c（invoice 写入端补字段+registry dataScope 更新+fact_invoices source DEFAULT）、WP4b（voucher/分析接入 receipt+provenance 落库 v9）、WP8b+（UI 收敛批次）、WP10 route 管线化、WP11 语料库、WP12 语义检索、WP13-15。
 - **第五批（✅ 已完成，2026-07-07）**：WP13a 合同应收层、WP11 脏文件语料库、WP8c UI 长尾（30 文件收敛，lint 警告 181→139；orchestrator 自查抓到 first-run-gate 暗色变色回归）。其后批次见下。
-- **第六批（✅ 已完成，2026-07-07）**：WP14a 可勾选清单工件、WP10a 路由管线化——均经完整流水线 ship。本批要点：WP10a 前任中断收尾者救回幽灵模块引用；两实施审查各有一次跨任务 diff 归属误判（累计第四、五次），orchestrator 均以 git 实证撤销。剩余：WP13b、WP4b/5b/9b、WP12、WP15。其后：WP13b、WP4b/5b/9b、WP12、WP15。
+- **第六批（✅ 已完成，2026-07-07）**：WP14a 可勾选清单工件、WP10a 路由管线化——均经完整流水线 ship。本批要点：WP10a 前任中断收尾者救回幽灵模块引用；两实施审查各有一次跨任务 diff 归属误判（累计第四、五次），orchestrator 均以 git 实证撤销。剩余：WP13b、WP4b/5b/9b、WP12、WP15。
+- **第七批（🔄 进行中，2026-07-07）**：WP12 知识库语义检索 + WP15 审计日志与撤销。前置动作：一至六批 9 提交已发 PR #36 合 main（待用户合并）。进度：两 spec 均经 fix first→修订→限定复审批准（WP12 v1.1 / WP15 v1.2）；WP12 已实施+两轮审查修复（默认模型源 404 是 orchestrator 验收抓出、块序号偏差是实施审查抓出），真实模型端到端验证通过（同义句余弦 0.91 vs 无关句 0.30），限定复审中；WP15 等 WP12 ship 后串行实施（v12 迁移位）。用户已下达连续执行指令：批7完成后继续 WP13b→WP4b→WP5b→WP9b 直至路线图清零，然后提交更新 PR。
 
 ## 会话协议（断点续传）
 

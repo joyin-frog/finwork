@@ -706,6 +706,30 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 11,
+    name: "knowledge_embeddings",
+    up: (db) => {
+      // WP12: 语义检索——本地 embedding 落库
+      // 表名刻意避开 legacy knowledge_chunks（baseline DROP 已清，不复活）
+      // embedding BLOB 存 Float32 小端 512 维（2048 bytes/行）
+      // UNIQUE(document_id, chunk_index) 防重复切块；ON DELETE CASCADE 跟随文档删除
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS knowledge_embeddings (
+          id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+          document_id INTEGER NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+          chunk_index INTEGER NOT NULL,
+          text        TEXT    NOT NULL,
+          embedding   BLOB    NOT NULL,
+          model       TEXT    NOT NULL,
+          created_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(document_id, chunk_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_doc
+          ON knowledge_embeddings(document_id);
+      `);
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

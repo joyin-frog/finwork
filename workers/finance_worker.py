@@ -636,6 +636,79 @@ def cmd_export_payslips_xlsx():
     print(json.dumps({"filePath": output_path}, ensure_ascii=False))
 
 
+def cmd_embed_texts():
+    """embed-texts: 对文本数组做本地 ONNX embedding（bge-small-zh-v1.5 量化版）。
+
+    stdin JSON: {"texts": [...], "model_dir": "<路径>"}
+    stdout JSON:
+      成功: {"ok": true, "dim": 512, "vectors": [[...f32], ...]}
+      失败: {"ok": false, "error": "model_not_found"} 或其他结构化错误
+    """
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw)
+    except Exception as e:
+        print(json.dumps({"ok": False, "error": f"invalid_json: {e}"}, ensure_ascii=False))
+        return
+
+    texts = payload.get("texts", [])
+    model_dir = payload.get("model_dir", "")
+
+    if not texts:
+        print(json.dumps({"ok": True, "dim": 512, "vectors": []}, ensure_ascii=False))
+        return
+
+    import os as _os
+    onnx_path = _os.path.join(model_dir, "model_quantized.onnx")
+    tokenizer_path = _os.path.join(model_dir, "tokenizer.json")
+
+    if not _os.path.exists(onnx_path) or not _os.path.exists(tokenizer_path):
+        print(json.dumps({"ok": False, "error": "model_not_found"}, ensure_ascii=False))
+        return
+
+    try:
+        from tokenizers import Tokenizer  # type: ignore
+        import onnxruntime as ort  # type: ignore
+        import numpy as np  # type: ignore
+    except ImportError as e:
+        print(json.dumps({"ok": False, "error": f"import_error: {e}"}, ensure_ascii=False))
+        return
+
+    try:
+        tokenizer = Tokenizer.from_file(tokenizer_path)
+        tokenizer.enable_padding(pad_id=0, pad_token="[PAD]", length=512)
+        tokenizer.enable_truncation(max_length=512)
+
+        encodings = tokenizer.encode_batch(texts)
+        input_ids = np.array([e.ids for e in encodings], dtype=np.int64)
+        attention_mask = np.array([e.attention_mask for e in encodings], dtype=np.int64)
+        token_type_ids = np.zeros_like(input_ids, dtype=np.int64)
+
+        sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        outputs = sess.run(None, {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "token_type_ids": token_type_ids,
+        })
+
+        # Mean pooling over token dimension
+        token_embeddings = outputs[0]  # (batch, seq, dim)
+        mask_expanded = attention_mask[:, :, None].astype(np.float32)
+        sum_embeddings = (token_embeddings * mask_expanded).sum(axis=1)
+        sum_mask = mask_expanded.sum(axis=1).clip(min=1e-9)
+        embeddings = sum_embeddings / sum_mask
+
+        # L2 normalize
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True).clip(min=1e-9)
+        embeddings = embeddings / norms
+
+        vectors = embeddings.tolist()
+        dim = len(vectors[0]) if vectors else 512
+        print(json.dumps({"ok": True, "dim": dim, "vectors": vectors}, ensure_ascii=False))
+    except Exception as e:
+        print(json.dumps({"ok": False, "error": f"embed_error: {e}"}, ensure_ascii=False))
+
+
 def main():
     _force_utf8_stdio()
     if len(sys.argv) >= 2 and sys.argv[1] == "--selfcheck":
@@ -665,8 +738,11 @@ def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "export-payslips-xlsx":
         cmd_export_payslips_xlsx()
         return
+    if len(sys.argv) >= 2 and sys.argv[1] == "embed-texts":
+        cmd_embed_texts()
+        return
     raise SystemExit(
-        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | ocr-image <path> | run | export-voucher-xlsx | export-payslips-xlsx"
+        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | ocr-image <path> | run | export-voucher-xlsx | export-payslips-xlsx | embed-texts"
     )
 
 

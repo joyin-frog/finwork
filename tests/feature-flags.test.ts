@@ -18,10 +18,6 @@ test("DEFAULTS are all true", () => {
   initFlags();
   ok(isEnabled("ROUTER_ENABLED"));
   ok(isEnabled("PROMPT_CACHE_ENABLED"));
-  ok(isEnabled("RAG_RERANK_ENABLED"));
-  ok(isEnabled("MEMORY_AUTO_EXTRACT_ENABLED"));
-  ok(isEnabled("TOOL_IDEMPOTENCY_ENABLED"));
-  ok(isEnabled("SDK_RETRY_ENABLED"));
   ok(isEnabled("SESSION_LIVENESS_CHECK_ENABLED"));
   ok(isEnabled("USAGE_LIMIT_ENABLED"));
 });
@@ -34,14 +30,14 @@ test("isEnabled returns false for unknown flag", () => {
 test("initFlags with overrides", () => {
   initFlags({ ROUTER_ENABLED: false });
   equal(isEnabled("ROUTER_ENABLED"), false);
-  ok(isEnabled("RAG_RERANK_ENABLED")); // Not overridden, still default true
+  ok(isEnabled("PROMPT_CACHE_ENABLED")); // Not overridden, still default true
 });
 
 test("initFlags merges: DB overrides + unseen keep defaults", () => {
-  initFlags({ ROUTER_ENABLED: false, MEMORY_AUTO_EXTRACT_ENABLED: false });
+  initFlags({ ROUTER_ENABLED: false, SESSION_LIVENESS_CHECK_ENABLED: false });
   equal(isEnabled("ROUTER_ENABLED"), false);
-  equal(isEnabled("MEMORY_AUTO_EXTRACT_ENABLED"), false);
-  ok(isEnabled("RAG_RERANK_ENABLED")); // Unaffected
+  equal(isEnabled("SESSION_LIVENESS_CHECK_ENABLED"), false);
+  ok(isEnabled("PROMPT_CACHE_ENABLED")); // Unaffected
 });
 
 test("allFlags returns a snapshot copy (not mutable reference)", () => {
@@ -61,29 +57,29 @@ test("readFeatureFlags from empty DB returns {}", () => {
 test("readFeatureFlags reads flag: prefixed keys only", () => {
   const db = setupDb();
   db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("flag:ROUTER_ENABLED", "false");
-  db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("flag:RAG_RERANK_ENABLED", "false");
+  db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("flag:PROMPT_CACHE_ENABLED", "false");
   db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("other_setting", "some_value");
 
   const flags = readFeatureFlags(db);
-  deepEqual(flags, { ROUTER_ENABLED: false, RAG_RERANK_ENABLED: false });
+  deepEqual(flags, { ROUTER_ENABLED: false, PROMPT_CACHE_ENABLED: false });
   db.close();
 });
 
 test("readFeatureFlags: non-boolean values are treated as false", () => {
   const db = setupDb();
   db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("flag:ROUTER_ENABLED", "false");
-  db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("flag:MEMORY_AUTO_EXTRACT_ENABLED", "not_a_bool");
+  db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?)").run("flag:SESSION_LIVENESS_CHECK_ENABLED", "not_a_bool");
 
   const flags = readFeatureFlags(db);
   equal(flags.ROUTER_ENABLED, false);
-  equal(flags.MEMORY_AUTO_EXTRACT_ENABLED, false);
+  equal(flags.SESSION_LIVENESS_CHECK_ENABLED, false);
   db.close();
 });
 
 test("initFlags with empty overrides preserves all defaults", () => {
   initFlags({});
   const flags = allFlags();
-  equal(Object.keys(flags).length, 8);
+  equal(Object.keys(flags).length, 4);
   for (const v of Object.values(flags)) {
     equal(v, true);
   }

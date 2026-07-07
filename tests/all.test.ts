@@ -611,4 +611,7 @@ void (async () => {
   const { artifactChecklistTestPromise } = await import("./artifact-checklist.test.ts");
   await artifactChecklistTestPromise;
 
+  const { semanticSearchTestPromise } = await import("./semantic-search.test.ts");
+  await semanticSearchTestPromise;
+
 })();
