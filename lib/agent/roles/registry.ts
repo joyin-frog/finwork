@@ -28,13 +28,14 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     skills: ["reimbursement-check", "kingdee-draft", "contract-extract", "xlsx", "pdf"],
     tools: [
       "check_reimbursement_batch", "record_reimbursement_invoices", "read_expense_policy",
+      "query_invoice_ledger",
       "record_document_metadata", "query_kingdee_accounts", "validate_kingdee_voucher",
       "export_kingdee_draft",   // high：子代理内被确认门拒，白名单表达域归属
       // 单据→凭证(voucher-from-slips 合入后补挂,2026-07-02)
       "read_document", "scan_slip_folder", "check_voucher_amount", "map_voucher_account",
       "build_voucher_lines", "build_voucher_sheet", "summarize_vouchers", "process_voucher_batch",
     ],
-    dataScope: ["documents", "invoice_ledger", "金蝶科目表", "报销制度文件"],
+    dataScope: ["documents", "fact_invoices", "金蝶科目表", "报销制度文件"],
     deliverables: ["voucher_draft", "risk_list", "ledger_entries"],
     rolePrompt: `你是记账专员，负责核算与报告域：报销单据合规核查与发票台账登记、
 原始单据到金蝶凭证草稿、合同要点结构化、月末结账前检查。
@@ -57,7 +58,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
       "query_payroll_status", "tax_calculator", "diff_payroll_period",
       "export_payslips",
     ],
-    dataScope: ["payroll_records（全产品唯一有工资明细权限的角色）", "税率配置"],
+    dataScope: ["fact_payroll（全产品唯一有工资明细权限的角色）", "税率配置"],
     deliverables: ["payroll_draft", "calc_receipt", "diff_list", "payslip_sheet"],
     rolePrompt: `你是薪税专员，负责薪酬核算域：按累计预扣预缴法算工资个税、
 五险一金核对、社保基数与专项附加扣除的口径检查。
@@ -74,9 +75,12 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     domain: "税务管理",
     charter: "纳税申报管理、申报前复核、税收优惠",
     available: true,
-    skills: ["tax-incentive", "rnd-deduction-check", "xlsx"],  // 待建：filing-precheck
-    tools: ["tax_calculator", "query_payroll_status"],
-    dataScope: ["invoice_ledger（读）", "company_profile（读）", "薪资状态汇总（非明细）", "知识库政策文件"],
+    skills: ["tax-incentive", "rnd-deduction-check", "xlsx"],
+    // filing-precheck v1 由主对话直接执行（主对话拥有画像注入、工具权限和问用户通道三者；
+    // 子代理 buildSubagentSystemPrompt 不注入画像，且子代理无与用户对话通道——挂载此数组
+    // 只会产出全"无法核验"清单）。子代理画像注入机制落地后，再将 "filing-precheck" 加入此数组。
+    tools: ["tax_calculator", "query_payroll_status", "query_invoice_ledger"],
+    dataScope: ["fact_invoices（读）", "company_profile（读）", "薪资状态汇总（非明细）", "知识库政策文件"],
     deliverables: ["risk_list", "checklist"],
     rolePrompt: `你是税务专员，负责税务管理域：申报日历与截止提醒、申报前复核、
 税收优惠线索发现、研发加计扣除形式核查。
@@ -110,16 +114,17 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     name: "往来专员",
     domain: "往来管理",
     charter: "应收应付台账、账龄分析、往来对账",
-    available: false,   // 台账数据域未建，注册表预留；作业落地后翻 true
-    skills: ["xlsx"],   // 待建：receivables-ledger（应收台账与账龄）
-    tools: [],
-    dataScope: ["待建：应收台账表", "documents 合同收付义务（读）"],
+    // 转正日期：2026-07-07（WP13a：fact_obligations 数据域已就绪，receivables-ledger 技能已建）
+    available: true,
+    skills: ["receivables-ledger", "xlsx"],
+    tools: ["query_receivables"],
+    dataScope: ["fact_obligations（读，kind=receive）", "documents 合同收付义务（读）"],
     deliverables: ["aging_report", "dunning_list"],
     rolePrompt: `你是往来专员，负责往来管理域：应收应付台账、账龄分析、
 催款清单、与客户/供应商的对账单核对。
 边界（违反即任务失败）：
 - 催款函、对账函只出草稿，发送永远由人完成；
-- 账龄口径（从开票日还是约定回款日起算）在结果中显式声明；
+- 账龄口径在结果中显式声明（v1 固定自约定回款日起算，开票日口径待销项数据落地后提供）；
 - 对账差异逐笔列出，区分「我方漏记 / 对方漏记 / 时间性差异」三类。
 接到往来域之外的任务，返回 out_of_scope 并说明该由哪个域处理。`,
   },
@@ -134,7 +139,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     // 子代理内确认门只拦 high/ALWAYS_CONFIRM,子代理可无人确认写入 business_metrics——
     // 会把分析师的"推测"结论静默升级成 user_dictated 事实源,踩红线 3。写权限收回主对话(人在场可走确认)。
     tools: ["generate_business_analysis"],
-    dataScope: ["business_metrics（只读）", "用户上传的报表/费用/工资汇总文件"],
+    dataScope: ["fact_metrics（只读）", "用户上传的报表/费用/工资汇总文件"],
     deliverables: ["analysis_report", "metric_table"],
     rolePrompt: `你是经营分析师，负责管理会计域：经营数据分析、费用拆解、
 财务比率、环比同比与趋势解读。

@@ -3,6 +3,8 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+// Surface 展示区：唯一允许直写外观类做对照的页面。
+import { Surface } from "@/components/ui/surface";
 
 type Oklch = { l: number; c: number; h: number; a: number };
 type ColorKey = "background" | "foreground" | "primary" | "primary-foreground" | "ring" | "card" | "sidebar" | "muted" | "accent" | "border";
@@ -304,6 +306,51 @@ export function ThemePlayground() {
                 <span className="font-mono text-body tabular-nums">等宽数字 0123456789 · ¥1,234,567.89</span>
               </div>
             </div>
+          </section>
+
+          {/* ── Surface 原语展示区（WP8a）──
+               唯一允许在 className 直写外观类做对照的页面；行内豁免 ESLint 护栏。
+               每格：variant 名 + 对应 token + 视觉预览。 */}
+          <section className="flex flex-col gap-2">
+            <p className="text-meta text-muted-foreground">Surface 原语 · 变体全组合（随主题实时变化）</p>
+            {/* level × shape 组合网格 */}
+            <div className="grid grid-cols-4 gap-2 text-caption">
+              {/* 表头 */}
+              <div className="col-span-4 grid grid-cols-4 gap-2 text-muted-foreground font-medium">
+                <span></span>
+                <span>shape=control <code className="text-[10px]">rounded-md</code></span>
+                <span>shape=card <code className="text-[10px]">rounded-lg</code></span>
+                <span>shape=pill <code className="text-[10px]">rounded-full</code></span>
+              </div>
+              {/* level=page */}
+              <span className="self-center text-muted-foreground">level=page <code className="text-[10px]">bg-background</code></span>
+              <Surface level="page" edge="hairline" shape="control" className="p-3 text-meta">page · hairline · control</Surface>
+              <Surface level="page" edge="hairline" shape="card" className="p-3 text-meta">page · hairline · card</Surface>
+              <Surface level="page" edge="hairline" shape="pill" className="px-3 py-1.5 text-meta">page · pill</Surface>
+              {/* level=card */}
+              <span className="self-center text-muted-foreground">level=card <code className="text-[10px]">bg-card + elev-1</code></span>
+              <Surface level="card" edge="hairline" shape="control" className="p-3 text-meta">card · hairline · control</Surface>
+              <Surface level="card" edge="hairline" shape="card" className="p-3 text-meta">card · hairline · card（默认）</Surface>
+              <Surface level="card" edge="none" shape="pill" className="px-3 py-1.5 text-meta">card · none · pill</Surface>
+              {/* level=panel */}
+              <span className="self-center text-muted-foreground">level=panel <code className="text-[10px]">bg-card + elev-1</code></span>
+              <Surface level="panel" edge="hairline" shape="control" className="p-3 text-meta">panel · hairline · control</Surface>
+              <Surface level="panel" edge="strong" shape="panel" className="p-3 text-meta">panel · strong · panel</Surface>
+              <Surface level="panel" edge="hairline" shape="chip" className="px-2 py-1 text-meta">panel · chip <code className="text-[10px]">0.25rem</code></Surface>
+              {/* level=overlay */}
+              <span className="self-center text-muted-foreground">level=overlay <code className="text-[10px]">bg-popover + elev-3</code></span>
+              <Surface level="overlay" edge="hairline" shape="overlay" className="p-3 text-meta">overlay · hairline · overlay</Surface>
+              <Surface level="overlay" edge="none" shape="card" className="p-3 text-meta">overlay · none · card</Surface>
+              <Surface level="overlay" edge="hairline" shape="pill" className="px-3 py-1.5 text-meta">overlay · pill</Surface>
+            </div>
+            {/* inset 阴影演示 */}
+            <div className="flex gap-3 items-start">
+              <Surface level="card" edge="hairline" shape="card" inset className="p-3 text-meta flex-1">inset=true（主内容内嵌阴影，左侧投影）</Surface>
+              <Surface level="card" edge="hairline" shape="card" className="p-3 text-meta flex-1">inset=false（默认 elevation-1）</Surface>
+            </div>
+            <p className="text-caption text-muted-foreground">
+              token 对应：chip → <code>--radius-chip: 0.25rem</code>；elevation → <code>--elevation-1/2/3</code>；边框 → <code>--color-border</code>
+            </p>
           </section>
 
           <section className="flex flex-col gap-1.5">

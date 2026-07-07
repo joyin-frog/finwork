@@ -73,24 +73,67 @@ export function createReimbursementTools(sdk: Sdk) {
             invoiceNo: z.string().describe("发票号码"),
             amount: z.number().describe("发票金额(元)"),
             invoiceDate: z.string().nullish().describe("开票日期 YYYY-MM-DD"),
-            category: z.string().nullish().describe("费用类目")
+            category: z.string().nullish().describe("费用类目"),
+            taxRate: z.string().nullish().describe("适用税率(小数形式,如 '0.09'),可选;须满足 0 < rate < 1"),
+            taxAmountYuan: z.number().nullish().describe("税额(元),可选;入库自动转换为分"),
+            counterparty: z.string().nullish().describe("开票方名称(供应商/客户),可选")
           })
         )
         .describe("要登记的发票列表"),
       conversationId: z.number().nullish().describe("当前会话 ID,用于溯源")
     },
     withIdempotency("record_reimbursement_invoices", async (args: {
-      items: Array<{ invoiceNo: string; amount: number; invoiceDate?: string | null; category?: string | null }>;
+      items: Array<{
+        invoiceNo: string;
+        amount: number;
+        invoiceDate?: string | null;
+        category?: string | null;
+        taxRate?: string | null;
+        taxAmountYuan?: number | null;
+        counterparty?: string | null;
+      }>;
       conversationId?: number | null;
     }) => {
+      // 校验并转换 taxRate（数字字符串，0 < rate < 1）
+      for (const item of args.items) {
+        if (item.taxRate != null) {
+          const rate = parseFloat(item.taxRate);
+          if (!Number.isFinite(rate) || rate <= 0 || rate >= 1) {
+            return {
+              content: [{ type: "text" as const, text: `发票 ${item.invoiceNo} 的税率 "${item.taxRate}" 非法：须为 0 < rate < 1 的数字字符串（如 "0.09"）` }],
+              isError: true as const
+            };
+          }
+        }
+      }
+
       const { inserted, duplicates } = recordInvoices(
-        args.items.map((i) => ({
-          invoiceNo: i.invoiceNo,
-          amount: i.amount,
-          invoiceDate: i.invoiceDate ?? undefined,
-          category: i.category ?? undefined,
-          conversationId: args.conversationId ?? undefined
-        }))
+        args.items.map((i) => {
+          const taxRate = i.taxRate != null ? parseFloat(i.taxRate) : undefined;
+          const ctx = `fact_invoices.${i.invoiceNo}`;
+          const taxAmountCents = i.taxAmountYuan != null
+            ? (() => {
+                const raw = i.taxAmountYuan * 100;
+                const rounded = Math.round(raw);
+                if (Math.abs(raw - rounded) >= 0.005) {
+                  throw new Error(`精度超差: ${ctx} 税额 ${i.taxAmountYuan} 元，|${raw} - ${rounded}| = ${Math.abs(raw - rounded).toFixed(6)} >= 0.005 分`);
+                }
+                return rounded;
+              })()
+            : undefined;
+          return {
+            invoiceNo: i.invoiceNo,
+            amount: i.amount,
+            invoiceDate: i.invoiceDate ?? undefined,
+            category: i.category ?? undefined,
+            conversationId: args.conversationId ?? undefined,
+            taxRate: taxRate ?? null,
+            taxAmountCents: taxAmountCents ?? null,
+            counterparty: i.counterparty ?? null,
+            direction: "in" as const,
+            certificationStatus: null,
+          };
+        })
       );
       const lines = [`已登记 ${inserted.length} 张发票进台账(已写审计日志)`];
       if (duplicates.length > 0) {

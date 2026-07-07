@@ -2,7 +2,7 @@
 // 每条 AttentionItem 的主动作指向一次对话入口——对话即任务。
 
 import type { CalendarContext } from "./tax-calendar";
-import type { PayrollPeriodSummary } from "@/lib/db/finance-store";
+import type { PayrollPeriodSummary, InvoiceLedgerStats } from "@/lib/db/finance-store";
 import { urgentObligations, daysBetween, formatAmount, type CashObligation } from "./cash-obligations";
 
 export type AttentionItem = {
@@ -17,11 +17,18 @@ export type AttentionItem = {
 };
 
 const FILING_URGENT_DAYS = 5;
+/** R7：当月几日后开始检查台账断档（包含边界不算，需 day > 阈值） */
+const INVOICE_GAP_CHECK_DAY = 15;
+/** R8：当月几日后开始检查上月经营指标（包含边界不算，需 day > 阈值） */
+const METRICS_CHECK_DAY = 5;
 
 export function deriveAttentionItems(
   calendar: CalendarContext,
   payroll: PayrollPeriodSummary,
-  obligations: CashObligation[] = []
+  obligations: CashObligation[] = [],
+  invoiceStats: InvoiceLedgerStats = { total: 0, addedThisMonth: 0 },
+  hasMetricsForLastMonth: boolean = false,
+  filingPrecheckStarter: string | undefined = undefined
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
 
@@ -129,6 +136,68 @@ export function deriveAttentionItems(
           href:
             "/chat/new?prompt=" +
             encodeURIComponent("月末结账:帮我核对本月报销发票是否收齐、有哪些待登记台账"),
+          primary: true,
+        },
+      ],
+    });
+  }
+
+  // R6: 申报前复核入口（LLM 型）—— tax_filing 窗口时常驻
+  if (calendar.windows.includes("tax_filing")) {
+    const href = filingPrecheckStarter
+      ? "/chat/new?prompt=" + encodeURIComponent(filingPrecheckStarter)
+      : "/chat/new";
+    items.push({
+      id: "filing-precheck",
+      source: "rule",
+      sourceLabel: "申报前复核",
+      roleId: "tax-officer",
+      severity: "normal",
+      title: "申报前复核（发起对话，消耗额度）",
+      actions: [
+        {
+          label: "发起申报前复核",
+          href,
+          primary: true,
+        },
+      ],
+    });
+  }
+
+  // R7: 台账断档——当月 15 日后且本月新增发票=0
+  if (td !== undefined && td > INVOICE_GAP_CHECK_DAY && invoiceStats.addedThisMonth === 0) {
+    items.push({
+      id: "invoice-ledger-gap",
+      source: "rule",
+      sourceLabel: "台账断档",
+      severity: "normal",
+      title: "本月发票台账零登记，请自查是否漏登",
+      actions: [
+        {
+          label: "去自查台账",
+          href:
+            "/chat/new?prompt=" +
+            encodeURIComponent("请帮我检查本月发票台账是否有漏登，并列出需要补录的发票"),
+          primary: true,
+        },
+      ],
+    });
+  }
+
+  // R8: 上月经营指标未登记——当月 5 日后且上月无指标记录
+  if (td !== undefined && td > METRICS_CHECK_DAY && !hasMetricsForLastMonth) {
+    items.push({
+      id: "metrics-missing",
+      source: "rule",
+      sourceLabel: "经营指标",
+      severity: "normal",
+      title: "上月经营指标未登记，请补录以便生成报告",
+      actions: [
+        {
+          label: "补录经营指标",
+          href:
+            "/chat/new?prompt=" +
+            encodeURIComponent("请帮我登记上月经营数据（收入、成本、利润）"),
           primary: true,
         },
       ],

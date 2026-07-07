@@ -28,5 +28,14 @@ export const ciWorkflowTestPromise = (async () => {
     assert.fail(`AC6.2 FAIL: 主代码 typecheck 未通过:\n${detail}`);
   }
 
+  // ── AC7: CI 守护者守护——windows_smoke job + release windows 矩阵 ──────
+  // 断言 ci-verify.yml 含 windows_smoke job 且其步骤含 windows-smoke.mjs
+  assert.ok(verify.includes("windows_smoke"), "AC7 FAIL: ci-verify.yml 应包含 windows_smoke job");
+  assert.ok(verify.includes("windows-smoke.mjs"), "AC7 FAIL: ci-verify.yml 的 windows_smoke 步骤应包含 windows-smoke.mjs");
+
+  // 断言 release.yml 含 windows-latest 矩阵项
+  const release = readFileSync(".github/workflows/release.yml", "utf-8");
+  assert.ok(release.includes("windows-latest"), "AC7 FAIL: release.yml 应包含 windows-latest 矩阵项");
+
   console.log("ci-workflow: all checks passed ✓");
 })();

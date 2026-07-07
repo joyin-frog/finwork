@@ -177,6 +177,63 @@ export const skillsStoreTestPromise = (async () => {
     assert.equal((await store.getSkill("demo"))?.enabled, true, "AC-11 FAIL: 内置技能 PATCH 后应仍启用");
 
     console.log("skills-store: 内置只读恒启用/用户全改可启停/title 展示字段/文件操作/路径防穿越/SDK 配置 ✓");
+
+    // ── 真实技能目录：filing-precheck 发现与 frontmatter 解析 ──────────────
+    // 独立 env 隔离块：在当前 fixture IIFE 的 finally 清理之前，用独立的临时目录和
+    // FINANCE_AGENT_BUNDLED_PLUGIN_DIR 指向真实 agent-skills，避免与上方临时 fixture 互串。
+    // 注：env 变量在 finally 块清理前先覆写，finally 里的清理会再次 delete，无副作用。
+    await (async () => {
+      const realBundledRoot = path.resolve(__dirname, "../agent-skills");
+      const fpUserTmp = mkdtempSync(path.join(tmpdir(), "finance-agent-fp-user-"));
+      const fpStateDir = mkdtempSync(path.join(tmpdir(), "finance-agent-fp-state-"));
+      const fpStateTmp = path.join(fpStateDir, "skills-state.json");
+
+      process.env.FINANCE_AGENT_BUNDLED_PLUGIN_DIR = realBundledRoot;
+      process.env.FINANCE_AGENT_USER_PLUGIN_DIR = fpUserTmp;
+      process.env.FINANCE_AGENT_SKILLS_STATE_PATH = fpStateTmp;
+
+      try {
+        // listSkills() 实时扫目录，env 已指向真实路径
+        const fpList = await store.listSkills();
+
+        // FP-1: filing-precheck 技能已发现
+        const fp = fpList.find((s) => s.name === "filing-precheck");
+        assert.ok(fp, "FP-1 FAIL: listSkills 应在真实 agent-skills 目录中发现 filing-precheck");
+
+        // FP-2: source 为 bundled（内置技能）
+        assert.equal(fp.source, "bundled", "FP-2 FAIL: filing-precheck 应为内置技能 source=bundled");
+
+        // FP-3: frontmatter 必填字段非空
+        assert.ok(fp.name.length > 0, "FP-3 FAIL: name 应非空");
+        assert.ok(fp.title.length > 0, "FP-3 FAIL: title 应非空");
+        assert.ok(fp.summary.length > 0, "FP-3 FAIL: summary 应非空");
+        assert.ok(fp.starter.length > 0, "FP-3 FAIL: starter 应非空");
+
+        // FP-4: 内置技能恒启用
+        assert.equal(fp.enabled, true, "FP-4 FAIL: 内置技能 enabled 应为 true");
+        assert.equal(fp.editable, false, "FP-4 FAIL: 内置技能 editable 应为 false");
+
+        console.log("skills-store [filing-precheck]: 真实目录发现、frontmatter 解析、内置只读恒启用 ✓");
+
+        // FP-5: receivables-ledger 技能已发现（WP13a 新增）
+        const rl = fpList.find((s) => s.name === "receivables-ledger");
+        assert.ok(rl, "FP-5 FAIL: listSkills 应在真实 agent-skills 目录中发现 receivables-ledger");
+        assert.equal(rl.source, "bundled", "FP-5 FAIL: receivables-ledger 应为内置技能 source=bundled");
+        assert.ok(rl.name.length > 0, "FP-5 FAIL: name 应非空");
+        assert.ok(rl.title.length > 0, "FP-5 FAIL: title 应非空");
+        assert.ok(rl.summary.length > 0, "FP-5 FAIL: summary 应非空");
+        assert.equal(rl.enabled, true, "FP-5 FAIL: 内置技能 receivables-ledger enabled 应为 true");
+        assert.equal(rl.editable, false, "FP-5 FAIL: 内置技能 receivables-ledger editable 应为 false");
+        console.log("skills-store [receivables-ledger]: 真实目录发现、frontmatter 解析、内置只读恒启用 ✓");
+      } finally {
+        rmSync(fpUserTmp, { recursive: true, force: true });
+        rmSync(fpStateDir, { recursive: true, force: true });
+        // 恢复 fixture 块的 env（outer finally 会清理，此处仅防止污染本 IIFE 后续操作）
+        process.env.FINANCE_AGENT_BUNDLED_PLUGIN_DIR = bundledRoot;
+        process.env.FINANCE_AGENT_USER_PLUGIN_DIR = userRoot;
+        process.env.FINANCE_AGENT_SKILLS_STATE_PATH = statePath;
+      }
+    })();
   } finally {
     delete process.env.FINANCE_AGENT_BUNDLED_PLUGIN_DIR;
     delete process.env.FINANCE_AGENT_USER_PLUGIN_DIR;

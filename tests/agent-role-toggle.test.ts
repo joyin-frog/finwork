@@ -115,11 +115,17 @@ export const agentRoleToggleTestPromise = (async () => {
         `T1 FAIL: 恢复后 listDispatchableRoleIds 应含 "tax-officer"，实际 ${JSON.stringify(dispatchableAfterEnable)}`
       );
 
-      // 1f：对 "receivables-officer"（available:false）抛错
-      assert.throws(
-        () => setRoleDisabled("receivables-officer", true),
-        /receivables-officer|不存在|不可用|available/,
-        "T1 FAIL: 对 available:false 的角色 setRoleDisabled 应抛错"
+      // 1f：receivables-officer 已于 2026-07-07（WP13a）转正（available:true），
+      // 可正常启停（与 tax-officer 同等权限）。
+      const disabledWithReceivables = setRoleDisabled("receivables-officer", true);
+      assert.ok(
+        disabledWithReceivables.includes("receivables-officer"),
+        `T1 FAIL: setRoleDisabled("receivables-officer", true) 应将其加入 disabled 列表，实际 ${JSON.stringify(disabledWithReceivables)}`
+      );
+      const reenabledReceivables = setRoleDisabled("receivables-officer", false);
+      assert.ok(
+        !reenabledReceivables.includes("receivables-officer"),
+        `T1 FAIL: setRoleDisabled("receivables-officer", false) 应将其移出 disabled 列表，实际 ${JSON.stringify(reenabledReceivables)}`
       );
 
       // 1g：对 "no-such" 抛错

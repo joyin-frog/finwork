@@ -40,6 +40,8 @@ if (!existsSync(dbPath)) {
   const before = (db.prepare("SELECT COUNT(*) AS c FROM knowledge_documents").get()).c;
   db.exec("DELETE FROM knowledge_chunks");
   db.exec("DELETE FROM knowledge_documents");
+  // WP1b: 同步清 fact_obligations，防幽灵义务行（知识库文档已删，派生义务行需一并清除）
+  db.exec("DELETE FROM fact_obligations");
   db.exec("DROP TABLE IF EXISTS knowledge_vec");
   db.exec("DELETE FROM app_settings WHERE key='knowledge_embed_dim'");
   console.log(`Cleared ${before} documents + chunks + vec table.`);

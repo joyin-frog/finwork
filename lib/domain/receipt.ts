@@ -32,6 +32,8 @@ export interface CalcReceiptBasis {
 
 /** 统一计算回执信封 */
 export interface CalcReceipt {
+  /** 判别字面量，用于 tool-cards 分发；makeCalcReceipt / validateCalcReceipt 自动补全 */
+  kind: "calc_receipt";
   /** 展示用元；内部计算一律整数分 */
   value: number;
   /** 金额必带单位；万元/千元只在展示层单向转换 */
@@ -48,7 +50,9 @@ export interface CalcReceipt {
 }
 
 /**
- * 校验器：校验通过返回原对象，否则抛出带说明的错误。
+ * 校验器：校验通过返回带 kind 的归一化对象，否则抛出带说明的错误。
+ * kind 字段归一化：校验通过后始终写入 "calc_receipt"（覆盖缺失值或错误值），
+ * 签名与返回类型不变，旧持久化数据自动升级。
  */
 export function validateCalcReceipt(r: unknown): CalcReceipt {
   if (typeof r !== "object" || r === null) {
@@ -86,6 +90,9 @@ export function validateCalcReceipt(r: unknown): CalcReceipt {
   if (typeof b.asOf !== "string") {
     throw new Error("CalcReceipt.basis.asOf 必须是字符串");
   }
+
+  // 归一化：始终写入 kind 判别字面量（兼容旧持久化数据无 kind 字段的情况）
+  rec.kind = "calc_receipt";
 
   return rec as unknown as CalcReceipt;
 }

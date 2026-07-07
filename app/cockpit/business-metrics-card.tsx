@@ -96,6 +96,7 @@ export function BusinessMetricsCard({ business }: { business: BusinessOverview |
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="flex size-6 items-center justify-center rounded-md fa-toned"
               style={{ "--tone": "var(--tone-neutral)" } as CSSProperties}
             >
@@ -110,6 +111,7 @@ export function BusinessMetricsCard({ business }: { business: BusinessOverview |
             )}
           </div>
           {/* Segmented control */}
+          {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
           <div className="flex rounded-md border border-border overflow-hidden text-meta">
             {(["month", "quarter", "year"] as ViewKey[]).map((k) => (
               <button
@@ -146,6 +148,7 @@ export function BusinessMetricsCard({ business }: { business: BusinessOverview |
             <p className="text-body text-muted-foreground">暂无经营数据</p>
             <Link
               href={`/chat/new?prompt=${EMPTY_PROMPT}`}
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="text-meta px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
             >
               上传利润表或口述数字

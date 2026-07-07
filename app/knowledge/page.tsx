@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { inferCategory } from "@/lib/knowledge/category";
 import type { DocMetadata } from "@/lib/knowledge/types";
+import { Surface } from "@/components/ui/surface";
 import { SearchResults } from "./search-results";
 import {
   buildHitLines, CAT_LABELS, CATS, fmtBytes, fmtTime, isStaleDoc, highlightLine,
@@ -38,12 +39,15 @@ function MetaStatusBadge({ status }: { status: string }) {
     : null;
   if (!spec) return null;
   return (
-    <span
-      className="fa-toned inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium"
+    <Surface
+      level="page"
+      edge="none"
+      shape="chip"
+      className="fa-toned inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium"
       style={{ ["--tone" as string]: spec.tone }}
     >
       <HugeiconsIcon icon={spec.icon} size={10} />{spec.label}
-    </span>
+    </Surface>
   );
 }
 
@@ -91,6 +95,7 @@ function MetadataPanel({
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card shrink-0">
         <span className="flex-1 min-w-0 text-meta font-medium truncate">{doc.title}</span>
         <MetaStatusBadge status={doc.meta_status} />
+        {/* eslint-disable-next-line no-restricted-syntax */}
         <button className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors" onClick={onClose} title="关闭">
           <HugeiconsIcon icon={Cancel01Icon} size={14} />
         </button>
@@ -107,6 +112,7 @@ function MetadataPanel({
           <div key={key} className="flex flex-col gap-0.5">
             <span className="text-caption text-muted-foreground uppercase tracking-wide">{label}</span>
             {editing ? (
+              /* eslint-disable-next-line no-restricted-syntax */
               <input
                 className="h-7 px-2 text-meta border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                 value={String(form[key] ?? "")}
@@ -132,7 +138,7 @@ function MetadataPanel({
             <div className="space-y-1">
               {(display.keyDates ?? []).map((kd, i) => (
                 <div key={i} className="flex gap-2 text-foreground">
-                  <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-caption">{kd.kind}</span>
+                  <Surface level="page" edge="none" shape="chip" className="px-1.5 py-0.5 bg-muted text-muted-foreground text-caption">{kd.kind}</Surface>
                   <span>{kd.date}</span>
                 </div>
               ))}
@@ -624,6 +630,7 @@ function KnowledgePageContent() {
           {linemap && hitLines.length > 0 ? (
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card shrink-0 min-h-[33px]">
               <span className="text-caption text-muted-foreground whitespace-nowrap">第 {hitIndex + 1}/{hitLines.length} 个匹配</span>
+              {/* eslint-disable-next-line no-restricted-syntax */}
               <button
                 className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                 onClick={() => navHit(-1)}
@@ -631,6 +638,7 @@ function KnowledgePageContent() {
               >
                 <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
               </button>
+              {/* eslint-disable-next-line no-restricted-syntax */}
               <button
                 className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                 onClick={() => navHit(1)}
@@ -639,6 +647,7 @@ function KnowledgePageContent() {
                 <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
               </button>
               <span className="flex-1" />
+              {/* eslint-disable-next-line no-restricted-syntax */}
               <button
                 className="px-2 h-7 flex items-center whitespace-nowrap text-caption border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                 onClick={() => setPreviewMode("search")}
@@ -662,6 +671,7 @@ function KnowledgePageContent() {
         </div>
       ) : (
         <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+          {/* eslint-disable-next-line no-restricted-syntax */}
           <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
             <HugeiconsIcon icon={PanelRightIcon} size={16} />
           </button>
@@ -672,6 +682,7 @@ function KnowledgePageContent() {
     ) : (
       previewLoading ? (
         <div className="relative flex items-center justify-center h-full text-body text-muted-foreground">
+          {/* eslint-disable-next-line no-restricted-syntax */}
           <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
             <HugeiconsIcon icon={PanelRightIcon} size={16} />
           </button>
@@ -686,6 +697,7 @@ function KnowledgePageContent() {
               <>
                 <span className="text-caption text-muted-foreground whitespace-nowrap">第 {hitIndex + 1}/{hitLines.length} 个匹配</span>
                 {focusedJumpable ? (
+                  // eslint-disable-next-line no-restricted-syntax
                   <button
                     className="px-2 h-7 flex items-center whitespace-nowrap text-caption border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                     onClick={() => void jumpToSource()}
@@ -694,6 +706,7 @@ function KnowledgePageContent() {
                     {focusedDocIsPdf ? "在原文中查看" : "在表格中查看"}
                   </button>
                 ) : null}
+                {/* eslint-disable-next-line no-restricted-syntax */}
                 <button
                   className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                   onClick={() => navHit(-1)}
@@ -701,6 +714,7 @@ function KnowledgePageContent() {
                 >
                   <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
                 </button>
+                {/* eslint-disable-next-line no-restricted-syntax */}
                 <button
                   className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                   onClick={() => navHit(1)}
@@ -712,6 +726,7 @@ function KnowledgePageContent() {
             ) : (
               <span className="text-caption text-muted-foreground">{lines.length} 行</span>
             )}
+            {/* eslint-disable-next-line no-restricted-syntax */}
             <button type="button" className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
               <HugeiconsIcon icon={PanelRightIcon} size={16} />
             </button>
@@ -750,6 +765,7 @@ function KnowledgePageContent() {
         </div>
       ) : (
         <div className="relative flex flex-col items-center justify-center gap-2 h-full text-center p-6 text-muted-foreground">
+          {/* eslint-disable-next-line no-restricted-syntax */}
           <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
             <HugeiconsIcon icon={PanelRightIcon} size={16} />
           </button>
@@ -780,6 +796,7 @@ function KnowledgePageContent() {
             <ResourceTabs active="knowledge" />
             <div className="ml-auto flex items-center gap-2 shrink-0">
               <ShortcutHint label="搜索" combo="mod+f">
+                {/* eslint-disable-next-line no-restricted-syntax */}
                 <button
                   type="button"
                   className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", query && "bg-accent text-foreground")}
@@ -791,6 +808,7 @@ function KnowledgePageContent() {
               </ShortcutHint>
               <span className="text-meta text-muted-foreground whitespace-nowrap shrink-0">{docs.length} 份文档</span>
               {sidebarCollapsed ? (
+                // eslint-disable-next-line no-restricted-syntax
                 <button
                   type="button"
                   className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
@@ -808,6 +826,7 @@ function KnowledgePageContent() {
           {/* Category chips */}
           <div className="flex gap-2 px-3.5 py-2 border-b border-border overflow-x-auto [scrollbar-width:none] shrink-0">
             {chips.map(({ key, label }) => (
+              // eslint-disable-next-line no-restricted-syntax
               <button
                 key={key}
                 className={cn(
@@ -822,6 +841,7 @@ function KnowledgePageContent() {
               </button>
             ))}
             {archivedCount > 0 && (
+              // eslint-disable-next-line no-restricted-syntax
               <button
                 className={cn(
                   "px-3 py-1 rounded-full border text-meta font-medium whitespace-nowrap cursor-pointer transition-colors",
@@ -888,6 +908,7 @@ function KnowledgePageContent() {
                     void doUpload(false, f, cat);
                   }}
                 />
+                {/* eslint-disable-next-line no-restricted-syntax */}
                 <button
                   type="button"
                   title="上传文档"
@@ -913,8 +934,8 @@ function KnowledgePageContent() {
                           <span>{doc.hit_count > 0 ? `检索 ${doc.hit_count} 次` : "未被检索"}</span>
                           <span className="text-muted-foreground/50">·</span>
                           <span>{doc.last_hit_at ? `最近 ${fmtTime(doc.last_hit_at)}` : `更新于 ${fmtTime(doc.updated_at)}`}</span>
-                          {archived && <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">已归档</span>}
-                          {stale && <span className="fa-toned px-1.5 py-0.5 rounded text-caption" style={{ ["--tone" as string]: "var(--tone-warn)" }}>长期未使用</span>}
+                          {archived && <Surface level="page" edge="none" shape="chip" className="px-1.5 py-0.5 bg-muted text-muted-foreground">已归档</Surface>}
+                          {stale && <Surface level="page" edge="none" shape="chip" className="fa-toned px-1.5 py-0.5 text-caption" style={{ ["--tone" as string]: "var(--tone-warn)" }}>长期未使用</Surface>}
                         </>
                       }
                       onClick={() => viewFile(doc)}

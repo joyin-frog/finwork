@@ -5,6 +5,7 @@ import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Invoice01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import { formatAmount, summarizeObligations, type CashObligation, type ObligationTotals } from "@/lib/domain/cash-obligations";
 
 /** 金额文案:已填合计 + 未填笔数(红线4:缺额不补 0,只说「未填额」)。 */
@@ -17,14 +18,14 @@ function amountText(t: ObligationTotals): string {
 
 function SummaryCell({ label, count, sub, tone }: { label: string; count: number; sub: string; tone: string }) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-md bg-muted/40 p-2.5 min-w-0">
+    <Surface level="page" edge="none" shape="control" className="flex flex-col gap-0.5 bg-muted/40 p-2.5 min-w-0">
       <span className="text-meta text-muted-foreground">{label}</span>
       <strong className="text-figure tabular-nums leading-none" style={count > 0 ? ({ color: tone } as CSSProperties) : undefined}>
         {count}
         <span className="text-meta font-normal text-muted-foreground"> 笔</span>
       </strong>
       <em className="text-meta text-muted-foreground not-italic truncate">{sub}</em>
-    </div>
+    </Surface>
   );
 }
 
@@ -33,6 +34,7 @@ export function CashObligationsCard({ obligations }: { obligations: CashObligati
   return (
     <Card>
       <CardHeader>
+        {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
         <div className="flex size-6 items-center justify-center rounded-md fa-toned" style={{ "--tone": "var(--tone-invoice)" } as CSSProperties}>
           <HugeiconsIcon icon={Invoice01Icon} size={13} aria-hidden />
         </div>

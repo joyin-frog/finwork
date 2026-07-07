@@ -107,6 +107,7 @@ function renderStepText(text: string): React.ReactNode {
   const parts = text.split(STEP_TOKEN);
   return parts.map((p, i) =>
     p && /(\/|\.[a-zA-Z]{1,6}$)/.test(p)
+      // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
       ? <code key={i} className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-meta">{p}</code>
       : p
   );
@@ -189,10 +190,12 @@ function ExpandedDetail({
             <img
               src={imgSrc}
               alt={filePath.split(/[/\\]/).pop() ?? ""}
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="max-h-32 max-w-full rounded border border-border/40 object-contain"
             />
           ) : (
             // 降级：路径 chip（无可用路由）
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             <code className="rounded bg-foreground/[0.07] px-1.5 py-0.5 font-mono text-small text-muted-foreground">
               {filePath}
             </code>

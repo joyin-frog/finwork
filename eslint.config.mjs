@@ -31,7 +31,35 @@ const config = [
       "react-hooks/exhaustive-deps": "warn",
       "@next/next/no-img-element": "warn"
     }
-  }
+  },
+  // ── WP8 Surface 护栏 ──────────────────────────────────────────────────────
+  // 增量禁止在 app/** 新增散落外观类（rounded/shadow/border 族）。
+  // warn 级：44 个存量文件未收敛，CI 不能红；WP8 全批次完成后升 error。
+  // 豁免：components/ui/**（shadcn 原语层）；app/dev/theme/**（调试台展示区）。
+  {
+    files: ["app/**/*.tsx"],
+    ignores: ["app/dev/theme/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "warn",
+        {
+          // 字符串字面量路径：className="... rounded-* ..." 等
+          selector:
+            'JSXAttribute[name.name="className"] Literal[value=/\\brounded(\\b|-)|\\bshadow-(?!none|\\[var)|(^|\\s)border(-[0-9])?(\\s|$)/]',
+          message:
+            "外观类请改用 Surface 原语或语义 token（见 docs/spec/spec-ui-foundation.md）",
+        },
+        {
+          // 模板字符串路径：className={`... rounded-* ...`} 等
+          // agent-detail-drawer.tsx:166 正是此写法，必须盖住。
+          selector:
+            'JSXAttribute[name.name="className"] TemplateElement[value.raw=/\\brounded(\\b|-)|\\bshadow-(?!none|\\[var)|(^|\\s)border(-[0-9])?(\\s|$)/]',
+          message:
+            "外观类请改用 Surface 原语或语义 token（见 docs/spec/spec-ui-foundation.md）",
+        },
+      ],
+    },
+  },
 ];
 
 export default config;

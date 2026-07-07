@@ -67,6 +67,7 @@ export function SkillsManager() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索技能..."
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             className="w-44 h-8 pl-7 pr-3 text-body rounded-md placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
@@ -96,6 +97,7 @@ export function SkillsManager() {
                 key={c.key}
                 type="button"
                 onClick={() => setCategory(c.key)}
+                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                 className={cn(
                   "px-3 py-1 rounded-md text-body transition-colors",
                   category === c.key

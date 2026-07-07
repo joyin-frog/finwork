@@ -46,13 +46,15 @@ export const flagsDbOverrideTestPromise = (async () => {
   deleteAppSetting("flag:ROUTER_ENABLED");
   _resetFlagsForTest();
 
-  // F6(源码契约): route.ts 在路由器关闭分支仍接了 matchTrivialMessage 本地直答
-  const routeSrc = readFileSync(
-    path.join(process.cwd(), "app/api/agent/query/route.ts"), "utf-8"
-  );
+  // F6(源码契约): query 管线在路由器关闭分支仍接了 matchTrivialMessage 本地直答
+  // WP10a 后拼接范围扩为 [route.ts, query-stages.ts]，断言字符串不变
+  const routeSrc = [
+    readFileSync(path.join(process.cwd(), "app/api/agent/query/route.ts"), "utf-8"),
+    readFileSync(path.join(process.cwd(), "lib/agent/query-stages.ts"), "utf-8"),
+  ].join("\n");
   assert.ok(
     routeSrc.includes("matchTrivialMessage(lastUserContent)"),
-    "F6 FAIL: route.ts 应在 ROUTER_ENABLED 关闭时走 matchTrivialMessage 本地直答"
+    "F6 FAIL: query 管线应在 ROUTER_ENABLED 关闭时走 matchTrivialMessage 本地直答"
   );
 
   // F7: matchTrivialMessage 问候有 directAnswer,业务消息返回 null

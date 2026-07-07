@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import { listRoleDispatchSummary, listRoleLatestStatus, listBlockedDispatches } from "@/lib/db/dispatch-store";
-import { getInvoiceLedgerStats, getPayrollPeriodSummary } from "@/lib/db/finance-store";
+import { getInvoiceLedgerStats, getPayrollPeriodSummary, hasMetricsForMonth } from "@/lib/db/finance-store";
 import { listSkills } from "@/lib/agent/skills-store";
 import { skillLabel } from "@/lib/agent/tools/renderers";
 import { getAppSetting, listConfirmedMetaDocRows } from "@/lib/db/sqlite";
@@ -109,7 +109,21 @@ export async function GET() {
 
     // 传完整 obligations(不按月过滤)——与 cockpit 同源:逾期的往月义务也算紧急,
     // 按月过滤会把上月未付、已逾期的合同从「等你拍板」里漏掉(cockpit 里却还在)。
-    const ruleItems = deriveAttentionItems(calendar, payroll, obligations);
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const metricsForLastMonth = hasMetricsForMonth(prevYear, prevMonth);
+
+    // allSkills 已在 line 28 await；直接过滤取 starter，读取失败传 undefined（R6 降级无预填跳转）
+    let filingPrecheckStarter: string | undefined;
+    try {
+      const precheckSkill = allSkills.find((s) => s.name === "filing-precheck");
+      filingPrecheckStarter = precheckSkill?.starter || undefined;
+    } catch {
+      filingPrecheckStarter = undefined;
+    }
+
+    // bookeeperInvoiceStats 已在 line 55 查询，直接复用（reviewer N5）
+    const ruleItems = deriveAttentionItems(calendar, payroll, obligations, bookeeperInvoiceStats, metricsForLastMonth, filingPrecheckStarter);
     const blockedDispatches = listBlockedDispatches(7);
     const gateItems = blockedDispatches.map((row) => {
       const reg = ROLE_REGISTRY.find((r) => r.id === row.roleId);

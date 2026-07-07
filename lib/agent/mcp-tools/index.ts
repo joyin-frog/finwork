@@ -14,6 +14,7 @@ import { createReconciliationTools } from "../tools/finance/reconciliation";
 import { createRecordDocumentMetadataTool } from "./document-metadata";
 import { createUpdateCompanyProfileTool } from "./profile";
 import { createFinalizeDeliverableTool } from "./finalize-deliverable";
+import { createEmitChecklistTool } from "./emit-checklist";
 import type { SdkLike } from "./sdk-types";
 import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
 
@@ -43,6 +44,8 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createUpdateCompanyProfileTool(sdk),
       // 收尾声明最终产物 → 成功收尾时清掉本回合未声明的中间/试错文件
       createFinalizeDeliverableTool(sdk, outputDir),
+      // WP14a: 把清单产物物化为可勾选工件
+      createEmitChecklistTool(sdk, undefined, conversationId),
     ],
   });
 }

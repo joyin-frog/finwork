@@ -569,4 +569,46 @@ void (async () => {
   const { resizablePreviewPanelTestPromise } = await import("./resizable-preview-panel.test.ts");
   await resizablePreviewPanelTestPromise;
 
+  const { dbMigrationDisciplineTestPromise } = await import("./db-migration-discipline.test.ts");
+  await dbMigrationDisciplineTestPromise;
+
+  const { dbFactsMigrationTestPromise } = await import("./db-facts-migration.test.ts");
+  await dbFactsMigrationTestPromise;
+
+  const { surfaceVariantsTestPromise } = await import("./ui/surface-variants.test.ts");
+  await surfaceVariantsTestPromise;
+
+  const { eslintAppearanceGuardTestPromise } = await import("./ui/eslint-appearance-guard.test.ts");
+  await eslintAppearanceGuardTestPromise;
+
+  const { policyRulesTestPromise } = await import("./policy-rules.test.ts");
+  await policyRulesTestPromise;
+
+  const { agentAttachmentsJsonTestPromise } = await import("./agent-attachments-json.test.ts");
+  await agentAttachmentsJsonTestPromise;
+
+  const { attentionPrecheckTestPromise } = await import("./attention-precheck.test.ts");
+  await attentionPrecheckTestPromise;
+
+  const { windowsHardeningTestPromise } = await import("./windows-hardening.test.ts");
+  await windowsHardeningTestPromise;
+
+  const { obligationsLiveTestPromise } = await import("./obligations-live.test.ts");
+  await obligationsLiveTestPromise;
+
+  const { invoiceWritePathTestPromise } = await import("./invoice-write-path.test.ts");
+  await invoiceWritePathTestPromise;
+
+  const { receivablesLiveTestPromise } = await import("./receivables-live.test.ts");
+  await receivablesLiveTestPromise;
+
+  const { parseCorpusTestPromise } = await import("./parse-corpus.test.ts");
+  await parseCorpusTestPromise;
+
+  const { queryStagesTestPromise } = await import("./query-stages.test.ts");
+  await queryStagesTestPromise;
+
+  const { artifactChecklistTestPromise } = await import("./artifact-checklist.test.ts");
+  await artifactChecklistTestPromise;
+
 })();

@@ -7,6 +7,7 @@ import {
   insertKnowledgeDocument,
   updateKnowledgeDocumentMetadata,
 } from "@/lib/db/sqlite";
+// WP1b: 删文档时同步清 fact_obligations 行
 import { parseDocument } from "./parsers";
 import type { KnowledgeCategory } from "./types";
 import { inferCategoryFromDocument } from "./category";
@@ -76,9 +77,12 @@ export async function ingestDocument(params: {
 }
 
 export function deleteDocument(documentId: number): void {
+  const db = getDb();
   const doc = getKnowledgeDocumentById(documentId);
   if (doc?.content_hash) {
     deleteTextMirror(doc.content_hash);
   }
+  // WP1b 写钩子：删文档前先清 fact_obligations 行（防悬空义务）
+  db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(documentId);
   deleteKnowledgeDocument(documentId);
 }

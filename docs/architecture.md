@@ -124,7 +124,7 @@ export_kingdee_draft(batch)
 - MCP 工具通过 `allowedTools` 精确放行，避免把权限扩大到不必要的工具范围。
 - 配置中心启用的本地 skills 会在每次调用前汇总进 system prompt，作为业务流程指令，而不是只停留在设置页。
 - Excel 任务参考 `excel-demo` 的模式：本地 `excel-finance` skill 负责流程约束，`inspect_excel_workbook` 负责先探查 workbook，复杂生成/改造交给 `run_python + openpyxl`。
-- `canUseTool` 会拦截 `AskUserQuestion`：SSE 通道默认拒绝并要求 Claude 用文本询问；WebSocket sidecar 可把问题推给前端并等待用户选择。
+- `canUseTool` 会拦截 `AskUserQuestion`：SSE 通道默认拒绝并要求 Claude 用文本询问；`createPendingQuestion` 机制把问题下发到前端并等待 `/api/agent/answer` 应答。
 - `Write/Edit/MultiEdit` 被限制在本次会话输出目录，避免 Agent 误改项目代码或用户其他文件。
 
 对话持久化同时保存应用会话和 Claude 会话的映射：
@@ -133,27 +133,9 @@ export_kingdee_draft(batch)
 - 首次调用前生成 Claude `session_id` UUID，写入 `chat_conversations.claude_session_id`，并通过 SDK `sessionId` 传给 Claude。
 - 后续同一对话调用 SDK 时使用 `resume: claude_session_id`，并只发送最新用户消息，避免重复提交历史上下文。
 
-### WebSocket sidecar
+### WebSocket sidecar（已移除，2026-07-07，功能由 HTTP+SSE 主路径覆盖）
 
-参考 Claude Agent SDK demo，项目新增可选长连接 sidecar：
-
-```bash
-npm run agent:ws
-```
-
-默认监听：
-
-```text
-ws://localhost:3761/agent
-```
-
-协议：
-
-- 前端发送 `{ "type": "prompt", "text": "...", "sessionId": "可选" }`。
-- 服务端返回 `connected/session/status/chunk/agent_event/question/done/error`。
-- 当 Claude 调用 `AskUserQuestion` 时，服务端发送 `question`，前端再用 `{ "type": "answer", "id": "...", "label": "..." }` 回答。
-
-现有 `/chat` 仍使用 Next API + SSE，因为它已经承载文件上传、SQLite 持久化和右侧文件栏。WebSocket sidecar 是桌面/Tauri 长连接方向的入口，后续可以逐步替换 SSE。
+原 `scripts/agent-ws-server.ts` 实验性 sidecar 已退役。`AskUserQuestion` 由 HTTP+SSE 主路径的 `createPendingQuestion` 机制处理，不再需要独立 WebSocket 进程。
 
 ## 风险分级
 

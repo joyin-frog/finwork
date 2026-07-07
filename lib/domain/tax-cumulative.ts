@@ -6,6 +6,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { DEFAULT_TAX_CONFIG, type TaxConfig } from "./tax-config";
 import { makeCalcReceipt, type CalcReceipt, type CalcStep, type CalcSource } from "./receipt";
 
@@ -157,7 +158,7 @@ export function calculateCumulativePayroll(
   const payload = JSON.stringify({ config, items: [{ ...input, prior: input.prior ?? null }] });
   let out: string;
   try {
-    out = execFileSync(getPythonPath(), [PAYROLL_SCRIPT], { input: payload, encoding: "utf-8" });
+    out = execFileSync(getPythonPath(), [PAYROLL_SCRIPT], { input: payload, encoding: "utf-8", env: pythonSpawnEnv() });
   } catch (e) {
     throw new Error(`薪税脚本执行失败:${e instanceof Error ? e.message : String(e)}`);
   }

@@ -43,9 +43,9 @@ export const dbHardeningTestPromise = (async () => {
   const count = restored.prepare("SELECT COUNT(*) AS n FROM audit_logs").get() as { n: number };
   assert.ok(count.n >= 1, "T3 FAIL: 备份应包含已写入的数据");
   const hasPayrollTable = restored
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='payroll_records'")
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='fact_payroll'")
     .get();
-  assert.ok(hasPayrollTable, "T3 FAIL: 备份应包含业务表");
+  assert.ok(hasPayrollTable, "T3 FAIL: 备份应包含业务表(fact_payroll)");
   restored.close();
   db.close();
   verified.close();

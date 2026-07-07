@@ -4,6 +4,7 @@ import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Surface } from "@/components/ui/surface";
 import { ROLE_UI } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
 import type { RoleCard } from "@/lib/domain/agent-board";
@@ -46,10 +47,13 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
   const canDispatch = !isDisabled;
 
   return (
-    <div
+    <Surface
+      level="card"
+      edge="hairline"
+      shape="card"
       className={[
-        "rounded-lg border bg-card cursor-pointer select-none transition-colors",
-        selected ? "border-foreground/30 ring-1 ring-foreground/10" : "border-border hover:border-foreground/20",
+        "cursor-pointer select-none transition-colors",
+        selected ? "border-foreground/30 ring-1 ring-foreground/10" : "hover:border-foreground/20",
         isDisabled && !isBlocked && !isRunning ? "opacity-60" : "",
         compact ? "px-3 py-2" : "px-4 py-3",
       ].filter(Boolean).join(" ")}
@@ -59,9 +63,10 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
       onKeyDown={(e) => e.key === "Enter" && onClick?.()}
       aria-pressed={selected}
     >
-      {/* 顶部行：头像 + 名称/域/状态 + 右上角开关 */}
+      {/* 顶部行：头像 + 名称/域/状态 + 右上角开关，Surface 作为容器 */}
       <div className="flex items-start gap-3">
         <span
+          // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
           className="fa-toned shrink-0 flex items-center justify-center rounded-full font-semibold select-none"
           style={{ "--tone": `var(${tone})`, width: avatarSize, height: avatarSize, fontSize: compact ? "0.75rem" : "0.875rem" } as CSSProperties}
           aria-hidden="true"
@@ -80,6 +85,7 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
               <span className="fa-tone-pill text-meta shrink-0" style={{ "--tone": "var(--tone-notice)" } as CSSProperties}>待拍板</span>
             )}
             {!card.available && (
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               <span className="text-meta px-1.5 py-0.5 rounded bg-muted text-muted-foreground">尚未启用</span>
             )}
           </div>
@@ -116,6 +122,6 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
           </Link>
         )}
       </div>
-    </div>
+    </Surface>
   );
 }

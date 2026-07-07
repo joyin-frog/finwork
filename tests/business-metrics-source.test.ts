@@ -29,20 +29,25 @@ export const businessMetricsSourceTestPromise = (async () => {
     process.env.FINANCE_AGENT_DB_PATH = dbPath;
 
     try {
-      const { openFinanceDatabase, initializeFinanceDatabase, backupDatabase } = await import("../lib/db/sqlite.ts");
+      const { openFinanceDatabase, initializeSchema, backupDatabase } = await import("../lib/db/sqlite.ts");
       const { runMigrations, LATEST_VERSION, getUserVersion } = await import("../lib/db/migrations.ts");
-
-      // 先用 v4 初始化（至今存在的最新迁移）
-      const db = openFinanceDatabase(dbPath);
-      initializeFinanceDatabase(db, dbPath);
 
       assert.ok(
         LATEST_VERSION >= 5,
         `T1 FAIL: 含 v5 迁移时 LATEST_VERSION 应 >= 5，实际 ${LATEST_VERSION}`
       );
 
+      // T1（v7 后）：v5 迁移把 business_metrics.source 'agent'→'user_dictated'；
+      // v7 迁移把 business_metrics 数据搬到 fact_metrics 后 DROP 旧表。
+      // 故此处先用 initializeSchema 建 baseline（含 business_metrics），设 user_version=4，
+      // 插入 source='agent' 存量数据，再跑 v5+v7 迁移，验证数据在 fact_metrics 且 source='user_dictated'。
+      //
+      // 用 initializeSchema 建 baseline（不跑迁移），再手动退到 v4
+      const db = openFinanceDatabase(dbPath);
+      initializeSchema(db);
+      db.exec(`PRAGMA user_version = 4`);
+
       // 在迁移前插入一行 source='agent'（存量数据）
-      // business_metrics 表由 baseline(v1) 创建，v4 前就存在
       db.prepare(
         `INSERT INTO business_metrics (year, month, revenue, cost, expense, profit, note, source, updated_at)
          VALUES (2025, 6, 100000, NULL, NULL, 20000, NULL, 'agent', datetime('now'))`
@@ -55,28 +60,27 @@ export const businessMetricsSourceTestPromise = (async () => {
       assert.ok(before, "T1 FAIL: 测试数据应插入成功");
       assert.equal(before!.source, "agent", "T1 FAIL: 插入时 source 应为 agent（存量模拟）");
 
-      // 裁决修订(2026-07-02):存量模拟必须真的把库退回 v4,让 v5 迁移在 runMigrations 里真实触发;
-      // 不许依赖"打开即修正"之类的隐藏 fixup——那会掩盖迁移缺失,也污染 openFinanceDatabase 的职责。
-      db.exec(`PRAGMA user_version = 4`);
       db.close();
 
-      // 重新打开后跑迁移:v4 → v5,存量 'agent' 行被 UPDATE
+      // 重新打开后跑迁移：v4 → LATEST（含 v5 source 映射 + v7 数据搬迁 + DROP 旧表）
       const db2 = openFinanceDatabase(dbPath);
       assert.equal(getUserVersion(db2), 4, "T1 前置: user_version 应已回退到 4");
       runMigrations(db2, dbPath, backupDatabase);
+
+      // v7 后旧表已 DROP，数据在 fact_metrics（source 已经过 v5 映射为 'user_dictated'）
       const afterRow = db2.prepare(
-        "SELECT source FROM business_metrics WHERE year=2025 AND month=6"
+        "SELECT source FROM fact_metrics WHERE year=2025 AND month=6"
       ).get() as { source: string } | undefined;
-      assert.ok(afterRow, "T1 FAIL: 迁移后存量行应仍存在");
+      assert.ok(afterRow, "T1 FAIL: 迁移后存量行应搬到 fact_metrics");
       assert.equal(
         afterRow!.source,
         "user_dictated",
-        `T1 FAIL: v5 迁移后 source 应为 user_dictated，实际 ${afterRow!.source}`
+        `T1 FAIL: v5+v7 迁移后 fact_metrics.source 应为 user_dictated，实际 ${afterRow!.source}`
       );
       // 第二次幂等
       runMigrations(db2, dbPath, backupDatabase);
       const afterRow2 = db2.prepare(
-        "SELECT source FROM business_metrics WHERE year=2025 AND month=6"
+        "SELECT source FROM fact_metrics WHERE year=2025 AND month=6"
       ).get() as { source: string } | undefined;
       assert.equal(
         afterRow2?.source,
@@ -85,10 +89,10 @@ export const businessMetricsSourceTestPromise = (async () => {
       );
       db2.close();
 
-      // 验证 LATEST_VERSION 已更新到 5
+      // 验证 LATEST_VERSION 已更新到 7+
       const db3 = openFinanceDatabase(dbPath);
       const finalVersion = getUserVersion(db3);
-      assert.ok(finalVersion >= 5, `T1 FAIL: 迁移后 user_version 应 >= 5，实际 ${finalVersion}`);
+      assert.ok(finalVersion >= 7, `T1 FAIL: 迁移后 user_version 应 >= 7，实际 ${finalVersion}`);
       db3.close();
 
       console.log("business-metrics-source T1: v5 迁移幂等 + 存量映射 ✓");
@@ -136,14 +140,14 @@ export const businessMetricsSourceTestPromise = (async () => {
       });
       assert.ok(!result.isError, `T2 FAIL: 工具调用不应报错: ${JSON.stringify(result.content)}`);
 
-      // 直接查库验证 source 字段
+      // 直接查库验证 source 字段（v7 后数据在 fact_metrics）
       const rawDb = new DatabaseSync(dbPath, { open: true });
       const row = rawDb.prepare(
-        "SELECT source FROM business_metrics WHERE year=2026 AND month=5"
+        "SELECT source FROM fact_metrics WHERE year=2026 AND month=5"
       ).get() as { source: string } | undefined;
       rawDb.close();
 
-      assert.ok(row, "T2 FAIL: 工具调用后应有对应行");
+      assert.ok(row, "T2 FAIL: 工具调用后应有对应行（fact_metrics）");
       assert.equal(
         row!.source,
         "user_dictated",

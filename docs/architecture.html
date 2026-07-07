@@ -275,11 +275,11 @@
           stroke-dasharray="6 5" opacity="0.85"/>
     <text class="boundary-title" x="60" y="370" fill="var(--be)">Next.js Route Handlers · 本地 HTTP API (app/api/, Node runtime)</text>
 
-    <g class="module" data-tip="Agent 主入口：SSE 流式返回 text/system/tool 事件；可选 WebSocket sidecar 支持 AskUserQuestion 真实问答。调用 lib/agent/claude-adapter。">
+    <g class="module" data-tip="Agent 主入口：SSE 流式返回 text/system/tool 事件；AskUserQuestion 由 createPendingQuestion 机制处理。调用 lib/agent/claude-adapter。">
       <rect x="72" y="392" width="200" height="92" rx="12" ry="12"
             fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.5"/>
       <text class="label-title" x="172" y="428" text-anchor="middle" fill="var(--be-ink)">/api/agent/query</text>
-      <text class="label-sub"   x="172" y="448" text-anchor="middle">SSE · WS sidecar</text>
+      <text class="label-sub"   x="172" y="448" text-anchor="middle">SSE · query-stages</text>
       <text class="label-sub"   x="172" y="466" text-anchor="middle">Claude Agent SDK</text>
     </g>
 
@@ -520,15 +520,12 @@
       <text class="label-sub"   x="572" y="1434" text-anchor="middle">REST (预留)</text>
     </g>
 
-    <g class="module" data-tip="WebSocket Sidecar (可选)：scripts/agent-ws-server.ts。让 AskUserQuestion 走真实问/答流，不被 SSE 降级成文本。端口 FINANCE_AGENT_WS_PORT 默认 3761。">
+    <g class="module" data-tip="WebSocket Sidecar 已移除（2026-07-07，功能由 HTTP+SSE 主路径覆盖）。">
       <rect x="752" y="1300" width="376" height="172" rx="12" ry="12"
-            fill="var(--ext-soft)" stroke="var(--ext)" stroke-width="1.5"/>
-      <text class="label-title" x="940" y="1342" text-anchor="middle" fill="var(--ext-ink)">WS Sidecar</text>
-      <text class="label-sub"   x="940" y="1362" text-anchor="middle">scripts/agent-ws-server.ts</text>
-      <text class="label-sub"   x="940" y="1380" text-anchor="middle">ws://localhost:3761</text>
-      <text class="label-sub"   x="940" y="1398" text-anchor="middle">AskUserQuestion 真实问答</text>
-      <text class="label-sub"   x="940" y="1416" text-anchor="middle">FINANCE_AGENT_WS_PORT</text>
-      <text class="label-sub"   x="940" y="1434" text-anchor="middle">可选进程</text>
+            fill="var(--ext-soft)" stroke="var(--ext)" stroke-width="1.5" opacity="0.4"/>
+      <text class="label-title" x="940" y="1342" text-anchor="middle" fill="var(--ext-ink)" opacity="0.5">WS Sidecar</text>
+      <text class="label-sub"   x="940" y="1370" text-anchor="middle" opacity="0.5">已移除（2026-07-07，</text>
+      <text class="label-sub"   x="940" y="1388" text-anchor="middle" opacity="0.5">功能由 HTTP+SSE 主路径覆盖）</text>
     </g>
 
     <!-- =================== EDGES ============================================== -->
@@ -639,7 +636,7 @@
     2) Harness 通过 <code>system-prompt + skills + hooks + allowed-tools</code> 给 Agent 装上世界观和护栏：路径沙箱、风险确认、AskUserQuestion 转写、耗时打点都在 hooks 链里。<br/>
     3) Router 先用 Haiku 做轻量分类，再交给主模型跑完整 turn；长上下文用 <code>session_id + resume</code> 续接；子任务用 Subagent Runner 隔离上下文窗口。<br/>
     4) 跨会话事实用 Memory Store 自动抽取 → SQLite → 下次 prompt 回灌。<br/>
-    5) 一切默认本机：SQLite、文件、向量索引、Python worker 都跑在 Tauri 进程里；外网出口只有 Claude API、金蝶 API 与可选的本机 WS sidecar。
+    5) 一切默认本机：SQLite、文件、向量索引、Python worker 都跑在 Tauri 进程里；外网出口只有 Claude API 与金蝶 API（WS sidecar 已移除，2026-07-07，功能由 HTTP+SSE 主路径覆盖）。
   </footer>
 
 </div>

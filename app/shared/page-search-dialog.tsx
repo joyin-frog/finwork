@@ -39,6 +39,7 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
     <div className="flex shrink-0 justify-end border-b border-border px-3.5 py-2">
       <form
         role="search"
+        // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
         className="flex h-9 w-full max-w-[280px] items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-xs"
         onSubmit={(event) => { event.preventDefault(); onSubmit?.(); }}
       >
@@ -55,6 +56,7 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
           type="button"
           aria-label="关闭搜索"
           onClick={() => onOpenChange(false)}
+          // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
           className="inline-grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <HugeiconsIcon icon={Cancel01Icon} size={14} />

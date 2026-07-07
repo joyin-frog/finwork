@@ -95,6 +95,12 @@ const summaries: Record<string, SummaryFn> = {
   record_reimbursement_invoices: (i) => { const count = arrayLen(i, "items"); return `登记报销发票${count ? `(${count} 张)` : ""}进台账`; },
   reconcile_bank_statement: (i) => { const bank = arrayLen(i, "bankRows"); const book = arrayLen(i, "bookRows"); return `银行流水对账(银行 ${bank} 笔 / 账面 ${book} 笔)`; },
   read_expense_policy: (i) => `查阅报销制度(${str(i, "section") || "全部"})`,
+  query_invoice_ledger: (i) => { const y = num(i, "year"); const m = num(i, "month"); return y != null && m != null ? `查询${y}年${m}月发票台账汇总` : "查询发票台账"; },
+  // WP13a: 应收账龄（T6）
+  query_receivables: (i) => {
+    const settled = (i as Record<string, unknown>)?.includeSettled === true ? "（含已收）" : "";
+    return `查询应收账款清单${settled}`;
+  },
   tax_calculator: (i) => {
     const kind = str(i, "type") === "cit" ? "企业所得税" : "增值税";
     const amount = num(i, "amount");
@@ -113,6 +119,14 @@ const summaries: Record<string, SummaryFn> = {
     const patchKeys = Object.keys((patch.patch && typeof patch.patch === "object") ? patch.patch as Record<string, unknown> : patch)
       .filter((k) => k !== "idempotency_key");
     return patchKeys.length ? `更新公司画像（${patchKeys.join("、")}）` : "更新公司画像";
+  },
+
+  // ─── WP14a: 物化可勾选清单工件 ───
+  emit_checklist: (i) => {
+    const title = str(i, "title");
+    const items = Array.isArray((i as Record<string, unknown>)?.items) ? (i as Record<string, unknown>).items as unknown[] : [];
+    const count = items.length;
+    return title ? `物化清单「${title.slice(0, 30)}」(${count} 项)` : `物化清单(${count} 项)`;
   },
 
   // ─── 收尾:声明最终产物 ───

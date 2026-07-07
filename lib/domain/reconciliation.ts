@@ -4,6 +4,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { makeCalcReceipt, type CalcReceipt, type CalcStep, type CalcSource } from "./receipt";
 
 export type ReconDirection = "in" | "out";
@@ -62,6 +63,11 @@ export type ReconResult = {
 export type ReconOptions = {
   /** 日期容差窗口(天),默认 0=要求同一天 */
   dateWindowDays?: number;
+  /** 可选文件名：传入时 source 的 bank/book 条目带 file 字段，未传行为不变 */
+  fileNames?: {
+    bank?: string;
+    book?: string;
+  };
 };
 
 const SCRIPT = path.join(getBundledPluginRoot(), "skills", "finance-analysis", "scripts", "reconciliation.py");
@@ -69,14 +75,15 @@ const SCRIPT = path.join(getBundledPluginRoot(), "skills", "finance-analysis", "
 /**
  * 功能2: 从对账结果构造 CalcReceipt。
  * - steps: 每笔勾对一步（银行行 ↔ 账面行 + 差额），带原始行号。
- * - source: bank/book 行数。
+ * - source: bank/book 行数，传了 fileNames 时附带文件名。
  * - asOf: 取所有输入中最晚日期的年月。
  * - settlementStatus 固定 "draft"（对账结果需人工确认，不是终值）。
  */
 function buildReconReceipt(
   result: Omit<ReconResult, "receipt">,
   bankInput: ReconInputRow[],
-  bookInput: ReconInputRow[]
+  bookInput: ReconInputRow[],
+  fileNames?: ReconOptions["fileNames"]
 ): CalcReceipt {
   const steps: CalcStep[] = result.matched.map((match) => ({
     label: `银行[${match.bank.index}]↔账面[${match.book.index}]`,
@@ -94,8 +101,8 @@ function buildReconReceipt(
   }));
 
   const source: CalcSource[] = [
-    { ref: "bank", recordCount: bankInput.length },
-    { ref: "book", recordCount: bookInput.length },
+    { ref: "bank", recordCount: bankInput.length, ...(fileNames?.bank ? { file: fileNames.bank } : {}) },
+    { ref: "book", recordCount: bookInput.length, ...(fileNames?.book ? { file: fileNames.book } : {}) },
   ];
 
   // asOf: 取所有输入日期中最晚的年月；无输入时用当月
@@ -139,7 +146,8 @@ export function reconcileBankStatement(
   try {
     out = execFileSync(getPythonPath(), [SCRIPT], {
       input: JSON.stringify({ bank: bankInput, book: bookInput, options }),
-      encoding: "utf-8"
+      encoding: "utf-8",
+      env: pythonSpawnEnv(),
     });
   } catch (e) {
     throw new Error(`对账脚本执行失败:${e instanceof Error ? e.message : String(e)}`);
@@ -148,6 +156,6 @@ export function reconcileBankStatement(
   if (parsed.error) throw new Error(parsed.error);
   if (!parsed.result) throw new Error("对账脚本无输出");
   const result = parsed.result;
-  const receipt = buildReconReceipt(result, bankInput, bookInput);
+  const receipt = buildReconReceipt(result, bankInput, bookInput, options.fileNames);
   return { ...result, receipt };
 }

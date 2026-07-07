@@ -118,6 +118,7 @@ function ShortcutsHelpDialog({
           data-slot="dialog-overlay"
           className="fixed inset-0 z-50 bg-scrim-modal duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
         />
+        {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
         <DialogPrimitive.Content
           data-slot="dialog-content"
           className="fixed top-[18%] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border-2 border-border bg-popover text-popover-foreground outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
@@ -137,6 +138,7 @@ function ShortcutsHelpDialog({
               <div key={group.title} className="flex flex-col gap-1.5">
                 <p className="text-meta text-muted-foreground tracking-wider">{group.title}</p>
                 {SHORTCUTS.filter((s) => group.scopes.includes(s.scope)).map((shortcut) => (
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                   <div key={shortcut.id} className="flex items-center justify-between gap-3 text-body py-1.5 -mx-2 px-2 rounded-md hover:bg-muted transition-colors">
                     <span>
                       {shortcut.description}

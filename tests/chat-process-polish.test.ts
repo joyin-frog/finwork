@@ -225,7 +225,13 @@ export const chatProcessPolishTestPromise = (async () => {
 
   // ── 第 8 项：工具条 focus-within + @media (hover: none) ──────────────────
   {
-    const chatSrc = src("app/chat/chat-page.tsx");
+    const chatSrc = [
+      "app/chat/chat-page.tsx",
+      "app/chat/components/assistant-turn.tsx",
+      "app/chat/components/user-bubble.tsx",
+      "app/chat/components/file-tray.tsx",
+      "app/chat/components/mention-popup.tsx",
+    ].map(src).join("\n"); // WP9a 拆解后哨兵读取范围扩为文件集(断言语义不变)
     const globalsCss = src("app/globals.css");
 
     // 8-C1: 工具条应有 focus-within 相关处理
@@ -295,7 +301,13 @@ export const chatProcessPolishTestPromise = (async () => {
 
   // ── 第 11 项：extractVoucherChips 被引用 ──────────────────────────────────
   {
-    const chatSrc = src("app/chat/chat-page.tsx");
+    const chatSrc = [
+      "app/chat/chat-page.tsx",
+      "app/chat/components/assistant-turn.tsx",
+      "app/chat/components/user-bubble.tsx",
+      "app/chat/components/file-tray.tsx",
+      "app/chat/components/mention-popup.tsx",
+    ].map(src).join("\n"); // WP9a 拆解后哨兵读取范围扩为文件集(断言语义不变)
 
     // 11-C1: extractVoucherChips 被调用
     assert.ok(

@@ -3,6 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod/v4";
 import { getPythonPath, getProjectRoot } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import type { SdkLike } from "./sdk-types";
 import { DocCache } from "./doc-cache";
 
@@ -49,7 +50,7 @@ export function createReadDocumentTool(sdk: SdkLike) {
               encoding: "utf-8",
               maxBuffer: 20 * 1024 * 1024,
               timeout: 180_000,
-              env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+              env: pythonSpawnEnv(),
             });
             return out.trim();
           }

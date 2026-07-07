@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { SPRING_DEFAULT } from "@/app/shared/motion-presets";
 import type { AskUserQuestionPayload } from "@/app/chat/chat-types";
 import { cn } from "@/lib/utils";
+import { surfaceVariants } from "@/components/ui/surface";
 import { extractAnswerSnippet } from "@/app/chat/answer-snippet";
 
 const FALLBACK_OPTIONS: Array<{ label: string; description?: string }> = [{ label: "确认" }, { label: "取消" }];
@@ -60,7 +61,7 @@ export function AskUserCard({
 
   return (
     <motion.div
-      className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-body flex flex-col gap-2"
+      className={cn(surfaceVariants({ level: "card", edge: "none", shape: "card" }), "border border-primary/30 bg-primary/5 px-3 py-2.5 text-body flex flex-col gap-2")}
       initial={{ opacity: 0, y: 6, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={SPRING_DEFAULT}
@@ -87,6 +88,7 @@ export function AskUserCard({
               type="button"
               disabled={submitting}
               title={option.description}
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className={cn(
                 "px-3 py-1 rounded-full border border-border bg-card text-meta",
                 "hover:bg-accent transition-colors cursor-pointer disabled:opacity-50"
@@ -127,6 +129,7 @@ function AnswerPair({ question, answer }: { question?: string; answer: string })
     <div className="flex items-center gap-2 min-w-0">
       {question ? <span className="shrink-0 text-muted-foreground">{question}</span> : null}
       <HugeiconsIcon icon={ArrowRight01Icon} size={12} className="shrink-0 text-muted-foreground/40" aria-hidden="true" />
+      {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
       <span className="min-w-0 truncate rounded-md bg-muted px-1.5 py-0.5 font-medium text-foreground">{stripRecommended(answer)}</span>
     </div>
   );

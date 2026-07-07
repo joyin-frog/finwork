@@ -2,6 +2,9 @@
 // 喂给总览的财务日历(本月时间地图)与待办(临近未完成切片)。纯函数、无 LLM、可复算(红线 2)。
 // 红线 3:只认 meta_status==='confirmed'(草稿不算);每条带 status,跨期不混。
 // 红线 4:无可信到期日 / 无方向(status)→ 跳过,不编。
+//
+// WP1a 落盘出口（persistDerivedObligations）：派生结果落到 fact_obligations 表（delete+insert 幂等）。
+// 消费切换（cockpit 读 fact_obligations）归 WP1b；本期仅提供落盘入口。
 import type { DocMetadata, KeyDate, MetaStatus } from "@/lib/knowledge/types";
 
 export type ObligationKind = "付款" | "收款" | "开票";
@@ -114,6 +117,78 @@ export function daysBetween(today: Date, dueDate: string): number {
   const [y, m, d] = dueDate.split("-").map(Number);
   const due = Date.UTC(y, (m ?? 1) - 1, d ?? 1);
   return Math.round((due - t) / 86_400_000);
+}
+
+/**
+ * WP1b 落盘出口（v9 新形状）：将派生义务写入 fact_obligations 表（delete+insert 幂等）。
+ * 按 source_document_id 粒度删再插，文档 metadata 变更/meta_status 变更时重派生可安全重调。
+ *
+ * 精度约定：元→分 round，|raw-rounded|>=0.005 时抛错（与 WP1a v7 迁移一致）。
+ * amount undefined → NULL（不是 0）。
+ *
+ * @param sourceDocumentId  文档 id（knowledge_documents.id）
+ * @param obligations       该文档的派生义务列表（来自 deriveCashObligations 过滤后的子集）
+ * @param db                DatabaseSync 实例
+ */
+export function persistDerivedObligations(
+  sourceDocumentId: number,
+  obligations: CashObligation[],
+  db: import("node:sqlite").DatabaseSync
+): void {
+  // 幂等：先删该文档的所有旧义务行。delete+insert 整体包一层事务——
+  // 若某行金额精度超差导致中途抛错，旧行需能整体回滚，不能出现"删了旧的、部分插了新的"半成品状态。
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(sourceDocumentId);
+
+    const insert = db.prepare(`
+      INSERT INTO fact_obligations
+        (kind, amount_cents, due_date, counterparty, status, status_raw, source_doc, recurrence,
+         source_document_id, settlement_status, source, provenance, derived_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'derived', 'agent_derived', NULL, datetime('now'))
+    `);
+
+    for (const obl of obligations) {
+      // kind 映射：付款→pay / 收款→receive / 开票→invoice
+      const kind: "pay" | "receive" | "invoice" =
+        obl.kind === "付款" ? "pay" :
+        obl.kind === "收款" ? "receive" :
+        "invoice";
+
+      // 金额：元→分，undefined→NULL，超差抛错
+      let amountCents: number | null = null;
+      if (typeof obl.amount === "number" && Number.isFinite(obl.amount)) {
+        const raw = obl.amount * 100;
+        const rounded = Math.round(raw);
+        if (Math.abs(raw - rounded) >= 0.005) {
+          throw new Error(
+            `精度超差（落盘中止）: 文档 ${sourceDocumentId} 金额 ${obl.amount} 元，|${raw} - ${rounded}| = ${Math.abs(raw - rounded).toFixed(6)} >= 0.005 分，请修正金额数据`
+          );
+        }
+        amountCents = rounded;
+      }
+
+      // 状态映射：done→settled，否则→pending
+      const status = obl.done ? "settled" : "pending";
+
+      insert.run(
+        kind,
+        amountCents,
+        obl.dueDate,
+        obl.counterparty,
+        status,
+        obl.status,          // status_raw：原始中文状态
+        obl.sourceDoc ?? null,
+        obl.recurrence ?? null,
+        sourceDocumentId
+      );
+    }
+
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 }
 
 /** 金额人话化:≥1万显示「X.X万」,否则「X元」。 */

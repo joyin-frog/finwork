@@ -1,5 +1,9 @@
-// 个税政策参数默认配置。所有政策数字只存在于此文件(及 app_settings 运行时覆盖),
+// 个税政策参数默认配置。所有政策数字只存在于此文件(及 policy_rule_sets 版本化规则表),
 // 引擎(tax-cumulative.ts)零政策数字。逐年调整,需核实当年政策。
+//
+// ⚠️ WP5a 语义变更：DEFAULT_TAX_CONFIG / DEFAULT_TAX_RATES 仅供 v8 迁移种子引用，
+// 不再作为运行时兜底（避免"过期政策藏进正常路径"）。
+// 运行期一律通过 loadTaxConfig(db, asOf) / loadTaxRates(db, asOf) 从 policy_rule_sets 读取。
 
 export type TaxBracket = {
   /** 累计应纳税所得额上限(元),最后一档为 Infinity */

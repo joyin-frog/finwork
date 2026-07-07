@@ -2,13 +2,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { getAppSetting } from "@/lib/db/sqlite";
-import { loadTaxRates } from "@/lib/db/finance-store";
+import { loadTaxRates, getInvoiceLedgerBreakdown } from "@/lib/db/finance-store";
 import { makeCalcReceipt, type CalcReceipt } from "@/lib/domain/receipt";
 import { redact } from "@/lib/safety/pii";
 
 import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
+import { listReceivablesRaw } from "@/lib/db/finance-store";
 
 type Sdk = SdkLike;
 
@@ -118,7 +120,7 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
       let text: string;
       let pyResult: PyTaxResult | undefined;
       try {
-        const out = execFileSync(getPythonPath(), [script], { input: JSON.stringify(args), encoding: "utf-8" });
+        const out = execFileSync(getPythonPath(), [script], { input: JSON.stringify(args), encoding: "utf-8", env: pythonSpawnEnv() });
         const parsed = JSON.parse(out) as { text?: string; result?: PyTaxResult };
         text = parsed.text ?? "参数不完整，请提供对应税种的计算参数。";
         pyResult = parsed.result;
@@ -131,10 +133,17 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
       const asOf = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       let receipt: CalcReceipt | undefined;
       if (pyResult) {
+        // source 按入参财务语言组装：描述本次计算的来源信息（金额与税率来自本次对话）
+        const sourceRef =
+          args.type === "vat" && args.vatParams
+            ? `金额 ${args.amount} 元与税率 ${args.vatParams.rate}（本次对话提供）`
+            : args.type === "cit" && args.citParams
+              ? `金额 ${args.amount} 元与税率 ${args.citParams.rate}（本次对话提供）`
+              : `金额 ${args.amount} 元（本次对话提供）`;
         receipt = makeCalcReceipt({
           value: pyResult.value,
           steps: pyResult.steps.map((s) => ({ label: s.label, expr: s.expr, inputs: {}, subtotal: s.subtotal })),
-          source: [],
+          source: [{ ref: sourceRef }],
           basis: { caliberVersion: pyResult.caliberVersion, settlementStatus: "draft", asOf },
           rounding: "half_up",
         });
@@ -147,7 +156,103 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
     }
   );
 
-  return [readExpensePolicy, taxCalculator];
+  const queryInvoiceLedger = sdk.tool(
+    "query_invoice_ledger",
+    "查询指定年月的发票台账汇总（只读）：总张数、进项张数与税额合计、未认证数、方向未标注数。用于申报前复核或台账自动核对。",
+    {
+      year: z.number().int().describe("年份，如 2026"),
+      month: z.number().int().min(1).max(12).describe("月份，1-12")
+    },
+    async (args: { year: number; month: number }) => {
+      try {
+        const breakdown = getInvoiceLedgerBreakdown(args.year, args.month);
+        const lines: string[] = [
+          `${args.year}年${args.month}月发票台账汇总：`,
+          `- 台账总张数：${breakdown.total} 张`,
+          `- 进项发票：${breakdown.directionIn.count} 张，税额合计 ${(breakdown.directionIn.taxAmountCentsSum / 100).toFixed(2)} 元`,
+          `- 未认证张数：${breakdown.uncertifiedCount} 张`,
+        ];
+        if (breakdown.directionUnknownCount > 0) {
+          lines.push(`- 方向未标注（历史记录）：${breakdown.directionUnknownCount} 张，未计入进项汇总`);
+        }
+        return {
+          content: [{ type: "text" as const, text: lines.join("\n") }],
+          structuredContent: {
+            total: breakdown.total,
+            directionIn: breakdown.directionIn,
+            uncertifiedCount: breakdown.uncertifiedCount,
+            directionUnknownCount: breakdown.directionUnknownCount,
+          }
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: `查询台账失败：${error instanceof Error ? error.message : String(error)}` }],
+          isError: true as const
+        };
+      }
+    }
+  );
+
+  const queryReceivables = sdk.tool(
+    "query_receivables",
+    "查询应收账款清单（合同收款义务，kind=receive）。每条带 agingDays（约定回款日距今天数，正=未到期，负=逾期）。用于账龄分析与催款清单生成。",
+    {
+      includeSettled: z
+        .boolean()
+        .optional()
+        .describe("是否包含已结算（已收款）义务，默认 false 只返回待收"),
+      asOf: z
+        .string()
+        .optional()
+        .describe("账龄基准日期 YYYY-MM-DD，缺省今天；传固定日期可用于测试确定性断言"),
+    },
+    async (args: { includeSettled?: boolean; asOf?: string }) => {
+      try {
+        const rows = listReceivablesRaw(undefined, {
+          includeSettled: args.includeSettled ?? false,
+          asOf: args.asOf,
+        });
+        const overdueCount = rows.filter((r) => r.agingDays < 0).length;
+        const amountUnknownCount = rows.filter((r) => r.amountCents === null).length;
+
+        const items = rows.map((r) => ({
+          counterparty: r.counterparty,
+          amountCents: r.amountCents,
+          dueDate: r.dueDate,
+          agingDays: r.agingDays,
+          status: r.status,
+          statusRaw: r.statusRaw,
+          sourceDoc: r.sourceDoc,
+        }));
+
+        const totalCount = rows.length;
+
+        const summaryLines: string[] = [
+          `应收账款清单：共 ${totalCount} 条，逾期 ${overdueCount} 条，金额未知 ${amountUnknownCount} 条。`,
+        ];
+        if (totalCount === 0) {
+          summaryLines.push("当前无应收记录。如需跟踪应收款，请先上传合同并确认关键信息。");
+        }
+
+        return {
+          content: [{ type: "text" as const, text: summaryLines.join("\n") }],
+          structuredContent: {
+            items,
+            totalCount,
+            overdueCount,
+            amountUnknownCount,
+          },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: `查询应收清单失败：${error instanceof Error ? error.message : String(error)}` }],
+          isError: true as const,
+        };
+      }
+    }
+  );
+
+  return [readExpensePolicy, taxCalculator, queryInvoiceLedger, queryReceivables];
 }
 
 /**

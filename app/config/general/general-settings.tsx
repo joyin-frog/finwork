@@ -67,6 +67,7 @@ export function GeneralSettings({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="block rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring/40"
               aria-label={userAvatar ? "更换头像" : "上传头像"}
               title={userAvatar ? "更换头像" : "上传头像"}
@@ -79,6 +80,7 @@ export function GeneralSettings({
                 onClick={() => onUserAvatarChange("")}
                 aria-label="移除头像"
                 title="移除头像"
+                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                 className="absolute -right-1 -top-1 inline-flex size-4 items-center justify-center rounded-full bg-muted text-muted-foreground ring-2 ring-background transition-colors hover:bg-accent hover:text-foreground"
               >
                 <HugeiconsIcon icon={Cancel01Icon} size={10} />

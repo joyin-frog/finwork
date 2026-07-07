@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { Surface } from "@/components/ui/surface";
 
 // 装好/跳过后不再打扰:组件就绪与 Key 提示在一个会话内一次性。
 const SESSION_OK = "fa-firstrun-ready";
@@ -164,7 +165,8 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
     <>
       {children}
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim-blocking">
-        <div className="w-[540px] max-w-[92vw] max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-background p-6 shadow-[var(--elevation-3)] flex flex-col gap-5">
+        {/* bg-background 覆盖 overlay 默认的 bg-popover：暗色下两 token 值不同，保持改造前视觉 */}
+        <Surface level="overlay" edge="hairline" shape="panel" className="w-[540px] max-w-[92vw] max-h-[90vh] overflow-y-auto bg-background p-6 flex flex-col gap-5">
           <h2 className="text-title">欢迎用小财</h2>
 
           {/* ① 装组件 */}
@@ -230,7 +232,7 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
               </>
             )}
           </div>
-        </div>
+        </Surface>
       </div>
     </>
   );
@@ -239,6 +241,7 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
 function StepHeader({ n, title, status, hint, optional }: { n: number; title: string; status: StepStatus; hint?: string; optional?: boolean }) {
   return (
     <div className="flex items-start gap-2">
+      {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
       <span className={cn(
         "mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full text-meta font-medium",
         status === "done" ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground"

@@ -144,6 +144,7 @@ export function UpdaterBody() {
       {status.state === "downloading" && (
         <div className="flex flex-col gap-2">
           <p className="text-body text-muted-foreground">下载中… {status.progress}%</p>
+          {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
           <div className="h-1.5 w-full max-w-xs bg-muted rounded-full overflow-hidden">
             <div
               className="h-full bg-primary transition-all"

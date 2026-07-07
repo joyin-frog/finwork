@@ -68,6 +68,7 @@ export function IconButton({
           onClick={onClick}
           aria-label={label}
           className={cn(
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             "inline-grid place-items-center size-7 rounded-md transition-colors",
             tone === "destructive"
               ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
@@ -89,6 +90,7 @@ export function SourceTag({ source }: { source: SkillSource }) {
   return (
     <span
       className={cn(
+        // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
         "shrink-0 rounded px-1.5 py-0.5 text-meta",
         source === "user" ? "text-[var(--primary)] bg-[var(--primary)]/8" : "text-muted-foreground bg-muted",
       )}

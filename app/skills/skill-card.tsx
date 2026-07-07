@@ -6,6 +6,7 @@ import { BubbleChatAddIcon } from "@hugeicons/core-free-icons";
 import { SourceTag } from "@/app/skills/skills-shared";
 import type { SkillSummary } from "@/app/skills/skills-shared";
 import { cn } from "@/lib/utils";
+import { surfaceVariants } from "@/components/ui/surface";
 
 export function SkillCard({ skill }: { skill: SkillSummary }) {
   const router = useRouter();
@@ -13,8 +14,9 @@ export function SkillCard({ skill }: { skill: SkillSummary }) {
     <Link
       href={`/skills/${encodeURIComponent(skill.name)}`}
       className={cn(
-        "group relative flex flex-col gap-2 rounded-lg border p-3 transition-colors",
-        "border-border hover:border-primary/40 hover:bg-accent/40",
+        surfaceVariants({ level: "card", edge: "hairline", shape: "card" }),
+        "group relative flex flex-col gap-2 p-3 transition-colors",
+        "hover:border-primary/40 hover:bg-accent/40",
         !skill.enabled && "opacity-60",
       )}
     >
@@ -31,6 +33,7 @@ export function SkillCard({ skill }: { skill: SkillSummary }) {
           aria-label="进入对话"
           disabled={!skill.enabled}
           onClick={(e) => { e.preventDefault(); if (skill.enabled) router.push(`/chat/new?skill=${encodeURIComponent(skill.name)}`); }}
+          // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
           className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-accent transition-colors disabled:pointer-events-none disabled:opacity-40"
         >
           <HugeiconsIcon icon={BubbleChatAddIcon} size={14} />

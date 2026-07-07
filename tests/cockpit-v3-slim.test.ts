@@ -83,10 +83,13 @@ export const cockpitV3SlimTestPromise = (async () => {
       !hasInvoicesKey,
       "C2a FAIL: route.ts 返回的 data 不应含 invoices 字段 key（已迁往 /agents，非注释行）"
     );
-    // 裁决补强(2026-07-02):字段迁走后调用也要删干净,不留死代码
+    // WP2a(2026-07-06): getInvoiceLedgerStats 现用于内部 attention R7 规则推导（非响应字段），
+    // 不再禁止函数调用——只守卫「invoices 字段不出现在响应数据对象」这一原意。
+    // 守卫：响应数据对象不含 invoices 键（data.invoices 不出现；内部 invoiceStats 变量允许）
+    const hasInvoicesInDataObj = routeCodeLines.some((l) => /\binvoices\s*:/.test(l) && l.includes("data"));
     assert.ok(
-      !routeSrc.includes("getInvoiceLedgerStats"),
-      "C2a2 FAIL: route.ts 不应再调用 getInvoiceLedgerStats（发票计数已迁往 /api/agents）"
+      !hasInvoicesInDataObj,
+      "C2a2 FAIL: route.ts 响应数据对象不应含 invoices 键（invoices 字段已迁往 /api/agents；内部 invoiceStats 变量不受限）"
     );
   }
 

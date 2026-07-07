@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { getProjectRoot, getPythonPath } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { createLogger } from "@/lib/runtime/logger";
 import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
@@ -55,23 +56,16 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: strin
       const child = spawn(pythonPath, [workerPath, "run"], {
         // cwd 设为输出目录:即使模型用相对路径保存,也能落进可追踪目录
         cwd: outputDir,
-        env: {
-          ...process.env,
+        env: pythonSpawnEnv({
           FINANCE_AGENT_OUTPUT_DIR: outputDir,
           FINANCE_AGENT_TRACE_ID: traceId ?? "",
           // 本回合开始前已有的产物文件名(供 worker 防覆盖守卫判断"哪些算上一版");
           // 本回合内新建的不在此列 → 守卫不会给它们加 _v2,跨多次调用也覆盖同一文件。
           FINANCE_AGENT_TURN_BEFORE: JSON.stringify(turnBeforeFiles),
-          // 强制 Python UTF-8 模式:Node 默认按 UTF-8 把 code 写进 stdin,而 Windows 中文系统默认
-          // stdio/文件编码是 cp936/GBK → sys.stdin.read() 误解码出游离代理(\udcXX)→ exec/print 报
-          // "surrogates not allowed";open() 不显式指定编码也会按 GBK 写出乱码。PYTHONUTF8=1 让 stdin/
-          // stdout/stderr 与默认文件编码统一为 UTF-8(worker 内还有 reconfigure 兜底,双保险)。
-          PYTHONUTF8: "1",
-          PYTHONIOENCODING: "utf-8",
           PATH: process.env.PATH ?? "",
           HOME: process.env.HOME ?? "",
           ...(process.env.VIRTUAL_ENV ? { VIRTUAL_ENV: process.env.VIRTUAL_ENV } : {})
-        },
+        }),
         timeout: 60_000,
         stdio: "pipe"
       });

@@ -52,6 +52,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="zh-CN"
+      data-style="default"
       className={cn(GeistSans.variable, GeistMono.variable, inter.variable, jetbrainsMono.variable)}
       suppressHydrationWarning
     >

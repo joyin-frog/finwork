@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { getProjectRoot, getPythonPath } from "./paths";
+import { pythonSpawnEnv } from "./python-env";
 
 export type PythonDoctorResult = {
   ok: boolean;
@@ -71,7 +72,7 @@ export async function checkPythonEnvironment(opts?: { runner?: Runner; exists?: 
 
 function defaultRunner(pythonPath: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(pythonPath, args, { timeout: 30_000 }, (error, stdout, stderr) => {
+    execFile(pythonPath, args, { timeout: 30_000, env: pythonSpawnEnv() }, (error, stdout, stderr) => {
       if (error) reject(new Error(stderr || error.message));
       else resolve(stdout);
     });

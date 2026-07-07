@@ -16,6 +16,7 @@ import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowExpand01Icon, ArrowShrink01Icon, PanelRightIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import { FilePreviewPage, type LocalPreviewFile } from "@/app/shared/file-preview-page";
 import { ROLE_UI } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
@@ -52,10 +53,11 @@ export function AgentDetailDrawer({
     ) ?? [];
 
   return (
-    <div className="flex flex-col overflow-hidden h-full bg-card">
+    <Surface level="card" edge="none" shape="none" className="flex flex-col overflow-hidden h-full">
         {/* 头部：单行，与列表列 h-11 标题栏对齐——padding 同 .preview-head-card（中线 22px、分隔线 44px）。
             avatar / icon-btn 均 32px 高，名称+简介同一行（简介 truncate），不再撑成两行。 */}
         <div className="flex items-center gap-3 px-[14px] pt-px pb-1.5 border-b border-border shrink-0">
+          {/* eslint-disable-next-line no-restricted-syntax */}
           <span
             className="fa-toned shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-body font-semibold select-none"
             style={{ "--tone": `var(${tone})` } as CSSProperties}
@@ -117,7 +119,7 @@ export function AgentDetailDrawer({
               <section>
                 <p className="text-meta font-medium text-muted-foreground mb-2">当前状态</p>
                 {isRunning && (
-                  <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
+                  <Surface level="page" edge="hairline" shape="control" className="flex items-center gap-2 bg-muted/40 px-3 py-2">
                     <span
                       className="fa-tone-dot fa-dot-pulse shrink-0"
                       style={{ "--tone": "var(--tone-analysis)" } as CSSProperties}
@@ -128,11 +130,14 @@ export function AgentDetailDrawer({
                         — {card.lastSummary.split("\n")[0]}
                       </span>
                     )}
-                  </div>
+                  </Surface>
                 )}
                 {isBlocked && !isRunning && card.conversationId && (
-                  <div
-                    className="flex items-center gap-2 rounded-md border border-border px-3 py-2 fa-toned"
+                  <Surface
+                    level="page"
+                    edge="hairline"
+                    shape="control"
+                    className="flex items-center gap-2 px-3 py-2 fa-toned"
                     style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
                   >
                     <span className="fa-tone-pill text-meta shrink-0">停在确认门</span>
@@ -142,7 +147,7 @@ export function AgentDetailDrawer({
                     <Link href={`/chat/recent?id=${card.conversationId}`} className="shrink-0">
                       <Button variant="outline" size="sm">去确认</Button>
                     </Link>
-                  </div>
+                  </Surface>
                 )}
               </section>
             )}
@@ -162,6 +167,7 @@ export function AgentDetailDrawer({
                       ? `/chat/recent?id=${row.conversationId}`
                       : undefined;
                     const inner = (
+                      // eslint-disable-next-line no-restricted-syntax
                       <div
                         className={`flex items-start gap-2 rounded px-2 py-1.5 text-meta ${isRowBlocked ? "fa-toned" : "bg-muted/40"}`}
                         style={
@@ -212,6 +218,7 @@ export function AgentDetailDrawer({
                 <p className="text-meta font-medium text-muted-foreground mb-2">文件产物</p>
                 <div className="flex flex-col gap-1.5">
                   {fileDispatches.map((d) => (
+                    // eslint-disable-next-line no-restricted-syntax
                     <button
                       key={d.id}
                       type="button"
@@ -244,12 +251,15 @@ export function AgentDetailDrawer({
               <p className="text-meta font-medium text-muted-foreground mb-2">数据权限</p>
               <div className="flex flex-wrap gap-1.5">
                 {card.dataScope.map((scope) => (
-                  <span
+                  <Surface
                     key={scope}
-                    className="text-meta px-2 py-0.5 rounded-full border border-border bg-muted/50"
+                    level="page"
+                    edge="hairline"
+                    shape="pill"
+                    className="text-meta px-2 py-0.5 bg-muted/50"
                   >
                     {scope}
-                  </span>
+                  </Surface>
                 ))}
               </div>
             </section>
@@ -260,19 +270,22 @@ export function AgentDetailDrawer({
                 <p className="text-meta font-medium text-muted-foreground mb-2">会做的活</p>
                 <div className="flex flex-wrap gap-1.5">
                   {card.skills.map((skill) => (
-                    <span
+                    <Surface
                       key={skill.name}
+                      level="page"
+                      edge="hairline"
+                      shape="pill"
+                      className="text-meta px-2 py-0.5 bg-muted/50 cursor-help"
                       title={skill.description}
-                      className="text-meta px-2 py-0.5 rounded-full border border-border bg-muted/50 cursor-help"
                     >
                       {skill.name}
-                    </span>
+                    </Surface>
                   ))}
                 </div>
               </section>
             )}
           </div>
         )}
-      </div>
+      </Surface>
   );
 }

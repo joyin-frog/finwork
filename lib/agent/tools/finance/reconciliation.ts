@@ -38,9 +38,11 @@ export function createReconciliationTools(sdk: Sdk) {
           })
         )
         .describe("账面/台账行"),
-      dateWindowDays: z.number().int().nullish().describe("日期容差窗口(天),默认 0=要求同一天。银行入账与记账有时差时可放宽到 1-3 天")
+      dateWindowDays: z.number().int().nullish().describe("日期容差窗口(天),默认 0=要求同一天。银行入账与记账有时差时可放宽到 1-3 天"),
+      bankFileName: z.string().nullish().describe("银行流水来源文件名(可选)，传入时写入对账回执的 source 字段，便于溯源"),
+      bookFileName: z.string().nullish().describe("账面/台账来源文件名(可选)，传入时写入对账回执的 source 字段，便于溯源")
     },
-    async (args: { bankRows: ReconInputRow[]; bookRows: ReconInputRow[]; dateWindowDays?: number | null }) => {
+    async (args: { bankRows: ReconInputRow[]; bookRows: ReconInputRow[]; dateWindowDays?: number | null; bankFileName?: string | null; bookFileName?: string | null }) => {
       try {
         if (args.bankRows.length === 0 && args.bookRows.length === 0) {
           return {
@@ -50,7 +52,10 @@ export function createReconciliationTools(sdk: Sdk) {
         }
 
         const result = reconcileBankStatement(args.bankRows, args.bookRows, {
-          dateWindowDays: args.dateWindowDays ?? 0
+          dateWindowDays: args.dateWindowDays ?? 0,
+          ...(args.bankFileName || args.bookFileName
+            ? { fileNames: { bank: args.bankFileName ?? undefined, book: args.bookFileName ?? undefined } }
+            : {})
         });
         const s = result.summary;
 

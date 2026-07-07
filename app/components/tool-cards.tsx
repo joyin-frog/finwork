@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Surface } from "@/components/ui/surface";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SuccessIcon, WarningIcon } from "@/lib/icons";
 import { formatCny } from "@/lib/format";
@@ -14,14 +15,19 @@ import {
   type VoucherValidationCardData
 } from "./kingdee-card-data";
 import { ReceiptCard, parseCalcReceiptStructured } from "./receipt-card";
+import { ChecklistCard, parseChecklistStructured } from "./checklist-card";
 
-/** 已实现专属卡片的财务工具列表(裸名)。与下方 ToolResultCard 分发逻辑保持一致。 */
+/**
+ * 已实现专属卡片的财务工具列表(裸名)。与下方 ToolResultCard 分发逻辑保持一致。
+ * 注意：kind 判别（artifact_checklist）不依赖工具名，此处仅记录工具名注册（供 tool-registry.test.ts 镜像）。
+ */
 export const TOOLS_WITH_RESULT_CARD = [
   "calculate_payroll_batch",
   "check_reimbursement_batch",
   "export_kingdee_draft",
   "validate_kingdee_voucher",
   "diff_payroll_period",
+  "emit_checklist",
 ] as const;
 
 /**
@@ -32,7 +38,12 @@ export function ToolResultCard({ name, structured }: { name: string; structured:
   if (structured == null) return null;
   const bare = name.replace(/^mcp__\w+__/, "");
   let card: ReactNode = null;
-  if (bare === "calculate_payroll_batch") {
+  // kind 判别优先（WP4a 模式）：structured 已声明自己是 artifact_checklist
+  if ((structured as Record<string, unknown> | null)?.kind === "artifact_checklist") {
+    const data = parseChecklistStructured(structured);
+    card = data ? <ChecklistCard data={data} /> : null;
+    return card ? <div className="px-1 pb-1">{card}</div> : null;
+  } else if (bare === "calculate_payroll_batch") {
     const data = parsePayrollStructured(structured);
     card = data ? <PayrollResultCard data={data} /> : null;
   } else if (bare === "check_reimbursement_batch") {
@@ -47,8 +58,13 @@ export function ToolResultCard({ name, structured }: { name: string; structured:
   } else if (bare === "diff_payroll_period") {
     const data = parsePayrollDiffStructured(structured);
     card = data ? <PayrollDiffCard data={data} /> : null;
+  } else if ((structured as Record<string, unknown> | null)?.kind === "calc_receipt") {
+    // kind 判别优先：structured 已声明自己是 CalcReceipt，直接解析渲染。
+    const receipt = parseCalcReceiptStructured(structured);
+    card = receipt ? <ReceiptCard receipt={receipt} /> : null;
   } else {
-    // 通用兜底:任何带 CalcReceipt 形状结构化结果的工具(如 tax_calculator)渲染可下钻回执卡片。
+    // 形状猜测兜底：任何带 CalcReceipt 形状的工具结果（无 kind 的历史数据或其他工具）
+    // parseCalcReceiptStructured 内部 validateCalcReceipt 会归一化补 kind。
     const receipt = parseCalcReceiptStructured(structured);
     card = receipt ? <ReceiptCard receipt={receipt} /> : null;
   }
@@ -57,7 +73,7 @@ export function ToolResultCard({ name, structured }: { name: string; structured:
 
 function ReimbursementResultCard({ data }: { data: ReimbursementCardData }) {
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface className="shadow-none text-body overflow-hidden">
       <div className={`px-3 py-2 border-b text-meta flex items-center gap-2 ${
         data.abnormalCount > 0 ? "border-[color:var(--tone-notice)]/30 bg-[color:var(--tone-notice)]/12" : "border-border text-muted-foreground"
       }`}>
@@ -101,13 +117,13 @@ function ReimbursementResultCard({ data }: { data: ReimbursementCardData }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </Surface>
   );
 }
 
 function VoucherDraftCard({ data }: { data: VoucherDraftCardData }) {
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface className="shadow-none text-body overflow-hidden">
       {data.simulated ? (
         <div className="px-3 py-2 border-b border-[color:var(--tone-notice)]/30 bg-[color:var(--tone-notice)]/12 text-meta flex items-center gap-2">
           <HugeiconsIcon icon={WarningIcon} size={13} className="shrink-0" aria-hidden="true" />
@@ -162,13 +178,13 @@ function VoucherDraftCard({ data }: { data: VoucherDraftCardData }) {
           </tfoot>
         </table>
       </div>
-    </div>
+    </Surface>
   );
 }
 
 function VoucherValidationCard({ data }: { data: VoucherValidationCardData }) {
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface className="shadow-none text-body overflow-hidden">
       <div className={`px-3 py-2 text-meta flex items-center gap-2 ${
         data.valid ? "text-muted-foreground" : "bg-destructive/10 text-destructive"
       }`}>
@@ -185,7 +201,7 @@ function VoucherValidationCard({ data }: { data: VoucherValidationCardData }) {
           {data.warnings.map((warning) => <li key={warning}>• {warning}</li>)}
         </ul>
       ) : null}
-    </div>
+    </Surface>
   );
 }
 

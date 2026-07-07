@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Surface } from "@/components/ui/surface";
 import { FileTypeIcon } from "@/app/shared/file-type-icon";
 import { cn } from "@/lib/utils";
 
@@ -73,14 +74,20 @@ export function ResourceCard({
   const hasMenu = menuItems.length > 0;
 
   return (
-    <article
+    <Surface
+      level="card"
+      edge="hairline"
+      shape="card"
+      // Surface provides shape=card (lg) + edge=hairline + level=card shadow.
+      // Selected/colorCls/archived overrides added via className.
       className={cn(
-        "group relative flex flex-col gap-2 rounded-lg border p-3 transition-colors cursor-pointer",
+        "group relative flex flex-col gap-2 p-3 transition-colors cursor-pointer",
         selected
           ? "border-primary bg-accent ring-1 ring-primary/40"
-          : colorCls ?? "border-border hover:border-primary/40 hover:bg-accent/40",
+          : colorCls ?? "hover:border-primary/40 hover:bg-accent/40",
         archived && "opacity-60",
       )}
+      role="article"
       onClick={onClick}
     >
       {/* ⋮ 菜单 – 右上角 */}
@@ -91,6 +98,7 @@ export function ResourceCard({
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
+              {/* eslint-disable-next-line no-restricted-syntax */}
               <button
                 type="button"
                 className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -144,6 +152,7 @@ export function ResourceCard({
         onClick={(e) => e.stopPropagation()}
       >
         {onChat ? (
+          // eslint-disable-next-line no-restricted-syntax
           <button
             type="button"
             title="添加到对话"
@@ -155,6 +164,7 @@ export function ResourceCard({
           </button>
         ) : <span />}
         {onDownload ? (
+          // eslint-disable-next-line no-restricted-syntax
           <button
             type="button"
             title="下载/另存为"
@@ -166,6 +176,6 @@ export function ResourceCard({
           </button>
         ) : <span />}
       </div>
-    </article>
+    </Surface>
   );
 }

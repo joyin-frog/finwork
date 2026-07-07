@@ -126,5 +126,89 @@ export const receiptTestPromise = (async () => {
   });
   assert.deepEqual(sourceReceipt.source, withSource, "T12 FAIL: 自定义 source 应透传");
 
+  // ── kind 判别契约（WP4a-K1 ~ K5）──────────────────────────────────────────
+  // K1: makeCalcReceipt 输出必须带 kind="calc_receipt"
+  assert.equal(
+    (basic as unknown as Record<string, unknown>).kind,
+    "calc_receipt",
+    "K1 FAIL: makeCalcReceipt 输出缺少 kind='calc_receipt'"
+  );
+
+  // K2: validateCalcReceipt — 带 kind 的合法对象直接通过，kind 保留
+  const withKind = validateCalcReceipt({
+    kind: "calc_receipt",
+    value: 100,
+    unit: "CNY",
+    rounding: "half_up",
+    steps: [],
+    source: [],
+    basis: { caliberVersion: "v1", settlementStatus: "draft", asOf: "2025-01" },
+  });
+  assert.equal(
+    (withKind as unknown as Record<string, unknown>).kind,
+    "calc_receipt",
+    "K2 FAIL: 带 kind 的合法对象通过后 kind 应保留"
+  );
+
+  // K3: validateCalcReceipt — 缺 kind 但形状合格时归一化补 kind（不报错）
+  const normalized = validateCalcReceipt({
+    value: 200,
+    unit: "CNY",
+    rounding: "half_up",
+    steps: [],
+    source: [],
+    basis: { caliberVersion: "v1", settlementStatus: "draft", asOf: "2025-02" },
+  });
+  assert.equal(
+    (normalized as unknown as Record<string, unknown>).kind,
+    "calc_receipt",
+    "K3 FAIL: 缺 kind 但形状合格时 validateCalcReceipt 应归一化补 kind"
+  );
+  assert.equal(normalized.value, 200, "K3 FAIL: 归一化后 value 应保留");
+
+  // K4: validateCalcReceipt — 形状不合格（缺 value）应拒绝
+  assert.throws(
+    () =>
+      validateCalcReceipt({
+        kind: "calc_receipt",
+        unit: "CNY",
+        rounding: "half_up",
+        steps: [],
+        source: [],
+        basis: { caliberVersion: "v1", settlementStatus: "draft", asOf: "2025-01" },
+      }),
+    /value|有限数/,
+    "K4 FAIL: 形状不合格（缺 value）应抛错"
+  );
+
+  // K5: kind 错误值不影响其余字段校验——仍允许归一化覆盖（不属于拒绝条件）
+  const wrongKind = validateCalcReceipt({
+    kind: "other_kind",
+    value: 50,
+    unit: "CNY",
+    rounding: "half_up",
+    steps: [],
+    source: [],
+    basis: { caliberVersion: "v1", settlementStatus: "draft", asOf: "2025-03" },
+  });
+  assert.equal(
+    (wrongKind as unknown as Record<string, unknown>).kind,
+    "calc_receipt",
+    "K5 FAIL: 错误 kind 值应被覆盖归一化为 'calc_receipt'"
+  );
+
+  // ── tax_calculator source 补链（WP4a-TX1 ~ TX2）──────────────────────────
+  // 验证 tax source 字段约定（实现后 finance-tools.ts:137 处按入参组装）
+  // 此处测试 source 结构可带 ref 和可读描述——作为契约断言
+  // TX1: vat 入参 source 条目应含描述性信息（非空 ref 包含 amount/rate 信息）
+  const vatSourceEntry: CalcSource = { ref: "金额 1000 元与税率 0.13（本次对话提供）" };
+  assert.ok(vatSourceEntry.ref?.includes("1000"), "TX1 FAIL: vat source ref 应含 amount 信息");
+  assert.ok(vatSourceEntry.ref?.includes("0.13"), "TX1 FAIL: vat source ref 应含 rate 信息");
+
+  // TX2: cit 入参 source 条目同理
+  const citSourceEntry: CalcSource = { ref: "金额 500000 元与税率 0.25（本次对话提供）" };
+  assert.ok(citSourceEntry.ref?.includes("500000"), "TX2 FAIL: cit source ref 应含 amount");
+  assert.ok(citSourceEntry.ref?.includes("0.25"), "TX2 FAIL: cit source ref 应含 rate");
+
   console.log("receipt: CalcReceipt schema / 构造器 / 校验器 / tax-cumulative 回执字段 ✓");
 })();

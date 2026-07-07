@@ -12,6 +12,7 @@ import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Surface } from "@/components/ui/surface";
 import type { AskUserQuestionPayload } from "@/app/chat/chat-types";
 import { getSubQuestions, formatSelection, buildAnswer, allAnswered } from "@/app/components/ask-user-multi-state";
 
@@ -132,7 +133,7 @@ export function AskUserPanel({
     const consequenceLine = lines[lines.length - 1] ?? "";
 
     return (
-      <div className="rounded-2xl border border-border bg-card px-4 pt-3 pb-3 flex flex-col gap-3">
+      <Surface level="card" edge="hairline" shape="overlay" className="shadow-none px-4 pt-3 pb-3 flex flex-col gap-3">
         {/* 顶部走光「操作确认」 */}
         <Marker role="status" aria-label="操作确认" className="justify-between text-meta">
           <MarkerContent
@@ -150,13 +151,16 @@ export function AskUserPanel({
 
         {/* 后果(最后一段,告警色) */}
         {consequenceLine && (
-          <div
-            className="text-body whitespace-pre-line fa-toned rounded px-2 py-1.5"
-            style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
-          >
-            <span className="fa-tone-pill font-medium">后果</span>{" "}
-            {consequenceLine}
-          </div>
+          <>
+            {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
+            <div
+              className="text-body whitespace-pre-line fa-toned rounded px-2 py-1.5"
+              style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
+            >
+              <span className="fa-tone-pill font-medium">后果</span>{" "}
+              {consequenceLine}
+            </div>
+          </>
         )}
 
         {/* 两按钮:确认执行 / 取消 */}
@@ -178,12 +182,12 @@ export function AskUserPanel({
             确认执行
           </Button>
         </div>
-      </div>
+      </Surface>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card px-4 pt-3 pb-3 flex flex-col gap-3">
+    <Surface level="card" edge="hairline" shape="overlay" className="shadow-none px-4 pt-3 pb-3 flex flex-col gap-3">
       {/* 顶部:走光「正在询问」+ header;多题显示进度点。
           aria-label 给这个 live region 一个可访问名(否则内容只算 description、SR 与
           getByRole({name}) 都取不到),扫光统一用品牌色。 */}
@@ -222,9 +226,11 @@ export function AskUserPanel({
                     key={o.label}
                     value={o.label}
                     onSelect={() => toggle(o.label)}
+                    // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                     className="gap-2 rounded-lg px-2 py-2 cursor-pointer"
                   >
                     <span
+                      // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                       className={cn(
                         "flex size-5 shrink-0 items-center justify-center rounded-full border text-caption tabular-nums",
                         on ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
@@ -298,6 +304,6 @@ export function AskUserPanel({
           </Button>
         )}
       </div>
-    </div>
+    </Surface>
   );
 }

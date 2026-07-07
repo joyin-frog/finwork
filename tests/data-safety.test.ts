@@ -47,8 +47,8 @@ export const dataSafetyTestPromise = (async () => {
     );
     assert.ok(LATEST_VERSION >= 1, "AC1 FAIL: LATEST_VERSION 应 >= 1");
 
-    // 核心表齐全
-    const CORE_TABLES = ["app_settings", "audit_logs", "chat_conversations", "payroll_records", "knowledge_documents"];
+    // 核心表齐全（v7 后旧表已被 fact_* 取代）
+    const CORE_TABLES = ["app_settings", "audit_logs", "chat_conversations", "fact_payroll", "knowledge_documents"];
     for (const table of CORE_TABLES) {
       const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table);
       assert.ok(row, `AC1 FAIL: 缺少核心表 ${table}`);
@@ -106,9 +106,9 @@ export const dataSafetyTestPromise = (async () => {
     const versionAfter = getUserVersion(db);
     assert.equal(versionAfter, LATEST_VERSION, `AC3 FAIL: 迁移后 user_version 应为 ${LATEST_VERSION}`);
 
-    // 新表存在(baseline migration 补上了)
-    const payrollRow = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='payroll_records'").get();
-    assert.ok(payrollRow, "AC3 FAIL: 迁移后应存在 payroll_records 表");
+    // 新表存在（v7 后使用 fact_payroll 取代旧 payroll_records）
+    const payrollRow = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='fact_payroll'").get();
+    assert.ok(payrollRow, "AC3 FAIL: 迁移后应存在 fact_payroll 表");
 
     // 旧数据仍在
     const legacyRow = db.prepare("SELECT value FROM app_settings WHERE key=?").get("legacy_key") as { value: string } | undefined;

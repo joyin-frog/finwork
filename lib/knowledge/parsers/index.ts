@@ -2,10 +2,18 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { getProjectRoot, getPythonPath } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 
 export async function parseDocument(filePath: string, mimeType: string): Promise<string> {
   if (mimeType === "text/plain" || mimeType === "text/markdown" || mimeType.startsWith("text/")) {
-    return readFileSync(filePath, "utf-8");
+    const content = readFileSync(filePath, "utf-8");
+    // U+FFFD（�）是 Node 对无效 UTF-8 字节的替换符；出现即说明文件编码可能是 GBK 等非 UTF-8
+    if (content.includes("�")) {
+      throw new Error(
+        "文件编码可能不是 UTF-8（常见为 GBK），请用 Excel/记事本另存为 UTF-8 后重传。"
+      );
+    }
+    return content;
   }
 
   if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
@@ -129,7 +137,7 @@ async function extractViaWorker(filePath: string): Promise<string> {
   const output = execFileSync(
     getPythonPath(),
     [path.join(getProjectRoot(), "workers/finance_worker.py"), "extract-text", filePath],
-    { encoding: "utf-8" }
+    { encoding: "utf-8", env: pythonSpawnEnv() }
   );
   return output.trim();
 }
@@ -139,7 +147,7 @@ function parseImageDocument(filePath: string): string {
     const output = execFileSync(
       getPythonPath(),
       [path.join(getProjectRoot(), "workers/finance_worker.py"), "ocr-image", filePath],
-      { encoding: "utf-8" }
+      { encoding: "utf-8", env: pythonSpawnEnv() }
     );
     return output.trim();
   } catch (err: unknown) {
