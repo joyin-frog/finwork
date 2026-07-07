@@ -20,6 +20,7 @@ export function FinanceCalendarCard({ calendar }: { calendar: CalendarContext | 
   return (
     <Card>
       <CardHeader>
+        {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
         <div
           className={`flex size-6 items-center justify-center rounded-md ${nearest ? "fa-toned" : "bg-muted text-muted-foreground"}`}
           style={nearest ? ({ "--tone": deadlineTone(nearest.daysLeft) } as CSSProperties) : undefined}

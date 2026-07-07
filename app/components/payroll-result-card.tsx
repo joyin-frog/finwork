@@ -2,6 +2,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
 import type { PayrollCardData } from "./payroll-card-data";
 import { formatCny } from "@/lib/format";
+import { Surface } from "@/components/ui/surface";
 
 /**
  * 工资批次结果卡片:异常(计算失败/首次计算)置顶,合计随后,
@@ -9,7 +10,7 @@ import { formatCny } from "@/lib/format";
  */
 export function PayrollResultCard({ data }: { data: PayrollCardData }) {
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface level="card" edge="hairline" shape="card" className="text-body overflow-hidden">
       {data.failures.length ? (
         <div className="px-3 py-2 border-b border-border bg-destructive/10 text-destructive text-meta flex flex-col gap-1">
           <span className="flex items-center gap-2 font-medium">
@@ -56,7 +57,7 @@ export function PayrollResultCard({ data }: { data: PayrollCardData }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </Surface>
   );
 }
 
@@ -67,6 +68,7 @@ function PayrollRow({ row }: { row: PayrollCardData["rows"][number] }) {
         <td className="px-3 py-1.5">
           <span className="flex items-center gap-2">
             {row.employeeName}
+            {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
             {row.coldStart ? (
               <span className="text-caption px-1.5 py-0.5 rounded-full bg-[color:var(--tone-notice)]/12 border border-[color:var(--tone-notice)]/30">首次计算</span>
             ) : null}

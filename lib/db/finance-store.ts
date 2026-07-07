@@ -762,6 +762,71 @@ export function listCashObligations(db: DatabaseSync = getDb()): CashObligation[
   }));
 }
 
+/**
+ * WP13a 应收账龄读函数：直查 fact_obligations（kind='receive'），分值原样返回。
+ *
+ * - amount_cents 保持分值（NULL 不转 0）
+ * - status/status_raw 双字段原样返回
+ * - agingDays = daysBetween(asOf, due_date)（asOf 缺省今天，正=未到期，负=逾期）
+ * - includeSettled=false（默认）时过滤 status='settled' 行
+ * - 不做元→分回转（避免单位混淆风险，reviewer N1/N2 定案）
+ */
+export type ReceivableRawRow = {
+  counterparty: string;
+  amountCents: number | null;
+  dueDate: string;
+  agingDays: number;
+  status: "pending" | "settled";
+  statusRaw: string;
+  sourceDoc: string | null;
+};
+
+export function listReceivablesRaw(
+  db: DatabaseSync = getDb(),
+  opts?: { includeSettled?: boolean; asOf?: string }
+): ReceivableRawRow[] {
+  const includeSettled = opts?.includeSettled ?? false;
+  const asOf = opts?.asOf ?? new Date().toISOString().slice(0, 10);
+
+  type ObRawRow = {
+    amount_cents: number | null;
+    due_date: string;
+    counterparty: string | null;
+    status: string;
+    status_raw: string;
+    source_doc: string | null;
+  };
+
+  const statusClause = includeSettled ? "" : "AND status = 'pending'";
+  const rows = db
+    .prepare(
+      `SELECT amount_cents, due_date, counterparty, status, status_raw, source_doc
+       FROM fact_obligations
+       WHERE kind = 'receive' ${statusClause}
+       ORDER BY due_date ASC`
+    )
+    .all() as ObRawRow[];
+
+  // daysBetween（复用逻辑：asOf-dueDate，正=未到期，负=逾期）
+  function agingDays(dueDate: string): number {
+    const [ay, am, ad] = asOf.split("-").map(Number);
+    const [dy, dm, dd] = dueDate.split("-").map(Number);
+    const tAsOf = Date.UTC(ay, (am ?? 1) - 1, ad ?? 1);
+    const tDue = Date.UTC(dy, (dm ?? 1) - 1, dd ?? 1);
+    return Math.round((tDue - tAsOf) / 86_400_000);
+  }
+
+  return rows.map((r) => ({
+    counterparty: r.counterparty ?? "未填对方",
+    amountCents: r.amount_cents,
+    dueDate: r.due_date,
+    agingDays: agingDays(r.due_date),
+    status: r.status as "pending" | "settled",
+    statusRaw: r.status_raw,
+    sourceDoc: r.source_doc,
+  }));
+}
+
 function mapPayrollRow(row: Record<string, unknown>): StoredPayrollRecord {
   // 门面出口：分→元（/100），保持 StoredPayrollRecord 类型语义为元单位
   return {

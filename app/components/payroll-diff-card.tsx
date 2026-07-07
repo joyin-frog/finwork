@@ -4,6 +4,7 @@
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import { WarningIcon } from "@/lib/icons";
+import { Surface } from "@/components/ui/surface";
 import { formatSignedDelta, type PayrollDiffCardData, type PayrollDiffFieldData } from "./payroll-diff-card-data";
 
 function DeltaCell({ field }: { field: PayrollDiffFieldData }) {
@@ -22,6 +23,7 @@ function DeltaCell({ field }: { field: PayrollDiffFieldData }) {
 function FlagBadge({ flag }: { flag: string }) {
   if (flag === "new") {
     return (
+      // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
       <span
         className="inline-block text-[10px] px-1 py-0.5 rounded leading-none font-medium"
         style={{ background: "color-mix(in oklch, var(--tone-notice) 15%, transparent)", color: "var(--tone-notice)" }}
@@ -32,6 +34,7 @@ function FlagBadge({ flag }: { flag: string }) {
   }
   if (flag === "tax_config_changed") {
     return (
+      // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
       <span
         className="inline-block text-[10px] px-1 py-0.5 rounded leading-none"
         style={{ background: "color-mix(in oklch, var(--tone-warn) 10%, transparent)", color: "var(--tone-warn)" }}
@@ -47,7 +50,7 @@ export function PayrollDiffCard({ data }: { data: PayrollDiffCardData }) {
   const hasAnomalies = data.newEmployees.length > 0 || data.dropped.length > 0;
 
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface level="card" edge="hairline" shape="card" className="text-body overflow-hidden">
       {/* 标注头：草稿 vs 已确认，防止被当环比趋势读 */}
       <div
         className="px-3 py-2 border-b text-meta flex items-start gap-2"
@@ -145,6 +148,6 @@ export function PayrollDiffCard({ data }: { data: PayrollDiffCardData }) {
           所有员工与上月已确认数据一致，无差异。
         </div>
       )}
-    </div>
+    </Surface>
   );
 }

@@ -6,6 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import type { PublicClaudeSettings } from "@/lib/settings/claude-settings";
 import { CONFIG_TABS, type ConfigTabKey } from "@/app/config/tabs";
+import { Surface } from "@/components/ui/surface";
 import { GeneralSettings } from "./general/general-settings";
 import { AppearanceSettings } from "./appearance/appearance-settings";
 import { PersonalizationSettings } from "./personalization/personalization-settings";
@@ -99,8 +100,11 @@ export default function SkillCenter({
       className="fixed inset-0 z-50 flex items-center justify-center bg-scrim-modal p-4"
       onClick={() => router.push("/cockpit")}
     >
-      <div
-        className="relative flex w-full max-w-3xl h-[82vh] max-h-[700px] bg-popover rounded-xl ring-1 ring-foreground/10 shadow-[var(--shadow-lg)] overflow-hidden"
+      <Surface
+        level="overlay"
+        edge="none"
+        shape="panel"
+        className="relative flex w-full max-w-3xl h-[82vh] max-h-[700px] ring-1 ring-foreground/10 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Left sidebar: shares the outer box with content, just a vertical divider — no gap, no separate corners */}
@@ -120,6 +124,7 @@ export default function SkillCenter({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="搜索设置..."
+                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                 className="w-full h-8 pl-7 pr-3 text-body rounded-md placeholder:text-muted-foreground focus:outline-none"
               />
             </div>
@@ -136,6 +141,7 @@ export default function SkillCenter({
                   href={tab.key === "general" ? "/config" : `/config?tab=${tab.key}`}
                   aria-current={activeTab === tab.key ? "page" : undefined}
                   onClick={(e) => { e.preventDefault(); openTab(tab.key); }}
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-md text-body transition-colors",
                     activeTab === tab.key
@@ -155,6 +161,7 @@ export default function SkillCenter({
         <div className="relative flex-1 flex flex-col overflow-hidden">
           <Link
             href="/cockpit"
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             className="absolute right-3 top-3 z-10 p-1.5 rounded-md hover:bg-accent text-muted-foreground transition-colors"
             aria-label="关闭设置"
           >
@@ -205,7 +212,7 @@ export default function SkillCenter({
             {activeTab === "about" && <AboutSettings />}
           </div>
         </div>
-      </div>
+      </Surface>
     </div>
   );
 }

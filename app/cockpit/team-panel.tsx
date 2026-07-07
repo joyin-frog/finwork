@@ -10,6 +10,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { TeamRoleItem } from "./types";
+import { Surface } from "@/components/ui/surface";
 import { ROLE_UI } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
 
@@ -80,6 +81,7 @@ function RoleDispatchExpand({ roleId }: { roleId: string }) {
 
         const inner = (
           <div
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             className={`flex items-center gap-2 rounded px-2 py-1 text-meta ${isBlocked ? "fa-toned" : "bg-muted/40"}`}
             style={isBlocked ? ({ "--tone": "var(--tone-notice)" } as CSSProperties) : undefined}
           >
@@ -136,7 +138,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
   if (team.length === 0) return null;
 
   return (
-    <section className="rounded-lg border border-border bg-card px-4 py-3 flex flex-col gap-2">
+    <Surface level="card" edge="hairline" shape="card" className="px-4 py-3 flex flex-col gap-2">
       <h2 className="text-title font-semibold">智能体</h2>
       <div className="flex flex-col gap-1.5">
         {team.map((item) => {
@@ -161,6 +163,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
           return (
             <div key={item.roleId} className="flex flex-col">
               <div
+                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                 className={`flex items-center gap-3 py-1 cursor-pointer select-none rounded px-1 hover:bg-muted/40 transition-colors ${isNew ? "fa-team-enter" : ""}`}
                 title={item.lastSummary ?? undefined}
                 onClick={handleRowClick}
@@ -171,6 +174,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
               >
                 {/* 圆形域图标（fa-toned 底，角色 tone） */}
                 <span
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                   className="fa-toned shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-meta font-semibold select-none"
                   style={{ "--tone": `var(${tone})` } as CSSProperties}
                   aria-hidden="true"
@@ -186,6 +190,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
                 {/* 行尾「派活」次动作 → 预填派活入口并聚焦 */}
                 <button
                   type="button"
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                   className="shrink-0 text-meta text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors"
                   onClick={handleDispatch}
                   aria-label={`让${item.name}派活`}
@@ -205,6 +210,6 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
           查看看板 →
         </Link>
       </div>
-    </section>
+    </Surface>
   );
 }

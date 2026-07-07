@@ -214,6 +214,17 @@ export const skillsStoreTestPromise = (async () => {
         assert.equal(fp.editable, false, "FP-4 FAIL: 内置技能 editable 应为 false");
 
         console.log("skills-store [filing-precheck]: 真实目录发现、frontmatter 解析、内置只读恒启用 ✓");
+
+        // FP-5: receivables-ledger 技能已发现（WP13a 新增）
+        const rl = fpList.find((s) => s.name === "receivables-ledger");
+        assert.ok(rl, "FP-5 FAIL: listSkills 应在真实 agent-skills 目录中发现 receivables-ledger");
+        assert.equal(rl.source, "bundled", "FP-5 FAIL: receivables-ledger 应为内置技能 source=bundled");
+        assert.ok(rl.name.length > 0, "FP-5 FAIL: name 应非空");
+        assert.ok(rl.title.length > 0, "FP-5 FAIL: title 应非空");
+        assert.ok(rl.summary.length > 0, "FP-5 FAIL: summary 应非空");
+        assert.equal(rl.enabled, true, "FP-5 FAIL: 内置技能 receivables-ledger enabled 应为 true");
+        assert.equal(rl.editable, false, "FP-5 FAIL: 内置技能 receivables-ledger editable 应为 false");
+        console.log("skills-store [receivables-ledger]: 真实目录发现、frontmatter 解析、内置只读恒启用 ✓");
       } finally {
         rmSync(fpUserTmp, { recursive: true, force: true });
         rmSync(fpStateDir, { recursive: true, force: true });

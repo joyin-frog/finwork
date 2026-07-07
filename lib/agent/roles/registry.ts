@@ -114,16 +114,17 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     name: "往来专员",
     domain: "往来管理",
     charter: "应收应付台账、账龄分析、往来对账",
-    available: false,   // 台账数据域未建，注册表预留；作业落地后翻 true
-    skills: ["xlsx"],   // 待建：receivables-ledger（应收台账与账龄）
-    tools: [],
-    dataScope: ["待建：应收台账表", "documents 合同收付义务（读）"],
+    // 转正日期：2026-07-07（WP13a：fact_obligations 数据域已就绪，receivables-ledger 技能已建）
+    available: true,
+    skills: ["receivables-ledger", "xlsx"],
+    tools: ["query_receivables"],
+    dataScope: ["fact_obligations（读，kind=receive）", "documents 合同收付义务（读）"],
     deliverables: ["aging_report", "dunning_list"],
     rolePrompt: `你是往来专员，负责往来管理域：应收应付台账、账龄分析、
 催款清单、与客户/供应商的对账单核对。
 边界（违反即任务失败）：
 - 催款函、对账函只出草稿，发送永远由人完成；
-- 账龄口径（从开票日还是约定回款日起算）在结果中显式声明；
+- 账龄口径在结果中显式声明（v1 固定自约定回款日起算，开票日口径待销项数据落地后提供）；
 - 对账差异逐笔列出，区分「我方漏记 / 对方漏记 / 时间性差异」三类。
 接到往来域之外的任务，返回 out_of_scope 并说明该由哪个域处理。`,
   },

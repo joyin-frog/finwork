@@ -2,6 +2,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon } from "@hugeicons/core-free-icons";
 import { formatCny } from "@/lib/format";
 import { validateCalcReceipt, type CalcReceipt, type CalcSource } from "@/lib/domain/receipt";
+import { Surface } from "@/components/ui/surface";
 
 /**
  * 通用计算回执卡片：任何带 CalcReceipt 的工具结果都能渲染成可下钻明细。
@@ -49,7 +50,7 @@ export function ReceiptCard({ receipt }: { receipt: CalcReceipt }) {
   const isDraft = receipt.basis.settlementStatus === "draft";
 
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface level="card" edge="hairline" shape="card" className="text-body overflow-hidden">
       {/* 草稿红线：未结账数据显著标注,绝不当终值 */}
       {isDraft ? (
         <div className="px-3 py-2 border-b border-[color:var(--tone-notice)]/30 bg-[color:var(--tone-notice)]/12 text-meta flex items-start gap-2">
@@ -116,6 +117,6 @@ export function ReceiptCard({ receipt }: { receipt: CalcReceipt }) {
           ))}
         </div>
       ) : null}
-    </div>
+    </Surface>
   );
 }

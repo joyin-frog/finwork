@@ -10,6 +10,7 @@ import { redact } from "@/lib/safety/pii";
 
 import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
+import { listReceivablesRaw } from "@/lib/db/finance-store";
 
 type Sdk = SdkLike;
 
@@ -192,7 +193,66 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
     }
   );
 
-  return [readExpensePolicy, taxCalculator, queryInvoiceLedger];
+  const queryReceivables = sdk.tool(
+    "query_receivables",
+    "查询应收账款清单（合同收款义务，kind=receive）。每条带 agingDays（约定回款日距今天数，正=未到期，负=逾期）。用于账龄分析与催款清单生成。",
+    {
+      includeSettled: z
+        .boolean()
+        .optional()
+        .describe("是否包含已结算（已收款）义务，默认 false 只返回待收"),
+      asOf: z
+        .string()
+        .optional()
+        .describe("账龄基准日期 YYYY-MM-DD，缺省今天；传固定日期可用于测试确定性断言"),
+    },
+    async (args: { includeSettled?: boolean; asOf?: string }) => {
+      try {
+        const rows = listReceivablesRaw(undefined, {
+          includeSettled: args.includeSettled ?? false,
+          asOf: args.asOf,
+        });
+        const overdueCount = rows.filter((r) => r.agingDays < 0).length;
+        const amountUnknownCount = rows.filter((r) => r.amountCents === null).length;
+
+        const items = rows.map((r) => ({
+          counterparty: r.counterparty,
+          amountCents: r.amountCents,
+          dueDate: r.dueDate,
+          agingDays: r.agingDays,
+          status: r.status,
+          statusRaw: r.statusRaw,
+          sourceDoc: r.sourceDoc,
+        }));
+
+        const totalCount = rows.length;
+
+        const summaryLines: string[] = [
+          `应收账款清单：共 ${totalCount} 条，逾期 ${overdueCount} 条，金额未知 ${amountUnknownCount} 条。`,
+        ];
+        if (totalCount === 0) {
+          summaryLines.push("当前无应收记录。如需跟踪应收款，请先上传合同并确认关键信息。");
+        }
+
+        return {
+          content: [{ type: "text" as const, text: summaryLines.join("\n") }],
+          structuredContent: {
+            items,
+            totalCount,
+            overdueCount,
+            amountUnknownCount,
+          },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: `查询应收清单失败：${error instanceof Error ? error.message : String(error)}` }],
+          isError: true as const,
+        };
+      }
+    }
+  );
+
+  return [readExpensePolicy, taxCalculator, queryInvoiceLedger, queryReceivables];
 }
 
 /**

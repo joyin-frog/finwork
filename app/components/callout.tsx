@@ -3,6 +3,7 @@
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { InfoIcon, SuccessCircleIcon, WarningIcon } from "@/lib/icons";
 import { cn } from "@/lib/utils";
+import { Surface } from "@/components/ui/surface";
 
 export type CalloutVariant = "info" | "ok" | "warn" | "neutral";
 
@@ -32,16 +33,19 @@ export function Callout({
 }) {
   const { icon: defaultIcon, accent } = VARIANTS[variant];
   return (
-    <div
+    <Surface
+      level="card"
+      edge="hairline"
+      shape="card"
       role={variant === "warn" ? "alert" : "status"}
       className={cn(
-        "grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 max-w-full rounded-lg border border-border bg-card px-3 py-2.5 text-small shadow-[var(--elevation-1)]",
+        "grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 max-w-full px-3 py-2.5 text-small",
         className,
       )}
     >
       <HugeiconsIcon icon={icon ?? defaultIcon} size={14} className={cn("row-span-2 mt-0.5 shrink-0", accent)} />
       {title ? <div className="self-center font-medium text-foreground">{title}</div> : null}
       <div className={cn("col-start-2 text-muted-foreground", !title && "self-center")}>{children}</div>
-    </div>
+    </Surface>
   );
 }

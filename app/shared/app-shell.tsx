@@ -115,6 +115,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <a
             href="#main-content"
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-background focus:border focus:rounded-md focus:text-sm"
           >
             跳转到主内容

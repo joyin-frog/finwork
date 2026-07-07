@@ -14,8 +14,22 @@ def analyze_csv(path: Path):
     rows = []
     with path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
+        fieldnames = reader.fieldnames or []
         for row in reader:
             rows.append(row)
+
+    # 检测列名是否存在（列名不匹配时记入 column_warnings，不再静默返回 0）
+    actual_cols = list(fieldnames)
+    column_warnings: list[str] = []
+    expected_cols = {
+        "amount": "金额列（amount）",
+        "category": "类目列（category）",
+        "invoice_no": "发票号列（invoice_no）",
+    }
+    for col_key, col_label in expected_cols.items():
+        if col_key not in actual_cols:
+            known = "、".join(actual_cols) if actual_cols else "（空）"
+            column_warnings.append(f"未找到{col_label}，已识别列：{known}")
 
     by_category_cents = defaultdict(int)
     warnings = []
@@ -35,6 +49,7 @@ def analyze_csv(path: Path):
         "row_count": len(rows),
         "by_category": {k: v / 100 for k, v in by_category_cents.items()},
         "warnings": warnings,
+        "column_warnings": column_warnings,
     }
 
 

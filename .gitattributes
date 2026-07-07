@@ -1,0 +1,3 @@
+# corpus 目录包含 GBK 编码等非 UTF-8 文件和二进制样本
+# 禁止 git 对这些文件做换行转换（Windows autocrlf 会破坏 GBK 字节和二进制内容）
+tests/fixtures/corpus/** -text

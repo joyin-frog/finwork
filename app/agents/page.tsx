@@ -178,6 +178,7 @@ export default function AgentsPage() {
               {collapsed && selectedRoleId && (
                 <button
                   type="button"
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                   className="ml-auto p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                   onClick={open}
                   title="展开预览"

@@ -46,6 +46,7 @@ export function SearchResults({
           <div className="flex items-center justify-between gap-2">
             <span className="text-body font-medium truncate">{f.fileName}</span>
             <button
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-meta border border-border rounded-md text-muted-foreground transition-colors hover:border-primary hover:text-primary"
               onClick={e => { e.stopPropagation(); onViewLine(f.docId); }}
             >
@@ -60,6 +61,7 @@ export function SearchResults({
               {f.matches.map((m: SearchMatch, i) => (
                 <div
                   key={i}
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                   className="flex items-baseline gap-2 px-2 py-1 rounded-md text-meta text-muted-foreground cursor-pointer hover:bg-accent transition-colors"
                   onClick={() => onViewLine(f.docId, m.lineNo)}
                 >
@@ -75,6 +77,7 @@ export function SearchResults({
             </div>
           )}
           <button
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             className="self-end inline-flex items-center gap-1 mt-2 px-2 py-1 text-meta border border-border rounded-md text-muted-foreground transition-colors hover:border-primary hover:text-primary"
             onClick={e => { e.stopPropagation(); onAddToChat(f.docId); }}
           >

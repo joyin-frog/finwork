@@ -11,6 +11,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import type { AttentionItem } from "@/lib/domain/attention";
 import { ROLE_UI, ROLE_LABELS } from "@/lib/domain/role-ui";
 import { TrustBadge } from "@/app/shared/trust-badge";
@@ -22,7 +23,7 @@ function AttentionCard({ item }: { item: AttentionItem }) {
   const pillTone = roleUi ? roleUi.tone : "--tone-notice";
 
   return (
-    <div className="flex items-center gap-3 rounded-md border border-border bg-card px-4 py-2.5">
+    <Surface level="card" edge="hairline" shape="control" className="flex items-center gap-3 px-4 py-2.5">
       <span
         className={`fa-tone-dot shrink-0 ${item.severity === "urgent" ? "fa-dot-pulse" : ""}`}
         style={{
@@ -46,7 +47,7 @@ function AttentionCard({ item }: { item: AttentionItem }) {
           </Button>
         </Link>
       )}
-    </div>
+    </Surface>
   );
 }
 

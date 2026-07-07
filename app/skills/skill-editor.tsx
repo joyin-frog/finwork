@@ -160,6 +160,7 @@ export function SkillEditor({ skill }: { skill: SkillSummary }) {
               onChange={(e) => setContent(e.target.value)}
               readOnly={!editable}
               spellCheck={false}
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="h-full w-full resize-none rounded-none border-0 font-mono text-small leading-relaxed focus-visible:ring-0"
             />
           )}
@@ -202,6 +203,7 @@ function FileTreeView({
             <button
               type="button"
               onClick={() => toggleDir(node.path)}
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="flex w-full items-center gap-1 rounded-md py-1.5 text-left text-small text-muted-foreground hover:bg-accent/60"
               style={{ paddingLeft: depth * 14 + 8, paddingRight: 8 }}
             >
@@ -223,6 +225,7 @@ function FileTreeView({
             )}
           </div>
         ) : (
+          // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
           <div key={node.path} className={cn("group flex items-center rounded-md", activeFile === node.path && "bg-accent")}>
             <button
               type="button"

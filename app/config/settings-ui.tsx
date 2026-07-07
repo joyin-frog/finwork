@@ -2,6 +2,7 @@
 
 import { Children, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Surface } from "@/components/ui/surface";
 
 /** 设置分组:标题+说明在上,内容放圆角卡片,卡片内多项之间横线分隔(macOS/Codex 风格)。 */
 export function SettingsSection({ title, description, children }: {
@@ -16,13 +17,13 @@ export function SettingsSection({ title, description, children }: {
         <h3 className="text-body font-medium">{title}</h3>
         {description ? <p className="text-meta text-muted-foreground max-w-prose">{description}</p> : null}
       </div>
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <Surface level="card" edge="hairline" shape="card" className="overflow-hidden">
         {items.map((child, i) => (
           <div key={i} className={cn("px-4 py-3", i > 0 && "border-t border-border")}>
             {child}
           </div>
         ))}
-      </div>
+      </Surface>
     </section>
   );
 }

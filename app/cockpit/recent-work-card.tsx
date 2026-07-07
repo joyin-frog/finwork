@@ -58,6 +58,7 @@ function WorkRow({ item }: { item: RecentWorkItem }) {
   return (
     <Link
       href={`/chat/recent?id=${item.conversationId}`}
+      // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
       className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent/40 transition-colors group"
     >
       <StatusDot status={item.status} />
@@ -89,6 +90,7 @@ export function RecentWorkCard({ items }: { items: RecentWorkItem[] }) {
             <p className="text-body text-muted-foreground">还没有工作记录</p>
             <Link
               href="/chat/new"
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="text-meta px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
             >
               从派第一个活开始

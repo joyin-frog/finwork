@@ -599,4 +599,10 @@ void (async () => {
   const { invoiceWritePathTestPromise } = await import("./invoice-write-path.test.ts");
   await invoiceWritePathTestPromise;
 
+  const { receivablesLiveTestPromise } = await import("./receivables-live.test.ts");
+  await receivablesLiveTestPromise;
+
+  const { parseCorpusTestPromise } = await import("./parse-corpus.test.ts");
+  await parseCorpusTestPromise;
+
 })();
