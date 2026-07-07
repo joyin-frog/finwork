@@ -596,4 +596,7 @@ void (async () => {
   const { obligationsLiveTestPromise } = await import("./obligations-live.test.ts");
   await obligationsLiveTestPromise;
 
+  const { invoiceWritePathTestPromise } = await import("./invoice-write-path.test.ts");
+  await invoiceWritePathTestPromise;
+
 })();

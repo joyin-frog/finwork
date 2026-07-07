@@ -46,6 +46,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
   // Policy / tax tools(Excel/PPT/PDF 处理已迁到 SDK skill + run_python)
   { name: "mcp__finance_worker__read_expense_policy",     category: "finance", riskLevel: "safe" },
   { name: "mcp__finance_worker__tax_calculator",          category: "finance", riskLevel: "safe" },
+  // 发票台账只读汇总（WP1c）
+  { name: "mcp__finance_worker__query_invoice_ledger",    category: "finance", riskLevel: "safe" },
   // Kingdee MCP tools
   { name: "mcp__kingdee_worker__query_kingdee_accounts",    category: "finance", riskLevel: "safe" },
   { name: "mcp__kingdee_worker__export_kingdee_draft",      category: "finance", riskLevel: "high" },

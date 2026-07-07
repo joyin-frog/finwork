@@ -30,7 +30,7 @@
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
-| WP1 | 财务事实库 | 统一事实层 schema（四信任标签内建）+ 一步到位迁移现有表（D3）。拆三刀：WP1a schema+迁移+store门面切换 / WP1b 义务落盘消费切换 / WP1c invoice 新字段写入端。摸底关键事实：金额全 REAL 需转分整数；finance-store.ts 是唯一门面（调用方零改动的杠杆）；义务无表、方向靠解析状态文本 | WP6 | **WP1a 已ship**（spec v1.1；实施审查唯一阻塞系 WP6 diff 归属误判、orchestrator 撤销有据；N1/N3 转 WP1b/c 清单） |
+| WP1 | 财务事实库 | 统一事实层 schema（四信任标签内建）+ 一步到位迁移现有表（D3）。拆三刀：WP1a schema+迁移+store门面切换 / WP1b 义务落盘消费切换 / WP1c invoice 新字段写入端。摸底关键事实：金额全 REAL 需转分整数；finance-store.ts 是唯一门面（调用方零改动的杠杆）；义务无表、方向靠解析状态文本 | WP6 | **WP1 三刀全部已ship**（WP1a schema+迁移 / WP1b 义务落盘 / WP1c 发票写入端——事实库工作包收官） |
 | WP2 | 节奏引擎 | 摸底后收窄为 WP2a：确定性预检=attention 新规则（零消耗直跑）+ LLM 预检=跳转对话入口（点=跑不点=跳过），不造消耗预估机器（D4 重解释见 spec） | WP3/WP1a（已ship） | **WP2a 已ship**（R6/R7/R8 三规则+双调用方；实施审查零阻塞） |
 | WP3 | 申报前复核 filing-precheck | 税务专员旗舰场景：申报前检查清单跑一遍，三态输出（通过/异常/无法核验）。v1 勾稽靠用户上传文件（台账字段不足，扩展归 WP1） | 无硬依赖（WP1 落地后切事实层） | **已ship**（spec v1.3；实施审查 ship，嵌入式测试块偏差被采纳；带 key 人工验收脚本见 spec §4，留给用户报税期实测） |
 
@@ -77,7 +77,7 @@ WP5 / WP7 / WP10 / WP11 / WP12（无前置，按资源穿插）
   - **filing-precheck 带 key 验收 ✅ 通过（2026-07-06）**：场景①空画像正确追问资格+义务分叉+截止日；场景②b 三态清单齐全、B1 用 run_python 抓出埋设的 50 元销项尾差、B3/B4 复算通过、缺数据项全部老实标"无法核验"。附带发现并修复：JSON 路径 dataUrl 附件不落盘、内联块被非 Anthropic 网关丢弃 → 落盘归一 hotfix（audit-json-attachments.md，实施中）。
 - **第二批**：WP1 事实库（spec 在第一批期间设计）、WP9 chat-page 拆解、WP5 计算引擎。
 - **第三批（✅ 已完成，2026-07-07）**：WP2a 节奏引擎、WP4a 可追溯契约、WP7a Windows 防线收口——均经完整流水线 ship。本批要点：三份摸底均有失真（WP4a 最重——把已实现功能当待办），计划审查全部抓回；WP9a 哨兵泄漏事故在本批开工时发现并修复（教训⑦⑧入记忆）。
-- **第四批（2026-07-07 暂停中：WP8b/WP1b 已ship已提交，WP1c 已批未实施——用户检视中）**：WP1b（✅ 已ship——义务落盘+五路钩子+读切换；中断续接与钩子测试真实化两轮波折后收口）、WP1c（**计划已批未实施——用户暂停点**。恢复时直接派 implementer 按 spec-invoice-write-path.md v1.1 实施）、WP8b（✅ 完成，轻量路径——六文件 8 处容器收敛+28 行豁免注释，lint 警告 203→180，orchestrator 自查 diff 通过）。**WP1b/WP1c 实施须串行（共享 finance-store.ts）**。后续：WP1b（义务落盘消费切换）、WP1c（invoice 写入端补字段+registry dataScope 更新+fact_invoices source DEFAULT）、WP4b（voucher/分析接入 receipt+provenance 落库 v9）、WP8b+（UI 收敛批次）、WP10 route 管线化、WP11 语料库、WP12 语义检索、WP13-15。
+- **第四批（✅ 已完成，2026-07-07）**：WP1b（✅ 已ship——义务落盘+五路钩子+读切换；中断续接与钩子测试真实化两轮波折后收口）、WP1c（✅ 已ship——写入端补字段+query_invoice_ledger+A4 升级+dataScope 清尾）、WP8b（✅ 完成，轻量路径——六文件 8 处容器收敛+28 行豁免注释，lint 警告 203→180，orchestrator 自查 diff 通过）。**WP1b/WP1c 实施须串行（共享 finance-store.ts）**。后续：WP1b（义务落盘消费切换）、WP1c（invoice 写入端补字段+registry dataScope 更新+fact_invoices source DEFAULT）、WP4b（voucher/分析接入 receipt+provenance 落库 v9）、WP8b+（UI 收敛批次）、WP10 route 管线化、WP11 语料库、WP12 语义检索、WP13-15。
 - **第四批**：WP13-15。
 
 ## 会话协议（断点续传）

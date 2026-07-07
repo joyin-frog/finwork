@@ -388,6 +388,16 @@ export type InvoiceLedgerEntry = {
   invoiceDate?: string;
   category?: string;
   conversationId?: number;
+  /** 税率（REAL，如 0.09），由写入方 parseFloat 后传入；NULL 表示未知 */
+  taxRate?: number | null;
+  /** 税额分（调用方已完成元→分转换），NULL 表示未知 */
+  taxAmountCents?: number | null;
+  /** 对手方（供应商/客户名称），NULL 表示未知 */
+  counterparty?: string | null;
+  /** 发票方向：'in'=进项 | 'out'=销项；NULL 表示历史记录未标注 */
+  direction?: string | null;
+  /** 认证状态，NULL 表示未认证/未知（本期工具不暴露此字段） */
+  certificationStatus?: string | null;
 };
 
 export type RecordInvoicesResult = {
@@ -399,7 +409,10 @@ export type RecordInvoicesResult = {
 export function recordInvoices(items: InvoiceLedgerEntry[], db: DatabaseSync = getDb()): RecordInvoicesResult {
   const existing = findInvoicesInLedger(items.map((i) => i.invoiceNo), db);
   const insert = db.prepare(
-    "INSERT OR IGNORE INTO fact_invoices (invoice_no, amount_cents, invoice_date, category, conversation_id, source) VALUES (?, ?, ?, ?, ?, 'user_dictated')"
+    `INSERT OR IGNORE INTO fact_invoices
+       (invoice_no, amount_cents, invoice_date, category, conversation_id, source,
+        tax_rate, tax_amount_cents, counterparty, direction, certification_status)
+     VALUES (?, ?, ?, ?, ?, 'user_dictated', ?, ?, ?, ?, ?)`
   );
   const inserted: string[] = [];
   const duplicates: RecordInvoicesResult["duplicates"] = [];
@@ -410,7 +423,18 @@ export function recordInvoices(items: InvoiceLedgerEntry[], db: DatabaseSync = g
       continue;
     }
     const ctx = `fact_invoices.${item.invoiceNo}`;
-    insert.run(item.invoiceNo, yuanToCents(item.amount, ctx), item.invoiceDate ?? null, item.category ?? null, item.conversationId ?? null);
+    insert.run(
+      item.invoiceNo,
+      yuanToCents(item.amount, ctx),
+      item.invoiceDate ?? null,
+      item.category ?? null,
+      item.conversationId ?? null,
+      item.taxRate ?? null,
+      item.taxAmountCents ?? null,
+      item.counterparty ?? null,
+      item.direction ?? null,
+      item.certificationStatus ?? null,
+    );
     inserted.push(item.invoiceNo);
   }
   if (inserted.length > 0) {
@@ -480,6 +504,47 @@ export function getInvoiceLedgerStats(year: number, month: number, db: DatabaseS
     db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE recorded_at LIKE ?").get(`${prefix}%`) as { n: number }
   ).n;
   return { total, addedThisMonth: added };
+}
+
+export type InvoiceLedgerBreakdown = {
+  /** 台账总张数 */
+  total: number;
+  /** direction='in' 的进项发票张数与税额合计（分） */
+  directionIn: { count: number; taxAmountCentsSum: number };
+  /** certification_status IS NULL 的张数（未认证/历史未设） */
+  uncertifiedCount: number;
+  /** direction IS NULL 的张数（历史记录未标注方向） */
+  directionUnknownCount: number;
+};
+
+/**
+ * 按年月查询发票台账明细汇总（year/month 基于 invoice_date）。
+ * 若 invoice_date 为 NULL，该张发票不计入任何月份汇总（total 仍包含）。
+ */
+export function getInvoiceLedgerBreakdown(year: number, month: number, db: DatabaseSync = getDb()): InvoiceLedgerBreakdown {
+  const total = (db.prepare("SELECT COUNT(*) AS n FROM fact_invoices").get() as { n: number }).n;
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+
+  const dirInRow = db.prepare(
+    `SELECT COUNT(*) AS cnt, COALESCE(SUM(tax_amount_cents), 0) AS tax_sum
+     FROM fact_invoices
+     WHERE direction = 'in' AND invoice_date LIKE ?`
+  ).get(`${prefix}%`) as { cnt: number; tax_sum: number } | undefined;
+
+  const uncertified = (
+    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE certification_status IS NULL").get() as { n: number }
+  ).n;
+
+  const dirUnknown = (
+    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE direction IS NULL").get() as { n: number }
+  ).n;
+
+  return {
+    total,
+    directionIn: { count: dirInRow?.cnt ?? 0, taxAmountCentsSum: dirInRow?.tax_sum ?? 0 },
+    uncertifiedCount: uncertified,
+    directionUnknownCount: dirUnknown,
+  };
 }
 
 // ─── 经营数据 ────────────────────────────────────────────────────────────────

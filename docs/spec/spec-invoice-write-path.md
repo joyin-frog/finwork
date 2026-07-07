@@ -1,7 +1,7 @@
 # 发票写入端补字段 + 台账读工具 + A4 升级（WP1c）Spec
 
 > 版本 v1.1 / 2026-07-07（v1.0 计划审查 fix first，B1-B3/N1/N4 已修订，待限定复审）
-> 状态：已批准（实施排队：与 WP1b 串行，WP1b 先——共享 finance-store.ts）
+> 状态：**已实施并通过审查（ship）**。实施审查零阻塞。非阻塞记录：breakdown 的 uncertified/directionUnknown 为全局计数（月过滤语义留后续小改，audit 已标注）；taxAmountCents 精度超差走抛出与既有 yuanToCents 惯例一致；spec 的 riskLevel "low" 系笔误（实际枚举 safe/medium/high，implementer 正确用 safe）。
 > 依赖：WP1a（已ship，fact_invoices 六个新列已在 schema 只是无人供值）；与 WP1b 并行开发但**迁移无涉**（本 spec 零 DDL）；若与 WP1b implementer 同时跑注意 finance-store.ts 共享（orchestrator 调度串行）。
 > 架构事实（2026-07-07 scout 核实）：fact_invoices 唯一写入 `recordInvoices`（finance-store.ts:398-419，INSERT 仅六列，direction/tax_rate/tax_amount_cents/certification_status/counterparty/provenance 全部不写）；上层唯一进路 `record_reimbursement_invoices` 工具（reimbursement.ts:66-107，zod 仅 invoiceNo/amount/invoiceDate/category/conversationId）。**单据→凭证管线与金蝶工具不写台账**（scan_slip_folder/process_voucher_batch 为外部 MCP 名，与 recordInvoices 零交集）。filing-precheck A4（SKILL.md:63-66）无文件时输出固定"请自查"提示。registry.ts dataScope 旧表名 4 处（37/60/82/140）。source 列 NOT NULL 无 DEFAULT，两写入路径均显式供值；SQLite 改既有列 DEFAULT 须重建表。哨兵：reimbursement-ledger/db-facts-migration G4/finance-summary 均为形态断言不涉列值，扩 INSERT 列不破坏；**golden-schema 无涉（不加列不改 DDL）**。findInvoicesInLedger/getInvoiceLedgerStats 不依赖新字段无需动。
 

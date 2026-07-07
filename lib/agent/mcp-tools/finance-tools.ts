@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
 import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { getAppSetting } from "@/lib/db/sqlite";
-import { loadTaxRates } from "@/lib/db/finance-store";
+import { loadTaxRates, getInvoiceLedgerBreakdown } from "@/lib/db/finance-store";
 import { makeCalcReceipt, type CalcReceipt } from "@/lib/domain/receipt";
 import { redact } from "@/lib/safety/pii";
 
@@ -155,7 +155,44 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
     }
   );
 
-  return [readExpensePolicy, taxCalculator];
+  const queryInvoiceLedger = sdk.tool(
+    "query_invoice_ledger",
+    "查询指定年月的发票台账汇总（只读）：总张数、进项张数与税额合计、未认证数、方向未标注数。用于申报前复核或台账自动核对。",
+    {
+      year: z.number().int().describe("年份，如 2026"),
+      month: z.number().int().min(1).max(12).describe("月份，1-12")
+    },
+    async (args: { year: number; month: number }) => {
+      try {
+        const breakdown = getInvoiceLedgerBreakdown(args.year, args.month);
+        const lines: string[] = [
+          `${args.year}年${args.month}月发票台账汇总：`,
+          `- 台账总张数：${breakdown.total} 张`,
+          `- 进项发票：${breakdown.directionIn.count} 张，税额合计 ${(breakdown.directionIn.taxAmountCentsSum / 100).toFixed(2)} 元`,
+          `- 未认证张数：${breakdown.uncertifiedCount} 张`,
+        ];
+        if (breakdown.directionUnknownCount > 0) {
+          lines.push(`- 方向未标注（历史记录）：${breakdown.directionUnknownCount} 张，未计入进项汇总`);
+        }
+        return {
+          content: [{ type: "text" as const, text: lines.join("\n") }],
+          structuredContent: {
+            total: breakdown.total,
+            directionIn: breakdown.directionIn,
+            uncertifiedCount: breakdown.uncertifiedCount,
+            directionUnknownCount: breakdown.directionUnknownCount,
+          }
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: `查询台账失败：${error instanceof Error ? error.message : String(error)}` }],
+          isError: true as const
+        };
+      }
+    }
+  );
+
+  return [readExpensePolicy, taxCalculator, queryInvoiceLedger];
 }
 
 /**

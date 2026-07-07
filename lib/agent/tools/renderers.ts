@@ -95,6 +95,7 @@ const summaries: Record<string, SummaryFn> = {
   record_reimbursement_invoices: (i) => { const count = arrayLen(i, "items"); return `登记报销发票${count ? `(${count} 张)` : ""}进台账`; },
   reconcile_bank_statement: (i) => { const bank = arrayLen(i, "bankRows"); const book = arrayLen(i, "bookRows"); return `银行流水对账(银行 ${bank} 笔 / 账面 ${book} 笔)`; },
   read_expense_policy: (i) => `查阅报销制度(${str(i, "section") || "全部"})`,
+  query_invoice_ledger: (i) => { const y = num(i, "year"); const m = num(i, "month"); return y != null && m != null ? `查询${y}年${m}月发票台账汇总` : "查询发票台账"; },
   tax_calculator: (i) => {
     const kind = str(i, "type") === "cit" ? "企业所得税" : "增值税";
     const amount = num(i, "amount");
