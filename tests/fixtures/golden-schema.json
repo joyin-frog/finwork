@@ -984,7 +984,10 @@
       { "cid": 11, "name": "source", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
       { "cid": 12, "name": "provenance", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
       { "cid": 13, "name": "conversation_id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
-      { "cid": 14, "name": "recorded_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 }
+      { "cid": 14, "name": "recorded_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 },
+      { "cid": 15, "name": "settled_at", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 16, "name": "settled_amount_cents", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 17, "name": "settlement_note", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 }
     ],
     "fact_metrics": [
       { "cid": 0, "name": "id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 1 },

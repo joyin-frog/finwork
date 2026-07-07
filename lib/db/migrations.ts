@@ -763,6 +763,42 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 13,
+    name: "fact_invoices_settlement_columns",
+    up: (db) => {
+      // WP13b: fact_invoices 补三列支持销项回款落盘
+      // - settled_at: 实收日期（YYYY-MM-DD），NULL 表示未回款
+      // - settled_amount_cents: 实收金额（分），v1 单次结清，可与发票额不同
+      // - settlement_note: 回款备注，自由文本
+      // 三列均 NULL 允许（addColumnIfMissing 幂等，兼容已存在列）
+      //
+      // 防御性：某些测试绕过 initializeSchema 直接设 user_version。
+      // 若 fact_invoices 表不存在，先幂等建表（完整 baseline 形状）再加新列。
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS fact_invoices (
+          invoice_no          TEXT PRIMARY KEY,
+          direction           TEXT,
+          amount_cents        INTEGER NOT NULL,
+          tax_rate            REAL,
+          tax_amount_cents    INTEGER,
+          certification_status TEXT,
+          counterparty        TEXT,
+          invoice_date        TEXT,
+          category            TEXT,
+          settlement_status   TEXT NOT NULL DEFAULT 'recorded',
+          caliber_version     TEXT NOT NULL DEFAULT 'v1',
+          source              TEXT NOT NULL,
+          provenance          TEXT,
+          conversation_id     INTEGER,
+          recorded_at         TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      addColumnIfMissing(db, "fact_invoices", "settled_at", "TEXT NULL");
+      addColumnIfMissing(db, "fact_invoices", "settled_amount_cents", "INTEGER NULL");
+      addColumnIfMissing(db, "fact_invoices", "settlement_note", "TEXT NULL");
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

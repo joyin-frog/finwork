@@ -38,6 +38,10 @@ export const toolRegistryTestPromise = (async () => {
     "query_knowledge",
     "read_file",
     "undo_last_write",
+    // WP13b: 销项发票三工具
+    "record_sales_invoices",
+    "record_invoice_settlement",
+    "query_sales_invoices",
   ]) {
     assert.ok(serverToolNames.includes(shortName), `T2 FAIL: ${shortName} 未注册进 finance_worker MCP server`);
   }

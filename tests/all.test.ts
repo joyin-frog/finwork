@@ -617,4 +617,7 @@ void (async () => {
   const { auditUndoTestPromise } = await import("./audit-undo.test.ts");
   await auditUndoTestPromise;
 
+  const { salesInvoicesTestPromise } = await import("./sales-invoices.test.ts");
+  await salesInvoicesTestPromise;
+
 })();

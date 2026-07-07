@@ -1,7 +1,7 @@
 # 往来落地第二刀（WP13b：销项发票登记 + 发票级账龄 + 回款落盘）Spec
 
 > 版本 v1.1 / 2026-07-07（v1.0 fix first：B1 账龄符号矛盾、B2 before-image 全列约束已修，N1-N4 采纳）
-> 状态：**计划已批准**（限定复审通过，2026-07-07；实施须待 WP15 完整 ship 后启动，门控三条见依赖行）
+> 状态：**已实施并通过审查（ship）**（2026-07-07；实施审查 fix first 一轮——B1 审计归因硬编码参数化（auditHint）+ conversationId 接通 + lint 归零 + 角色提示词更新，限定复审通过）
 > 依赖：WP13a（已ship）、WP1c（已ship）、**WP15 审计撤销（须完整 ship——本刀两个写工具接 recordAudit；开工门控三条（reviewer N4）：① migrations.ts 末条为 v12 audit_logs 补列；② lib/db/audit-store.ts 存在且导出 recordAudit；③ finance-store.ts 的 recordInvoices 已迁移到 recordAudit（无 auditLog 残留）。任一不满足停止报告。本刀迁移占 v13。**
 > 架构事实（2026-07-07 scout + orchestrator 精读核实）：
 > - fact_invoices 全列（migrations v7 :158-174 + WP1c 补列）：invoice_no/direction/amount_cents/tax_rate/tax_amount_cents/certification_status/counterparty/invoice_date/category/settlement_status(DEFAULT 'recorded')/caliber_version/source/provenance/conversation_id/recorded_at。**direction='out' 销项行当前无任何写入方**——record_reimbursement_invoices 硬写 direction:"in"（lib/agent/tools/finance/reimbursement.ts:133），底层 recordInvoices 支持任意 direction。

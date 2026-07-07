@@ -10,6 +10,7 @@ import { createKingdeeTools } from "./kingdee-tools";
 import { createFinanceTools } from "./finance-tools";
 import { createPayrollTools } from "../tools/finance/payroll";
 import { createReimbursementTools } from "../tools/finance/reimbursement";
+import { createSalesInvoiceTools } from "../tools/finance/sales-invoices";
 import { createReconciliationTools } from "../tools/finance/reconciliation";
 import { createRecordDocumentMetadataTool } from "./document-metadata";
 import { createUpdateCompanyProfileTool } from "./profile";
@@ -38,6 +39,7 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createBusinessAnalysisTool(sdk),
       ...createPayrollTools(sdk, outputDir),
       ...createReimbursementTools(sdk),
+      ...createSalesInvoiceTools(sdk),
       ...createReconciliationTools(sdk),
       ...createFinanceTools(sdk, outputDir),
       createRecordDocumentMetadataTool(sdk),

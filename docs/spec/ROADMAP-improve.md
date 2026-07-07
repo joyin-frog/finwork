@@ -57,7 +57,7 @@
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
-| WP13 | 往来管理落地 | 拆刀：WP13a 合同应收层（用户拍板）✅已ship——转正+query_receivables+receivables-ledger 技能+今日到期分箱修复 / WP13b 销项发票登记+发票级账龄+回款落盘（待启动） | WP1（已ship） | **WP13a 已ship** |
+| WP13 | 往来管理落地 | 拆刀：WP13a 合同应收层（用户拍板）✅已ship / WP13b ✅已ship（2026-07-07）——v13 回款三列 + record_sales_invoices/record_invoice_settlement/query_sales_invoices 三工具（接 recordAudit 可撤销）+ 发票层账龄（开票日起算，与合同层符号相反不共享分箱）+ SKILL 两层口径升级。业务口径假设待用户确认：回款单次结清不分期 | WP1（已ship） | **WP13a+WP13b 均已ship** |
 | WP14 | 交互工件系统 | 拆刀：WP14a 可勾选清单工件 ✅已ship（artifacts 表 v10+emit_checklist+三态卡片+状态 API+两技能接入）/ WP14b 凭证行内改科目等编辑型工件（待启动） | WP8、WP9、WP1（已ship） | **WP14a 已ship** |
 | WP15 | 审计日志与撤销 | 落地：v12 audit_logs 补列（conversation_id/tool_name/undo/undone_at，无会话 FK 长寿设计）+ audit-store（delete_rows/restore_rows 双原语、白名单硬校验+执行时二次校验、单事务撤销）+ fact_invoices/fact_metrics 写路径留痕 + 两段式 undo_last_write（high）+ GET /api/audit + POST undo。fact_obligations 经审查裁定移出（用户 UI 触发非 agent 写路径） | WP6 | **已ship**（2026-07-07；fix first 一轮：AU8 原子性真实中途失败重写） |
 
