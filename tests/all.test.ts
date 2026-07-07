@@ -605,4 +605,10 @@ void (async () => {
   const { parseCorpusTestPromise } = await import("./parse-corpus.test.ts");
   await parseCorpusTestPromise;
 
+  const { queryStagesTestPromise } = await import("./query-stages.test.ts");
+  await queryStagesTestPromise;
+
+  const { artifactChecklistTestPromise } = await import("./artifact-checklist.test.ts");
+  await artifactChecklistTestPromise;
+
 })();

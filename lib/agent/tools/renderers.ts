@@ -121,6 +121,14 @@ const summaries: Record<string, SummaryFn> = {
     return patchKeys.length ? `更新公司画像（${patchKeys.join("、")}）` : "更新公司画像";
   },
 
+  // ─── WP14a: 物化可勾选清单工件 ───
+  emit_checklist: (i) => {
+    const title = str(i, "title");
+    const items = Array.isArray((i as Record<string, unknown>)?.items) ? (i as Record<string, unknown>).items as unknown[] : [];
+    const count = items.length;
+    return title ? `物化清单「${title.slice(0, 30)}」(${count} 项)` : `物化清单(${count} 项)`;
+  },
+
   // ─── 收尾:声明最终产物 ───
   finalize_deliverable: (i) => {
     const files = Array.isArray((i as Record<string, unknown>)?.files) ? (i as Record<string, unknown>).files as unknown[] : [];

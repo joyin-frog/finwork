@@ -93,6 +93,25 @@ query_receivables(includeSettled=false)
 
 ---
 
+## 输出段——逾期清单物化（WP14a）
+
+第三步生成逾期催款清单草稿后，将逾期项物化为可勾选工件：
+
+```
+emit_checklist(
+  title="逾期催款清单 [YYYY-MM-DD]",
+  items=[
+    { label="[对手方] · [金额/金额待确认] · 逾期 [N] 天", detail="合同来源：[filename]", severity="warn" }
+    // 每笔逾期应收一条；severity 统一为 "warn"
+    // 仅列逾期项（agingDays < 0）；未到期项不纳入
+  ]
+)
+```
+
+**正文 Markdown 表格保留**——工件是操作层（记录催款跟进进度），不替代正文阅读层。
+
+---
+
 ## 执行约束
 
 - **催款函禁止自动发送**：只出草稿，由人工决策后发送。

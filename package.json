@@ -24,7 +24,6 @@
     "test:e2e:prod": "next build && PW_PROD=1 playwright test",
     "eval:golden": "tsx tests/golden/run.ts",
     "eval:golden:ci": "SKIP_LLM=true tsx tests/golden/run.ts",
-    "agent:ws": "tsx scripts/agent-ws-server.ts",
     "worker:demo": "python3 workers/finance_worker.py demo"
   },
   "dependencies": {

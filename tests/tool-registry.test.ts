@@ -78,11 +78,15 @@ export const toolRegistryTestPromise = (async () => {
 
   // 已实现卡片的工具必须是已登记的 finance 工具
   // (tool-cards.tsx 因 JSX/hugeicons 无法直接 import 进 Node 测试,故此处镜像 TOOLS_WITH_RESULT_CARD)
+  // WP14a: 新增 emit_checklist（kind 判别优先，与工具名无关，此处补全镜像）
+  // 同步对齐 diff_payroll_period（tool-cards.tsx 中已有，之前镜像漂移遗漏，顺带对齐）
   const TOOLS_WITH_RESULT_CARD = [
     "calculate_payroll_batch",
     "check_reimbursement_batch",
     "export_kingdee_draft",
     "validate_kingdee_voucher",
+    "diff_payroll_period",  // 漂移对齐：tool-cards.tsx 中已有，镜像之前漏列
+    "emit_checklist",       // WP14a 新增
   ] as const;
   for (const name of TOOLS_WITH_RESULT_CARD) {
     assert.ok(

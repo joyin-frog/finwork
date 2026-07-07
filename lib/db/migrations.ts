@@ -680,6 +680,32 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 10,
+    name: "artifacts",
+    up: (db) => {
+      // WP14a: 交互工件表——可勾选清单工件的持久层
+      //
+      // payload: JSON 字符串，格式 {items:[{id,label,detail?,severity?}]}
+      // state:   JSON 字符串，格式 {itemId:'open'|'done'|'ignored'}，默认 '{}'
+      // ON DELETE CASCADE：清单工件是会话内进度记录，会话删则工件随之删除；
+      //   conversation_id NULL 行不受级联影响（孤儿，可接受残留面）。
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS artifacts (
+          id              TEXT    NOT NULL PRIMARY KEY,
+          kind            TEXT    NOT NULL DEFAULT 'checklist',
+          conversation_id INTEGER NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+          title           TEXT    NOT NULL,
+          payload         TEXT    NOT NULL,
+          state           TEXT    NOT NULL DEFAULT '{}',
+          created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+          updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_artifacts_conversation_id
+          ON artifacts(conversation_id);
+      `);
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

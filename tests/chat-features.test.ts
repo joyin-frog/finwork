@@ -175,9 +175,11 @@ function main() {
   console.log("✓ PASS: chat page delegates panel + preview sidebar");
 
   // ---- Test 10: chat artifacts persist and render correctly ----
-  const agentRouteContent = fs.readFileSync(
-    path.join(import.meta.dirname, "../app/api/agent/query/route.ts"), "utf-8"
-  );
+  // WP10a 后拼接范围扩为 [route.ts, query-stages.ts]，断言字符串不变
+  const agentRouteContent = [
+    fs.readFileSync(path.join(import.meta.dirname, "../app/api/agent/query/route.ts"), "utf-8"),
+    fs.readFileSync(path.join(import.meta.dirname, "../lib/agent/query-stages.ts"), "utf-8"),
+  ].join("\n");
   assert.ok(
     agentRouteContent.includes("insertChatAgentEvent(messageId, event.type, event, traceId)"),
     "agent route should persist agent events"

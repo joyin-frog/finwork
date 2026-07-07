@@ -58,7 +58,11 @@ export const usageAccumulateTestPromise = (async () => {
     const adapterSrc = await fs.readFile(new URL("../lib/agent/claude-adapter.ts", import.meta.url), "utf8");
     assert.ok(adapterSrc.includes("accumulateModelUsage"), "U5 FAIL: adapter 应逐条 assistant 消息累计 usage");
     assert.ok(adapterSrc.includes("__modelUsage"), "U5 FAIL: adapter 应把累计 usage 挂到抛出的错误上");
-    const routeSrc = await fs.readFile(new URL("../app/api/agent/query/route.ts", import.meta.url), "utf8");
+    // WP10a 后拼接范围扩为 [route.ts, query-stages.ts]，断言字符串不变
+    const routeSrc = [
+      await fs.readFile(new URL("../app/api/agent/query/route.ts", import.meta.url), "utf8"),
+      await fs.readFile(new URL("../lib/agent/query-stages.ts", import.meta.url), "utf8"),
+    ].join("\n");
     assert.ok(routeSrc.includes("__modelUsage"), "U5 FAIL: route 出错收尾应从错误上取累计 usage 写 trace");
   }
 

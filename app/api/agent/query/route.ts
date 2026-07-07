@@ -1,32 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import { isEnabled } from "@/lib/runtime/flags";
 import { runClaudeAgent } from "@/lib/agent/claude-adapter";
 import type { AgentAttachment, AgentMessage } from "@/lib/agent/claude-adapter";
 import type { ModelUsage } from "@anthropic-ai/claude-agent-sdk";
-import { sanitizeAttachments } from "@/lib/agent/attachment-guard";
 import { writeSpan } from "@/lib/observability/spans";
 import { writeAgentTrace } from "@/lib/observability/trace-write";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
 import {
-  createChatConversation,
   getChatConversation,
   insertChatAgentEvent,
-  insertChatAttachment,
   insertChatMessage,
   setChatConversationClaudeSessionId,
   updateChatConversationTitle
 } from "@/lib/db/sqlite";
-import { getConversationFilesDir } from "@/lib/runtime/paths";
-import { sanitizeFileName, uniqueFilePath } from "@/lib/files/unique-name";
-import { cleanupUnfinalizedFiles, recordNewGeneratedFiles, snapshotGeneratedFiles } from "@/lib/chat/generated-files";
+import { cleanupUnfinalizedFiles, recordNewGeneratedFiles } from "@/lib/chat/generated-files";
 import { filterIdentity, createStreamingIdentityFilter } from "@/lib/safety/identity-filter";
-import { matchTrivialMessage, normalizeTier, resolveModelByTier, runRouter } from "@/lib/agent/router";
-import { injectSkillHint } from "@/lib/agent/skill-hint";
-import { getUsageStatus } from "@/lib/usage/store";
-import { buildBlockedNotice, type BlockedNotice } from "@/lib/usage/quota";
+import { runRouter } from "@/lib/agent/router";
 import { generateConversationTitle } from "@/lib/agent/conversation-title";
 import { cancelPendingQuestions, createPendingQuestion } from "@/lib/agent/pending-questions";
 import type { AgentQuestion } from "@/lib/agent/claude-adapter";
@@ -34,136 +23,38 @@ import { redact } from "@/lib/safety/pii";
 import { sanitizeTurnEvents } from "@/lib/agent/persist-hygiene";
 import { appendServerLog } from "@/lib/runtime/server-log";
 import { createLogger } from "@/lib/runtime/logger";
+import { parseStage, sessionStage, quotaStage, routerStage } from "@/lib/agent/query-stages";
 
 const log = createLogger("agent-query");
 
 export async function POST(request: Request) {
   const traceId = randomUUID();
   const startedAt = Date.now();
-  const settings = await readClaudeSettings().catch(() => ({ roleMode: "tech" as const, subagentModel: undefined as string | undefined }));
-  const roleMode = settings.roleMode;
+  const settings = await readClaudeSettings().catch(() => ({ roleMode: "tech" as const, subagentModel: undefined as string | undefined })) as Awaited<ReturnType<typeof readClaudeSettings>>;
+  const roleMode = settings.roleMode as string;
   log.info("request start", { traceId });
 
-  let messages: AgentMessage[];
-  let conversationId: number | undefined;
-  let attachments: AgentAttachment[] = [];
-  let referencedSkills: string[] = [];
-  let modelTier: string | undefined;
+  // ── Stage 1: parse ──
+  const p = await parseStage({ request, traceId, startedAt, settings, roleMode });
+  if (p instanceof Response) return p;
 
-  try {
-    const contentType = request.headers.get("content-type") ?? "";
-    if (contentType.includes("multipart/form-data")) {
-      const parsed = await parseMultipartRequest(request, traceId);
-      messages = parsed.messages;
-      conversationId = parsed.conversationId;
-      attachments = parsed.attachments;
-      referencedSkills = parsed.referencedSkills;
-      modelTier = parsed.modelTier;
-    } else {
-      const parsed = await parseJsonRequest(request);
-      messages = parsed.messages;
-      conversationId = parsed.conversationId;
-      attachments = parsed.attachments;
-      referencedSkills = parsed.referencedSkills;
-      modelTier = parsed.modelTier;
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    log.error("parse failed", { traceId, error });
-    return NextResponse.json({ ok: false, error: `请求解析失败: ${message}` }, { status: 400 });
-  }
+  // ── Stage 2: session ──
+  const s = await sessionStage(p);
+  if (s instanceof Response) return s;
 
-  // 安全护栏:客户端提交的 attachments.storagePath 完全可控,会被拼进 agent 提示("路径: …")
-  // 且 Read/read_document 无路径限制 —— 不校验就能诱导 agent 读任意文件。丢弃逃逸出会话目录的附件。
-  {
-    const { kept, dropped } = sanitizeAttachments(attachments, conversationId);
-    if (dropped.length) {
-      log.warn("dropped out-of-scope attachments", { traceId, count: dropped.length, names: dropped.map((a) => a.name) });
-      attachments = kept;
-    }
-  }
+  // ── Stage 3: quota ──
+  const q = await quotaStage(s);
+  if (q instanceof Response) return q;
 
-  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
-  const lastUserContent = lastUserMessage?.content.trim() ?? "";
-  log.info("payload parsed", { traceId, conversationId: conversationId ?? null, messageCount: messages.length, attachmentCount: attachments.length });
+  // ── Stage 4: router ──
+  const r = await routerStage(q);
+  if (r instanceof Response) return r;
 
-  let conversation = conversationId ? getChatConversation(conversationId) : null;
-  if (lastUserContent) {
-    if (!conversationId) {
-      const shortTitle = generateShortTitle(lastUserContent);
-      conversationId = createChatConversation(shortTitle);
-      conversation = getChatConversation(conversationId);
-      log.info("conversation created", { traceId, conversationId, title: shortTitle });
-    }
-    const messageId = insertChatMessage(conversationId, "user", lastUserContent);
-    for (const att of attachments) {
-      if (att.storagePath && conversationId) {
-        insertChatAttachment({
-          id: randomUUID(), messageId,
-          fileName: att.name, mimeType: att.mimeType, sizeBytes: att.size,
-          storagePath: path.relative(getConversationFilesDir(conversationId), att.storagePath), role: "user"
-        });
-      }
-    }
-  }
-
-  // Session staleness check
-  const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
-  let existingClaudeSessionId = conversation?.claudeSessionId ?? null;
-  if (isEnabled("SESSION_LIVENESS_CHECK_ENABLED") && existingClaudeSessionId && conversation?.claudeSessionUpdatedAt) {
-    if (Date.now() - new Date(conversation.claudeSessionUpdatedAt).getTime() > SESSION_MAX_AGE_MS) {
-      log.info("session stale", { traceId, conversationId });
-      existingClaudeSessionId = null;
-    }
-  }
-  const claudeSessionId = conversationId ? existingClaudeSessionId ?? randomUUID() : null;
-  if (conversationId && claudeSessionId && !existingClaudeSessionId) {
-    setChatConversationClaudeSessionId(conversationId, claudeSessionId);
-  }
-
-  // 用户引用的技能 → 注入"优先使用这些技能"提示(只改发给 agent 的副本,不污染已落库原文)。
-  const agentMessages = injectSkillHint(messages, referencedSkills); // 裁剪职责下沉到 adapter（pickPromptMessages）
-  const outputDir = conversationId ? path.join(getConversationFilesDir(conversationId), "generate") : undefined;
-  if (outputDir) mkdirSync(outputDir, { recursive: true });
-  const beforeGenerate = snapshotGeneratedFiles(conversationId);
-  const useStreaming = shouldUseStreaming(request);
-
-  // --- 用量配额拦截:在 router/agent 之前,任何 LLM 花费前 ---
-  if (isEnabled("USAGE_LIMIT_ENABLED") && lastUserContent) {
-    const usage = getUsageStatus({
-      now: Date.now(),
-      roles: {
-        routerModel: "routerModel" in settings ? settings.routerModel : "",
-        mainModel: "mainModel" in settings ? settings.mainModel : "",
-        subagentModel: settings.subagentModel ?? "",
-      },
-      // 放行即把(过期则重锚的)窗口起点写回,使紧随其后的本回合 trace 落在窗口内。
-      // 命中拦截时窗口必为活动态,重锚为 no-op,落库无副作用。
-      persist: true,
-    });
-    const notice = buildBlockedNotice(usage);
-    if (notice) {
-      log.info("usage blocked", { traceId, window: notice.window, resetAt: notice.resetAt });
-      return buildUsageBlockedResponse({ notice, conversationId, traceId, useStreaming });
-    }
-  }
-
-  // --- Router ---
-  // 路由器关闭时仍先过零成本本地问候直答(matchTrivialMessage),只跳过 LLM 分类调用
-  const localTrivial = !isEnabled("ROUTER_ENABLED") && lastUserContent ? matchTrivialMessage(lastUserContent) : null;
-  const routerResult = isEnabled("ROUTER_ENABLED") && lastUserContent
-    ? await runRouter(lastUserContent, messages, traceId, { claudeSessionId: existingClaudeSessionId, conversationId })
-    : localTrivial
-      ? { path: "cheap" as const, decision: localTrivial, latencyMs: 0 }
-      : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
-  log.info("router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
-  writeSpan({
-    traceId, spanType: "router", name: "router",
-    startedAt: Date.now() - routerResult.latencyMs,
-    durationMs: routerResult.latencyMs,
-    inputSummary: lastUserContent.slice(0, 200),
-    outputSummary: `${routerResult.path} / ${routerResult.decision.intent}`,
-  });
+  const {
+    conversationId, existingClaudeSessionId, claudeSessionId,
+    agentMessages, attachments, outputDir, beforeGenerate,
+    lastUserContent, useStreaming, routerResult, modelOverride,
+  } = r;
 
   // --- Run agent ---
   try {
@@ -173,7 +64,7 @@ export async function POST(request: Request) {
       traceId, agentMessages, claudeSessionId, existingClaudeSessionId,
       attachments, outputDir, routerResult, conversationId,
       // 模型由「深度思考」开关决定:默认快速模型,开了用推理模型(该档未配则回落主模型)。
-      modelOverride: resolveModelByTier(normalizeTier(modelTier), settings),
+      modelOverride,
     };
     const persistParams: PersistTurnParams = {
       conversationId, existingClaudeSessionId, beforeGenerate,
@@ -534,54 +425,6 @@ function modelLabel(routerResult?: Awaited<ReturnType<typeof runRouter>>) {
   return routerResult?.decision?.mainModelTier ?? "main";
 }
 
-/** 用量超限:把红字提示作为本回合 assistant 回复落库(+usage_blocked 事件供前端红字渲染),
- * 用户消息已在 route 顶部入库,这里补齐 assistant 侧,使"对话内提示超限"在刷新后仍在。 */
-function persistBlockedNotice(conversationId: number | undefined, notice: BlockedNotice, traceId: string): void {
-  if (!conversationId) return;
-  // 走共用收尾出口 insertAssistantTurn(assistant 落库唯一处,见 AC5 守卫);
-  // usage_blocked 不在 sanitizeTurnEvents 的丢弃名单,会被保留,供前端红字渲染。
-  const collector: AgentTurnCollector = {
-    collectedChunks: [notice.message],
-    collectedEvents: [
-      { type: "system", subtype: "usage_blocked", message: notice.message, resetAt: notice.resetAt, window: notice.window },
-    ],
-  };
-  insertAssistantTurn(conversationId, notice.message, collector, traceId);
-}
-
-/** 拦截响应:落库提示后,按流式/非流式返回 blocked 事件(不跑 router/agent)。 */
-function buildUsageBlockedResponse(params: {
-  notice: BlockedNotice;
-  conversationId: number | undefined;
-  traceId: string;
-  useStreaming: boolean;
-}) {
-  const { notice, conversationId, traceId, useStreaming } = params;
-  persistBlockedNotice(conversationId, notice, traceId);
-  const conversation = conversationId ? getChatConversation(conversationId) : null;
-
-  if (!useStreaming) {
-    // content 带上提示文案;红字渲染由前端识别已落库的 usage_blocked 事件驱动(见 AssistantTurn)。
-    return NextResponse.json({
-      ok: true,
-      data: { blocked: true, content: notice.message, message: notice.message, resetAt: notice.resetAt, window: notice.window, conversationId, conversation },
-    });
-  }
-
-  // 流式:拦截无 LLM 产出,直接 meta→done。done 携带已落库会话(含 usage_blocked 事件),
-  // 前端 done 后用 mergeFinalMessages 重建消息,AssistantTurn 据此把正文渲染成红字。
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      const enqueue = (o: Record<string, unknown>) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(o)}\n\n`));
-      if (conversationId) enqueue({ type: "meta", conversationId });
-      enqueue({ type: "done", conversationId, conversation });
-      controller.close();
-    },
-  });
-  return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" } });
-}
-
 /** 观测保真:有真实 usage 时记真实模型 id(modelUsage 的键),否则回落到分层名(cheap/错误路径无 usage)。 */
 function pickRealModel(result: AgentTurnResult, routerResult?: Awaited<ReturnType<typeof runRouter>>): string {
   if ("modelUsage" in result && result.modelUsage) {
@@ -589,101 +432,6 @@ function pickRealModel(result: AgentTurnResult, routerResult?: Awaited<ReturnTyp
     if (keys.length) return keys.join(",");
   }
   return modelLabel(routerResult);
-}
-
-// ─── request parsing ────────────────────────────────────────────────
-
-/**
- * Decode a dataUrl attachment and persist it to the conversation's upload dir.
- * Returns the absolute file path written, or null if the dataUrl is empty/invalid.
- * Shared by parseMultipartRequest and parseJsonRequest so both paths land files
- * on disk with identical directory layout and naming logic.
- */
-function saveAttachmentBuffer(conversationId: number, fileName: string, buffer: Buffer): string {
-  const uploadDir = path.join(getConversationFilesDir(conversationId), "upload");
-  mkdirSync(uploadDir, { recursive: true });
-  const filePath = uniqueFilePath(uploadDir, fileName);
-  writeFileSync(filePath, buffer);
-  return filePath;
-}
-
-async function parseMultipartRequest(request: Request, traceId: string) {
-  const formData = await request.formData();
-  const messages: AgentMessage[] = formData.get("messages") ? (JSON.parse(formData.get("messages") as string) as AgentMessage[]) : [];
-  let conversationId: number | undefined = (formData.get("conversationId") as string) ? Number(formData.get("conversationId")) : undefined;
-  const uploadedFiles = formData.getAll("files") as File[];
-  const attachments: AgentAttachment[] = [];
-
-  if (uploadedFiles.length > 0) {
-    const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    if (!conversationId && lastUser?.content.trim()) {
-      conversationId = createChatConversation(generateShortTitle(lastUser.content.trim()));
-      log.info("conversation created for files", { traceId, conversationId });
-    }
-    if (conversationId) {
-      for (const file of uploadedFiles) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const filePath = saveAttachmentBuffer(conversationId, file.name, buffer);
-        const storedName = path.basename(filePath);
-        attachments.push({ name: storedName, mimeType: file.type || guessMimeType(storedName), size: buffer.length, dataUrl: `data:${file.type || "application/octet-stream"};base64,${buffer.toString("base64")}`, storagePath: filePath });
-      }
-    }
-  }
-
-  const refJson = formData.get("referencedAttachments") as string | null;
-  if (refJson) { try { attachments.push(...(JSON.parse(refJson) as AgentAttachment[])); } catch { /* ok */ } }
-
-  let referencedSkills: string[] = [];
-  const skillsJson = formData.get("referencedSkills") as string | null;
-  if (skillsJson) { try { referencedSkills = JSON.parse(skillsJson) as string[]; } catch { /* ok */ } }
-  const modelTier = (formData.get("modelTier") as string | null) ?? undefined;
-
-  return { messages, conversationId, attachments, referencedSkills, modelTier };
-}
-
-async function parseJsonRequest(request: Request) {
-  const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[]; referencedSkills?: string[]; modelTier?: string };
-  let conversationId = body.conversationId;
-  const rawAttachments = body.attachments ?? [];
-
-  // Persist any dataUrl-only attachments to disk so downstream (claude-adapter,
-  // non-Anthropic gateways) can always read them via storagePath rather than
-  // relying on inline base64 blocks that some gateways silently drop.
-  const attachments: AgentAttachment[] = [];
-  for (const att of rawAttachments) {
-    if (!att.storagePath && att.dataUrl) {
-      // Decode base64 payload from the data URL (data:<mime>;base64,<payload>)
-      const commaIdx = att.dataUrl.indexOf(",");
-      const base64Payload = commaIdx >= 0 ? att.dataUrl.slice(commaIdx + 1) : att.dataUrl;
-      const buffer = Buffer.from(base64Payload, "base64");
-      if (buffer.length > 0) {
-        // Auto-create a conversation when one doesn't exist yet.
-        if (!conversationId) {
-          const lastUser = [...(body.messages ?? [])].reverse().find((m) => m.role === "user");
-          const title = lastUser?.content?.trim() ? generateShortTitle(lastUser.content.trim()) : "新对话";
-          conversationId = createChatConversation(title);
-        }
-        const filePath = saveAttachmentBuffer(conversationId, att.name, buffer);
-        attachments.push({ ...att, storagePath: filePath, size: buffer.length });
-        continue;
-      }
-    }
-    attachments.push(att);
-  }
-
-  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId, attachments, referencedSkills: body.referencedSkills ?? [], modelTier: body.modelTier };
-}
-
-// ─── string helpers ─────────────────────────────────────────────────
-
-function shouldUseStreaming(request: Request): boolean {
-  return new URL(request.url).searchParams.get("stream") !== "false";
-}
-
-function generateShortTitle(text: string): string {
-  const cleaned = text.split(/\n\n(?:附件|用户随消息附加了)[\s\S]*/)[0].replace(/\n+/g, " ").trim() || "新对话";
-  const first = cleaned.split(/[，。？！,.?!；;]/)[0].trim();
-  return first.length <= 20 ? first : first.slice(0, 18) + "…";
 }
 
 /**
@@ -710,7 +458,3 @@ async function improveConversationTitle(conversationId: number): Promise<string 
   }
 }
 
-function guessMimeType(fileName: string): string {
-  const map: Record<string, string> = { ".png":"image/png",".jpg":"image/jpeg",".jpeg":"image/jpeg",".gif":"image/gif",".webp":"image/webp",".pdf":"application/pdf",".xlsx":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",".xls":"application/vnd.ms-excel",".csv":"text/csv",".docx":"application/vnd.openxmlformats-officedocument.wordprocessingml.document",".doc":"application/msword",".txt":"text/plain",".md":"text/markdown",".json":"application/json",".html":"text/html" };
-  return map[path.extname(fileName).toLowerCase()] ?? "application/octet-stream";
-}
