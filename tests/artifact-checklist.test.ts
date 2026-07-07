@@ -214,7 +214,7 @@ export const artifactChecklistTestPromise = (async () => {
 
   // ── A5: API route GET/PATCH 三路径（含 400）─────────────────────────────────
   // 使用 handleGet/handlePatch（注入 emitDb，避免依赖 getDb() 单例）
-  const { handleGet, handlePatch } = await import("../app/api/artifacts/[id]/route.ts");
+  const { handleGet, handlePatch } = await import("../app/api/artifacts/[id]/handlers.ts");
 
   // GET - 存在的 artifact
   {
