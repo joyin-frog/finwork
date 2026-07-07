@@ -38,7 +38,7 @@
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
-| WP4 | 可追溯性泛化 | 摸底修正：CalcReceipt/通用卡片/兜底分发已在。拆 WP4a（kind 判别契约+四生成方 source 补链）/ WP4b（voucher与分析接入+provenance 落库 v9） | 无 | **WP4a 已ship**（kind 契约+三处 source 补链+对账文件名全链路） |
+| WP4 | 可追溯性泛化 | WP4a ✅（kind 契约+source 补链）/ WP4b ✅（2026-07-07）——v14 calc_receipts 落库表+fact_payroll.receipt_id 回填（重算更新确认不动）+四生产方接入（tax_calculator 形状一字不动只落库，B1 定案）+voucher 两工具产 receipt（仅 ok===true）+分析 provenance 段（handler 层组装保持 domain 纯函数）。遗留待办：calc_receipts.conversation_id 各调用点未线程化注入（列可空） | 无 | **WP4a+WP4b 均已ship** |
 | WP5 | 计算引擎独立化 | 拆两刀：WP5a 规则表数据化（个税表内置种子+社保表建空结构，用户 2026-07-06 拍板）/ WP5b worker 拆包。摸底：政策数字双源硬编码（payroll.py:20-33 与 tax-config.ts:24-33 镜像）、金额全 float、无 as-of 查询先例 | WP1a（迁移版本排序 v8>v7） | **WP5a 已ship**；**WP5b 评估后收窄不拆（2026-07-07）**——751 行域边界自然无真实痛点，拆包需改 7 处 Node 路径引用+入口方式且踩 Windows 打包盲区，值不回票价；已落轻整理（7 条域分段注释），某域超 300 行再议 |
 | WP6 | 迁移纪律收口 | **摸底修正（2026-07-06）：版本化迁移框架已存在**（user_version v1-5、事务回滚、迁移前备份）。真正的债：baseline 每次启动无条件重跑，`CREATE TABLE IF NOT EXISTS` 会复活未来被迁移删除的表（WP1 旧表退役的直接地雷）+ 双轨制无护栏。范围收窄为：baseline 冻结、v6 reconcile、删表不复活测试、rehearseMigrations 预演。**仍是 WP1 硬前置** | 无 | **已ship**（spec v1.2；实施审查 fix-first 唯一阻塞已修，全量 11 组测试绿；未提交，随第一批一起 commit） |
 | WP7 | Windows 运行时防线 | 摸底修正：windows_smoke CI/打包硬校验/GBK 防线大半已在。收窄为 WP7a：编码防线统一 12+ 调用点（parsers 两处是现实漏洞）+守护 CI 守护者+tar 兜底 | 无 | **WP7a 已ship**（12 调用点统一 pythonSpawnEnv；CI 守护者有人守了；tar 兜底） |

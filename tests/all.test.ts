@@ -620,4 +620,7 @@ void (async () => {
   const { salesInvoicesTestPromise } = await import("./sales-invoices.test.ts");
   await salesInvoicesTestPromise;
 
+  const { receiptStoreTestPromise } = await import("./receipt-store.test.ts");
+  await receiptStoreTestPromise;
+
 })();

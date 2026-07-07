@@ -220,7 +220,7 @@ export function savePayrollDraft(
   month: number,
   result: CumulativePayrollResult,
   monthsEmployed: number,
-  options?: { overwriteConfirmed?: boolean; db?: DatabaseSync }
+  options?: { overwriteConfirmed?: boolean; db?: DatabaseSync; receiptId?: number }
 ): void {
   const db = options?.db ?? getDb();
   const existing = db
@@ -246,14 +246,15 @@ export function savePayrollDraft(
   }
 
   const ctx = `fact_payroll(${result.employeeName},${year},${month})`;
+  const receiptId = options?.receiptId ?? null;
   db.prepare(
     `INSERT INTO fact_payroll (
       employee_name, year, month,
       gross_pay_cents, social_insurance_cents, housing_fund_cents, special_deduction_cents, months_employed,
       gross_cum_cents, social_cum_cents, fund_cum_cents, special_cum_cents,
       taxable_income_cum_cents, tax_due_cum_cents, tax_current_cents, tax_withheld_cum_cents, net_pay_cents,
-      caliber_version, detail_json, settlement_status, confirmed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NULL)
+      caliber_version, detail_json, settlement_status, confirmed_at, receipt_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NULL, ?)
     ON CONFLICT(employee_name, year, month) DO UPDATE SET
       gross_pay_cents = excluded.gross_pay_cents,
       social_insurance_cents = excluded.social_insurance_cents,
@@ -272,7 +273,8 @@ export function savePayrollDraft(
       caliber_version = excluded.caliber_version,
       detail_json = excluded.detail_json,
       settlement_status = 'draft',
-      confirmed_at = NULL`
+      confirmed_at = NULL,
+      receipt_id = excluded.receipt_id`
   ).run(
     result.employeeName,
     year,
@@ -292,7 +294,8 @@ export function savePayrollDraft(
     yuanToCents(result.taxWithheldCum, ctx),
     yuanToCents(result.netPay, ctx),
     result.detail.taxConfigVersion,
-    JSON.stringify(result.detail)
+    JSON.stringify(result.detail),
+    receiptId
   );
 }
 

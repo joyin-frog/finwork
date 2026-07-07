@@ -1,7 +1,7 @@
 # 可追溯性第二刀（WP4b：voucher/分析接入 + CalcReceipt 落库）Spec
 
 > 版本 v1.2 / 2026-07-07（v1.0 fix first → v1.1 修订 → 限定复审批准；复审建议的 §0 编辑性残留已修）
-> 状态：**计划已批准**（2026-07-07；实施须待 WP13b ship 后启动——v14 迁移位）
+> 状态：**已实施并通过审查（ship）**（2026-07-07；实施审查零阻塞；遗留 N1：calc_receipts.conversation_id 各调用点未填（列可空不违约），线程化注入记 ROADMAP 待办）
 > 依赖：WP4a（已ship）、WP14a（已ship）。**迁移占 v14，排 WP15(v12)、WP13b(v13) 之后串行实施；开工验证 migrations.ts 末条为 v13，否则停止报告。**
 > 架构事实（2026-07-07 scout + orchestrator 精读核实）：
 > - CalcReceipt 契约：lib/domain/receipt.ts——kind:'calc_receipt'/value/unit:'CNY'/rounding/steps[]/source[]/basis{caliberVersion,settlementStatus,asOf}/caveats?；makeCalcReceipt/validateCalcReceipt 归一化 kind（:95）。

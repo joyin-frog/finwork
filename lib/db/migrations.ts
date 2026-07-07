@@ -799,6 +799,58 @@ export const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "fact_invoices", "settlement_note", "TEXT NULL");
     },
   },
+  {
+    version: 14,
+    name: "calc_receipts_and_payroll_receipt_id",
+    up: (db) => {
+      // WP4b: CalcReceipt 持久化
+      // calc_receipts: 独立表（无会话 FK——计算凭据须比会话长寿，同 audit_logs 设计）
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS calc_receipts (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          tool_name       TEXT    NOT NULL,
+          conversation_id INTEGER NULL,
+          trace_id        TEXT    NULL,
+          receipt         TEXT    NOT NULL,
+          created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_calc_receipts_conversation_id
+          ON calc_receipts(conversation_id);
+      `);
+      // fact_payroll 补 receipt_id（引用 calc_receipts，NULL 允许兼容历史行）
+      // 防御性：某些测试绕过 initializeSchema 直接设 user_version，fact_payroll 可能不存在
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS fact_payroll (
+          id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+          employee_name             TEXT NOT NULL,
+          year                      INTEGER NOT NULL,
+          month                     INTEGER NOT NULL,
+          gross_pay_cents           INTEGER NOT NULL,
+          social_insurance_cents    INTEGER NOT NULL,
+          housing_fund_cents        INTEGER NOT NULL,
+          special_deduction_cents   INTEGER NOT NULL,
+          months_employed           INTEGER NOT NULL,
+          gross_cum_cents           INTEGER NOT NULL,
+          social_cum_cents          INTEGER NOT NULL,
+          fund_cum_cents            INTEGER NOT NULL,
+          special_cum_cents         INTEGER NOT NULL,
+          taxable_income_cum_cents  INTEGER NOT NULL,
+          tax_due_cum_cents         INTEGER NOT NULL,
+          tax_current_cents         INTEGER NOT NULL,
+          tax_withheld_cum_cents    INTEGER NOT NULL,
+          net_pay_cents             INTEGER NOT NULL,
+          settlement_status         TEXT NOT NULL DEFAULT 'draft',
+          caliber_version           TEXT NOT NULL,
+          source                    TEXT NOT NULL DEFAULT 'agent_derived',
+          detail_json               TEXT NOT NULL,
+          created_at                TEXT NOT NULL DEFAULT (datetime('now')),
+          confirmed_at              TEXT,
+          UNIQUE(employee_name, year, month)
+        )
+      `);
+      addColumnIfMissing(db, "fact_payroll", "receipt_id", "INTEGER NULL");
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */
