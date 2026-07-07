@@ -19,6 +19,7 @@ import { checkSumConsistent, checkMoneyPrecision, collectNumericIssues } from "@
 import { getDatabasePath, getAppDataDir, getProjectRoot, getPythonPath } from "@/lib/runtime/paths";
 import { redact } from "@/lib/safety/pii";
 import { buildPayslipExport } from "@/lib/domain/payslip-export";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -99,6 +100,8 @@ export function createPayrollTools(sdk: Sdk, outputDir?: string) {
         try {
           let prior: PriorCumulative;
           let monthsEmployed: number;
+          // 产品语言来源条目：记录本次累计所依据的年初/上月数据来源
+          let sourceHumanRef: string;
           if (emp.ytd) {
             if (emp.monthsEmployed == null) {
               throw new Error(`${emp.employeeName}:提供 ytd 累计数时必须同时提供 monthsEmployed(本年任职月数,含本月)`);
@@ -106,6 +109,7 @@ export function createPayrollTools(sdk: Sdk, outputDir?: string) {
             prior = emp.ytd;
             monthsEmployed = emp.monthsEmployed;
             coldStarts.push(emp.employeeName);
+            sourceHumanRef = "调用方提供的年初累计";
           } else {
             const confirmedPrior = getLatestConfirmedPayroll(emp.employeeName, args.year, args.month);
             if (confirmedPrior) {
@@ -117,10 +121,14 @@ export function createPayrollTools(sdk: Sdk, outputDir?: string) {
                 taxWithheldCum: confirmedPrior.taxWithheldCum
               };
               monthsEmployed = emp.monthsEmployed ?? confirmedPrior.monthsEmployed + 1;
+              // 接力已确认记录：精确到期间（YYYY-MM）
+              const relayMonth = String(confirmedPrior.month).padStart(2, "0");
+              sourceHumanRef = `接力 ${confirmedPrior.year}-${relayMonth} 已确认记录`;
             } else {
               prior = ZERO_PRIOR_CUMULATIVE;
               monthsEmployed = emp.monthsEmployed ?? 1;
               coldStarts.push(emp.employeeName);
+              sourceHumanRef = "调用方提供的年初累计";
             }
           }
 
@@ -141,7 +149,11 @@ export function createPayrollTools(sdk: Sdk, outputDir?: string) {
               prior,
               settlementStatus,
               asOf,
-              source: [{ ref: `payroll-${asOf}`, recordCount: 1 }],
+              // 机器可读锚点保留；追加人类可读来源条目
+              source: [
+                { ref: `payroll-${asOf}`, recordCount: 1 },
+                { ref: sourceHumanRef },
+              ],
             },
             taxConfig
           );
@@ -414,7 +426,7 @@ export function createPayrollTools(sdk: Sdk, outputDir?: string) {
           encoding: "utf-8",
           maxBuffer: 10 * 1024 * 1024,
           timeout: 60_000,
-          env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+          env: pythonSpawnEnv(),
         });
         const result = JSON.parse(out.trim()) as { filePath: string };
         const savedName = path.basename(result.filePath);

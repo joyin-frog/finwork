@@ -102,5 +102,40 @@ export const reconciliationReceiptTestPromise = (async () => {
   assert.equal(unbal.receipt.steps.length, 0, "RR-T9 FAIL: 无匹配时 steps 应为空数组");
   assert.equal(unbal.receipt.value, 0, "RR-T9 FAIL: 无匹配时 value 应为 0");
 
+  // ── RR-T10: fileNames 可选参数 — 传入文件名时 source 带文件名（WP4a-RF1）──
+  // RED: 当前 reconcileBankStatement 不接受 fileNames 参数，source 无 file 字段
+  const rWithFileNames = reconcileBankStatement(
+    [{ date: "2026-06-01", amount: 500, direction: "in" }],
+    [{ date: "2026-06-01", amount: 500, direction: "in" }],
+    { fileNames: { bank: "银行流水2026-06.xlsx", book: "台账2026-06.xlsx" } }
+  );
+  const bankSrcFile = rWithFileNames.receipt.source.find((s) => s.ref === "bank");
+  const bookSrcFile = rWithFileNames.receipt.source.find((s) => s.ref === "book");
+  assert.equal(
+    bankSrcFile?.file,
+    "银行流水2026-06.xlsx",
+    "RR-T10 FAIL: 传入 bankFileName 时 source.bank 应带 file 字段"
+  );
+  assert.equal(
+    bookSrcFile?.file,
+    "台账2026-06.xlsx",
+    "RR-T10 FAIL: 传入 bookFileName 时 source.book 应带 file 字段"
+  );
+
+  // ── RR-T11: fileNames 未传时行为不变（无 file 字段）（WP4a-RF2）──────────
+  // 复用已有 RR-T5 的 r 变量（无 fileNames 传入）
+  const bankSrcNoFile = r.receipt.source.find((s) => s.ref === "bank");
+  const bookSrcNoFile = r.receipt.source.find((s) => s.ref === "book");
+  assert.equal(
+    bankSrcNoFile?.file,
+    undefined,
+    "RR-T11 FAIL: 未传 fileNames 时 source.bank.file 应为 undefined"
+  );
+  assert.equal(
+    bookSrcNoFile?.file,
+    undefined,
+    "RR-T11 FAIL: 未传 fileNames 时 source.book.file 应为 undefined"
+  );
+
   console.log("reconciliation-receipt: all 9 checks passed ✓");
 })();

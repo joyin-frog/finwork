@@ -15,6 +15,7 @@ import { validateVoucherDimensions } from "@/lib/domain/voucher-dimension-valida
 import { buildVoucherSheet, type VoucherForSheet } from "@/lib/domain/voucher-sheet";
 import { processVoucherBatch, type BatchSlip } from "@/lib/domain/voucher-batch";
 import { getPythonPath, getProjectRoot, getAppDataDir } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 
 type Sdk = SdkLike;
 
@@ -579,7 +580,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
         encoding: "utf-8",
         maxBuffer: 10 * 1024 * 1024,
         timeout: 60_000,
-        env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
+        env: pythonSpawnEnv(),
       });
       const result = JSON.parse(out.trim()) as { filePath: string };
       // worker 侧防覆盖可能版本化为 _v2:回显真实落盘文件名,别让模型/附件流拿旧名找不到文件

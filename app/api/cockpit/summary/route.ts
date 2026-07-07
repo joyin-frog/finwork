@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { getPayrollPeriodSummary, getBusinessOverview } from "@/lib/db/finance-store";
+import { getPayrollPeriodSummary, getBusinessOverview, getInvoiceLedgerStats, hasMetricsForMonth } from "@/lib/db/finance-store";
 import { listConfirmedMetaDocRows, listRecentWorkItems } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
 import { deriveCashObligations, obligationsInMonth, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
 import { listRoleDispatchSummary, listBlockedDispatches } from "@/lib/db/dispatch-store";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
+import { listSkills } from "@/lib/agent/skills-store";
 import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
 import { appendServerLog } from "@/lib/runtime/server-log";
 
@@ -34,8 +35,23 @@ export async function GET() {
     }));
     const obligations = deriveCashObligations(oblDocs);
 
+    // 新增参数：发票台账统计 + 上月指标存在性 + filing-precheck starter
+    const invoiceStats = getInvoiceLedgerStats(year, month);
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const metricsForLastMonth = hasMetricsForMonth(prevYear, prevMonth);
+
+    let filingPrecheckStarter: string | undefined;
+    try {
+      const skills = await listSkills();
+      const precheckSkill = skills.find((s) => s.name === "filing-precheck");
+      filingPrecheckStarter = precheckSkill?.starter || undefined;
+    } catch {
+      filingPrecheckStarter = undefined;
+    }
+
     // 关注区：rule 供给源 + gate 供给源合并排序
-    const ruleItems = deriveAttentionItems(calendar, payroll, obligations);
+    const ruleItems = deriveAttentionItems(calendar, payroll, obligations, invoiceStats, metricsForLastMonth, filingPrecheckStarter);
     const blockedDispatches = listBlockedDispatches(7);
     const gateItems = blockedDispatches.map((row) => {
       const reg = ROLE_REGISTRY.find((r) => r.id === row.roleId);

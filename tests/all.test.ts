@@ -587,4 +587,10 @@ void (async () => {
   const { agentAttachmentsJsonTestPromise } = await import("./agent-attachments-json.test.ts");
   await agentAttachmentsJsonTestPromise;
 
+  const { attentionPrecheckTestPromise } = await import("./attention-precheck.test.ts");
+  await attentionPrecheckTestPromise;
+
+  const { windowsHardeningTestPromise } = await import("./windows-hardening.test.ts");
+  await windowsHardeningTestPromise;
+
 })();

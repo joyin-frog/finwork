@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import type { ReimbursementItem, RuleHit } from "@/lib/types";
 import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { makeCalcReceipt, type CalcStep } from "./receipt";
 
 export type ReimbursementPolicy = {
@@ -19,7 +20,7 @@ const SCRIPT = path.join(getBundledPluginRoot(), "skills", "reimbursement-check"
 function runScript(payload: unknown): ReimbursementItem[] {
   let out: string;
   try {
-    out = execFileSync(getPythonPath(), [SCRIPT], { input: JSON.stringify(payload), encoding: "utf-8" });
+    out = execFileSync(getPythonPath(), [SCRIPT], { input: JSON.stringify(payload), encoding: "utf-8", env: pythonSpawnEnv() });
   } catch (e) {
     throw new Error(`报销脚本执行失败:${e instanceof Error ? e.message : String(e)}`);
   }

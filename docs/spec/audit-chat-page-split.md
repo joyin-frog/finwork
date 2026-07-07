@@ -125,3 +125,9 @@ chat-page.tsx 行数下降 41%（750 行），未达到 ≤500 的指标，原�
 1. **chat-float.test.ts:75** 哨兵折断待处理（见偏差1）
 2. **技能菜单+@提及网** 未切 hook：handleDraftChange 引用 7+ 个主作用域值，切出后参数超限，spec 允许留主文件（"默认整体留在主文件"）
 3. **文件面板 auto-open refs** 留主文件：`panelDefaultResolvedRef/userClosedPanelRef/outputCountRef` 需与 conversationFiles effect 紧耦合，不适合作为 hook 参数
+
+---
+
+## 事后修复记录（orchestrator，2026-07-07）
+
+WP9a 的哨兵清单有遗漏：除已处理的 chat-features/chat-float 外，`tool-call-step-ui.test.ts`（C-D2/D2b/D3/D4）、`chat-process-polish.test.ts`（C8 组两处读点）、`subagent-transparency.test.ts`（一处读点）也 readFileSync chat-page.tsx 源码，拆分后断言失败。**该失败被掩盖多轮的原因**：all.test.ts 的 void(async) 链使断言失败以 unhandledRejection 形式在 TAP 报告（pass 11/fail 0）之后出现，进程退出码为 1 但多轮验证用管道 grep TAP 尾部、未检查退出码，误判为绿。修复：三个测试文件的读点统一扩为拆分后文件集（断言语义不变，与既有哨兵规则同类）；验证 EXIT_CODE=0 且零 unhandledRejection。教训已入持久记忆：**跑绿判定以进程退出码为准**。

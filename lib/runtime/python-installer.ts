@@ -7,9 +7,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { pipeline } from "node:stream/promises";
 import { getBundledPythonArchive, getInstalledPythonDir, getProjectRoot } from "./paths";
+import { pythonSpawnEnv } from "./python-env";
 
 export type InstallPhase = "resolve" | "download" | "extract" | "pip" | "done" | "error";
 export type InstallProgress = { phase: InstallPhase; message: string };
@@ -154,6 +155,11 @@ export const defaultInstallSteps: InstallSteps = {
     await pipeline(res.body as unknown as NodeJS.ReadableStream, fs.createWriteStream(destFile));
   },
   extract: async (archive, destDir) => {
+    // tar 可用性探测:Windows 10 1803 以下无内置 tar,不可用时给出明确引导。
+    const tarCheck = spawnSync("tar", ["--version"], { timeout: 5_000 });
+    if (tarCheck.error || tarCheck.status !== 0) {
+      throw new Error("Windows 10 1803 以下需手动安装 Python 运行时或升级系统（tar 不可用，无法解压组件包）");
+    }
     // 先清掉上一次失败/中断留下的半截残留,再解压——否则会在脏目录上叠加(残留文件 + 新文件混合,
     // 或旧的损坏 python 被后续 exists() 误判为可用而跳过修复)。bundled 与 download 两条路每次解压都从干净目录开始。
     fs.rmSync(destDir, { recursive: true, force: true });
@@ -163,17 +169,17 @@ export const defaultInstallSteps: InstallSteps = {
   pipInstall: async (pythonPath, requirementsPath) => {
     // 默认走清华 PyPI 镜像(国内稳),非国内可用 FINANCE_AGENT_PIP_INDEX_URL 覆盖(如官方 https://pypi.org/simple)。
     const indexUrl = process.env.FINANCE_AGENT_PIP_INDEX_URL?.trim() || "https://pypi.tuna.tsinghua.edu.cn/simple";
-    await execFileAsync(pythonPath, ["-m", "pip", "install", "-i", indexUrl, "-r", requirementsPath]);
+    await execFileAsync(pythonPath, ["-m", "pip", "install", "-i", indexUrl, "-r", requirementsPath], pythonSpawnEnv());
   }
 };
 
-function execFileAsync(cmd: string, args: string[]): Promise<void> {
+function execFileAsync(cmd: string, args: string[], env?: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
     // 显式给恒存在的 cwd:子进程默认继承父进程(next-server)的 cwd = 应用包内 next-server 目录;
     // 该目录一旦消失(从 DMG 直接运行后弹出/移动 .app、Gatekeeper translocation 回收、或被清理),
     // pip 启动时 os.getcwd() 抛 FileNotFoundError(ENOENT)致首启「Excel 组件」安装失败。
     // os.tmpdir() 恒存在;tar(-C/-f)与 pip(-r/pythonPath)入参均为绝对路径,不依赖 cwd。
-    execFile(cmd, args, { cwd: os.tmpdir(), timeout: 300_000, maxBuffer: 16 * 1024 * 1024 }, (err, _out, stderr) => {
+    execFile(cmd, args, { cwd: os.tmpdir(), timeout: 300_000, maxBuffer: 16 * 1024 * 1024, ...(env ? { env } : {}) }, (err, _out, stderr) => {
       if (err) reject(new Error(stderr || err.message));
       else resolve();
     });

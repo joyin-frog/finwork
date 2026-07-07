@@ -157,7 +157,13 @@ export const subagentTransparencyTestPromise = (async () => {
 
   // ─── §2e：渲染文件含 subagent 分支 ───────────────────────────────────────
   {
-    const pageSrc = src("app/chat/chat-page.tsx");
+    const pageSrc = [
+      "app/chat/chat-page.tsx",
+      "app/chat/components/assistant-turn.tsx",
+      "app/chat/components/user-bubble.tsx",
+      "app/chat/components/file-tray.tsx",
+      "app/chat/components/mention-popup.tsx",
+    ].map(src).join("\n"); // WP9a 拆解后哨兵读取范围扩为文件集(断言语义不变)
     const trackSrc = src("app/chat/subagent-track.tsx");
     const segmentsSrc = src("app/chat/turn-segments.ts");
 

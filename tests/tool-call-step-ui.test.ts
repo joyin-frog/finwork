@@ -221,10 +221,15 @@ export const toolCallStepUiTestPromise = (async () => {
       stepSrc2.includes("!isActive && aggregated.length >= 2"),
       "C-D1 FAIL: 已完成多步段应默认折叠为摘要行"
     );
-    const pageSrc2 = src("app/chat/chat-page.tsx");
+    // WP9a 拆解(2026-07-06)后消息渲染移入 app/chat/components/*，哨兵读取范围扩为文件集(断言语义不变)
+    const pageSrc2 = [
+      "app/chat/chat-page.tsx",
+      "app/chat/components/assistant-turn.tsx",
+      "app/chat/components/user-bubble.tsx",
+    ].map(src).join("\n");
     // thinking 段不再渲染
-    assert.ok(pageSrc2.includes("思考段不渲染"), "C-D2 FAIL: chat-page 的 thinking 段应不渲染");
-    assert.ok(!pageSrc2.includes("<ThinkingStep"), "C-D2b FAIL: chat-page 不应再渲染 ThinkingStep");
+    assert.ok(pageSrc2.includes("思考段不渲染"), "C-D2 FAIL: chat 消息渲染的 thinking 段应不渲染");
+    assert.ok(!pageSrc2.includes("<ThinkingStep"), "C-D2b FAIL: chat 消息渲染不应再有 ThinkingStep");
     // 已答确认项折叠进过程块(渲染点位于 </details> 之前)
     const askIdx = pageSrc2.indexOf("已答的确认项折叠在过程块内");
     const detailsClose = pageSrc2.indexOf("</details>", askIdx);

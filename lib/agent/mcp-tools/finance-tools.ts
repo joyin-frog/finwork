@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { getAppSetting } from "@/lib/db/sqlite";
 import { loadTaxRates } from "@/lib/db/finance-store";
 import { makeCalcReceipt, type CalcReceipt } from "@/lib/domain/receipt";
@@ -118,7 +119,7 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
       let text: string;
       let pyResult: PyTaxResult | undefined;
       try {
-        const out = execFileSync(getPythonPath(), [script], { input: JSON.stringify(args), encoding: "utf-8" });
+        const out = execFileSync(getPythonPath(), [script], { input: JSON.stringify(args), encoding: "utf-8", env: pythonSpawnEnv() });
         const parsed = JSON.parse(out) as { text?: string; result?: PyTaxResult };
         text = parsed.text ?? "参数不完整，请提供对应税种的计算参数。";
         pyResult = parsed.result;
@@ -131,10 +132,17 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
       const asOf = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       let receipt: CalcReceipt | undefined;
       if (pyResult) {
+        // source 按入参财务语言组装：描述本次计算的来源信息（金额与税率来自本次对话）
+        const sourceRef =
+          args.type === "vat" && args.vatParams
+            ? `金额 ${args.amount} 元与税率 ${args.vatParams.rate}（本次对话提供）`
+            : args.type === "cit" && args.citParams
+              ? `金额 ${args.amount} 元与税率 ${args.citParams.rate}（本次对话提供）`
+              : `金额 ${args.amount} 元（本次对话提供）`;
         receipt = makeCalcReceipt({
           value: pyResult.value,
           steps: pyResult.steps.map((s) => ({ label: s.label, expr: s.expr, inputs: {}, subtotal: s.subtotal })),
-          source: [],
+          source: [{ ref: sourceRef }],
           basis: { caliberVersion: pyResult.caliberVersion, settlementStatus: "draft", asOf },
           rounding: "half_up",
         });

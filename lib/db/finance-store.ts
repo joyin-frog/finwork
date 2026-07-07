@@ -511,6 +511,15 @@ export type BusinessOverview = {
   source: string | null;
 };
 
+/**
+ * 只读布尔：判断指定年月是否已有经营指标记录（WP2a R8）。
+ * 查无行 → false；有行（哪怕全 0）→ true。
+ */
+export function hasMetricsForMonth(year: number, month: number, db: DatabaseSync = getDb()): boolean {
+  const row = db.prepare("SELECT 1 FROM fact_metrics WHERE year = ? AND month = ? LIMIT 1").get(year, month);
+  return row != null;
+}
+
 export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSync = getDb()): void {
   const stmt = db.prepare(`
     INSERT INTO fact_metrics (year, month, revenue_cents, cost_cents, expense_cents, profit_cents, note, source, updated_at)

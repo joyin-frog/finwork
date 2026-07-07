@@ -47,8 +47,13 @@ export function ToolResultCard({ name, structured }: { name: string; structured:
   } else if (bare === "diff_payroll_period") {
     const data = parsePayrollDiffStructured(structured);
     card = data ? <PayrollDiffCard data={data} /> : null;
+  } else if ((structured as Record<string, unknown> | null)?.kind === "calc_receipt") {
+    // kind 判别优先：structured 已声明自己是 CalcReceipt，直接解析渲染。
+    const receipt = parseCalcReceiptStructured(structured);
+    card = receipt ? <ReceiptCard receipt={receipt} /> : null;
   } else {
-    // 通用兜底:任何带 CalcReceipt 形状结构化结果的工具(如 tax_calculator)渲染可下钻回执卡片。
+    // 形状猜测兜底：任何带 CalcReceipt 形状的工具结果（无 kind 的历史数据或其他工具）
+    // parseCalcReceiptStructured 内部 validateCalcReceipt 会归一化补 kind。
     const receipt = parseCalcReceiptStructured(structured);
     card = receipt ? <ReceiptCard receipt={receipt} /> : null;
   }

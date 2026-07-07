@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { getProjectRoot, getPythonPath } from "@/lib/runtime/paths";
+import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 
 export async function parseDocument(filePath: string, mimeType: string): Promise<string> {
   if (mimeType === "text/plain" || mimeType === "text/markdown" || mimeType.startsWith("text/")) {
@@ -129,7 +130,7 @@ async function extractViaWorker(filePath: string): Promise<string> {
   const output = execFileSync(
     getPythonPath(),
     [path.join(getProjectRoot(), "workers/finance_worker.py"), "extract-text", filePath],
-    { encoding: "utf-8" }
+    { encoding: "utf-8", env: pythonSpawnEnv() }
   );
   return output.trim();
 }
@@ -139,7 +140,7 @@ function parseImageDocument(filePath: string): string {
     const output = execFileSync(
       getPythonPath(),
       [path.join(getProjectRoot(), "workers/finance_worker.py"), "ocr-image", filePath],
-      { encoding: "utf-8" }
+      { encoding: "utf-8", env: pythonSpawnEnv() }
     );
     return output.trim();
   } catch (err: unknown) {
