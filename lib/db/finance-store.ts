@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { getDb, setAppSetting } from "./sqlite";
+import type { CashObligation } from "../domain/cash-obligations";
 import { type CumulativePayrollResult, type TaxConfig } from "@/lib/domain/tax-cumulative";
 import { DEFAULT_TAX_RATES, type TaxRates } from "@/lib/domain/tax-config";
 import { queryPolicyRule } from "./rule-store";
@@ -646,6 +647,54 @@ function buildRangeView(
 
 function auditLog(db: DatabaseSync, eventType: string, payload: unknown) {
   db.prepare("INSERT INTO audit_logs (event_type, payload) VALUES (?, ?)").run(eventType, JSON.stringify(payload));
+}
+
+/**
+ * WP1b 读函数：从 fact_obligations 表读出 CashObligation[]（与 deriveCashObligations 逐字段等价）。
+ * - kind: pay→付款 / receive→收款 / invoice→开票
+ * - amount: amount_cents NULL→undefined，否则 /100（元）
+ * - status: 返回 status_raw 原始中文状态（与 deriveCashObligations 输出的 status 字段等价）
+ * - done: settlement_status === 'settled' 或 status_raw 以"已"开头
+ * - sourceDoc: 直读 source_doc 列（不 JOIN 还原）
+ */
+export function listCashObligations(db: DatabaseSync = getDb()): CashObligation[] {
+  type ObRow = {
+    id: number;
+    kind: "pay" | "receive" | "invoice";
+    amount_cents: number | null;
+    due_date: string;
+    counterparty: string | null;
+    status: string;
+    status_raw: string;
+    source_doc: string | null;
+    recurrence: string | null;
+    source_document_id: number;
+  };
+
+  const rows = db.prepare(
+    `SELECT id, kind, amount_cents, due_date, counterparty, status, status_raw, source_doc,
+            recurrence, source_document_id
+     FROM fact_obligations
+     ORDER BY due_date ASC`
+  ).all() as ObRow[];
+
+  const kindMap: Record<"pay" | "receive" | "invoice", CashObligation["kind"]> = {
+    pay: "付款",
+    receive: "收款",
+    invoice: "开票",
+  };
+
+  return rows.map((r) => ({
+    documentId: r.source_document_id,
+    counterparty: r.counterparty ?? "未填对方",
+    kind: kindMap[r.kind] ?? "付款",
+    amount: r.amount_cents == null ? undefined : r.amount_cents / 100,
+    dueDate: r.due_date,
+    status: r.status_raw,
+    recurrence: (r.recurrence ?? undefined) as CashObligation["recurrence"],
+    sourceDoc: r.source_doc ?? undefined,
+    done: r.status === "settled",
+  }));
 }
 
 function mapPayrollRow(row: Record<string, unknown>): StoredPayrollRecord {

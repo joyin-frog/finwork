@@ -479,6 +479,7 @@ function FilesPageContent() {
         />
       ) : (
         <div className="relative flex flex-col items-center justify-center gap-2 flex-1 text-center p-6 text-muted-foreground">
+          {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
           <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={togglePreview} aria-label="收起预览">
             <HugeiconsIcon icon={PanelRightIcon} size={16} />
           </button>
@@ -518,6 +519,7 @@ function FilesPageContent() {
                 <ShortcutHint label="搜索" combo="mod+f">
                   <button
                     type="button"
+                    // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                     className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", q && "bg-accent text-foreground")}
                     onClick={() => setSearchOpen(true)}
                     aria-label="搜索"
@@ -530,6 +532,7 @@ function FilesPageContent() {
                   <TooltipTrigger asChild>
                     <button
                       type="button"
+                      // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                       className="inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => void handleDedupAnalyze()}
                       disabled={dedupCleaning}
@@ -544,6 +547,7 @@ function FilesPageContent() {
                 {previewCollapsed ? (
                   <button
                     type="button"
+                    // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                     className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                     onClick={togglePreview}
                     title="展开预览"
@@ -563,6 +567,7 @@ function FilesPageContent() {
                   key={k}
                   type="button"
                   onClick={() => setKindFilter(k)}
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                   className={cn(
                     "px-3 py-1 rounded-full border text-meta font-medium whitespace-nowrap cursor-pointer transition-colors",
                     kindFilter === k
@@ -584,6 +589,7 @@ function FilesPageContent() {
                     key={s}
                     type="button"
                     onClick={() => setSort(s)}
+                    // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                     className={cn(
                       "px-2 py-0.5 rounded text-meta transition-colors",
                       sort === s ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground"

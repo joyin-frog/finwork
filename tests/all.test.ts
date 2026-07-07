@@ -593,4 +593,7 @@ void (async () => {
   const { windowsHardeningTestPromise } = await import("./windows-hardening.test.ts");
   await windowsHardeningTestPromise;
 
+  const { obligationsLiveTestPromise } = await import("./obligations-live.test.ts");
+  await obligationsLiveTestPromise;
+
 })();

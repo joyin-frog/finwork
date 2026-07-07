@@ -46,6 +46,7 @@
     "idx_fact_invoices_recorded_at",
     "idx_fact_metrics_period",
     "idx_fact_obligations_due",
+    "idx_fact_obligations_src_doc",
     "idx_fact_payroll_period",
     "idx_knowledge_documents_category",
     "idx_library_files_created",
@@ -141,6 +142,10 @@
     },
     {
       "name": "idx_fact_obligations_due",
+      "table": "fact_obligations"
+    },
+    {
+      "name": "idx_fact_obligations_src_doc",
       "table": "fact_obligations"
     },
     {
@@ -939,18 +944,20 @@
       { "cid": 13, "name": "updated_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 }
     ],
     "fact_obligations": [
-      { "cid": 0, "name": "id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 1 },
-      { "cid": 1, "name": "direction", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
-      { "cid": 2, "name": "amount_cents", "type": "INTEGER", "notnull": 1, "dflt_value": null, "pk": 0 },
-      { "cid": 3, "name": "due_date", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
-      { "cid": 4, "name": "counterparty", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
-      { "cid": 5, "name": "status", "type": "TEXT", "notnull": 1, "dflt_value": "'pending'", "pk": 0 },
-      { "cid": 6, "name": "recurrence", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
-      { "cid": 7, "name": "source_document_id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
-      { "cid": 8, "name": "settlement_status", "type": "TEXT", "notnull": 1, "dflt_value": "'derived'", "pk": 0 },
-      { "cid": 9, "name": "source", "type": "TEXT", "notnull": 1, "dflt_value": "'agent_derived'", "pk": 0 },
-      { "cid": 10, "name": "provenance", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
-      { "cid": 11, "name": "derived_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 }
+      { "cid": 0,  "name": "id",                 "type": "INTEGER", "notnull": 0, "dflt_value": null,              "pk": 1 },
+      { "cid": 1,  "name": "kind",                "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 2,  "name": "amount_cents",         "type": "INTEGER", "notnull": 0, "dflt_value": null,              "pk": 0 },
+      { "cid": 3,  "name": "due_date",             "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 4,  "name": "counterparty",         "type": "TEXT",    "notnull": 0, "dflt_value": null,              "pk": 0 },
+      { "cid": 5,  "name": "status",               "type": "TEXT",    "notnull": 1, "dflt_value": "'pending'",       "pk": 0 },
+      { "cid": 6,  "name": "status_raw",           "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 7,  "name": "source_doc",           "type": "TEXT",    "notnull": 0, "dflt_value": null,              "pk": 0 },
+      { "cid": 8,  "name": "recurrence",           "type": "TEXT",    "notnull": 0, "dflt_value": null,              "pk": 0 },
+      { "cid": 9,  "name": "source_document_id",   "type": "INTEGER", "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 10, "name": "settlement_status",    "type": "TEXT",    "notnull": 1, "dflt_value": "'derived'",       "pk": 0 },
+      { "cid": 11, "name": "source",               "type": "TEXT",    "notnull": 1, "dflt_value": "'agent_derived'", "pk": 0 },
+      { "cid": 12, "name": "provenance",           "type": "TEXT",    "notnull": 0, "dflt_value": null,              "pk": 0 },
+      { "cid": 13, "name": "derived_at",           "type": "TEXT",    "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 }
     ],
     "fact_payroll": [
       { "cid": 0, "name": "id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 1 },

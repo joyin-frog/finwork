@@ -1,22 +1,13 @@
 import { NextResponse } from "next/server";
-import { getPayrollPeriodSummary, getBusinessOverview, getInvoiceLedgerStats, hasMetricsForMonth } from "@/lib/db/finance-store";
-import { listConfirmedMetaDocRows, listRecentWorkItems } from "@/lib/db/sqlite";
+import { getPayrollPeriodSummary, getBusinessOverview, getInvoiceLedgerStats, hasMetricsForMonth, listCashObligations } from "@/lib/db/finance-store";
+import { listRecentWorkItems } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
-import { deriveCashObligations, obligationsInMonth, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
+import { obligationsInMonth } from "@/lib/domain/cash-obligations";
 import { listRoleDispatchSummary, listBlockedDispatches } from "@/lib/db/dispatch-store";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import { listSkills } from "@/lib/agent/skills-store";
-import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
 import { appendServerLog } from "@/lib/runtime/server-log";
-
-function parseMeta(s: string): DocMetadata | null {
-  try {
-    return JSON.parse(s) as DocMetadata;
-  } catch {
-    return null;
-  }
-}
 
 export async function GET() {
   try {
@@ -27,13 +18,8 @@ export async function GET() {
     const calendar = getCalendarContext(now);
     const payroll = getPayrollPeriodSummary(year, month);
 
-    const oblDocs: ObligationSourceDoc[] = listConfirmedMetaDocRows().map((r) => ({
-      id: r.id,
-      fileName: r.file_name,
-      metadata: parseMeta(r.metadata),
-      metaStatus: r.meta_status as MetaStatus,
-    }));
-    const obligations = deriveCashObligations(oblDocs);
+    // WP1b: 读切换——从 fact_obligations 表读，而不是每次重派生
+    const obligations = listCashObligations();
 
     // 新增参数：发票台账统计 + 上月指标存在性 + filing-precheck starter
     const invoiceStats = getInvoiceLedgerStats(year, month);

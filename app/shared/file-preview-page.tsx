@@ -19,6 +19,7 @@ import DocxPreviewWrapper from "@/app/shared/docx-preview-wrapper";
 import { formatNumber, isNumericFormat } from "@/lib/preview/numfmt";
 import { sanitizeXlsxForPreview } from "@/lib/preview/xlsx-sanitize";
 import { fileAccentColorByExt } from "@/lib/files/file-type-colors";
+import { Surface } from "@/components/ui/surface";
 
 export type ConversationPreviewFile = {
   kind: "conversation";
@@ -446,31 +447,36 @@ export function FilePreviewPage({
                 <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
               </button>
               {openMenuOpen ? (
-                <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg bg-popover border border-border shadow-[var(--elevation-2)] p-1 text-popover-foreground" role="menu">
+                <Surface level="overlay" edge="hairline" shape="card" className="absolute right-0 top-full z-50 mt-1 min-w-[160px] shadow-[var(--elevation-2)] p-1 text-popover-foreground" role="menu">
                   {loadingOpenWithApps ? <span className="block px-2 py-1.5 text-xs text-muted-foreground">正在查找可打开的应用...</span> : null}
                   {!loadingOpenWithApps && !openWithApps?.length ? <span className="block px-2 py-1.5 text-xs text-muted-foreground">未找到匹配应用，可用默认应用打开</span> : null}
                   {(openWithApps ?? []).map((app) => (
+                    // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                     <button key={`${app.name}-${app.path}`} type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground" onClick={() => void openCurrentFile(app.path)}>
+                      {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
                       {app.iconUrl ? <img className="size-4 rounded-sm object-contain shrink-0" src={app.iconUrl} alt="" loading="lazy" /> : <span className="size-4 rounded-sm bg-muted flex items-center justify-center text-[10px] font-medium shrink-0">{getAppGlyph(app.name)}</span>}
                       <span>{app.name}</span>
                     </button>
                   ))}
                   <div className="h-px bg-border my-1" />
+                  {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
                   <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground" onClick={() => void openCurrentFile()}>
                     <HugeiconsIcon icon={Folder02Icon} size={16} />
                     <span>默认应用打开</span>
                   </button>
+                  {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
                   <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground" onClick={() => void revealCurrentFile()}>
                     <HugeiconsIcon icon={Folder02Icon} size={16} />
                     <span>在文件夹中显示</span>
                   </button>
                   {runningInTauri ? (
+                    // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                     <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground" onClick={() => void pickLocalFile()}>
                       <HugeiconsIcon icon={Folder02Icon} size={16} />
                       <span>重新选择文件</span>
                     </button>
                   ) : null}
-                </div>
+                </Surface>
               ) : null}
             </div>
           ) : currentSelection?.kind === "draft" ? (

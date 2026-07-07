@@ -21,6 +21,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { addColumnIfMissing, initializeSchema } from "./schema";
+import { deriveCashObligations } from "../domain/cash-obligations";
 
 export type Migration = {
   version: number;
@@ -537,6 +538,145 @@ export const MIGRATIONS: Migration[] = [
             );
           }
         }
+      }
+    },
+  },
+  {
+    version: 9,
+    name: "obligations_reshape",
+    up: (db) => {
+      // WP1b: 重建 fact_obligations（修形状缺陷）+ 迁移内回填存量 confirmed 文档
+      //
+      // 形状变更：
+      //   旧：direction('pay'/'receive') + amount_cents NOT NULL + 无 status_raw/source_doc/kind
+      //   新：kind('pay'/'receive'/'invoice') + amount_cents NULL + status_raw + source_doc + source_document_id NOT NULL
+      //
+      // 处置（reviewer B1）：表非空 → console.warn + 照常 DROP（旧形状行为已无效，不中止）
+
+      // ── 1. 表非空处置 ────────────────────────────────────────────────────────
+      // 先判表是否存在（PR-B1 模式：用 PRAGMA user_version=7 伪造 v7 状态但未实际跑 v7 DDL）
+      const tableExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='fact_obligations'"
+      ).get() as { name: string } | undefined;
+      if (tableExists) {
+        const countRow = db.prepare("SELECT COUNT(*) AS c FROM fact_obligations").get() as { c: number };
+        if (countRow.c > 0) {
+          console.warn(
+            `[v9 migration] fact_obligations 有 ${countRow.c} 行旧形状数据，将被丢弃并以新形状重建（旧列 direction/amount NOT NULL 与新列 kind/amount NULL 不兼容，保留会产生语义错误）`
+          );
+        }
+      }
+
+      // ── 2. DROP 旧表 + 重建新表 ───────────────────────────────────────────────
+      db.exec(`DROP TABLE IF EXISTS fact_obligations`);
+      db.exec(`
+        CREATE TABLE fact_obligations (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind                TEXT    NOT NULL CHECK(kind IN ('pay','receive','invoice')),
+          amount_cents        INTEGER NULL,
+          due_date            TEXT    NOT NULL,
+          counterparty        TEXT,
+          status              TEXT    NOT NULL DEFAULT 'pending',
+          status_raw          TEXT    NOT NULL,
+          source_doc          TEXT    NULL,
+          recurrence          TEXT    NULL,
+          source_document_id  INTEGER NOT NULL,
+          settlement_status   TEXT    NOT NULL DEFAULT 'derived',
+          source              TEXT    NOT NULL DEFAULT 'agent_derived',
+          provenance          TEXT    NULL,
+          derived_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_fact_obligations_due
+          ON fact_obligations(due_date);
+        CREATE INDEX IF NOT EXISTS idx_fact_obligations_src_doc
+          ON fact_obligations(source_document_id);
+      `);
+
+      // ── 3. 回填：读 confirmed 文档 → deriveCashObligations → INSERT ──────────
+      // 先确认 knowledge_documents 表存在（测试可能用 PRAGMA user_version 伪造版本号而不含该表）
+      const kdExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_documents'"
+      ).get() as { name: string } | undefined;
+      if (!kdExists) {
+        // 无 knowledge_documents 表（非正常 schema），跳过回填
+        return;
+      }
+
+      // listConfirmedMetaDocRows 接受 db 参数，可安全复用（无循环引用）
+      const confirmedRows = db.prepare(
+        "SELECT id, file_name, metadata, meta_status FROM knowledge_documents WHERE meta_status = 'confirmed' AND metadata IS NOT NULL AND archived = 0"
+      ).all() as Array<{ id: number; file_name: string; metadata: string; meta_status: string }>;
+
+      if (confirmedRows.length === 0) {
+        // 无 confirmed 文档，回填 no-op
+        return;
+      }
+
+      type DocMetadataRaw = {
+        status?: string;
+        counterparty?: string;
+        amount?: number;
+        keyDates?: Array<{ kind: string; date: string }>;
+        recurrence?: string;
+        sourceFile?: string;
+      };
+
+      const srcDocs = confirmedRows.map(r => {
+        let meta: DocMetadataRaw | null = null;
+        try { meta = JSON.parse(r.metadata) as DocMetadataRaw; } catch { meta = null; }
+        return {
+          id: r.id,
+          fileName: r.file_name,
+          metadata: meta as import("../domain/cash-obligations").CashObligation["recurrence"] extends infer _ ? import("../knowledge/types").DocMetadata | null : never,
+          metaStatus: r.meta_status as "confirmed",
+        };
+      });
+
+      const obligations = deriveCashObligations(srcDocs as Parameters<typeof deriveCashObligations>[0]);
+
+      if (obligations.length === 0) return;
+
+      // 精度校验辅助（与 v7 同约定）
+      function toCentsNullable(yuan: number | undefined, rowId: string): number | null {
+        if (typeof yuan !== "number" || !Number.isFinite(yuan)) return null;
+        const raw = yuan * 100;
+        const rounded = Math.round(raw);
+        if (Math.abs(raw - rounded) >= 0.005) {
+          throw new Error(
+            `精度超差（v9 迁移回填中止）: 文档 ${rowId} 金额 ${yuan} 元，|${raw} - ${rounded}| = ${Math.abs(raw - rounded).toFixed(6)} >= 0.005 分`
+          );
+        }
+        return rounded;
+      }
+
+      // kind 映射：付款→pay / 收款→receive / 开票→invoice
+      function toKind(k: "付款" | "收款" | "开票"): "pay" | "receive" | "invoice" {
+        if (k === "付款") return "pay";
+        if (k === "收款") return "receive";
+        return "invoice";
+      }
+
+      const insert = db.prepare(`
+        INSERT INTO fact_obligations
+          (kind, amount_cents, due_date, counterparty, status, status_raw, source_doc, recurrence,
+           source_document_id, settlement_status, source, provenance, derived_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'derived', 'agent_derived', NULL, datetime('now'))
+      `);
+
+      for (const obl of obligations) {
+        const amountCents = toCentsNullable(obl.amount, `doc_id=${obl.documentId}`);
+        const status = obl.done ? "settled" : "pending";
+        insert.run(
+          toKind(obl.kind),
+          amountCents,
+          obl.dueDate,
+          obl.counterparty,
+          status,
+          obl.status,
+          obl.sourceDoc ?? null,
+          obl.recurrence ?? null,
+          obl.documentId
+        );
       }
     },
   },

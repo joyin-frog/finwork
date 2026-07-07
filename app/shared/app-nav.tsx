@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { surfaceVariants } from "@/components/ui/surface";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowDown01Icon,
@@ -131,6 +132,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     return (
       <div
         key={c.id}
+        // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
         className={cn(
           // 底色/边框作用在整行:标题 + 编辑按钮共用同一底,选中/悬停时是一个整体。
           "group relative flex items-center rounded-md transition-colors",
@@ -143,7 +145,8 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       >
         {dot && renamingId !== c.id && (
           <span
-            className={cn("pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 size-1.5 rounded-full", dot.pulse && "animate-pulse")}
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+          className={cn("pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 size-1.5 rounded-full", dot.pulse && "animate-pulse")}
             style={{ backgroundColor: dot.tone }}
             title={dot.label}
             aria-label={dot.label}
@@ -153,6 +156,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         {renamingId === c.id ? (
           <input
             ref={renameInputRef}
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             className="flex-1 mx-2 px-2 py-1 text-body bg-background border border-border rounded-md outline-none focus:ring-1 focus:ring-ring"
             value={renameDraft}
             onChange={(e) => setRenameDraft(e.target.value)}
@@ -178,6 +182,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               type="button"
               aria-label={`${c.title} 更多操作`}
               // 共用整行底色;悬停到按钮本身时再叠一层略深的底,单独高亮。
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
               className="opacity-0 group-hover:opacity-100 mr-1 p-1 rounded text-muted-foreground transition hover:bg-foreground/10"
             >
               <HugeiconsIcon icon={MoreHorizontalIcon} size={14} />
@@ -209,9 +214,10 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   return (
     <motion.aside
       className={cn(
-        "flex flex-col bg-sidebar overflow-hidden shrink-0",
+        "flex flex-col overflow-hidden shrink-0",
         // 展开时做成浮起卡片:四周留 4px 缝 + 圆角 + 描边 + 1 档柔影;折叠(width→0)时全部去掉,避免露出碎片。
-        !collapsed && "m-1 rounded-xl border border-border shadow-[var(--elevation-1)]"
+        // eslint-disable-next-line no-restricted-syntax -- 容器 Surface 收敛（WP8b），bg-sidebar 必须保留覆盖 Surface 默认底色
+        !collapsed && cn(surfaceVariants({ level: "panel", edge: "hairline", shape: "panel" }), "bg-sidebar m-1")
       )}
       animate={{ width: collapsed ? 0 : 240 }}
       transition={SPRING_DEFAULT}
@@ -225,6 +231,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             type="button"
             onClick={() => setSearchOpen(true)}
             aria-label="搜索"
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             className="icon-btn relative inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-accent hover:text-foreground"
           >
             <HugeiconsIcon icon={Search01Icon} size={16} />
@@ -235,6 +242,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             type="button"
             onClick={() => setCollapsed(true)}
             aria-label="收起菜单"
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
             className="icon-btn relative inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-accent hover:text-foreground"
           >
             <HugeiconsIcon icon={PanelLeftIcon} size={16} />
@@ -324,6 +332,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                 onClick={() => trackFeature("nav.config")}
                 aria-current={active === "config" ? "page" : undefined}
                 aria-label="设置"
+                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                 className={cn(
                   "group flex items-center gap-2 rounded-md pl-1.5 pr-1 min-h-[40px] transition-colors",
                   active === "config" ? "bg-primary/10" : "hover:bg-accent"

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Surface } from "@/components/ui/surface";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SuccessIcon, WarningIcon } from "@/lib/icons";
 import { formatCny } from "@/lib/format";
@@ -62,7 +63,7 @@ export function ToolResultCard({ name, structured }: { name: string; structured:
 
 function ReimbursementResultCard({ data }: { data: ReimbursementCardData }) {
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface className="shadow-none text-body overflow-hidden">
       <div className={`px-3 py-2 border-b text-meta flex items-center gap-2 ${
         data.abnormalCount > 0 ? "border-[color:var(--tone-notice)]/30 bg-[color:var(--tone-notice)]/12" : "border-border text-muted-foreground"
       }`}>
@@ -106,13 +107,13 @@ function ReimbursementResultCard({ data }: { data: ReimbursementCardData }) {
           </tbody>
         </table>
       </div>
-    </div>
+    </Surface>
   );
 }
 
 function VoucherDraftCard({ data }: { data: VoucherDraftCardData }) {
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface className="shadow-none text-body overflow-hidden">
       {data.simulated ? (
         <div className="px-3 py-2 border-b border-[color:var(--tone-notice)]/30 bg-[color:var(--tone-notice)]/12 text-meta flex items-center gap-2">
           <HugeiconsIcon icon={WarningIcon} size={13} className="shrink-0" aria-hidden="true" />
@@ -167,13 +168,13 @@ function VoucherDraftCard({ data }: { data: VoucherDraftCardData }) {
           </tfoot>
         </table>
       </div>
-    </div>
+    </Surface>
   );
 }
 
 function VoucherValidationCard({ data }: { data: VoucherValidationCardData }) {
   return (
-    <div className="rounded-lg border border-border bg-card text-body overflow-hidden">
+    <Surface className="shadow-none text-body overflow-hidden">
       <div className={`px-3 py-2 text-meta flex items-center gap-2 ${
         data.valid ? "text-muted-foreground" : "bg-destructive/10 text-destructive"
       }`}>
@@ -190,7 +191,7 @@ function VoucherValidationCard({ data }: { data: VoucherValidationCardData }) {
           {data.warnings.map((warning) => <li key={warning}>• {warning}</li>)}
         </ul>
       ) : null}
-    </div>
+    </Surface>
   );
 }
 

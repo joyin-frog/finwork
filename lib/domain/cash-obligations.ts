@@ -120,9 +120,11 @@ export function daysBetween(today: Date, dueDate: string): number {
 }
 
 /**
- * WP1a 落盘出口：将派生义务写入 fact_obligations 表（delete+insert 幂等）。
+ * WP1b 落盘出口（v9 新形状）：将派生义务写入 fact_obligations 表（delete+insert 幂等）。
  * 按 source_document_id 粒度删再插，文档 metadata 变更/meta_status 变更时重派生可安全重调。
- * 消费切换（cockpit 读 fact_obligations）归 WP1b；现有动态消费路径（deriveCashObligations）本期不动。
+ *
+ * 精度约定：元→分 round，|raw-rounded|>=0.005 时抛错（与 WP1a v7 迁移一致）。
+ * amount undefined → NULL（不是 0）。
  *
  * @param sourceDocumentId  文档 id（knowledge_documents.id）
  * @param obligations       该文档的派生义务列表（来自 deriveCashObligations 过滤后的子集）
@@ -140,25 +142,42 @@ export function persistDerivedObligations(
 
   const insert = db.prepare(`
     INSERT INTO fact_obligations
-      (direction, amount_cents, due_date, counterparty, status, recurrence,
+      (kind, amount_cents, due_date, counterparty, status, status_raw, source_doc, recurrence,
        source_document_id, settlement_status, source, provenance, derived_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'derived', 'agent_derived', NULL, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'derived', 'agent_derived', NULL, datetime('now'))
   `);
 
   for (const obl of obligations) {
-    // 方向映射：付款→pay，收款→receive，开票→pay（兜底，WP1b 可细化）
-    const direction = obl.kind === "收款" ? "receive" : "pay";
-    // 金额：元→分（NULL 时存 0，由消费方据 provenance 判断是否可信）
-    const amountCents = typeof obl.amount === "number" ? Math.round(obl.amount * 100) : 0;
+    // kind 映射：付款→pay / 收款→receive / 开票→invoice
+    const kind: "pay" | "receive" | "invoice" =
+      obl.kind === "付款" ? "pay" :
+      obl.kind === "收款" ? "receive" :
+      "invoice";
+
+    // 金额：元→分，undefined→NULL，超差抛错
+    let amountCents: number | null = null;
+    if (typeof obl.amount === "number" && Number.isFinite(obl.amount)) {
+      const raw = obl.amount * 100;
+      const rounded = Math.round(raw);
+      if (Math.abs(raw - rounded) >= 0.005) {
+        throw new Error(
+          `精度超差（落盘中止）: 文档 ${sourceDocumentId} 金额 ${obl.amount} 元，|${raw} - ${rounded}| = ${Math.abs(raw - rounded).toFixed(6)} >= 0.005 分，请修正金额数据`
+        );
+      }
+      amountCents = rounded;
+    }
+
     // 状态映射：done→settled，否则→pending
     const status = obl.done ? "settled" : "pending";
 
     insert.run(
-      direction,
+      kind,
       amountCents,
       obl.dueDate,
       obl.counterparty,
       status,
+      obl.status,          // status_raw：原始中文状态
+      obl.sourceDoc ?? null,
       obl.recurrence ?? null,
       sourceDocumentId
     );
