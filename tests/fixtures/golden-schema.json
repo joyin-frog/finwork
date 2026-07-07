@@ -32,6 +32,7 @@
     "idx_agent_traces_started",
     "idx_app_errors_fingerprint",
     "idx_app_errors_reported",
+    "idx_audit_logs_created_at",
     "idx_audit_logs_trace",
     "idx_audit_logs_type_created",
     "idx_chat_agent_events_message_id",
@@ -83,6 +84,10 @@
     {
       "name": "idx_app_errors_reported",
       "table": "app_errors"
+    },
+    {
+      "name": "idx_audit_logs_created_at",
+      "table": "audit_logs"
     },
     {
       "name": "idx_audit_logs_trace",
@@ -628,6 +633,38 @@
       {
         "cid": 4,
         "name": "trace_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "conversation_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "tool_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "undo",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "undone_at",
         "type": "TEXT",
         "notnull": 0,
         "dflt_value": null,

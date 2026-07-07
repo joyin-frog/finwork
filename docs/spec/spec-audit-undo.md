@@ -1,7 +1,7 @@
 # 审计日志与撤销（WP15：agent 写操作统一留痕 + 事实层行级回滚）Spec
 
 > 版本 v1.2 / 2026-07-07（v1.0 fix first → v1.1 修订 → 限定复审唯一残余 B4（business-metrics.ts 漏列 Files touched）已补，按"修复即批准"生效）
-> 状态：**计划已批准**（2026-07-07；实施须待 WP12 ship 后启动）
+> 状态：**已实施并通过审查（ship）**（2026-07-07；实施审查 fix first 一轮——AU8 原子性测试死分支重写为真实中途失败 + 执行时二次白名单校验/keyColumn 形状校验，限定复审通过）
 > 依赖：WP6 迁移纪律（已ship）。迁移版本 **v12**（v11 归 WP12 语义检索，两包共享 migrations.ts/golden-schema/all.test.ts，**实施必须串行：WP12 ship 后本包才进实施队列（reviewer B3）；implementer 开工首步验证 migrations.ts 末条已是 v11，否则停止报告**）。
 > 架构事实（2026-07-07 scout + orchestrator 精读核实）：
 > - `audit_logs` 表已存在于 baseline（schema.ts:21-26：id/event_type/payload/created_at；trace_id 经 addColumnIfMissing schema.ts:92 追加），**无 conversation_id、无撤销语义、无级联删除**（比 chat_agent_events 更适合长期审计源——后者随会话 CASCADE 清除）。

@@ -129,6 +129,12 @@ const summaries: Record<string, SummaryFn> = {
     return title ? `物化清单「${title.slice(0, 30)}」(${count} 项)` : `物化清单(${count} 项)`;
   },
 
+  // ─── WP15: 撤销最近 agent 写操作 ───
+  undo_last_write: (i) => {
+    const auditId = (i as Record<string, unknown>)?.auditId;
+    return auditId != null ? `撤销写操作(auditId=${auditId})` : "查询最近可撤销写操作";
+  },
+
   // ─── 收尾:声明最终产物 ───
   finalize_deliverable: (i) => {
     const files = Array.isArray((i as Record<string, unknown>)?.files) ? (i as Record<string, unknown>).files as unknown[] : [];

@@ -614,4 +614,7 @@ void (async () => {
   const { semanticSearchTestPromise } = await import("./semantic-search.test.ts");
   await semanticSearchTestPromise;
 
+  const { auditUndoTestPromise } = await import("./audit-undo.test.ts");
+  await auditUndoTestPromise;
+
 })();

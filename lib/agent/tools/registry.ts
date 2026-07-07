@@ -70,6 +70,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__finalize_deliverable",      category: "finance", riskLevel: "safe" },
   // WP14a: 物化可勾选清单工件（safe，无角色白名单，v1 主对话专用）
   { name: "mcp__finance_worker__emit_checklist",            category: "finance", riskLevel: "safe" },
+  // WP15: 撤销最近 agent 写操作（high 风险，经 confirm gate 拦截；无角色白名单——主对话动作）
+  { name: "mcp__finance_worker__undo_last_write",           category: "finance", riskLevel: "high" },
 ];
 
 // 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。

@@ -4,6 +4,7 @@ import type { CashObligation } from "../domain/cash-obligations";
 import { type CumulativePayrollResult, type TaxConfig } from "@/lib/domain/tax-cumulative";
 import { DEFAULT_TAX_RATES, type TaxRates } from "@/lib/domain/tax-config";
 import { queryPolicyRule } from "./rule-store";
+import { recordAudit } from "./audit-store";
 
 /**
  * 按计算期间 as-of 查询生效的个税规则（WP5a）。
@@ -232,11 +233,15 @@ export function savePayrollDraft(
         `${result.employeeName} ${year}年${month}月工资已确认生效,拒绝静默覆盖;如确需重算,请明确告知要重算已确认月份`
       );
     }
-    auditLog(db, "payroll_confirmed_overwrite", {
-      employeeName: result.employeeName,
-      year,
-      month,
-      previousStatus: "confirmed"
+    recordAudit(db, {
+      eventType: "payroll_confirmed_overwrite",
+      payload: {
+        employeeName: result.employeeName,
+        year,
+        month,
+        previousStatus: "confirmed",
+      },
+      // undo=null: 周期确认是业务动作，撤销走业务流程
     });
   }
 
@@ -373,7 +378,11 @@ export function confirmPayrollPeriod(
       update.run(draft.employeeName, year, month);
     }
     const confirmed = drafts.map((d) => d.employeeName);
-    auditLog(db, "payroll_confirm", { year, month, employees: confirmed });
+    recordAudit(db, {
+      eventType: "payroll_confirm",
+      payload: { year, month, employees: confirmed },
+      // undo=null: 周期确认是业务动作，撤销走业务流程（event_type 逐字不变——哨兵 payroll-card.test.ts:72-75）
+    });
     db.exec("COMMIT");
     return { confirmed, alreadyConfirmed };
   } catch (err) {
@@ -438,7 +447,16 @@ export function recordInvoices(items: InvoiceLedgerEntry[], db: DatabaseSync = g
     inserted.push(item.invoiceNo);
   }
   if (inserted.length > 0) {
-    auditLog(db, "invoice_ledger_record", { inserted, duplicates: duplicates.map((d) => d.invoiceNo) });
+    // conversationId 从 items 第一条取（同一批次归同一会话）
+    const convId = items.find((i) => i.conversationId != null)?.conversationId ?? null;
+    recordAudit(db, {
+      eventType: "invoice_ledger_record",
+      payload: { inserted, duplicates: duplicates.map((d) => d.invoiceNo) },
+      conversationId: convId,
+      toolName: "record_reimbursement_invoices",
+      // undo=delete_rows 仅 inserted（被 INSERT OR IGNORE 忽略的重复行不进 inserted，不会误删）
+      undo: [{ op: "delete_rows", table: "fact_invoices", keyColumn: "invoice_no", keys: inserted }],
+    });
   }
   return { inserted, duplicates };
 }
@@ -591,7 +609,11 @@ export function hasMetricsForMonth(year: number, month: number, db: DatabaseSync
   return row != null;
 }
 
-export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSync = getDb()): void {
+export function upsertBusinessMetrics(
+  rows: BusinessMetricRow[],
+  db: DatabaseSync = getDb(),
+  conversationId?: number | null
+): void {
   const stmt = db.prepare(`
     INSERT INTO fact_metrics (year, month, revenue_cents, cost_cents, expense_cents, profit_cents, note, source, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -604,6 +626,24 @@ export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSyn
       source         = excluded.source,
       updated_at     = datetime('now')
   `);
+
+  // 收集 before-images（写前 SELECT）用于 restore_rows 逆操作
+  // DatabaseSync 同步阻塞模型，无 TOCTOU 风险
+  type MetricBeforeImage = Record<string, unknown>;
+  const beforeImages: MetricBeforeImage[] = [];
+  const newInserts: Array<{ year: number; month: number }> = [];
+
+  for (const row of rows) {
+    const existing = db.prepare(
+      "SELECT * FROM fact_metrics WHERE year = ? AND month = ?"
+    ).get(row.year, row.month) as MetricBeforeImage | undefined;
+    if (existing) {
+      beforeImages.push(existing);
+    } else {
+      newInserts.push({ year: row.year, month: row.month });
+    }
+  }
+
   for (const row of rows) {
     const ctx = `fact_metrics(${row.year},${row.month})`;
     stmt.run(
@@ -617,6 +657,37 @@ export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSyn
       row.source ?? "user_dictated"
     );
   }
+
+  // 构建 undo 载荷：新插入行用 delete_rows，更新行用 restore_rows（before-image）
+  type UndoOpLocal = { op: "delete_rows"; table: string; keyColumn: string; keys: number[] } | { op: "restore_rows"; table: string; keyColumn: string; rows: MetricBeforeImage[] };
+  const undoOps: UndoOpLocal[] = [];
+  if (beforeImages.length > 0) {
+    undoOps.push({
+      op: "restore_rows",
+      table: "fact_metrics",
+      keyColumn: "id",
+      rows: beforeImages,
+    });
+  }
+  if (newInserts.length > 0) {
+    // 刚插入的行：按 (year,month) 查 id
+    const ids: number[] = [];
+    for (const ni of newInserts) {
+      const r = db.prepare("SELECT id FROM fact_metrics WHERE year = ? AND month = ?").get(ni.year, ni.month) as { id: number } | undefined;
+      if (r) ids.push(r.id);
+    }
+    if (ids.length > 0) {
+      undoOps.push({ op: "delete_rows", table: "fact_metrics", keyColumn: "id", keys: ids });
+    }
+  }
+
+  recordAudit(db, {
+    eventType: "business_metrics_write",
+    payload: { rows: rows.map((r) => ({ year: r.year, month: r.month })) },
+    conversationId: conversationId ?? null,
+    toolName: "record_business_metrics",
+    undo: undoOps.length > 0 ? undoOps : undefined,
+  });
 }
 
 type MetricDbRow = {
@@ -715,9 +786,7 @@ function buildRangeView(
   };
 }
 
-function auditLog(db: DatabaseSync, eventType: string, payload: unknown) {
-  db.prepare("INSERT INTO audit_logs (event_type, payload) VALUES (?, ?)").run(eventType, JSON.stringify(payload));
-}
+// auditLog 私有函数已删除（WP15）：全部调用点迁移到 audit-store.recordAudit
 
 /**
  * WP1b 读函数：从 fact_obligations 表读出 CashObligation[]（与 deriveCashObligations 逐字段等价）。

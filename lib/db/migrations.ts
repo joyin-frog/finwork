@@ -730,6 +730,39 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 12,
+    name: "audit_logs_semantics",
+    up: (db) => {
+      // WP15: 给 audit_logs 补齐撤销语义列 + 归因列
+      // - conversation_id: 哪次对话触发（不加 FK——audit 须比会话长寿）
+      // - tool_name: 哪个 MCP 工具写的
+      // - undo: JSON 逆操作数组（仅两种原语 delete_rows / restore_rows）
+      // - undone_at: 撤销时间戳（非 null 表示已撤销）
+      // - idx_audit_logs_created_at: 列表查询按时间倒序
+      //
+      // 防御性：某些测试绕过 initializeSchema 直接设 user_version。
+      // 若 audit_logs 表不存在，先幂等建表（完整 baseline 形状）再加新列。
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_type TEXT    NOT NULL,
+          payload    TEXT    NOT NULL,
+          created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      // trace_id 是 baseline 里 addColumnIfMissing 加的；守卫性补全
+      addColumnIfMissing(db, "audit_logs", "trace_id", "TEXT");
+      addColumnIfMissing(db, "audit_logs", "conversation_id", "INTEGER NULL");
+      addColumnIfMissing(db, "audit_logs", "tool_name", "TEXT NULL");
+      addColumnIfMissing(db, "audit_logs", "undo", "TEXT NULL");
+      addColumnIfMissing(db, "audit_logs", "undone_at", "TEXT NULL");
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
+          ON audit_logs(created_at DESC)
+      `);
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 
+# ── CSV 分析域 ──────────────────────────────────────────────
 def analyze_csv(path: Path):
     rows = []
     with path.open("r", encoding="utf-8-sig", newline="") as file:
@@ -53,6 +54,7 @@ def analyze_csv(path: Path):
     }
 
 
+# ── 文档解析域（xlsx/docx/pptx/pdf/OCR 提取） ──────────────
 def extract_xlsx(path: Path) -> str:
     import openpyxl
 
@@ -296,6 +298,7 @@ def cmd_inspect_excel():
     print(json.dumps(inspect_excel(path), ensure_ascii=False, indent=2, default=str))
 
 
+# ── run_python 沙箱域（脚本执行 + 覆盖防护） ────────────────
 def _next_versioned_path(path: Path) -> Path:
     """path 已存在则返回同目录下 stem_v2/_v3… 的首个空位,用于「不覆盖上一版产物」。"""
     if not path.exists():
@@ -439,6 +442,7 @@ def _guess_mime(suffix: str) -> str:
     return mapping.get(suffix, "application/octet-stream")
 
 
+# ── demo 数据与环境自检域 ───────────────────────────────────
 def demo():
     demo_file = get_demo_data_path()
     demo_file.parent.mkdir(parents=True, exist_ok=True)
@@ -496,6 +500,7 @@ def _force_utf8_stdio():
             pass  # 非常规流(如已被替换为 StringIO)忽略
 
 
+# ── xlsx 导出域（凭证 / 工资条） ────────────────────────────
 def cmd_export_voucher_xlsx():
     """export-voucher-xlsx: 从 stdin 读 JSON payload,生成三 sheet 金蝶对照清单 xlsx。
     JSON 结构:
@@ -636,6 +641,7 @@ def cmd_export_payslips_xlsx():
     print(json.dumps({"filePath": output_path}, ensure_ascii=False))
 
 
+# ── embedding 域（语义检索，WP12） ──────────────────────────
 def cmd_embed_texts():
     """embed-texts: 对文本数组做本地 ONNX embedding（bge-small-zh-v1.5 量化版）。
 
@@ -709,6 +715,7 @@ def cmd_embed_texts():
         print(json.dumps({"ok": False, "error": f"embed_error: {e}"}, ensure_ascii=False))
 
 
+# ── 命令分发入口 ────────────────────────────────────────────
 def main():
     _force_utf8_stdio()
     if len(sys.argv) >= 2 and sys.argv[1] == "--selfcheck":
