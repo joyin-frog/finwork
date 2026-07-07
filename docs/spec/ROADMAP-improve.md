@@ -48,7 +48,7 @@
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
 | WP8 | UI 底座 | **摸底修正（2026-07-06）：token 层已相当完善**（oklch/@theme/单旋钮 radius/elevation 三档/tone 14 色/next-themes）。真正的债是散落：rounded-\* 141 处 47 文件、border 73 处 33 文件。拆为 WP8a（Surface 原语+ESLint 护栏+data-style 挂载点+3 试点）与 WP8b+（按 spec 附录 A 清单分批收敛）。视觉保持现状（D5） | 无 | **WP8a 已ship**（spec v1.1；实施审查 fix first→修复轮（补 3 条变体断言、护栏测试改读真实 eslint 配置并红态自证）→重审 ship。WP8b+ 收敛批次照 spec 附录 A 排期） |
-| WP9 | chat-page 拆解 | 拆两刀：WP9a 纯结构搬迁（私有组件+hooks 平移，行为零变化，≤500 行）/ WP9b 消息类型注册式渲染。踩 WP8a Surface API | WP8a（已ship） | **WP9a 已ship**；**WP9b 摸底后收窄（2026-07-07）**——消息级已是单点二分不动；改造对象=工具卡级：ToolResultCard if 链→注册表、TOOLS_WITH_RESULT_CARD 升运行时权威、镜像哨兵改断注册表与 TOOL_REGISTRY 一致（消除漂移前科）。轻量路径实施，**排 WP15/13b 之后**（共享 tool-registry.test.ts） |
+| WP9 | chat-page 拆解 | 拆两刀：WP9a 纯结构搬迁（私有组件+hooks 平移，行为零变化，≤500 行）/ WP9b 消息类型注册式渲染。踩 WP8a Surface API | WP8a（已ship） | **WP9a 已ship**；**WP9b 已完成（2026-07-07，收窄后轻量路径）**——消息级不动；工具卡级注册表化落地：KIND/TOOL 双注册表、TOOLS_WITH_RESULT_CARD 由 Object.keys 派生（运行时权威）、镜像哨兵改为源码抽取注册表 key 断言（消除手写清单漂移面）；orchestrator 自查 diff 通过（唯一语义差=calc_receipt kind 判别提前，更符合 WP4a 契约） |
 | WP10 | query 路由管线化 | WP10a ✅已ship：POST 176 行内联→四段 Stage 管线（sessionStage 首获独立测试）+agent-ws-server 退役四件套。摸底修正：路由本已半整洁，真债=内联会话段+无管线抽象 | 无 | **WP10a 已ship** |
 | WP11 | 脏文件语料库 | 摸底定案路线 A（直喂解析器）。9 样本+GBK 编码检测（修静默乱码入库）+PII 自动门控（含 xlsx mirror）+analyze-csv column_warnings（修静默 0）。遗留：eval:golden:ci 未接 CI（独立小事待办） | 无 | **已ship** |
 | WP12 | 知识库语义检索 | 摸底修正：sqlite-vec 系幽灵引用未安装，否决扩展路线改 BLOB+JS 余弦（Windows 打包盲区+规模无 ANN 需求）。落地：v11 knowledge_embeddings + worker embed-texts（bge-small-zh-v1.5 int8 ONNX，Xenova 仓三级候选源）+ ingest 嵌入（失败降级）+ rg/向量 RRF 融合 + reindex API/按钮 + 清 4 死旗标 | 无 | **已ship**（2026-07-07；两轮修复：默认源 404、块序号/归档过滤；真机余弦 0.91/0.30） |
@@ -80,7 +80,8 @@ WP5 / WP7 / WP10 / WP11 / WP12（无前置，按资源穿插）
 - **第四批（✅ 已完成，2026-07-07）**：WP1b（✅ 已ship——义务落盘+五路钩子+读切换；中断续接与钩子测试真实化两轮波折后收口）、WP1c（✅ 已ship——写入端补字段+query_invoice_ledger+A4 升级+dataScope 清尾）、WP8b（✅ 完成，轻量路径——六文件 8 处容器收敛+28 行豁免注释，lint 警告 203→180，orchestrator 自查 diff 通过）。**WP1b/WP1c 实施须串行（共享 finance-store.ts）**。后续：WP1b（义务落盘消费切换）、WP1c（invoice 写入端补字段+registry dataScope 更新+fact_invoices source DEFAULT）、WP4b（voucher/分析接入 receipt+provenance 落库 v9）、WP8b+（UI 收敛批次）、WP10 route 管线化、WP11 语料库、WP12 语义检索、WP13-15。
 - **第五批（✅ 已完成，2026-07-07）**：WP13a 合同应收层、WP11 脏文件语料库、WP8c UI 长尾（30 文件收敛，lint 警告 181→139；orchestrator 自查抓到 first-run-gate 暗色变色回归）。其后批次见下。
 - **第六批（✅ 已完成，2026-07-07）**：WP14a 可勾选清单工件、WP10a 路由管线化——均经完整流水线 ship。本批要点：WP10a 前任中断收尾者救回幽灵模块引用；两实施审查各有一次跨任务 diff 归属误判（累计第四、五次），orchestrator 均以 git 实证撤销。剩余：WP13b、WP4b/5b/9b、WP12、WP15。
-- **第七批（🔄 进行中，2026-07-07）**：WP12 知识库语义检索 + WP15 审计日志与撤销。前置动作：一至六批 9 提交已发 PR #36 合 main（待用户合并）。进度：两 spec 均经 fix first→修订→限定复审批准（WP12 v1.1 / WP15 v1.2）；WP12 已实施+两轮审查修复（默认模型源 404 是 orchestrator 验收抓出、块序号偏差是实施审查抓出），真实模型端到端验证通过（同义句余弦 0.91 vs 无关句 0.30），限定复审中；WP15 等 WP12 ship 后串行实施（v12 迁移位）。用户已下达连续执行指令：批7完成后继续 WP13b→WP4b→WP5b→WP9b 直至路线图清零，然后提交更新 PR。
+- **第七批（✅ 已完成，2026-07-07）**：WP12 语义检索（b826970）+ WP15 审计撤销（b8cc0ef）——均经完整流水线 ship。要点：WP12 两轮修复（默认模型源 404 由 orchestrator 验收抓出、块序号/归档过滤由实施审查抓出），真实模型端到端余弦 0.91/0.30；WP15 一轮修复（AU8 原子性死分支重写为真实中途失败+执行时二次白名单）。
+- **第八批（✅ 已完成，2026-07-07，路线图清零批）**：WP13b 销项/回款（0f380b8，修复轮=审计归因 auditHint 参数化）+ WP4b receipt 落库（859d4fe，实施审查零阻塞）+ WP5b 收窄不拆（域注释）+ WP9b 收窄轻量（工具卡注册表化）。**15 个工作包全部处置完毕（12 ship + 2 收窄完成 + WP14b 未列本轮）**。遗留待办：calc_receipts.conversation_id 线程化注入、eval:golden:ci 接 CI、WP10a N1 唯一出口清理、WP14b 编辑型工件（另立项）。
 
 ## 会话协议（断点续传）
 
