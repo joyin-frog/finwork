@@ -356,5 +356,304 @@ export const subagentDispatchesTestPromise = (async () => {
     }
   }
 
-  console.log("subagent-dispatches: all T1–T5 ✓");
+  // ─── T6 迁移 v11：五列存在 + 旧行新字段 NULL ─────────────────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t6-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { LATEST_VERSION, getUserVersion } = await import("../lib/db/migrations.ts");
+
+      // 确认 LATEST_VERSION 已到 v11
+      assert.ok(LATEST_VERSION >= 11, `T6 FAIL: LATEST_VERSION 须 >= 11，实际 ${LATEST_VERSION}`);
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+
+      assert.equal(getUserVersion(db), LATEST_VERSION, "T6 FAIL: 全新库应跑到最新版本");
+
+      // 五列存在
+      type ColInfo = { name: string };
+      const cols = db.prepare("PRAGMA table_info(subagent_dispatches)").all() as ColInfo[];
+      const colNames = cols.map((c) => c.name);
+      const v11Cols = ["task_template_id", "business_object", "period", "review_status", "locked_at"];
+      for (const col of v11Cols) {
+        assert.ok(colNames.includes(col), `T6 FAIL: v11 新增列 "${col}" 不存在，实有: ${colNames.join(", ")}`);
+      }
+
+      // 插入一行（不指定新列）
+      db.prepare("INSERT INTO subagent_dispatches (role_id, status) VALUES (?, ?)").run("bookkeeper", "running");
+      const row = db
+        .prepare("SELECT task_template_id, business_object, period, review_status, locked_at FROM subagent_dispatches WHERE role_id='bookkeeper' ORDER BY id DESC LIMIT 1")
+        .get() as Record<string, unknown> | undefined;
+      assert.ok(row, "T6 FAIL: 插入行应存在");
+      assert.ok(row!.task_template_id == null, "T6 FAIL: 旧行 task_template_id 应为 NULL");
+      assert.ok(row!.business_object == null, "T6 FAIL: 旧行 business_object 应为 NULL");
+      assert.ok(row!.period == null, "T6 FAIL: 旧行 period 应为 NULL");
+      assert.ok(row!.review_status == null, "T6 FAIL: 旧行 review_status 应为 NULL");
+      assert.ok(row!.locked_at == null, "T6 FAIL: 旧行 locked_at 应为 NULL");
+
+      db.close();
+      console.log("subagent-dispatches T6: v11 迁移五列存在 + 旧行兼容 ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  // ─── T7 review_status 状态机：success→pending，failed→NULL ────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t7-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { recordDispatchStart, recordDispatchEnd } = await import("../lib/db/dispatch-store.ts");
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+      db.close();
+
+      // success → pending
+      const id1 = recordDispatchStart({ roleId: "bookkeeper", label: "T7-success" });
+      recordDispatchEnd(id1, { status: "success", summary: "完成", blockedReasons: [] });
+      {
+        const { DatabaseSync } = await import("node:sqlite");
+        const verifyDb = new DatabaseSync(dbPath, { open: true });
+        const row = verifyDb
+          .prepare("SELECT review_status FROM subagent_dispatches WHERE id = ?")
+          .get(id1) as { review_status: string | null } | undefined;
+        verifyDb.close();
+        assert.ok(row, "T7 FAIL: 行应存在");
+        assert.equal(row!.review_status, "pending", `T7 FAIL: success 后 review_status 应为 pending，实际 ${row!.review_status}`);
+      }
+
+      // failed → NULL（保持 NULL，不写 pending）
+      const id2 = recordDispatchStart({ roleId: "bookkeeper", label: "T7-failed" });
+      recordDispatchEnd(id2, { status: "failed", summary: "失败", blockedReasons: [] });
+      {
+        const { DatabaseSync } = await import("node:sqlite");
+        const verifyDb = new DatabaseSync(dbPath, { open: true });
+        const row = verifyDb
+          .prepare("SELECT review_status FROM subagent_dispatches WHERE id = ?")
+          .get(id2) as { review_status: string | null } | undefined;
+        verifyDb.close();
+        assert.ok(row, "T7 FAIL: 行应存在");
+        assert.ok(row!.review_status == null, `T7 FAIL: failed 后 review_status 应为 NULL，实际 ${row!.review_status}`);
+      }
+
+      console.log("subagent-dispatches T7: review_status 状态机（success→pending/failed→NULL） ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  // ─── T8 lockDispatch + getDispatchById ─────────────────────────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t8-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { recordDispatchStart, recordDispatchEnd, lockDispatch, getDispatchById } =
+        await import("../lib/db/dispatch-store.ts");
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+      db.close();
+
+      // 准备三种输入：pending、locked、NULL
+      const idPending = recordDispatchStart({ roleId: "bookkeeper", label: "T8-pending" });
+      recordDispatchEnd(idPending, { status: "success", summary: "OK", blockedReasons: [] });
+      // 此时 review_status = 'pending'
+
+      const idLocked = recordDispatchStart({ roleId: "bookkeeper", label: "T8-locked" });
+      recordDispatchEnd(idLocked, { status: "success", summary: "OK", blockedReasons: [] });
+      lockDispatch(idLocked); // 先锁定
+
+      const idNull = recordDispatchStart({ roleId: "bookkeeper", label: "T8-null" });
+      recordDispatchEnd(idNull, { status: "failed", summary: "fail", blockedReasons: [] });
+      // review_status = NULL
+
+      // T8a：pending → locked（返回 true）
+      const r1 = lockDispatch(idPending);
+      assert.equal(r1, true, "T8a FAIL: pending 行锁定应返回 true");
+
+      // 验证已锁定
+      const rowA = getDispatchById(idPending);
+      assert.ok(rowA, "T8a FAIL: getDispatchById 应找到行");
+      assert.equal(rowA!.reviewStatus, "locked", "T8a FAIL: 锁定后 reviewStatus 应为 locked");
+      assert.ok(rowA!.id === idPending, "T8a FAIL: id 应匹配");
+
+      // T8b：已 locked 行再锁 → 返回 false
+      const r2 = lockDispatch(idLocked);
+      assert.equal(r2, false, "T8b FAIL: 已 locked 行再锁应返回 false");
+
+      // T8c：review_status=NULL 行锁 → 返回 false
+      const r3 = lockDispatch(idNull);
+      assert.equal(r3, false, "T8c FAIL: review_status=NULL 行锁应返回 false");
+
+      // T8d：不存在的 id → lockDispatch 返回 false
+      const r4 = lockDispatch(999999);
+      assert.equal(r4, false, "T8d FAIL: 不存在行 lockDispatch 应返回 false");
+
+      // T8e：getDispatchById 不存在返回 undefined
+      const rowE = getDispatchById(999999);
+      assert.ok(rowE === undefined, "T8e FAIL: 不存在行 getDispatchById 应返回 undefined");
+
+      console.log("subagent-dispatches T8: lockDispatch 三种输入 + getDispatchById ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  // ─── T9 listDispatchesByRole 返回新字段 ────────────────────────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t9-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { recordDispatchStart, recordDispatchEnd, listDispatchesByRole } =
+        await import("../lib/db/dispatch-store.ts");
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+      db.close();
+
+      const id1 = recordDispatchStart({
+        roleId: "bookkeeper",
+        label: "T9-with-template",
+        taskTemplateId: "month-close-precheck",
+        businessObject: "结账清单",
+        period: "2026-06",
+      });
+      recordDispatchEnd(id1, { status: "success", summary: "T9 完成", blockedReasons: [] });
+
+      const rows = listDispatchesByRole("bookkeeper");
+      assert.ok(rows.length >= 1, "T9 FAIL: 应有至少一行");
+      const row = rows.find((r) => r.id === id1);
+      assert.ok(row, "T9 FAIL: 应能找到 id1 行");
+      assert.equal(row!.taskTemplateId, "month-close-precheck", "T9 FAIL: taskTemplateId 应正确");
+      assert.equal(row!.businessObject, "结账清单", "T9 FAIL: businessObject 应正确");
+      assert.equal(row!.period, "2026-06", "T9 FAIL: period 应正确");
+      assert.equal(row!.reviewStatus, "pending", "T9 FAIL: success 后 reviewStatus 应为 pending");
+
+      console.log("subagent-dispatches T9: listDispatchesByRole 返回新字段 ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  // ─── T10 listBlockedDispatches 返回 business_object/period ─────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t10-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { recordDispatchStart, recordDispatchEnd, listBlockedDispatches } =
+        await import("../lib/db/dispatch-store.ts");
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+      db.close();
+
+      const id1 = recordDispatchStart({
+        roleId: "bookkeeper",
+        label: "T10-blocked",
+        taskTemplateId: "month-close-precheck",
+        businessObject: "结账清单",
+        period: "2026-06",
+      });
+      recordDispatchEnd(id1, {
+        status: "success",
+        summary: "有门拦截",
+        blockedReasons: ["export_kingdee_draft"],
+      });
+
+      const blocked = listBlockedDispatches(7);
+      const row = blocked.find((r) => r.id === id1);
+      assert.ok(row, "T10 FAIL: 应能找到 blocked 行");
+      assert.equal(row!.businessObject, "结账清单", "T10 FAIL: businessObject 应正确");
+      assert.equal(row!.period, "2026-06", "T10 FAIL: period 应正确");
+
+      console.log("subagent-dispatches T10: listBlockedDispatches 返回 business_object/period ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  // ─── T11 listDispatchesForPeriod：精确匹配、NULL period 不出现、降序 ───────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t11-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { recordDispatchStart, recordDispatchEnd, listDispatchesForPeriod } =
+        await import("../lib/db/dispatch-store.ts");
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+      db.close();
+
+      // 插三行：两行不同 period + 一行 NULL period
+      const id1 = recordDispatchStart({
+        roleId: "bookkeeper",
+        label: "T11-period-a-1",
+        taskTemplateId: "month-close-precheck",
+        period: "2026-07",
+      });
+      recordDispatchEnd(id1, { status: "success", summary: "T11 first", blockedReasons: [] });
+
+      const id2 = recordDispatchStart({
+        roleId: "bookkeeper",
+        label: "T11-period-a-2",
+        taskTemplateId: "payroll-review",
+        period: "2026-07",
+      });
+      recordDispatchEnd(id2, { status: "success", summary: "T11 second", blockedReasons: [] });
+
+      const id3 = recordDispatchStart({
+        roleId: "bookkeeper",
+        label: "T11-period-b",
+        taskTemplateId: "month-close-precheck",
+        period: "2026-06",
+      });
+      recordDispatchEnd(id3, { status: "success", summary: "T11 other month", blockedReasons: [] });
+
+      const id4 = recordDispatchStart({
+        roleId: "bookkeeper",
+        label: "T11-no-period",
+        // period 不传 → NULL
+      });
+      recordDispatchEnd(id4, { status: "success", summary: "T11 null period", blockedReasons: [] });
+
+      // 只返回 period='2026-07' 的行
+      const rows = listDispatchesForPeriod("2026-07");
+      assert.ok(Array.isArray(rows), "T11 FAIL: 应返回数组");
+      assert.equal(rows.length, 2, `T11 FAIL: period='2026-07' 应有 2 行，实际 ${rows.length}`);
+
+      // 不出现 NULL period 行
+      const hasNull = rows.some((r) => r.period === null);
+      assert.ok(!hasNull, "T11 FAIL: period=NULL 行不应出现在结果中");
+
+      // 不出现 period='2026-06' 行
+      const hasOther = rows.some((r) => r.period === "2026-06");
+      assert.ok(!hasOther, "T11 FAIL: 其他 period 行不应出现在结果中");
+
+      // 降序：id2 > id1（后插入的先出）
+      assert.ok(
+        rows[0].id > rows[1].id,
+        `T11 FAIL: 应按 started_at DESC，id=${rows[0].id} 应大于 id=${rows[1].id}`
+      );
+
+      console.log("subagent-dispatches T11: listDispatchesForPeriod 精确匹配 + NULL 过滤 + 降序 ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  console.log("subagent-dispatches: all T1–T11 ✓");
 })();

@@ -19,6 +19,12 @@ export type SubagentTask = {
   instructions: string;
   files?: string[];
   label: string;
+  /** 任务模板 id（来自 TASK_TEMPLATES）——有值时透传给 dispatch 台账 */
+  taskTemplateId?: string;
+  /** 业务对象标签（来自模板 objectLabel）——有值时透传给 dispatch 台账 */
+  businessObject?: string;
+  /** 期间，格式 YYYY-MM——有值时透传给 dispatch 台账 */
+  period?: string;
 };
 
 export type SubagentResult = {
@@ -115,6 +121,9 @@ export async function runSubagent(
         label: task.label,
         conversationId: opts.conversationId,
         traceId: opts.traceId,
+        taskTemplateId: task.taskTemplateId,
+        businessObject: task.businessObject,
+        period: task.period,
       });
     } catch (e) {
       console.warn("[dispatch] dispatch-start 失败(不影响任务):", e);

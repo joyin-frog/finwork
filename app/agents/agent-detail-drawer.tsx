@@ -11,7 +11,7 @@
  */
 
 import type { CSSProperties } from "react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowExpand01Icon, ArrowShrink01Icon, PanelRightIcon } from "@hugeicons/core-free-icons";
@@ -40,6 +40,20 @@ export function AgentDetailDrawer({
   onCollapse,
 }: AgentDetailDrawerProps) {
   const [filePreview, setFilePreview] = useState<LocalPreviewFile | null>(null);
+  // 本地复核状态覆盖表（点击锁定后行内立即更新，无需重取全量数据）
+  const [lockedIds, setLockedIds] = useState<Set<number>>(new Set());
+
+  const handleLock = useCallback(async (dispatchId: number) => {
+    if (!confirm("确认锁定该任务的复核状态？锁定后不可撤销。")) return;
+    try {
+      const res = await fetch(`/api/agents/dispatches/${dispatchId}/lock`, { method: "POST" });
+      if (res.ok) {
+        setLockedIds((prev) => new Set(prev).add(dispatchId));
+      }
+    } catch {
+      // 网络错误：静默忽略（用户可刷新重试）
+    }
+  }, []);
 
   const ui = ROLE_UI[card.roleId as keyof typeof ROLE_UI];
   const tone = ui?.tone ?? "--tone-neutral";
@@ -163,6 +177,7 @@ export function AgentDetailDrawer({
                 <div className="flex flex-col gap-1.5">
                   {dispatches.slice(0, 8).map((row) => {
                     const isRowBlocked = row.blockedReason != null;
+                    const effectiveReviewStatus = lockedIds.has(row.id) ? "locked" : row.reviewStatus;
                     const href = row.conversationId
                       ? `/chat/recent?id=${row.conversationId}`
                       : undefined;
@@ -195,17 +210,65 @@ export function AgentDetailDrawer({
                         <span className="flex-1 min-w-0 truncate text-foreground">
                           {row.label ?? row.summary ?? `#${row.id}`}
                         </span>
+                        {/* 期间徽标 */}
+                        {row.period && (
+                          <span className="shrink-0 text-meta text-muted-foreground whitespace-nowrap border border-border/60 rounded px-1">
+                            {row.period}
+                          </span>
+                        )}
+                        {/* 业务对象徽标 */}
+                        {row.businessObject && (
+                          <span className="shrink-0 text-meta text-muted-foreground whitespace-nowrap border border-border/60 rounded px-1">
+                            {row.businessObject}
+                          </span>
+                        )}
+                        {/* 复核状态徽标 */}
+                        {effectiveReviewStatus === "pending" && (
+                          <span
+                            className="fa-tone-pill shrink-0 whitespace-nowrap"
+                            style={{ "--tone": "var(--tone-notice)" } as CSSProperties}
+                          >
+                            待锁定
+                          </span>
+                        )}
+                        {effectiveReviewStatus === "locked" && (
+                          <span
+                            className="fa-tone-pill shrink-0 whitespace-nowrap"
+                            style={{ "--tone": "var(--tone-success)" } as CSSProperties}
+                          >
+                            已锁定
+                          </span>
+                        )}
                         <span className="shrink-0 text-muted-foreground whitespace-nowrap">
                           {relativeTime(row.startedAt)}
                         </span>
                       </div>
                     );
+                    const lockButton = effectiveReviewStatus === "pending" && !lockedIds.has(row.id) ? (
+                      <button
+                        type="button"
+                        className="shrink-0 text-meta px-2 py-0.5 rounded border border-border/60 hover:bg-muted/60 transition-colors whitespace-nowrap"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleLock(row.id);
+                        }}
+                      >
+                        锁定
+                      </button>
+                    ) : null;
                     return href ? (
-                      <Link key={row.id} href={href} className="block hover:no-underline">
-                        {inner}
-                      </Link>
+                      <div key={row.id} className="flex items-center gap-1.5">
+                        <Link href={href} className="flex-1 min-w-0 block hover:no-underline">
+                          {inner}
+                        </Link>
+                        {lockButton}
+                      </div>
                     ) : (
-                      <div key={row.id}>{inner}</div>
+                      <div key={row.id} className="flex items-center gap-1.5">
+                        <div className="flex-1 min-w-0">{inner}</div>
+                        {lockButton}
+                      </div>
                     );
                   })}
                 </div>

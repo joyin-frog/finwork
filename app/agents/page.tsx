@@ -11,8 +11,10 @@ import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { AgentCard } from "./agent-card";
 import { AgentDetailDrawer } from "./agent-detail-drawer";
 import { AttentionPanel } from "./attention-panel";
+import { TaskBoardView } from "./task-board";
 import { partitionRoles, type RoleCard } from "@/lib/domain/agent-board";
 import type { AttentionItem } from "@/lib/domain/attention";
+import type { TaskBoard } from "@/lib/domain/task-board";
 import type { DispatchRow } from "@/lib/db/dispatch-store";
 
 // ─── Types (mirrors /api/agents response) ──────────────────────────────────
@@ -41,8 +43,10 @@ type AgentRosterItem = {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
+  const [view, setView] = useState<"team" | "board">("team");
   const [roster, setRoster] = useState<AgentRosterItem[] | null>(null);
   const [attention, setAttention] = useState<AttentionItem[]>([]);
+  const [board, setBoard] = useState<TaskBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -64,6 +68,7 @@ export default function AgentsPage() {
       if (json.ok) {
         setRoster(json.data.roster);
         setAttention(json.data.attention ?? []);
+        setBoard(json.data.board ?? null);
       } else {
         setError(json.error || "加载失败");
       }
@@ -173,9 +178,32 @@ export default function AgentsPage() {
             <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0">
               <DragHandle />
               <SidebarToggle />
-              <h1 className="text-title">智能体</h1>
+              {/* 分段切换：团队 ｜ 本月任务（state 版，不改 URL） */}
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setView("team")}
+                  className={[
+                    "text-title transition-colors whitespace-nowrap bg-transparent border-none p-0 cursor-pointer",
+                    view === "team" ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  团队
+                </button>
+                <span className="text-title font-normal text-muted-foreground/40 select-none">｜</span>
+                <button
+                  type="button"
+                  onClick={() => setView("board")}
+                  className={[
+                    "text-title transition-colors whitespace-nowrap bg-transparent border-none p-0 cursor-pointer",
+                    view === "board" ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  本月任务
+                </button>
+              </div>
               {/* 预览已收起且仍有选中角色 → 顶栏显示「展开预览」重开 */}
-              {collapsed && selectedRoleId && (
+              {collapsed && selectedRoleId && view === "team" && (
                 <button
                   type="button"
                   // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
@@ -202,6 +230,14 @@ export default function AgentsPage() {
               <div className="flex items-center justify-center py-16 text-body text-muted-foreground">
                 加载中…
               </div>
+            ) : view === "board" ? (
+              board ? (
+                <TaskBoardView board={board} />
+              ) : (
+                <div className="flex items-center justify-center py-16 text-body text-muted-foreground">
+                  看板数据不可用
+                </div>
+              )
             ) : (
               <>
                 {/* 等你拍板区 */}
