@@ -49,6 +49,7 @@
     "idx_chat_messages_conversation_id",
     "idx_dispatches_blocked",
     "idx_dispatches_role_time",
+    "idx_fact_invoices_invoice_date",
     "idx_fact_invoices_recorded_at",
     "idx_fact_metrics_period",
     "idx_fact_obligations_due",
@@ -150,6 +151,10 @@
     {
       "name": "idx_dispatches_role_time",
       "table": "subagent_dispatches"
+    },
+    {
+      "name": "idx_fact_invoices_invoice_date",
+      "table": "fact_invoices"
     },
     {
       "name": "idx_fact_invoices_recorded_at",
