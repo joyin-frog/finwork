@@ -15,6 +15,7 @@ import { createRecordDocumentMetadataTool } from "./document-metadata";
 import { createUpdateCompanyProfileTool } from "./profile";
 import { createFinalizeDeliverableTool } from "./finalize-deliverable";
 import { createEmitChecklistTool } from "./emit-checklist";
+import { createRunFilingPrecheckBatchTool } from "./filing-precheck-batch";
 import type { SdkLike } from "./sdk-types";
 import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
 
@@ -46,6 +47,8 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createFinalizeDeliverableTool(sdk, outputDir),
       // WP14a: 把清单产物物化为可勾选工件
       createEmitChecklistTool(sdk, undefined, conversationId),
+      // 功能4首刀: 申报前复核批跑（增值税+个税并行派发）
+      createRunFilingPrecheckBatchTool(sdk, outputDir, traceId, conversationId, onSubagentEvent),
     ],
   });
 }

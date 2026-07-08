@@ -129,6 +129,12 @@ const summaries: Record<string, SummaryFn> = {
     return title ? `物化清单「${title.slice(0, 30)}」(${count} 项)` : `物化清单(${count} 项)`;
   },
 
+  // ─── 功能4首刀: 申报前复核批跑 ───
+  run_filing_precheck_batch: (i) => {
+    const period = str(i, "period");
+    return period ? `批跑申报前复核（增值税+个税）${period}` : "批跑申报前复核（增值税+个税）";
+  },
+
   // ─── 收尾:声明最终产物 ───
   finalize_deliverable: (i) => {
     const files = Array.isArray((i as Record<string, unknown>)?.files) ? (i as Record<string, unknown>).files as unknown[] : [];

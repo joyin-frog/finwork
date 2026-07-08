@@ -31,7 +31,7 @@ async function makeTestDb() {
 export const artifactChecklistTestPromise = (async () => {
   // ── 预先验证：migrations 末尾版本是 v10 ──────────────────────────────────────
   const { MIGRATIONS, LATEST_VERSION } = await import("../lib/db/migrations.ts");
-  assert.equal(LATEST_VERSION, 10, "MIGRATIONS 末尾版本必须是 v10（开工检查）");
+  assert.equal(LATEST_VERSION, 15, "MIGRATIONS 末尾版本必须是 v15（开工检查；11-14 被 strange-mendel/PR#37 占用）");
 
   // ── A1: v10 artifacts 表 DDL 形状 ────────────────────────────────────────────
   const db1 = await makeTestDb();

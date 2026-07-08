@@ -706,6 +706,36 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  // ⚠ v11-v14 已被并行 worktree 占用（分支 claude/strange-mendel-cfd23e / PR #37：
+  //   v11 knowledge_embeddings / v12 audit_logs_semantics /
+  //   v13 fact_invoices_settlement_columns / v14 calc_receipts_and_payroll_receipt_id），
+  //   共享 dev 库（app-data finance-agent.db）已被其推到 user_version=14。
+  //   本条目曾两度撞号（11→13→15）：后续加迁移前必须核对
+  //   ①main 链尾 ②所有开放 worktree 的 migrations.ts 链尾 ③共享库 PRAGMA user_version，
+  //   取三者最高 +1，否则撞号迁移会被静默跳过。
+  {
+    version: 15,
+    name: "task-dispatch-objectify",
+    up: (db) => {
+      // spec-task-templates: 派发对象化——为 subagent_dispatches 增加五列
+      // 幂等：addColumnIfMissing 用 IF NOT EXISTS 语义
+      //
+      // 表存在性守卫（与 v9 同模式）：
+      // 少数测试用 initializeSchema(v1 快照) + 手动 user_version=4 绕过 v4 DDL，
+      // 导致 subagent_dispatches 实际未建——此时本迁移应静默跳过，
+      // 待完整迁移链（v4 建表 → v11 加列）在真实数据库上正确执行。
+      const tableExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='subagent_dispatches'"
+      ).get();
+      if (!tableExists) return;
+
+      addColumnIfMissing(db, "subagent_dispatches", "task_template_id", "TEXT");
+      addColumnIfMissing(db, "subagent_dispatches", "business_object",  "TEXT");
+      addColumnIfMissing(db, "subagent_dispatches", "period",           "TEXT");
+      addColumnIfMissing(db, "subagent_dispatches", "review_status",    "TEXT");
+      addColumnIfMissing(db, "subagent_dispatches", "locked_at",        "TEXT");
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

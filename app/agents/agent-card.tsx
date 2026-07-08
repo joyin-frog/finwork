@@ -5,8 +5,16 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Surface } from "@/components/ui/surface";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ROLE_UI } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
+import { getTemplatesForRole, currentYearMonth, buildTemplateDispatchHref } from "@/lib/agent/roles/task-templates";
 import type { RoleCard } from "@/lib/domain/agent-board";
 
 type AgentCardProps = {
@@ -113,15 +121,56 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
             : card.available ? "暂无记录" : ""}
         </span>
         {canDispatch && (
-          <Link
-            href={`/chat/new?prompt=${encodeURIComponent(`让${card.name}帮我处理…`)}`}
-            onClick={(e) => e.stopPropagation()}
-            className="shrink-0"
-          >
-            <Button variant="outline" size="sm">派活</Button>
-          </Link>
+          <DispatchButton cardName={card.name} roleId={card.roleId} />
         )}
       </div>
     </Surface>
+  );
+}
+
+// ── 派活按钮（有模板时展示下拉菜单） ───────────────────────────────────────────
+
+function DispatchButton({ cardName, roleId }: { cardName: string; roleId: string }) {
+  const templates = getTemplatesForRole(roleId);
+  const freePrompt = encodeURIComponent(`让${cardName}帮我处理…`);
+
+  if (templates.length === 0) {
+    // 无模板：单按钮，原有行为
+    return (
+      <Link href={`/chat/new?prompt=${freePrompt}`} onClick={(e) => e.stopPropagation()} className="shrink-0">
+        <Button variant="outline" size="sm">派活</Button>
+      </Link>
+    );
+  }
+
+  // 有模板：下拉菜单
+  const period = currentYearMonth();
+  return (
+    <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="shrink-0">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm">派活</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {templates.map((t) => {
+            const href = buildTemplateDispatchHref(t, cardName, period);
+            return (
+              <DropdownMenuItem key={t.id} asChild>
+                <Link href={href} className="flex flex-col items-start gap-0.5">
+                  <span className="text-body font-medium">{t.name}</span>
+                  <span className="text-meta text-muted-foreground">{t.description}</span>
+                </Link>
+              </DropdownMenuItem>
+            );
+          })}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href={`/chat/new?prompt=${freePrompt}`} className="text-muted-foreground">
+              自由派活
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
   );
 }

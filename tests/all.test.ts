@@ -611,4 +611,13 @@ void (async () => {
   const { artifactChecklistTestPromise } = await import("./artifact-checklist.test.ts");
   await artifactChecklistTestPromise;
 
+  const { taskTemplatesTestPromise } = await import("./task-templates.test.ts");
+  await taskTemplatesTestPromise;
+
+  const { taskBoardTestPromise } = await import("./task-board.test.ts");
+  await taskBoardTestPromise;
+
+  const { filingPrecheckBatchTestPromise } = await import("./filing-precheck-batch.test.ts");
+  await filingPrecheckBatchTestPromise;
+
 })();

@@ -15,6 +15,12 @@ export type RecordDispatchStartInput = {
   label?: string;
   traceId?: string;
   conversationId?: string;
+  /** 任务模板 id（来自 TASK_TEMPLATES，空时为 NULL） */
+  taskTemplateId?: string;
+  /** 业务对象标签（来自模板 objectLabel，空时为 NULL） */
+  businessObject?: string;
+  /** 期间，格式 YYYY-MM（空时为 NULL） */
+  period?: string;
 };
 
 /**
@@ -26,15 +32,19 @@ export function recordDispatchStart(input: RecordDispatchStartInput): number {
   const result = db
     .prepare(
       `INSERT INTO subagent_dispatches
-         (role_id, skill, label, trace_id, conversation_id, status)
-       VALUES (?, ?, ?, ?, ?, 'running')`
+         (role_id, skill, label, trace_id, conversation_id, status,
+          task_template_id, business_object, period)
+       VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)`
     )
     .run(
       input.roleId,
       input.skill ?? null,
       input.label ?? null,
       input.traceId ?? null,
-      input.conversationId ?? null
+      input.conversationId ?? null,
+      input.taskTemplateId ?? null,
+      input.businessObject ?? null,
+      input.period ?? null
     );
   return Number(result.lastInsertRowid);
 }
@@ -66,9 +76,72 @@ export function recordDispatchEnd(id: number, r: RecordDispatchEndInput): void {
        duration_ms   = CAST(
          (julianday('now') - julianday(started_at)) * 86400000
          AS INTEGER
-       )
+       ),
+       review_status  = CASE WHEN ? = 'success' THEN 'pending' ELSE review_status END
      WHERE id = ?`
-  ).run(r.status, r.summary ?? null, blockedReason, id);
+  ).run(r.status, r.summary ?? null, blockedReason, r.status, id);
+}
+
+/**
+ * 将 review_status='pending' 的派发行转换为 'locked'，写入 locked_at。
+ * 只有 pending 行可锁定；locked 行或 review_status=NULL 行均返回 false 且不改动。
+ * 幂等保护：用 WHERE review_status='pending' 做 CAS，以 changes>0 为成功判据。
+ */
+export function lockDispatch(id: number): boolean {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `UPDATE subagent_dispatches
+       SET review_status = 'locked', locked_at = datetime('now')
+       WHERE id = ? AND review_status = 'pending'`
+    )
+    .run(id);
+  return (result.changes ?? 0) > 0;
+}
+
+/**
+ * 按 id 查单行（含新字段），供 lock 端点 404 判断与响应体使用。
+ */
+export function getDispatchById(id: number): DispatchRow | undefined {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
+              task_template_id, business_object, period, review_status
+       FROM subagent_dispatches
+       WHERE id = ?`
+    )
+    .get(id) as {
+      id: number;
+      role_id: string;
+      label: string | null;
+      summary: string | null;
+      status: string;
+      blocked_reason: string | null;
+      conversation_id: string | null;
+      started_at: string | null;
+      ended_at: string | null;
+      task_template_id: string | null;
+      business_object: string | null;
+      period: string | null;
+      review_status: string | null;
+    } | undefined;
+  if (!row) return undefined;
+  return {
+    id: Number(row.id),
+    roleId: row.role_id,
+    label: row.label ?? null,
+    summary: row.summary ?? null,
+    status: row.status,
+    blockedReason: row.blocked_reason ?? null,
+    conversationId: row.conversation_id ?? null,
+    startedAt: row.started_at ?? null,
+    endedAt: row.ended_at ?? null,
+    taskTemplateId: row.task_template_id ?? null,
+    businessObject: row.business_object ?? null,
+    period: row.period ?? null,
+    reviewStatus: row.review_status ?? null,
+  };
 }
 
 // ─── Read ───────────────────────────────────────────────────────────────────
@@ -119,6 +192,8 @@ export type BlockedDispatchRow = {
   blockedReason: string;
   conversationId: string | null;
   endedAt: string | null;
+  businessObject: string | null;
+  period: string | null;
 };
 
 export type DispatchRow = {
@@ -131,6 +206,10 @@ export type DispatchRow = {
   conversationId: string | null;
   startedAt: string | null;
   endedAt: string | null;
+  taskTemplateId: string | null;
+  businessObject: string | null;
+  period: string | null;
+  reviewStatus: string | null;
 };
 
 /**
@@ -141,7 +220,8 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at
+      `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
+              task_template_id, business_object, period, review_status
        FROM subagent_dispatches
        WHERE role_id = ?
        ORDER BY started_at DESC, id DESC
@@ -157,6 +237,10 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
       conversation_id: string | null;
       started_at: string | null;
       ended_at: string | null;
+      task_template_id: string | null;
+      business_object: string | null;
+      period: string | null;
+      review_status: string | null;
     }>;
   return rows.map((r) => ({
     id: Number(r.id),
@@ -168,6 +252,10 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
     conversationId: r.conversation_id ?? null,
     startedAt: r.started_at ?? null,
     endedAt: r.ended_at ?? null,
+    taskTemplateId: r.task_template_id ?? null,
+    businessObject: r.business_object ?? null,
+    period: r.period ?? null,
+    reviewStatus: r.review_status ?? null,
   }));
 }
 
@@ -218,6 +306,52 @@ export function listRecentDispatchActivity(limit = 10): RecentDispatchActivityRo
 }
 
 /**
+ * 按 period 精确匹配查调度史（started_at DESC, id DESC），NULL period 行不出现。
+ * 供本月任务看板使用。
+ */
+export function listDispatchesForPeriod(period: string): DispatchRow[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
+              task_template_id, business_object, period, review_status
+       FROM subagent_dispatches
+       WHERE period = ?
+       ORDER BY started_at DESC, id DESC`
+    )
+    .all(period) as Array<{
+      id: number;
+      role_id: string;
+      label: string | null;
+      summary: string | null;
+      status: string;
+      blocked_reason: string | null;
+      conversation_id: string | null;
+      started_at: string | null;
+      ended_at: string | null;
+      task_template_id: string | null;
+      business_object: string | null;
+      period: string | null;
+      review_status: string | null;
+    }>;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    roleId: r.role_id,
+    label: r.label ?? null,
+    summary: r.summary ?? null,
+    status: r.status,
+    blockedReason: r.blocked_reason ?? null,
+    conversationId: r.conversation_id ?? null,
+    startedAt: r.started_at ?? null,
+    endedAt: r.ended_at ?? null,
+    taskTemplateId: r.task_template_id ?? null,
+    businessObject: r.business_object ?? null,
+    period: r.period ?? null,
+    reviewStatus: r.review_status ?? null,
+  }));
+}
+
+/**
  * 查 blocked_reason 非空且 ended_at 在 sinceDays 天内的行(「停在门前的活」)。
  * sinceDays 默认 7。
  */
@@ -228,7 +362,7 @@ export function listBlockedDispatches(sinceDays = 7): BlockedDispatchRow[] {
     .prepare(
       `SELECT sd.id, sd.role_id, sd.label, sd.summary, sd.blocked_reason,
               COALESCE(sd.conversation_id, CAST(at.conversation_id AS TEXT)) AS conversation_id,
-              sd.ended_at
+              sd.ended_at, sd.business_object, sd.period
        FROM subagent_dispatches sd
        LEFT JOIN agent_traces at ON at.trace_id = sd.trace_id
        WHERE sd.blocked_reason IS NOT NULL
@@ -242,6 +376,8 @@ export function listBlockedDispatches(sinceDays = 7): BlockedDispatchRow[] {
       blocked_reason: string;
       conversation_id: string | null;
       ended_at: string | null;
+      business_object: string | null;
+      period: string | null;
     }>;
   return rows.map((r) => ({
     id: Number(r.id),
@@ -251,6 +387,8 @@ export function listBlockedDispatches(sinceDays = 7): BlockedDispatchRow[] {
     blockedReason: r.blocked_reason,
     conversationId: r.conversation_id ?? null,
     endedAt: r.ended_at ?? null,
+    businessObject: r.business_object ?? null,
+    period: r.period ?? null,
   }));
 }
 
