@@ -10,11 +10,13 @@ import { createKingdeeTools } from "./kingdee-tools";
 import { createFinanceTools } from "./finance-tools";
 import { createPayrollTools } from "../tools/finance/payroll";
 import { createReimbursementTools } from "../tools/finance/reimbursement";
+import { createSalesInvoiceTools } from "../tools/finance/sales-invoices";
 import { createReconciliationTools } from "../tools/finance/reconciliation";
 import { createRecordDocumentMetadataTool } from "./document-metadata";
 import { createUpdateCompanyProfileTool } from "./profile";
 import { createFinalizeDeliverableTool } from "./finalize-deliverable";
 import { createEmitChecklistTool } from "./emit-checklist";
+import { createUndoLastWriteTool } from "./undo-write";
 import type { SdkLike } from "./sdk-types";
 import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
 
@@ -37,6 +39,7 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createBusinessAnalysisTool(sdk),
       ...createPayrollTools(sdk, outputDir),
       ...createReimbursementTools(sdk),
+      ...createSalesInvoiceTools(sdk),
       ...createReconciliationTools(sdk),
       ...createFinanceTools(sdk, outputDir),
       createRecordDocumentMetadataTool(sdk),
@@ -46,6 +49,8 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createFinalizeDeliverableTool(sdk, outputDir),
       // WP14a: 把清单产物物化为可勾选工件
       createEmitChecklistTool(sdk, undefined, conversationId),
+      // WP15: 撤销最近 agent 写操作（high 风险，confirm gate 拦截）
+      createUndoLastWriteTool(sdk),
     ],
   });
 }

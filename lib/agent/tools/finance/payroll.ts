@@ -12,6 +12,7 @@ import {
   loadTaxConfig,
   savePayrollDraft
 } from "@/lib/db/finance-store";
+import { saveCalcReceiptSafe } from "@/lib/db/receipt-store";
 import { computePayrollDiff } from "@/lib/domain/payroll-diff";
 import { backupDatabase, getDb } from "@/lib/db/sqlite";
 import { withIdempotency } from "@/lib/agent/tools/idempotency";
@@ -91,7 +92,7 @@ export function createPayrollTools(sdk: Sdk, outputDir?: string) {
       // ruleAsOf 用于 loadTaxConfig 的 as-of 查询：用当期第 1 天，确保补算历史月份时取历史版本（reviewer N3）
       const ruleAsOf = `${asOf}-01`;
       const taxConfig = loadTaxConfig(undefined, ruleAsOf);
-      const results: CumulativePayrollResult[] = [];
+      const results: Array<CumulativePayrollResult & { receiptId?: number }> = [];
       const coldStarts: string[] = [];
       const failures: string[] = [];
       const numericWarnings: string[] = [];
@@ -157,10 +158,17 @@ export function createPayrollTools(sdk: Sdk, outputDir?: string) {
             },
             taxConfig
           );
+          // WP4b: 落库 receipt，回填 fact_payroll.receipt_id（降级不阻断）
+          const receiptId = saveCalcReceiptSafe(
+            getDb(),
+            { toolName: "calculate_payroll_batch", receipt: result.receipt },
+            `payroll(${emp.employeeName},${asOf})`
+          );
           savePayrollDraft(args.year, args.month, result, monthsEmployed, {
-            overwriteConfirmed: args.overwriteConfirmed ?? false
+            overwriteConfirmed: args.overwriteConfirmed ?? false,
+            receiptId,
           });
-          results.push(result);
+          results.push(receiptId !== undefined ? { ...result, receiptId } : result);
           // 数值自检(红线 2 校验侧):确定性引擎结果应自洽,不自洽则告警不静默(红线 4)
           for (const issue of collectNumericIssues([
             checkSumConsistent(

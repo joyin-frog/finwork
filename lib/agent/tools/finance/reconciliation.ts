@@ -1,4 +1,6 @@
 import { reconcileBankStatement, type ReconInputRow } from "@/lib/domain/reconciliation";
+import { saveCalcReceiptSafe } from "@/lib/db/receipt-store";
+import { getDb } from "@/lib/db/sqlite";
 import { redact } from "@/lib/safety/pii";
 import { z } from "zod/v4";
 
@@ -81,10 +83,14 @@ export function createReconciliationTools(sdk: Sdk) {
         }
         lines.push("提示:本工具只做核对与提示,不涉及任何付款或转账;差异请人工确认后再处理。");
 
+        // WP4b: 落库 receipt，wrapper 增 receiptId（降级不阻断）
+        const receiptId = result.receipt
+          ? saveCalcReceiptSafe(getDb(), { toolName: "reconcile_bank_statement", receipt: result.receipt }, "reconciliation")
+          : undefined;
         // 功能3: 对账内容包含对方户名/摘要等倒入的银行流水字段，可能含有手机号/账号等敏感信息，进 content 前先脱敏
         return {
           content: [{ type: "text" as const, text: redact(lines.join("\n")) }],
-          structuredContent: result
+          structuredContent: receiptId !== undefined ? { ...result, receiptId } : result
         };
       } catch (error) {
         return {

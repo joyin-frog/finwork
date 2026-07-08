@@ -38,8 +38,8 @@
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
-| WP4 | 可追溯性泛化 | 摸底修正：CalcReceipt/通用卡片/兜底分发已在。拆 WP4a（kind 判别契约+四生成方 source 补链）/ WP4b（voucher与分析接入+provenance 落库 v9） | 无 | **WP4a 已ship**（kind 契约+三处 source 补链+对账文件名全链路） |
-| WP5 | 计算引擎独立化 | 拆两刀：WP5a 规则表数据化（个税表内置种子+社保表建空结构，用户 2026-07-06 拍板）/ WP5b worker 拆包。摸底：政策数字双源硬编码（payroll.py:20-33 与 tax-config.ts:24-33 镜像）、金额全 float、无 as-of 查询先例 | WP1a（迁移版本排序 v8>v7） | **WP5a 已ship**（修复轮解决 1970 死区吸收与静默回落，复审通过；旧覆盖升级后保持生效） |
+| WP4 | 可追溯性泛化 | WP4a ✅（kind 契约+source 补链）/ WP4b ✅（2026-07-07）——v14 calc_receipts 落库表+fact_payroll.receipt_id 回填（重算更新确认不动）+四生产方接入（tax_calculator 形状一字不动只落库，B1 定案）+voucher 两工具产 receipt（仅 ok===true）+分析 provenance 段（handler 层组装保持 domain 纯函数）。遗留待办：calc_receipts.conversation_id 各调用点未线程化注入（列可空） | 无 | **WP4a+WP4b 均已ship** |
+| WP5 | 计算引擎独立化 | 拆两刀：WP5a 规则表数据化（个税表内置种子+社保表建空结构，用户 2026-07-06 拍板）/ WP5b worker 拆包。摸底：政策数字双源硬编码（payroll.py:20-33 与 tax-config.ts:24-33 镜像）、金额全 float、无 as-of 查询先例 | WP1a（迁移版本排序 v8>v7） | **WP5a 已ship**；**WP5b 评估后收窄不拆（2026-07-07）**——751 行域边界自然无真实痛点，拆包需改 7 处 Node 路径引用+入口方式且踩 Windows 打包盲区，值不回票价；已落轻整理（7 条域分段注释），某域超 300 行再议 |
 | WP6 | 迁移纪律收口 | **摸底修正（2026-07-06）：版本化迁移框架已存在**（user_version v1-5、事务回滚、迁移前备份）。真正的债：baseline 每次启动无条件重跑，`CREATE TABLE IF NOT EXISTS` 会复活未来被迁移删除的表（WP1 旧表退役的直接地雷）+ 双轨制无护栏。范围收窄为：baseline 冻结、v6 reconcile、删表不复活测试、rehearseMigrations 预演。**仍是 WP1 硬前置** | 无 | **已ship**（spec v1.2；实施审查 fix-first 唯一阻塞已修，全量 11 组测试绿；未提交，随第一批一起 commit） |
 | WP7 | Windows 运行时防线 | 摸底修正：windows_smoke CI/打包硬校验/GBK 防线大半已在。收窄为 WP7a：编码防线统一 12+ 调用点（parsers 两处是现实漏洞）+守护 CI 守护者+tar 兜底 | 无 | **WP7a 已ship**（12 调用点统一 pythonSpawnEnv；CI 守护者有人守了；tar 兜底） |
 
@@ -48,18 +48,18 @@
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
 | WP8 | UI 底座 | **摸底修正（2026-07-06）：token 层已相当完善**（oklch/@theme/单旋钮 radius/elevation 三档/tone 14 色/next-themes）。真正的债是散落：rounded-\* 141 处 47 文件、border 73 处 33 文件。拆为 WP8a（Surface 原语+ESLint 护栏+data-style 挂载点+3 试点）与 WP8b+（按 spec 附录 A 清单分批收敛）。视觉保持现状（D5） | 无 | **WP8a 已ship**（spec v1.1；实施审查 fix first→修复轮（补 3 条变体断言、护栏测试改读真实 eslint 配置并红态自证）→重审 ship。WP8b+ 收敛批次照 spec 附录 A 排期） |
-| WP9 | chat-page 拆解 | 拆两刀：WP9a 纯结构搬迁（私有组件+hooks 平移，行为零变化，≤500 行）/ WP9b 消息类型注册式渲染。踩 WP8a Surface API | WP8a（已ship） | **WP9a 已ship**（1823→1073 行；实施审查零阻塞；e2e 冒烟未跑为已知接受项，第一次真实回归看下次 e2e 全跑） |
+| WP9 | chat-page 拆解 | 拆两刀：WP9a 纯结构搬迁（私有组件+hooks 平移，行为零变化，≤500 行）/ WP9b 消息类型注册式渲染。踩 WP8a Surface API | WP8a（已ship） | **WP9a 已ship**；**WP9b 已完成（2026-07-07，收窄后轻量路径）**——消息级不动；工具卡级注册表化落地：KIND/TOOL 双注册表、TOOLS_WITH_RESULT_CARD 由 Object.keys 派生（运行时权威）、镜像哨兵改为源码抽取注册表 key 断言（消除手写清单漂移面）；orchestrator 自查 diff 通过（唯一语义差=calc_receipt kind 判别提前，更符合 WP4a 契约） |
 | WP10 | query 路由管线化 | WP10a ✅已ship：POST 176 行内联→四段 Stage 管线（sessionStage 首获独立测试）+agent-ws-server 退役四件套。摸底修正：路由本已半整洁，真债=内联会话段+无管线抽象 | 无 | **WP10a 已ship** |
 | WP11 | 脏文件语料库 | 摸底定案路线 A（直喂解析器）。9 样本+GBK 编码检测（修静默乱码入库）+PII 自动门控（含 xlsx mirror）+analyze-csv column_warnings（修静默 0）。遗留：eval:golden:ci 未接 CI（独立小事待办） | 无 | **已ship** |
-| WP12 | 知识库语义检索 | 本地量化 embedding（bge-small 级，Python worker 内）+ sqlite-vec + ripgrep 混合排序；顺带清 4 个死旗标（flags.ts:11-14） | 无 | 未开始 |
+| WP12 | 知识库语义检索 | 摸底修正：sqlite-vec 系幽灵引用未安装，否决扩展路线改 BLOB+JS 余弦（Windows 打包盲区+规模无 ANN 需求）。落地：v11 knowledge_embeddings + worker embed-texts（bge-small-zh-v1.5 int8 ONNX，Xenova 仓三级候选源）+ ingest 嵌入（失败降级）+ rg/向量 RRF 融合 + reindex API/按钮 + 清 4 死旗标 | 无 | **已ship**（2026-07-07；两轮修复：默认源 404、块序号/归档过滤；真机余弦 0.91/0.30） |
 
 ### T3 扩展面
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
-| WP13 | 往来管理落地 | 拆刀：WP13a 合同应收层（用户拍板）✅已ship——转正+query_receivables+receivables-ledger 技能+今日到期分箱修复 / WP13b 销项发票登记+发票级账龄+回款落盘（待启动） | WP1（已ship） | **WP13a 已ship** |
+| WP13 | 往来管理落地 | 拆刀：WP13a 合同应收层（用户拍板）✅已ship / WP13b ✅已ship（2026-07-07）——v13 回款三列 + record_sales_invoices/record_invoice_settlement/query_sales_invoices 三工具（接 recordAudit 可撤销）+ 发票层账龄（开票日起算，与合同层符号相反不共享分箱）+ SKILL 两层口径升级。业务口径假设待用户确认：回款单次结清不分期 | WP1（已ship） | **WP13a+WP13b 均已ship** |
 | WP14 | 交互工件系统 | 拆刀：WP14a 可勾选清单工件 ✅已ship（artifacts 表 v10+emit_checklist+三态卡片+状态 API+两技能接入）/ WP14b 凭证行内改科目等编辑型工件（待启动） | WP8、WP9、WP1（已ship） | **WP14a 已ship** |
-| WP15 | 审计日志与撤销 | agent 操作统一留痕 + 回滚；未来任何代办级自动化的门票 | WP6 | 未开始 |
+| WP15 | 审计日志与撤销 | 落地：v12 audit_logs 补列（conversation_id/tool_name/undo/undone_at，无会话 FK 长寿设计）+ audit-store（delete_rows/restore_rows 双原语、白名单硬校验+执行时二次校验、单事务撤销）+ fact_invoices/fact_metrics 写路径留痕 + 两段式 undo_last_write（high）+ GET /api/audit + POST undo。fact_obligations 经审查裁定移出（用户 UI 触发非 agent 写路径） | WP6 | **已ship**（2026-07-07；fix first 一轮：AU8 原子性真实中途失败重写） |
 
 ## 依赖关系（关键路径）
 
@@ -79,7 +79,9 @@ WP5 / WP7 / WP10 / WP11 / WP12（无前置，按资源穿插）
 - **第三批（✅ 已完成，2026-07-07）**：WP2a 节奏引擎、WP4a 可追溯契约、WP7a Windows 防线收口——均经完整流水线 ship。本批要点：三份摸底均有失真（WP4a 最重——把已实现功能当待办），计划审查全部抓回；WP9a 哨兵泄漏事故在本批开工时发现并修复（教训⑦⑧入记忆）。
 - **第四批（✅ 已完成，2026-07-07）**：WP1b（✅ 已ship——义务落盘+五路钩子+读切换；中断续接与钩子测试真实化两轮波折后收口）、WP1c（✅ 已ship——写入端补字段+query_invoice_ledger+A4 升级+dataScope 清尾）、WP8b（✅ 完成，轻量路径——六文件 8 处容器收敛+28 行豁免注释，lint 警告 203→180，orchestrator 自查 diff 通过）。**WP1b/WP1c 实施须串行（共享 finance-store.ts）**。后续：WP1b（义务落盘消费切换）、WP1c（invoice 写入端补字段+registry dataScope 更新+fact_invoices source DEFAULT）、WP4b（voucher/分析接入 receipt+provenance 落库 v9）、WP8b+（UI 收敛批次）、WP10 route 管线化、WP11 语料库、WP12 语义检索、WP13-15。
 - **第五批（✅ 已完成，2026-07-07）**：WP13a 合同应收层、WP11 脏文件语料库、WP8c UI 长尾（30 文件收敛，lint 警告 181→139；orchestrator 自查抓到 first-run-gate 暗色变色回归）。其后批次见下。
-- **第六批（✅ 已完成，2026-07-07）**：WP14a 可勾选清单工件、WP10a 路由管线化——均经完整流水线 ship。本批要点：WP10a 前任中断收尾者救回幽灵模块引用；两实施审查各有一次跨任务 diff 归属误判（累计第四、五次），orchestrator 均以 git 实证撤销。剩余：WP13b、WP4b/5b/9b、WP12、WP15。其后：WP13b、WP4b/5b/9b、WP12、WP15。
+- **第六批（✅ 已完成，2026-07-07）**：WP14a 可勾选清单工件、WP10a 路由管线化——均经完整流水线 ship。本批要点：WP10a 前任中断收尾者救回幽灵模块引用；两实施审查各有一次跨任务 diff 归属误判（累计第四、五次），orchestrator 均以 git 实证撤销。剩余：WP13b、WP4b/5b/9b、WP12、WP15。
+- **第七批（✅ 已完成，2026-07-07）**：WP12 语义检索（b826970）+ WP15 审计撤销（b8cc0ef）——均经完整流水线 ship。要点：WP12 两轮修复（默认模型源 404 由 orchestrator 验收抓出、块序号/归档过滤由实施审查抓出），真实模型端到端余弦 0.91/0.30；WP15 一轮修复（AU8 原子性死分支重写为真实中途失败+执行时二次白名单）。
+- **第八批（✅ 已完成，2026-07-07，路线图清零批）**：WP13b 销项/回款（0f380b8，修复轮=审计归因 auditHint 参数化）+ WP4b receipt 落库（859d4fe，实施审查零阻塞）+ WP5b 收窄不拆（域注释）+ WP9b 收窄轻量（工具卡注册表化）。**15 个工作包全部处置完毕（12 ship + 2 收窄完成 + WP14b 未列本轮）**。遗留待办：calc_receipts.conversation_id 线程化注入、eval:golden:ci 接 CI、WP10a N1 唯一出口清理、WP14b 编辑型工件（另立项）。
 
 ## 会话协议（断点续传）
 

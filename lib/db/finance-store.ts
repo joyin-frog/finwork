@@ -4,6 +4,7 @@ import type { CashObligation } from "../domain/cash-obligations";
 import { type CumulativePayrollResult, type TaxConfig } from "@/lib/domain/tax-cumulative";
 import { DEFAULT_TAX_RATES, type TaxRates } from "@/lib/domain/tax-config";
 import { queryPolicyRule } from "./rule-store";
+import { recordAudit } from "./audit-store";
 
 /**
  * 按计算期间 as-of 查询生效的个税规则（WP5a）。
@@ -219,7 +220,7 @@ export function savePayrollDraft(
   month: number,
   result: CumulativePayrollResult,
   monthsEmployed: number,
-  options?: { overwriteConfirmed?: boolean; db?: DatabaseSync }
+  options?: { overwriteConfirmed?: boolean; db?: DatabaseSync; receiptId?: number }
 ): void {
   const db = options?.db ?? getDb();
   const existing = db
@@ -232,23 +233,28 @@ export function savePayrollDraft(
         `${result.employeeName} ${year}年${month}月工资已确认生效,拒绝静默覆盖;如确需重算,请明确告知要重算已确认月份`
       );
     }
-    auditLog(db, "payroll_confirmed_overwrite", {
-      employeeName: result.employeeName,
-      year,
-      month,
-      previousStatus: "confirmed"
+    recordAudit(db, {
+      eventType: "payroll_confirmed_overwrite",
+      payload: {
+        employeeName: result.employeeName,
+        year,
+        month,
+        previousStatus: "confirmed",
+      },
+      // undo=null: 周期确认是业务动作，撤销走业务流程
     });
   }
 
   const ctx = `fact_payroll(${result.employeeName},${year},${month})`;
+  const receiptId = options?.receiptId ?? null;
   db.prepare(
     `INSERT INTO fact_payroll (
       employee_name, year, month,
       gross_pay_cents, social_insurance_cents, housing_fund_cents, special_deduction_cents, months_employed,
       gross_cum_cents, social_cum_cents, fund_cum_cents, special_cum_cents,
       taxable_income_cum_cents, tax_due_cum_cents, tax_current_cents, tax_withheld_cum_cents, net_pay_cents,
-      caliber_version, detail_json, settlement_status, confirmed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NULL)
+      caliber_version, detail_json, settlement_status, confirmed_at, receipt_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NULL, ?)
     ON CONFLICT(employee_name, year, month) DO UPDATE SET
       gross_pay_cents = excluded.gross_pay_cents,
       social_insurance_cents = excluded.social_insurance_cents,
@@ -267,7 +273,8 @@ export function savePayrollDraft(
       caliber_version = excluded.caliber_version,
       detail_json = excluded.detail_json,
       settlement_status = 'draft',
-      confirmed_at = NULL`
+      confirmed_at = NULL,
+      receipt_id = excluded.receipt_id`
   ).run(
     result.employeeName,
     year,
@@ -287,7 +294,8 @@ export function savePayrollDraft(
     yuanToCents(result.taxWithheldCum, ctx),
     yuanToCents(result.netPay, ctx),
     result.detail.taxConfigVersion,
-    JSON.stringify(result.detail)
+    JSON.stringify(result.detail),
+    receiptId
   );
 }
 
@@ -373,7 +381,11 @@ export function confirmPayrollPeriod(
       update.run(draft.employeeName, year, month);
     }
     const confirmed = drafts.map((d) => d.employeeName);
-    auditLog(db, "payroll_confirm", { year, month, employees: confirmed });
+    recordAudit(db, {
+      eventType: "payroll_confirm",
+      payload: { year, month, employees: confirmed },
+      // undo=null: 周期确认是业务动作，撤销走业务流程（event_type 逐字不变——哨兵 payroll-card.test.ts:72-75）
+    });
     db.exec("COMMIT");
     return { confirmed, alreadyConfirmed };
   } catch (err) {
@@ -406,7 +418,20 @@ export type RecordInvoicesResult = {
   duplicates: Array<{ invoiceNo: string; recordedAt: string }>;
 };
 
-export function recordInvoices(items: InvoiceLedgerEntry[], db: DatabaseSync = getDb()): RecordInvoicesResult {
+/** recordInvoices 的可选审计归因参数（供 sales-invoices 覆盖默认报销值）。
+ * 缺省时保持 eventType:'invoice_ledger_record' + toolName:'record_reimbursement_invoices'，
+ * 确保报销路径与既有测试（AU11）的行为不变。
+ */
+export type RecordInvoicesAuditHint = {
+  eventType: string;
+  toolName: string;
+};
+
+export function recordInvoices(
+  items: InvoiceLedgerEntry[],
+  db: DatabaseSync = getDb(),
+  auditHint?: RecordInvoicesAuditHint
+): RecordInvoicesResult {
   const existing = findInvoicesInLedger(items.map((i) => i.invoiceNo), db);
   const insert = db.prepare(
     `INSERT OR IGNORE INTO fact_invoices
@@ -438,7 +463,17 @@ export function recordInvoices(items: InvoiceLedgerEntry[], db: DatabaseSync = g
     inserted.push(item.invoiceNo);
   }
   if (inserted.length > 0) {
-    auditLog(db, "invoice_ledger_record", { inserted, duplicates: duplicates.map((d) => d.invoiceNo) });
+    // conversationId 从 items 第一条取（同一批次归同一会话）
+    const convId = items.find((i) => i.conversationId != null)?.conversationId ?? null;
+    recordAudit(db, {
+      // 缺省保持报销路径原值；sales-invoices 传 auditHint 覆盖，使审计轨迹不混淆
+      eventType: auditHint?.eventType ?? "invoice_ledger_record",
+      payload: { inserted, duplicates: duplicates.map((d) => d.invoiceNo) },
+      conversationId: convId,
+      toolName: auditHint?.toolName ?? "record_reimbursement_invoices",
+      // undo=delete_rows 仅 inserted（被 INSERT OR IGNORE 忽略的重复行不进 inserted，不会误删）
+      undo: [{ op: "delete_rows", table: "fact_invoices", keyColumn: "invoice_no", keys: inserted }],
+    });
   }
   return { inserted, duplicates };
 }
@@ -591,7 +626,11 @@ export function hasMetricsForMonth(year: number, month: number, db: DatabaseSync
   return row != null;
 }
 
-export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSync = getDb()): void {
+export function upsertBusinessMetrics(
+  rows: BusinessMetricRow[],
+  db: DatabaseSync = getDb(),
+  conversationId?: number | null
+): void {
   const stmt = db.prepare(`
     INSERT INTO fact_metrics (year, month, revenue_cents, cost_cents, expense_cents, profit_cents, note, source, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -604,6 +643,24 @@ export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSyn
       source         = excluded.source,
       updated_at     = datetime('now')
   `);
+
+  // 收集 before-images（写前 SELECT）用于 restore_rows 逆操作
+  // DatabaseSync 同步阻塞模型，无 TOCTOU 风险
+  type MetricBeforeImage = Record<string, unknown>;
+  const beforeImages: MetricBeforeImage[] = [];
+  const newInserts: Array<{ year: number; month: number }> = [];
+
+  for (const row of rows) {
+    const existing = db.prepare(
+      "SELECT * FROM fact_metrics WHERE year = ? AND month = ?"
+    ).get(row.year, row.month) as MetricBeforeImage | undefined;
+    if (existing) {
+      beforeImages.push(existing);
+    } else {
+      newInserts.push({ year: row.year, month: row.month });
+    }
+  }
+
   for (const row of rows) {
     const ctx = `fact_metrics(${row.year},${row.month})`;
     stmt.run(
@@ -617,6 +674,37 @@ export function upsertBusinessMetrics(rows: BusinessMetricRow[], db: DatabaseSyn
       row.source ?? "user_dictated"
     );
   }
+
+  // 构建 undo 载荷：新插入行用 delete_rows，更新行用 restore_rows（before-image）
+  type UndoOpLocal = { op: "delete_rows"; table: string; keyColumn: string; keys: number[] } | { op: "restore_rows"; table: string; keyColumn: string; rows: MetricBeforeImage[] };
+  const undoOps: UndoOpLocal[] = [];
+  if (beforeImages.length > 0) {
+    undoOps.push({
+      op: "restore_rows",
+      table: "fact_metrics",
+      keyColumn: "id",
+      rows: beforeImages,
+    });
+  }
+  if (newInserts.length > 0) {
+    // 刚插入的行：按 (year,month) 查 id
+    const ids: number[] = [];
+    for (const ni of newInserts) {
+      const r = db.prepare("SELECT id FROM fact_metrics WHERE year = ? AND month = ?").get(ni.year, ni.month) as { id: number } | undefined;
+      if (r) ids.push(r.id);
+    }
+    if (ids.length > 0) {
+      undoOps.push({ op: "delete_rows", table: "fact_metrics", keyColumn: "id", keys: ids });
+    }
+  }
+
+  recordAudit(db, {
+    eventType: "business_metrics_write",
+    payload: { rows: rows.map((r) => ({ year: r.year, month: r.month })) },
+    conversationId: conversationId ?? null,
+    toolName: "record_business_metrics",
+    undo: undoOps.length > 0 ? undoOps : undefined,
+  });
 }
 
 type MetricDbRow = {
@@ -715,9 +803,7 @@ function buildRangeView(
   };
 }
 
-function auditLog(db: DatabaseSync, eventType: string, payload: unknown) {
-  db.prepare("INSERT INTO audit_logs (event_type, payload) VALUES (?, ?)").run(eventType, JSON.stringify(payload));
-}
+// auditLog 私有函数已删除（WP15）：全部调用点迁移到 audit-store.recordAudit
 
 /**
  * WP1b 读函数：从 fact_obligations 表读出 CashObligation[]（与 deriveCashObligations 逐字段等价）。
@@ -829,6 +915,174 @@ export function listReceivablesRaw(
     status: r.status as "pending" | "settled",
     statusRaw: r.status_raw,
     sourceDoc: r.source_doc,
+  }));
+}
+
+// ─── WP13b: 销项回款落盘 ─────────────────────────────────────────────────────
+
+export type SettleInvoiceInput = {
+  invoiceNo: string;
+  /** 实收金额（元），元→分精度守卫（|raw-rounded| < 0.005 分） */
+  settledAmountYuan: number;
+  /** 实收日期 YYYY-MM-DD，缺省当日 */
+  settledAt?: string;
+  /** 回款备注（可选） */
+  note?: string;
+  /** 当前会话 ID，透传至 recordAudit（N1：工具层 conversationId 不再静默丢弃） */
+  conversationId?: number | null;
+};
+
+export type SettleInvoiceResult =
+  | { success: true; auditId: number }
+  | { success: false; notFound: true }
+  | { success: false; wrongDirection: true }
+  | { success: false; alreadySettled: true; settledAt: string | null; settledAmountCents: number | null };
+
+/**
+ * 销项发票回款落盘（WP13b）。
+ *
+ * 执行顺序（B2 约束）：
+ * 1. SELECT * 捕获全列 before-image（含三列，此时均 NULL）
+ * 2. UPDATE settlement_status + 三列
+ * 3. recordAudit（undo=restore_rows before-image）
+ *
+ * 保证撤销后三列回 NULL、status 回 'recorded'。
+ */
+export function settleInvoice(input: SettleInvoiceInput, db: DatabaseSync = getDb()): SettleInvoiceResult {
+  const ctx = `fact_invoices.${input.invoiceNo}`;
+
+  // 元→分精度守卫
+  const amtCents = yuanToCents(input.settledAmountYuan, ctx);
+  const settledAt = input.settledAt ?? new Date().toISOString().slice(0, 10);
+
+  // 1. 查发票存在性、方向、状态
+  const existing = db.prepare(
+    "SELECT * FROM fact_invoices WHERE invoice_no = ?"
+  ).get(input.invoiceNo) as Record<string, unknown> | undefined;
+
+  if (!existing) {
+    return { success: false, notFound: true };
+  }
+  if (existing.direction !== "out") {
+    return { success: false, wrongDirection: true };
+  }
+  if (existing.settlement_status === "settled") {
+    return {
+      success: false,
+      alreadySettled: true,
+      settledAt: existing.settled_at as string | null,
+      settledAmountCents: existing.settled_amount_cents as number | null,
+    };
+  }
+
+  // 2. UPDATE（B2：SELECT before-image 已在第1步完成）
+  db.prepare(`
+    UPDATE fact_invoices
+    SET settlement_status    = 'settled',
+        settled_at           = ?,
+        settled_amount_cents = ?,
+        settlement_note      = ?
+    WHERE invoice_no = ?
+  `).run(settledAt, amtCents, input.note ?? null, input.invoiceNo);
+
+  // 3. recordAudit（undo=restore_rows，before-image 含全列）
+  const auditId = recordAudit(db, {
+    eventType: "invoice_settlement",
+    payload: { invoiceNo: input.invoiceNo, settledAmountYuan: input.settledAmountYuan, settledAt },
+    conversationId: input.conversationId ?? null,
+    toolName: "record_invoice_settlement",
+    undo: [{ op: "restore_rows", table: "fact_invoices", keyColumn: "invoice_no", rows: [existing] }],
+  });
+
+  return { success: true, auditId };
+}
+
+// ─── WP13b: 销项清单（发票层账龄）────────────────────────────────────────────
+
+export type SalesInvoiceRow = {
+  invoiceNo: string;
+  amountCents: number;
+  invoiceDate: string | null;
+  category: string | null;
+  counterparty: string | null;
+  settlementStatus: string;
+  settledAt: string | null;
+  settledAmountCents: number | null;
+  settlementNote: string | null;
+  recordedAt: string;
+  /**
+   * 已开票天数（asOf − invoice_date，正值）。
+   * - 仅未 settled 行计算；settled 行为 null。
+   * - invoice_date NULL 时为 null（显式标注无法计算）。
+   * B1 符号约定：与合同层 agingDays（due_date − asOf，正=未到期）刻意相反；
+   * 不得共享分箱逻辑。
+   */
+  agingDays: number | null;
+};
+
+/**
+ * 销项发票清单（WP13b）。
+ *
+ * - direction='out' 全列
+ * - agingDays = asOf − invoice_date（正值=已开票 N 天）；仅未 settled 行计算
+ * - invoice_date NULL 时 agingDays=null
+ * - includeSettled=false（默认）时过滤 settled 行
+ */
+export function listSalesInvoices(
+  opts?: { asOf?: string; includeSettled?: boolean },
+  db: DatabaseSync = getDb()
+): SalesInvoiceRow[] {
+  const asOf = opts?.asOf ?? new Date().toISOString().slice(0, 10);
+  const includeSettled = opts?.includeSettled ?? false;
+
+  const statusClause = includeSettled ? "" : "AND settlement_status != 'settled'";
+
+  type RawRow = {
+    invoice_no: string;
+    amount_cents: number;
+    invoice_date: string | null;
+    category: string | null;
+    counterparty: string | null;
+    settlement_status: string;
+    settled_at: string | null;
+    settled_amount_cents: number | null;
+    settlement_note: string | null;
+    recorded_at: string;
+  };
+
+  const rows = db.prepare(
+    `SELECT invoice_no, amount_cents, invoice_date, category, counterparty,
+            settlement_status, settled_at, settled_amount_cents, settlement_note, recorded_at
+     FROM fact_invoices
+     WHERE direction = 'out' ${statusClause}
+     ORDER BY recorded_at DESC`
+  ).all() as RawRow[];
+
+  // agingDays = asOf − invoice_date（正值，已开票天数）
+  // B1 符号约定：销项层正值=已开票天数；与合同层（due_date − asOf，正=未到期）方向相反
+  function computeAgingDays(invoiceDate: string): number {
+    const [ay, am, ad] = asOf.split("-").map(Number);
+    const [iy, im, iday] = invoiceDate.split("-").map(Number);
+    const tAsOf = Date.UTC(ay, (am ?? 1) - 1, ad ?? 1);
+    const tInv = Date.UTC(iy, (im ?? 1) - 1, iday ?? 1);
+    return Math.round((tAsOf - tInv) / 86_400_000);
+  }
+
+  return rows.map((r) => ({
+    invoiceNo: r.invoice_no,
+    amountCents: r.amount_cents,
+    invoiceDate: r.invoice_date,
+    category: r.category,
+    counterparty: r.counterparty,
+    settlementStatus: r.settlement_status,
+    settledAt: r.settled_at,
+    settledAmountCents: r.settled_amount_cents,
+    settlementNote: r.settlement_note,
+    recordedAt: r.recorded_at,
+    // settled 行不计算账龄（已收款，账龄无业务意义）；NULL date 也无法计算
+    agingDays: (r.settlement_status === "settled" || r.invoice_date == null)
+      ? null
+      : computeAgingDays(r.invoice_date),
   }));
 }
 

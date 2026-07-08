@@ -611,4 +611,16 @@ void (async () => {
   const { artifactChecklistTestPromise } = await import("./artifact-checklist.test.ts");
   await artifactChecklistTestPromise;
 
+  const { semanticSearchTestPromise } = await import("./semantic-search.test.ts");
+  await semanticSearchTestPromise;
+
+  const { auditUndoTestPromise } = await import("./audit-undo.test.ts");
+  await auditUndoTestPromise;
+
+  const { salesInvoicesTestPromise } = await import("./sales-invoices.test.ts");
+  await salesInvoicesTestPromise;
+
+  const { receiptStoreTestPromise } = await import("./receipt-store.test.ts");
+  await receiptStoreTestPromise;
+
 })();

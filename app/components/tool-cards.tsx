@@ -18,17 +18,58 @@ import { ReceiptCard, parseCalcReceiptStructured } from "./receipt-card";
 import { ChecklistCard, parseChecklistStructured } from "./checklist-card";
 
 /**
- * 已实现专属卡片的财务工具列表(裸名)。与下方 ToolResultCard 分发逻辑保持一致。
- * 注意：kind 判别（artifact_checklist）不依赖工具名，此处仅记录工具名注册（供 tool-registry.test.ts 镜像）。
+ * kind 字段判别注册表（TOOLS_WITH_RESULT_CARD 的权威来源见下方，由 TOOL_CARD_REGISTRY 派生）。
+ * 优先于裸名分发：structured.kind 匹配时直接渲染，不依赖工具名。
  */
-export const TOOLS_WITH_RESULT_CARD = [
-  "calculate_payroll_batch",
-  "check_reimbursement_batch",
-  "export_kingdee_draft",
-  "validate_kingdee_voucher",
-  "diff_payroll_period",
-  "emit_checklist",
-] as const;
+const KIND_CARD_REGISTRY: Record<string, (structured: unknown) => ReactNode> = {
+  artifact_checklist: (structured) => {
+    const data = parseChecklistStructured(structured);
+    return data ? <ChecklistCard data={data} /> : null;
+  },
+  calc_receipt: (structured) => {
+    // kind 判别优先：structured 已声明自己是 CalcReceipt，直接解析渲染。
+    const receipt = parseCalcReceiptStructured(structured);
+    return receipt ? <ReceiptCard receipt={receipt} /> : null;
+  },
+};
+
+/**
+ * 裸工具名注册表（TOOLS_WITH_RESULT_CARD 由此派生，是唯一事实源）。
+ * 每个条目对应原 else-if 链中的一个分支，渲染逻辑零变动纯平移。
+ */
+const TOOL_CARD_REGISTRY: Record<string, (structured: unknown) => ReactNode> = {
+  calculate_payroll_batch: (structured) => {
+    const data = parsePayrollStructured(structured);
+    return data ? <PayrollResultCard data={data} /> : null;
+  },
+  check_reimbursement_batch: (structured) => {
+    const data = parseReimbursementStructured(structured);
+    return data ? <ReimbursementResultCard data={data} /> : null;
+  },
+  export_kingdee_draft: (structured) => {
+    const data = parseVoucherDraftStructured(structured);
+    return data ? <VoucherDraftCard data={data} /> : null;
+  },
+  validate_kingdee_voucher: (structured) => {
+    const data = parseVoucherValidationStructured(structured);
+    return data ? <VoucherValidationCard data={data} /> : null;
+  },
+  diff_payroll_period: (structured) => {
+    const data = parsePayrollDiffStructured(structured);
+    return data ? <PayrollDiffCard data={data} /> : null;
+  },
+  emit_checklist: (structured) => {
+    // emit_checklist 通常以 kind=artifact_checklist 分发，此条目作为工具名兜底。
+    const data = parseChecklistStructured(structured);
+    return data ? <ChecklistCard data={data} /> : null;
+  },
+};
+
+/**
+ * 已实现专属卡片的财务工具列表(裸名)。由 TOOL_CARD_REGISTRY 派生，不再手写——
+ * 运行时权威，消除两处清单的漂移面。
+ */
+export const TOOLS_WITH_RESULT_CARD: readonly string[] = Object.keys(TOOL_CARD_REGISTRY);
 
 /**
  * 结构化结果 → 财务可核对卡片的统一分发。
@@ -37,37 +78,29 @@ export const TOOLS_WITH_RESULT_CARD = [
 export function ToolResultCard({ name, structured }: { name: string; structured: unknown }) {
   if (structured == null) return null;
   const bare = name.replace(/^mcp__\w+__/, "");
-  let card: ReactNode = null;
-  // kind 判别优先（WP4a 模式）：structured 已声明自己是 artifact_checklist
-  if ((structured as Record<string, unknown> | null)?.kind === "artifact_checklist") {
-    const data = parseChecklistStructured(structured);
-    card = data ? <ChecklistCard data={data} /> : null;
-    return card ? <div className="px-1 pb-1">{card}</div> : null;
-  } else if (bare === "calculate_payroll_batch") {
-    const data = parsePayrollStructured(structured);
-    card = data ? <PayrollResultCard data={data} /> : null;
-  } else if (bare === "check_reimbursement_batch") {
-    const data = parseReimbursementStructured(structured);
-    card = data ? <ReimbursementResultCard data={data} /> : null;
-  } else if (bare === "export_kingdee_draft") {
-    const data = parseVoucherDraftStructured(structured);
-    card = data ? <VoucherDraftCard data={data} /> : null;
-  } else if (bare === "validate_kingdee_voucher") {
-    const data = parseVoucherValidationStructured(structured);
-    card = data ? <VoucherValidationCard data={data} /> : null;
-  } else if (bare === "diff_payroll_period") {
-    const data = parsePayrollDiffStructured(structured);
-    card = data ? <PayrollDiffCard data={data} /> : null;
-  } else if ((structured as Record<string, unknown> | null)?.kind === "calc_receipt") {
-    // kind 判别优先：structured 已声明自己是 CalcReceipt，直接解析渲染。
-    const receipt = parseCalcReceiptStructured(structured);
-    card = receipt ? <ReceiptCard receipt={receipt} /> : null;
-  } else {
-    // 形状猜测兜底：任何带 CalcReceipt 形状的工具结果（无 kind 的历史数据或其他工具）
-    // parseCalcReceiptStructured 内部 validateCalcReceipt 会归一化补 kind。
-    const receipt = parseCalcReceiptStructured(structured);
-    card = receipt ? <ReceiptCard receipt={receipt} /> : null;
+  const s = structured as Record<string, unknown> | null;
+
+  // kind 判别优先（WP4a 模式）：structured.kind 匹配时直接查 KIND 注册表渲染。
+  const kind = s?.kind as string | undefined;
+  if (kind) {
+    const kindRenderer = KIND_CARD_REGISTRY[kind];
+    if (kindRenderer) {
+      const card = kindRenderer(structured);
+      return card ? <div className="px-1 pb-1">{card}</div> : null;
+    }
   }
+
+  // 裸工具名注册表分发。
+  const toolRenderer = TOOL_CARD_REGISTRY[bare];
+  if (toolRenderer) {
+    const card = toolRenderer(structured);
+    return card ? <div className="px-1 pb-1">{card}</div> : null;
+  }
+
+  // 形状猜测兜底：任何带 CalcReceipt 形状的工具结果（无 kind 的历史数据或其他工具）
+  // parseCalcReceiptStructured 内部 validateCalcReceipt 会归一化补 kind。
+  const receipt = parseCalcReceiptStructured(structured);
+  const card = receipt ? <ReceiptCard receipt={receipt} /> : null;
   return card ? <div className="px-1 pb-1">{card}</div> : null;
 }
 

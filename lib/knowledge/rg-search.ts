@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { getKnowledgeTextDir } from "@/lib/knowledge/storage";
 import { getRgPath } from "@/lib/knowledge/rg-binary";
-import { listActiveKnowledgeDocuments, markKnowledgeHits } from "@/lib/db/sqlite";
+import { listActiveKnowledgeDocuments, markKnowledgeHits, getDb } from "@/lib/db/sqlite";
+import { embedTexts, vectorSearch, mergeRrfResults } from "./embeddings";
 
 type RgJsonEvent =
   | { type: "begin"; data: { path: { text: string } } }
@@ -93,17 +94,29 @@ export async function searchKnowledge(opts: {
 
   args.push(textDir);
 
-  const result = await runRg(args);
+  // rg 与向量路并行
+  const [rgResult, queryVecResult] = await Promise.all([
+    runRg(args),
+    (async () => {
+      try {
+        const vecs = await embedTexts([query]);
+        return vecs?.[0] ?? null;
+      } catch {
+        return null;
+      }
+    })(),
+  ]);
+
   const elapsedMs = Date.now() - start;
 
-  if (result.error) {
-    return { ok: false, error: result.error };
+  if (rgResult.error) {
+    return { ok: false, error: rgResult.error };
   }
 
   const docMap = buildDocMap();
   const fileMap = new Map<string, SearchFile>();
 
-  ingestRgEvents(result.events, docMap, fileMap);
+  ingestRgEvents(rgResult.events, docMap, fileMap);
 
   // P3 召回兜底:精确短语 0 命中时,用「空白分词 + CJK 2-gram」OR 重试(只在 0 命中触发,
   // 精确命中路径不变、不损精度)。让"招待费上限"也能召回含"招待费"的文档。
@@ -119,7 +132,39 @@ export async function searchKnowledge(opts: {
   }
 
   // 标题/文件名命中补齐 + 分层排序(标题命中优先 → 正文命中)
-  const { files: returned, totalFiles, truncated } = mergeTitleAndRank(fileMap, docMap, query, topK);
+  const { files: rgFiles, totalFiles: rgTotal } = mergeTitleAndRank(fileMap, docMap, query, topK * 2);
+
+  // 向量路：全表余弦，文档级最高分聚合
+  let vectorHits: Array<{ docId: number; score: number; chunkText: string; chunkIndex: number }> = [];
+  if (queryVecResult) {
+    try {
+      const db = getDb();
+      vectorHits = vectorSearch(db, queryVecResult, topK * 2);
+    } catch {
+      // 向量路失败，静默降级
+    }
+  }
+
+  // RRF 融合
+  let merged = mergeRrfResults(rgFiles, vectorHits, topK);
+
+  // 向量独有命中需补 title/fileName/category（rg map 没有时从 docMap 找）
+  const docIdMap = new Map<number, DocMeta>();
+  for (const [, doc] of docMap) {
+    docIdMap.set(doc.id, doc);
+  }
+  merged = merged.map(f => {
+    if (f.title || f.fileName) return f;
+    const meta = docIdMap.get(f.docId);
+    if (meta) {
+      return { ...f, title: meta.title, fileName: meta.fileName, category: meta.category };
+    }
+    return f;
+  });
+
+  const returned = merged.slice(0, topK);
+  const totalFiles = Math.max(rgTotal, returned.length);
+  const truncated = rgFiles.some(f => f.hitCount > MATCH_LIMIT_PER_FILE);
 
   // 命中埋点:UI 搜索与 agent 搜索都经此函数,在此统一记录使用信号(空结果不计)
   if (returned.length > 0) {

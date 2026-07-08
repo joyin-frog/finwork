@@ -6,7 +6,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, ArrowUp01Icon, LayoutAlignRightIcon, PanelRightIcon, Add01Icon, Search01Icon, Cancel01Icon, Clock01Icon, Edit01Icon, Archive01Icon, Archive02Icon, Delete02Icon, Folder02Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowUp01Icon, LayoutAlignRightIcon, PanelRightIcon, Add01Icon, Search01Icon, Cancel01Icon, Clock01Icon, Edit01Icon, Archive01Icon, Archive02Icon, Delete02Icon, Folder02Icon, DatabaseIcon } from "@hugeicons/core-free-icons";
 import { SuccessCircleIcon } from "@/lib/icons";
 import { FilePreviewPage, type KnowledgePreviewFile } from "@/app/shared/file-preview-page";
 import { ConfirmDialog } from "@/app/shared/confirm-dialog";
@@ -229,6 +229,9 @@ function KnowledgePageContent() {
   const previewContentRef = useRef<HTMLDivElement>(null);
   const lineEls = useRef<Map<number, HTMLElement>>(new Map());
 
+  // reindex
+  const [reindexing, setReindexing] = useState(false);
+
   // upload
   const [file, setFile] = useState<File | null>(null);
   const [upCat, setUpCat] = useState<string>("auto");
@@ -310,6 +313,24 @@ function KnowledgePageContent() {
     } catch (err) { setSearchError(err instanceof Error ? err.message : "搜索失败"); setResults(null); }
     finally { /* search done */ }
   }, [query]);
+
+  async function doReindex() {
+    if (reindexing) return;
+    setReindexing(true);
+    try {
+      const res = await fetch("/api/knowledge/reindex", { method: "POST" });
+      const json = await res.json() as { ok: boolean; indexed?: number; skipped?: number; failed?: number; error?: string };
+      if (!json.ok) {
+        toast.error("重建失败", { description: json.error });
+      } else {
+        toast.success(`语义索引已更新（新增 ${json.indexed ?? 0}，跳过 ${json.skipped ?? 0}，失败 ${json.failed ?? 0}）`);
+      }
+    } catch (err) {
+      toast.error("重建失败", { description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setReindexing(false);
+    }
+  }
 
   async function toggleArchive(doc: DocRow) {
     await fetch(`/api/knowledge/documents/${doc.id}`, {
@@ -795,6 +816,17 @@ function KnowledgePageContent() {
             <SidebarToggle />
             <ResourceTabs active="knowledge" />
             <div className="ml-auto flex items-center gap-2 shrink-0">
+              {/* eslint-disable-next-line no-restricted-syntax */}
+              <button
+                type="button"
+                className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", reindexing && "opacity-40 cursor-not-allowed")}
+                onClick={() => void doReindex()}
+                disabled={reindexing}
+                title={reindexing ? "重建中…" : "重建语义索引"}
+                aria-label="重建语义索引"
+              >
+                <HugeiconsIcon icon={DatabaseIcon} size={16} />
+              </button>
               <ShortcutHint label="搜索" combo="mod+f">
                 {/* eslint-disable-next-line no-restricted-syntax */}
                 <button

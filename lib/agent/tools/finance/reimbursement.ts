@@ -1,5 +1,7 @@
 import { sortReimbursementsByRisk, validateReimbursements } from "@/lib/domain/reimbursement";
 import { findInvoicesInLedger, loadReimbursementSingleLimit, recordInvoices } from "@/lib/db/finance-store";
+import { saveCalcReceiptSafe } from "@/lib/db/receipt-store";
+import { getDb } from "@/lib/db/sqlite";
 import type { ReimbursementItem } from "@/lib/types";
 import { z } from "zod/v4";
 import { withIdempotency } from "@/lib/agent/tools/idempotency";
@@ -32,27 +34,35 @@ export function createReimbursementTools(sdk: Sdk) {
         const results = sortReimbursementsByRisk(
           validateReimbursements(args.items, { singleLimit }, history)
         );
-        const abnormalCount = results.filter((r) => r.warnings.length > 0).length;
+        // WP4b: 落库每条报销 receipt，wrapper 增 receiptId（降级不阻断）
+        const db = getDb();
+        const resultsWithReceiptId = results.map((r) => {
+          const receiptId = r.receipt
+            ? saveCalcReceiptSafe(db, { toolName: "check_reimbursement_batch", receipt: r.receipt }, `reimbursement(${r.invoiceNo})`)
+            : undefined;
+          return receiptId !== undefined ? { ...r, receiptId } : r;
+        });
+        const abnormalCount = resultsWithReceiptId.filter((r) => r.warnings.length > 0).length;
         const summary =
           abnormalCount > 0
-            ? `共 ${results.length} 条,${abnormalCount} 条有异常(已按风险排序,历史重复最优先)`
-            : `共 ${results.length} 条,全部通过校验(含发票台账跨月查重)`;
+            ? `共 ${resultsWithReceiptId.length} 条,${abnormalCount} 条有异常(已按风险排序,历史重复最优先)`
+            : `共 ${resultsWithReceiptId.length} 条,全部通过校验(含发票台账跨月查重)`;
 
         const lines = [
           summary,
-          ...results.map((r) =>
+          ...resultsWithReceiptId.map((r) =>
             r.warnings.length
               ? `- ${r.employeeName} | ${r.expenseDate} | ${r.category} | ¥${r.amount} | ${r.invoiceNo} → ⚠ ${r.warnings.join("；")}`
               : `- ${r.employeeName} | ${r.expenseDate} | ${r.category} | ¥${r.amount} | ${r.invoiceNo} → ✓`
           )
         ];
-        if (results.length > 0) {
+        if (resultsWithReceiptId.length > 0) {
           lines.push("提醒:财务确认通过后,请让我把通过的发票登记台账(record_reimbursement_invoices),否则下月跨月查重会漏掉这批发票。");
         }
 
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
-          structuredContent: { results, summary, abnormalCount }
+          structuredContent: { results: resultsWithReceiptId, summary, abnormalCount }
         };
       } catch (error) {
         return {

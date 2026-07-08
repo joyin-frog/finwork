@@ -3,9 +3,10 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { getPythonPath, getBundledPluginRoot } from "@/lib/runtime/paths";
 import { pythonSpawnEnv } from "@/lib/runtime/python-env";
-import { getAppSetting } from "@/lib/db/sqlite";
+import { getAppSetting, getDb } from "@/lib/db/sqlite";
 import { loadTaxRates, getInvoiceLedgerBreakdown } from "@/lib/db/finance-store";
 import { makeCalcReceipt, type CalcReceipt } from "@/lib/domain/receipt";
+import { saveCalcReceiptSafe } from "@/lib/db/receipt-store";
 import { redact } from "@/lib/safety/pii";
 
 import { z } from "zod/v4";
@@ -147,6 +148,11 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
           basis: { caliberVersion: pyResult.caliberVersion, settlementStatus: "draft", asOf },
           rounding: "half_up",
         });
+      }
+
+      // WP4b: B1 定案——tax_calculator 仅落库，structuredContent 一字不动（不加 receiptId）
+      if (receipt) {
+        saveCalcReceiptSafe(getDb(), { toolName: "tax_calculator", receipt }, "tax_calculator");
       }
 
       return {
