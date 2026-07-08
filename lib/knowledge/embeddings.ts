@@ -10,30 +10,84 @@
  * rrfScore / mergeRrfResults: RRF(k=60) 融合。
  */
 
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { getPythonPath, getProjectRoot } from "@/lib/runtime/paths";
 import { pythonSpawnEnv } from "@/lib/runtime/python-env";
-import { getEmbedModelDir, isEmbedModelReady } from "./embed-model";
+import { EMBED_MODEL, getEmbedModelDir, isEmbedModelReady } from "./embed-model";
 import type { SearchFile } from "./rg-search";
+
+/**
+ * 异步 spawn 辅助：向子进程 stdin 写 input，收集 stdout 字符串。
+ * 替代 execFileSync(... {input}) 的同步阻塞，让 Promise.all 真并行。
+ */
+function spawnWithInput(
+  cmd: string,
+  args: string[],
+  input: string,
+  opts: { env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number }
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: opts.env,
+    });
+
+    let out = "";
+    let errOut = "";
+    let bytesOut = 0;
+
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error("embed-texts worker timeout"));
+    }, opts.timeout);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      bytesOut += chunk.length;
+      if (bytesOut > opts.maxBuffer) {
+        child.kill();
+        clearTimeout(timer);
+        reject(new Error("embed-texts output exceeds maxBuffer"));
+        return;
+      }
+      out += chunk.toString("utf-8");
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      errOut += chunk.toString("utf-8");
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(`embed-texts worker exited ${code}: ${errOut.trim()}`));
+      } else {
+        resolve(out);
+      }
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.stdin.write(input, "utf-8");
+    child.stdin.end();
+  });
+}
 
 export type EmbedRunner = (texts: string[], modelDir: string) => Promise<number[][]>;
 
-/** 默认 runner：调用 Python worker embed-texts 命令 */
+/** 默认 runner：调用 Python worker embed-texts 命令（异步 spawn，与 Promise.all 真并行） */
 async function defaultEmbedRunner(texts: string[], modelDir: string): Promise<number[][]> {
   const workerPath = path.join(getProjectRoot(), "workers/finance_worker.py");
   const payload = JSON.stringify({ texts, model_dir: modelDir });
-  const stdout = execFileSync(
+  const stdout = await spawnWithInput(
     getPythonPath(),
     [workerPath, "embed-texts"],
-    {
-      input: payload,
-      encoding: "utf-8",
-      env: pythonSpawnEnv(),
-      timeout: 60_000,
-      maxBuffer: 32 * 1024 * 1024,
-    }
+    payload,
+    { env: pythonSpawnEnv(), timeout: 60_000, maxBuffer: 32 * 1024 * 1024 }
   );
   const result = JSON.parse(stdout.trim()) as
     | { ok: true; dim: number; vectors: number[][] }
@@ -88,11 +142,13 @@ export function bufferToFloat32Array(buf: Buffer): Float32Array {
 
 /** 向量检索：全表余弦暴力扫，返回文档级最高分聚合（docId → 最高分 chunk）。
  *  knowledge_embeddings 空表 / 查询向量 null → 返回空数组。
- *  只命中 archived=0 的文档（与 rg 路 listActiveKnowledgeDocuments 对称）。*/
+ *  只命中 archived=0 的文档（与 rg 路 listActiveKnowledgeDocuments 对称）。
+ *  model 参数：只检索该模型的 embeddings（默认 EMBED_MODEL）。 */
 export function vectorSearch(
   db: DatabaseSync,
   queryVec: number[] | null,
-  topK = 20
+  topK = 20,
+  model = EMBED_MODEL
 ): Array<{ docId: number; score: number; chunkText: string; chunkIndex: number }> {
   if (!queryVec || queryVec.length === 0) return [];
 
@@ -102,8 +158,8 @@ export function vectorSearch(
       `SELECT ke.document_id, ke.chunk_index, ke.embedding, ke.text
        FROM knowledge_embeddings ke
        JOIN knowledge_documents kd ON kd.id = ke.document_id
-       WHERE kd.archived = 0`
-    ).all() as Array<{ document_id: number; chunk_index: number; embedding: Buffer; text: string }>;
+       WHERE kd.archived = 0 AND ke.model = ?`
+    ).all(model) as Array<{ document_id: number; chunk_index: number; embedding: Buffer; text: string }>;
   } catch {
     return [];
   }
