@@ -1,4 +1,13 @@
-void (async () => {
+// 假绿灯防护(2026-07-08)：本文件曾用 `void (async…)()` 火忘式 IIFE——任一 testPromise
+// 拒绝只变成 unhandledRejection，node:test 的 TAP 计数照报 fail 0、进程退出 0（T1a2
+// 断言真实失败却全绿实锤过）。现在：拒绝必须落到 .catch 置非零退出码；再挂
+// unhandledRejection 兜底，防止未来有人把某个 await 漏出主链。
+process.on("unhandledRejection", (err) => {
+  console.error("[all.test] unhandledRejection:", err);
+  process.exitCode = 1;
+});
+
+(async () => {
   const { smokeTestPromise } = await import("./smoke.test.ts");
   await smokeTestPromise;
 
@@ -634,4 +643,7 @@ void (async () => {
   const { receiptStoreTestPromise } = await import("./receipt-store.test.ts");
   await receiptStoreTestPromise;
 
-})();
+})().catch((err) => {
+  console.error("[all.test] 测试链失败:", err);
+  process.exitCode = 1;
+});
