@@ -1,5 +1,11 @@
 /**
  * WP12 语义检索测试（spec-semantic-search v1.1）
+ * WP-C blindspot-fixes 追加：
+ * - T11: ensureEmbedModel 内置下载器 mock 测试（不打网络）
+ * - T12: vectorSearch model 列过滤
+ * - T13: reindex 409 并发守卫
+ * - T4 修正：补 chunkIndex 字段，断言 lineNo 非 NaN
+ * - T9/T10 修正：显式传 model 参数避免 EMBED_MODEL 默认过滤失配
  *
  * 覆盖：
  * - 迁移形状：knowledge_embeddings 表存在 + CASCADE 删除
@@ -11,7 +17,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { openFinanceDatabase, initializeFinanceDatabase } from "../lib/db/sqlite.ts";
@@ -169,10 +175,19 @@ export const semanticSearchTestPromise = (async () => {
     assert.equal(merged[0].docId, 1, "T4 FAIL: hitCount 多的应排前");
 
     // mergeRrfResults：向量命中排名高于 rg，应影响融合排序
-    const vectorHits = [{ docId: 2, score: 0.95, chunkText: "语义命中" }];
+    // T4 修正：补 chunkIndex 字段 + 新增向量独有命中 docId=3，断言 lineNo 非 NaN
+    const vectorHits = [
+      { docId: 2, score: 0.95, chunkText: "语义命中", chunkIndex: 1 },
+      { docId: 3, score: 0.90, chunkText: "向量独有命中", chunkIndex: 2 },
+    ];
     const merged2 = mergeRrfResults(rgFiles, vectorHits, 20);
     // docId=2 有向量加成，可能排到前面（取决于 RRF 权重）
     assert.ok(merged2.length >= 1, "T4 FAIL: RRF 融合应返回结果");
+    // 向量独有命中 docId=3：合成 match 的 lineNo 应为 chunkIndex+1=3，不应为 NaN
+    const vectorOnlyHit = merged2.find(f => f.docId === 3);
+    assert.ok(vectorOnlyHit, "T4 FAIL: 向量独有命中 docId=3 应在融合结果中");
+    assert.ok(!isNaN(vectorOnlyHit!.matches[0]?.lineNo), "T4 FAIL: 向量命中 lineNo 不应为 NaN");
+    assert.equal(vectorOnlyHit!.matches[0]?.lineNo, 3, "T4 FAIL: chunkIndex=2 时 lineNo 应为 3");
 
     console.log("semantic-search T4 PASS: RRF 纯函数 ✓");
   }
@@ -182,7 +197,7 @@ export const semanticSearchTestPromise = (async () => {
     // 直接导入 searchKnowledge，knowledge_embeddings 空表时应正常运行
     // （此处不实际调用 rg，测试的是不抛异常）
     const { mergeRrfResults } = await import("../lib/knowledge/embeddings.ts");
-    const emptyVec: Array<{ docId: number; score: number; chunkText: string }> = [];
+    const emptyVec: Array<{ docId: number; score: number; chunkText: string; chunkIndex: number }> = [];
     const rgFiles = [{ docId: 5, title: "C", fileName: "c.txt", category: "general", hitCount: 2, matches: [] }];
     const result = mergeRrfResults(rgFiles, emptyVec, 20);
     assert.equal(result[0].docId, 5, "T5 FAIL: 空向量时应纯 rg 结果");
@@ -286,8 +301,9 @@ export const semanticSearchTestPromise = (async () => {
     ).run(docId9, 1, "chunk one relevant", float32ArrayToBuffer(Array.from(matchVec)), "test");
 
     // 查询向量与 chunk 1 完全匹配
+    // T9 修正：显式传 model="test"，避免 EMBED_MODEL 默认过滤排除测试数据
     const queryVec = [1, 0, 0, 0];
-    const hits = vectorSearch(db9, queryVec, 20);
+    const hits = vectorSearch(db9, queryVec, 20, "test");
 
     assert.ok(hits.length > 0, "T9 FAIL: 应有向量命中");
     const hit = hits.find(h => h.docId === docId9);
@@ -326,7 +342,8 @@ export const semanticSearchTestPromise = (async () => {
     db10.prepare("UPDATE knowledge_documents SET archived = 1 WHERE id = ?").run(docId10);
 
     // 向量检索应不返回已归档文档
-    const hitsAfterArchive = vectorSearch(db10, [1, 0, 0, 0], 20);
+    // T10 修正：显式传 model="test"，避免 EMBED_MODEL 默认过滤排除测试数据
+    const hitsAfterArchive = vectorSearch(db10, [1, 0, 0, 0], 20, "test");
     assert.ok(
       !hitsAfterArchive.some(h => h.docId === docId10),
       `T10 FAIL: 已归档文档不应出现在向量检索结果中，实际结果: ${JSON.stringify(hitsAfterArchive)}`
@@ -337,5 +354,121 @@ export const semanticSearchTestPromise = (async () => {
     console.log("semantic-search T10 PASS: archived 文档不出现在向量检索结果 ✓");
   }
 
-  console.log("semantic-search: all 10 checks passed ✓");
+  // ─── T11: ensureEmbedModel 内置下载器（mock 注入，不打网络）─────────────
+  {
+    const { ensureEmbedModel, isEmbedModelReady } = await import("../lib/knowledge/embed-model.ts");
+    const tmpBase = mkdtempSync(path.join(os.tmpdir(), "sem-search-t11-"));
+    const savedAppDataDir = process.env.FINANCE_AGENT_APP_DATA_DIR;
+
+    // Mock download：写固定大小文件（100 字节）
+    const mockFileSize = 100;
+    const mockContent = Buffer.alloc(mockFileSize, 0x42);
+    const mockDownload = async (_url: string, destFile: string): Promise<void> => {
+      const fs = await import("node:fs");
+      fs.mkdirSync(path.dirname(destFile), { recursive: true });
+      fs.writeFileSync(destFile, mockContent);
+    };
+
+    process.env.FINANCE_AGENT_APP_DATA_DIR = tmpBase;
+    const result = await ensureEmbedModel({ download: mockDownload });
+    assert.ok(result.ok, `T11 FAIL: mock download 应返回 ok:true，detail: ${result.detail}`);
+
+    // manifest.json 应写入
+    const manifestPath = path.join(result.modelDir, "manifest.json");
+    assert.ok(existsSync(manifestPath), "T11 FAIL: 下载后应生成 manifest.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as Record<string, number>;
+    assert.ok(
+      manifest["model_quantized.onnx"] === mockFileSize,
+      `T11 FAIL: manifest model_quantized.onnx 字节数应为 ${mockFileSize}，实际 ${JSON.stringify(manifest)}`
+    );
+
+    // isEmbedModelReady 应为 true（manifest 存在且字节数匹配）
+    assert.ok(isEmbedModelReady(), "T11 FAIL: 下载后 isEmbedModelReady 应为 true");
+
+    // 测试失败 download：ok:false
+    const tmpBase2 = mkdtempSync(path.join(os.tmpdir(), "sem-search-t11b-"));
+    process.env.FINANCE_AGENT_APP_DATA_DIR = tmpBase2;
+    const failDownload = async (_url: string, _destFile: string): Promise<void> => {
+      throw new Error("mock network failure");
+    };
+    const failResult = await ensureEmbedModel({ download: failDownload });
+    assert.ok(!failResult.ok, "T11 FAIL: 所有候选源失败应返回 ok:false");
+
+    // 无 manifest 但文件存在时 isEmbedModelReady 应放行（手动放置场景）
+    const tmpBase3 = mkdtempSync(path.join(os.tmpdir(), "sem-search-t11c-"));
+    process.env.FINANCE_AGENT_APP_DATA_DIR = tmpBase3;
+    // 手动创建模型文件（无 manifest）
+    const fs = await import("node:fs");
+    const modelDir3 = path.join(tmpBase3, "models", "bge-small-zh-v1.5");
+    fs.mkdirSync(modelDir3, { recursive: true });
+    fs.writeFileSync(path.join(modelDir3, "model_quantized.onnx"), Buffer.alloc(10));
+    fs.writeFileSync(path.join(modelDir3, "tokenizer.json"), Buffer.alloc(10));
+    assert.ok(isEmbedModelReady(), "T11 FAIL: 文件齐全但无 manifest 时 isEmbedModelReady 应放行");
+
+    process.env.FINANCE_AGENT_APP_DATA_DIR = savedAppDataDir;
+    console.log("semantic-search T11 PASS: ensureEmbedModel 内置下载器 mock 测试 ✓");
+  }
+
+  // ─── T12: vectorSearch model 列过滤 ──────────────────────────────────────
+  {
+    const { vectorSearch: vectorSearchFn } = await import("../lib/knowledge/embeddings.ts");
+    const { openFinanceDatabase: openDb12, initializeFinanceDatabase: initDb12 } = await import("../lib/db/sqlite.ts");
+
+    const dbPath12 = path.join(os.tmpdir(), `sem-search-t12-${pid}.db`);
+    const db12 = openDb12(dbPath12);
+    initDb12(db12, dbPath12);
+
+    db12.exec(`
+      INSERT INTO knowledge_documents (title, file_name, mime_type, category, size_bytes, chunk_count, content_hash, storage_path)
+      VALUES ('t12-doc', 't12.txt', 'text/plain', 'general', 100, 0, 't12hash', '')
+    `);
+    const docRow12 = db12.prepare("SELECT id FROM knowledge_documents WHERE content_hash='t12hash'").get() as { id: number };
+    const docId12 = docRow12.id;
+
+    // model-a embedding（高相似）
+    const matchVec12 = new Float32Array([1, 0, 0, 0]);
+    db12.prepare(
+      "INSERT INTO knowledge_embeddings (document_id, chunk_index, text, embedding, model) VALUES (?, ?, ?, ?, ?)"
+    ).run(docId12, 0, "model-a text", float32ArrayToBuffer(Array.from(matchVec12)), "model-a");
+
+    // model-b embedding（同样高相似）
+    db12.prepare(
+      "INSERT INTO knowledge_embeddings (document_id, chunk_index, text, embedding, model) VALUES (?, ?, ?, ?, ?)"
+    ).run(docId12, 1, "model-b text", float32ArrayToBuffer(Array.from(matchVec12)), "model-b");
+
+    // 用 model-a 过滤：应命中
+    const hitsModelA = vectorSearchFn(db12, [1, 0, 0, 0], 20, "model-a");
+    assert.ok(hitsModelA.some(h => h.docId === docId12), "T12 FAIL: model-a 过滤应返回 docId12");
+
+    // 用 model-b 过滤：不应返回 model-a 数据（chunk_index=0 用 model-a，chunk_index=1 用 model-b）
+    // 此处 docId12 有 model-b 的 embedding，所以仍应返回
+    const hitsModelB = vectorSearchFn(db12, [1, 0, 0, 0], 20, "model-b");
+    assert.ok(hitsModelB.some(h => h.docId === docId12), "T12 FAIL: model-b 过滤应返回 model-b embedding");
+
+    // 用不存在的 model 过滤：不应返回任何结果
+    const hitsNoModel = vectorSearchFn(db12, [1, 0, 0, 0], 20, "nonexistent-model");
+    assert.ok(!hitsNoModel.some(h => h.docId === docId12), "T12 FAIL: 不存在 model 过滤应无结果");
+
+    db12.close();
+    try { require("node:fs").unlinkSync(dbPath12); } catch { /* ignore */ }
+    console.log("semantic-search T12 PASS: vectorSearch model 过滤 ✓");
+  }
+
+  // ─── T13: reindex POST 并发 409 守卫 ─────────────────────────────────────
+  {
+    const { POST: reindexPost } = await import("../app/api/knowledge/reindex/route.ts");
+
+    // 两次并发调用：第一次进入 in-flight 状态，第二次应返回 409
+    // 即使 ensureEmbedModel 下载失败（测试环境无真实网络），await 仍会 yield，
+    // 让第二个调用看到 reindexInFlight=true
+    const [r1, r2] = await Promise.all([reindexPost(), reindexPost()]);
+    const statuses = [r1.status, r2.status];
+    assert.ok(
+      statuses.includes(409),
+      `T13 FAIL: 并发 POST 应有一个返回 409，实际 statuses: ${JSON.stringify(statuses)}`
+    );
+    console.log("semantic-search T13 PASS: reindex 409 并发守卫 ✓");
+  }
+
+  console.log("semantic-search: all 13 checks passed ✓");
 })();

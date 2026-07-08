@@ -319,9 +319,11 @@ function KnowledgePageContent() {
     setReindexing(true);
     try {
       const res = await fetch("/api/knowledge/reindex", { method: "POST" });
-      const json = await res.json() as { ok: boolean; indexed?: number; skipped?: number; failed?: number; error?: string };
+      const json = await res.json() as { ok: boolean; indexed?: number; skipped?: number; failed?: number; modelUnavailable?: boolean; error?: string };
       if (!json.ok) {
         toast.error("重建失败", { description: json.error });
+      } else if (json.modelUnavailable) {
+        toast.warning("嵌入模型不可用，语义索引未更新（仍可使用全文检索）");
       } else {
         toast.success(`语义索引已更新（新增 ${json.indexed ?? 0}，跳过 ${json.skipped ?? 0}，失败 ${json.failed ?? 0}）`);
       }

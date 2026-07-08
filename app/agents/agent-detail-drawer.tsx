@@ -71,7 +71,7 @@ export function AgentDetailDrawer({
         {/* 头部：单行，与列表列 h-11 标题栏对齐——padding 同 .preview-head-card（中线 22px、分隔线 44px）。
             avatar / icon-btn 均 32px 高，名称+简介同一行（简介 truncate），不再撑成两行。 */}
         <div className="flex items-center gap-3 px-[14px] pt-px pb-1.5 border-b border-border shrink-0">
-          {/* eslint-disable-next-line no-restricted-syntax */}
+          {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
           <span
             className="fa-toned shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-body font-semibold select-none"
             style={{ "--tone": `var(${tone})` } as CSSProperties}
@@ -182,7 +182,7 @@ export function AgentDetailDrawer({
                       ? `/chat/recent?id=${row.conversationId}`
                       : undefined;
                     const inner = (
-                      // eslint-disable-next-line no-restricted-syntax
+                      // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                       <div
                         className={`flex items-start gap-2 rounded px-2 py-1.5 text-meta ${isRowBlocked ? "fa-toned" : "bg-muted/40"}`}
                         style={
@@ -281,7 +281,7 @@ export function AgentDetailDrawer({
                 <p className="text-meta font-medium text-muted-foreground mb-2">文件产物</p>
                 <div className="flex flex-col gap-1.5">
                   {fileDispatches.map((d) => (
-                    // eslint-disable-next-line no-restricted-syntax
+                    // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                     <button
                       key={d.id}
                       type="button"

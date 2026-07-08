@@ -45,7 +45,7 @@ const config = [
         {
           // 字符串字面量路径：className="... rounded-* ..." 等
           selector:
-            'JSXAttribute[name.name="className"] Literal[value=/\\brounded(\\b|-)|\\bshadow-(?!none|\\[var)|(^|\\s)border(-[0-9])?(\\s|$)/]',
+            'JSXAttribute[name.name="className"] Literal[value=/\\brounded(?!-\\[var)(\\b|-)|\\bshadow-(?!none|\\[var)|(^|\\s)border(-[0-9])?(\\s|$)/]',
           message:
             "外观类请改用 Surface 原语或语义 token（见 docs/spec/spec-ui-foundation.md）",
         },
@@ -53,7 +53,7 @@ const config = [
           // 模板字符串路径：className={`... rounded-* ...`} 等
           // agent-detail-drawer.tsx:166 正是此写法，必须盖住。
           selector:
-            'JSXAttribute[name.name="className"] TemplateElement[value.raw=/\\brounded(\\b|-)|\\bshadow-(?!none|\\[var)|(^|\\s)border(-[0-9])?(\\s|$)/]',
+            'JSXAttribute[name.name="className"] TemplateElement[value.raw=/\\brounded(?!-\\[var)(\\b|-)|\\bshadow-(?!none|\\[var)|(^|\\s)border(-[0-9])?(\\s|$)/]',
           message:
             "外观类请改用 Surface 原语或语义 token（见 docs/spec/spec-ui-foundation.md）",
         },

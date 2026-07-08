@@ -209,10 +209,10 @@ export function ChecklistCard({ data }: ChecklistCardProps) {
               {/* 三态按钮 */}
               <button
                 type="button"
-                disabled={isSubmitting || loading || deleted}
+                disabled={!!submitting || loading || deleted}
                 onClick={() => void handleToggle(item.id)}
                 className={cn(
-                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则（border 存量）
                   "shrink-0 px-2 py-0.5 rounded-[var(--radius-chip)] border text-caption transition-colors cursor-pointer",
                   "disabled:opacity-50 disabled:cursor-not-allowed",
                   state === "open" && "border-border bg-card text-muted-foreground hover:bg-accent",

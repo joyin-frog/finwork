@@ -289,6 +289,130 @@ export const salesInvoicesTestPromise = (async () => {
   assert.ok("bucket61_90" in aging, "SI-11 FAIL: agingSummary 应有 bucket61_90");
   assert.ok("bucket90plus" in aging, "SI-11 FAIL: agingSummary 应有 bucket90plus");
 
+  // ── SI-12: 负数回款 schema 拒绝（WP-D #3）────────────────────────────────────
+  // record_invoice_settlement 处理器必须拒绝负数实收金额（isError=true）
+  const settleTool12 = siTools.find((t: { name: string }) => t.name === "record_invoice_settlement") as
+    | { name: string; handler: (args: unknown) => Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> }
+    | undefined;
+  assert.ok(settleTool12, "SI-12 FAIL: record_invoice_settlement 工具应存在");
+  // 先插一张新的未回款销项发票
+  recordInvoices([{ invoiceNo: "OUT-SI-012-NEG", amount: 1000, invoiceDate: "2026-07-01", direction: "out" as const, conversationId: 99 }], db);
+  const settle12Result = await settleTool12.handler({
+    invoiceNo: "OUT-SI-012-NEG",
+    settledAmountYuan: -100, // 负数，应被拒绝
+    conversationId: 99,
+  });
+  assert.ok(settle12Result.isError, "SI-12 FAIL: 负数回款金额应被拒绝（isError=true）");
+  // 验证发票未被错误更新（仍为 recorded 状态）
+  const row12After = db.prepare("SELECT settlement_status FROM fact_invoices WHERE invoice_no='OUT-SI-012-NEG'").get() as { settlement_status: string } | undefined;
+  assert.ok(row12After, "SI-12 FAIL: OUT-SI-012-NEG 应仍存在");
+  assert.equal(row12After.settlement_status, "recorded", "SI-12 FAIL: 拒绝后发票状态应仍为 recorded（未被错误更新）");
+
+  // ── SI-13: 未来日期发票分箱守恒（WP-D #4）───────────────────────────────────
+  // query_sales_invoices 应新增 futureDateCount 分箱，保证各桶之和 = 未回款总数
+  recordInvoices([{
+    invoiceNo: "OUT-SI-013-FUTURE",
+    amount: 2000,
+    invoiceDate: "2026-08-01", // 晚于 asOf=2026-07-07，agingDays < 0
+    direction: "out" as const,
+    conversationId: 99,
+  }], db);
+  const asOf13 = "2026-07-07";
+  const result13 = await queryTool!.handler({ asOf: asOf13, includeSettled: false });
+  assert.ok(result13.structuredContent, "SI-13 FAIL: 应有 structuredContent");
+  const sc13 = result13.structuredContent as {
+    agingSummary: Record<string, unknown>;
+    totalCount: number;
+    items: Array<{ invoiceNo: string; agingDays: number | null; settlementStatus: string }>;
+  };
+  assert.ok("futureDateCount" in sc13.agingSummary, "SI-13 FAIL: agingSummary 应有 futureDateCount 字段");
+  assert.ok(
+    typeof sc13.agingSummary.futureDateCount === "number" && (sc13.agingSummary.futureDateCount as number) >= 1,
+    `SI-13 FAIL: futureDateCount 应 >= 1（含 OUT-SI-013-FUTURE），实际: ${sc13.agingSummary.futureDateCount}`
+  );
+  // 验证 OUT-SI-013-FUTURE agingDays < 0
+  const futureEntry13 = sc13.items.find((r) => r.invoiceNo === "OUT-SI-013-FUTURE");
+  assert.ok(futureEntry13, "SI-13 FAIL: 应能查到 OUT-SI-013-FUTURE");
+  assert.ok(
+    futureEntry13.agingDays != null && futureEntry13.agingDays < 0,
+    `SI-13 FAIL: 未来日期发票 agingDays 应为负值，实际: ${futureEntry13.agingDays}`
+  );
+  // 分箱守恒：所有分箱 + nullDate + futureDateCount = 未回款总数
+  const aging13 = sc13.agingSummary as {
+    bucket0_30: { count: number }; bucket31_60: { count: number }; bucket61_90: { count: number };
+    bucket90plus: { count: number }; nullDateCount: number; futureDateCount: number;
+  };
+  const accounted13 = aging13.bucket0_30.count + aging13.bucket31_60.count + aging13.bucket61_90.count +
+    aging13.bucket90plus.count + aging13.nullDateCount + aging13.futureDateCount;
+  assert.equal(
+    accounted13, sc13.totalCount,
+    `SI-13 FAIL: 分箱守恒失败—accounted=${accounted13} ≠ totalCount=${sc13.totalCount}`
+  );
+
+  // ── SI-14: uncertifiedCount 只数本月（WP-D #5）──────────────────────────────
+  // getInvoiceLedgerBreakdown 的 uncertifiedCount 应只统计当月，不跨月
+  const { getInvoiceLedgerBreakdown } = await import("../lib/db/finance-store.ts");
+  // 先记录当前 6 月的 uncertifiedCount 基准
+  const breakdown14base = getInvoiceLedgerBreakdown(2026, 6, db);
+  // 添加一张 7 月发票（certification_status 默认 NULL）
+  recordInvoices([{
+    invoiceNo: "SI14-JUL-UNCERT",
+    amount: 500,
+    invoiceDate: "2026-07-20",
+    direction: "in" as const,
+    conversationId: 1,
+  }], db);
+  // 6 月 uncertifiedCount 不应因 7 月发票而改变
+  const breakdown14after = getInvoiceLedgerBreakdown(2026, 6, db);
+  assert.equal(
+    breakdown14after.uncertifiedCount,
+    breakdown14base.uncertifiedCount,
+    `SI-14 FAIL: 添加7月发票后，6月 uncertifiedCount 不应改变（之前=${breakdown14base.uncertifiedCount}，之后=${breakdown14after.uncertifiedCount}）`
+  );
+  // 7 月 uncertifiedCount 应包含新发票
+  const breakdown14jul = getInvoiceLedgerBreakdown(2026, 7, db);
+  assert.ok(
+    breakdown14jul.uncertifiedCount >= 1,
+    `SI-14 FAIL: 7 月 uncertifiedCount 应 >= 1，实际: ${breakdown14jul.uncertifiedCount}`
+  );
+
+  // ── SI-15: 进项税部分和标注（WP-D #6）───────────────────────────────────────
+  // getInvoiceLedgerBreakdown 应有 taxMissingCount 字段，
+  // query_invoice_ledger 工具当 taxMissingCount > 0 时应在输出追加"张税额未录"标注
+  recordInvoices([{
+    invoiceNo: "SI15-IN-NOTAX",
+    amount: 1000,
+    invoiceDate: "2026-06-20",
+    direction: "in" as const,
+    conversationId: 1,
+    // taxAmountCents 不传 → NULL，表示税额未录
+  }], db);
+  const breakdown15 = getInvoiceLedgerBreakdown(2026, 6, db);
+  assert.ok("taxMissingCount" in breakdown15, "SI-15 FAIL: getInvoiceLedgerBreakdown 应有 taxMissingCount 字段");
+  assert.ok(
+    typeof breakdown15.taxMissingCount === "number" && breakdown15.taxMissingCount >= 1,
+    `SI-15 FAIL: 有进项发票税额未录，taxMissingCount 应 >= 1，实际: ${(breakdown15 as Record<string, unknown>).taxMissingCount}`
+  );
+  // 工具输出应包含"张税额未录"标注
+  const { createFinanceTools } = await import("../lib/agent/mcp-tools/finance-tools.ts");
+  const captured15: Record<string, unknown> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mockSdk15: any = {
+    tool: (name: string, _d: string, _s: unknown, handler: unknown) => {
+      captured15[name] = handler;
+      return { name };
+    }
+  };
+  createFinanceTools(mockSdk15, "/tmp");
+  const ledgerHandler15 = captured15["query_invoice_ledger"] as ((args: { year: number; month: number }) => Promise<{ content: Array<{ type: string; text: string }> }>) | undefined;
+  assert.ok(ledgerHandler15, "SI-15 FAIL: query_invoice_ledger 处理器应存在");
+  const ledger15 = await ledgerHandler15({ year: 2026, month: 6 });
+  const text15 = ledger15.content[0].text;
+  assert.ok(
+    text15.includes("税额未录"),
+    `SI-15 FAIL: 有进项税额未录时，工具输出应包含"税额未录"标注，实际输出:\n${text15}`
+  );
+
   db.close();
-  console.log("sales-invoices: all 11 checks passed ✓");
+  console.log("sales-invoices: all checks passed ✓");
 })();

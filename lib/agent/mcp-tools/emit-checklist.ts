@@ -79,10 +79,10 @@ export function createEmitChecklistTool(
 
         // 重新读取 items（含稳定 id）
         const artifact = getArtifact(db, artifactId);
-        const itemsWithId = artifact?.items ?? args.items.map((item, i) => ({
-          id: `item-${i + 1}`,
-          ...item,
-        }));
+        if (!artifact) {
+          throw new Error(`createArtifact 落库后 getArtifact 返回 null，工件写入失败（id: ${artifactId}）`);
+        }
+        const itemsWithId = artifact.items;
 
         const structuredContent = {
           kind: "artifact_checklist" as const,

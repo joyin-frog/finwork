@@ -181,8 +181,13 @@ export function undoAuditEntry(id: number, db: DatabaseSync = getDb()): UndoResu
       }
     }
 
-    // 置 undone_at
-    db.prepare("UPDATE audit_logs SET undone_at = datetime('now') WHERE id = ?").run(id);
+    // 置 undone_at（守卫：AND undone_at IS NULL 防止并发双撤销——changes=0 说明已被撤销）
+    const updResult = db.prepare(
+      "UPDATE audit_logs SET undone_at = datetime('now') WHERE id = ? AND undone_at IS NULL"
+    ).run(id) as { changes: number };
+    if (Number(updResult.changes) === 0) {
+      throw new Error(`已撤销：id=${id} 的审计记录已于 ${new Date().toISOString()} 前被撤销，不可重复撤销`);
+    }
 
     // 撤销本身留痕
     db.prepare(`
