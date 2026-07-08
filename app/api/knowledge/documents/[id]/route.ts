@@ -58,7 +58,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
         db.exec("COMMIT");
       } catch (err) {
-        db.exec("ROLLBACK");
+        try { db.exec("ROLLBACK"); } catch { /* 保留原始错误 */ }
         throw err;
       }
 

@@ -4,8 +4,8 @@
  * 统计 app/**\/\*.tsx 中 `eslint-disable-next-line no-restricted-syntax` 的出现次数，
  * 断言 <= 锁定上限（只准降不准升）。
  *
- * 锁定值 108 = WP-E 完成时的实际计数（WP-E 第 6 条删除 checklist-card.tsx 的
- * rounded-[var( 行 suppress 后从 109 降到 108）。
+ * 锁定值 109 = WP-E 完成时的实际计数（checklist-card.tsx 那条 suppress 因同行
+ * 含 border 存量触发而必须保留，见下方常量注释）。
  *
  * 护栏意图：任何新增 suppress 都会让测试变红，迫使作者有意识地调高上限并解释原因。
  */
