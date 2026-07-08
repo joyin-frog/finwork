@@ -436,6 +436,12 @@ process.on("unhandledRejection", (err) => {
   const { retentionTestPromise } = await import("./retention.test.ts");
   await retentionTestPromise;
 
+  const { retentionNewTablesTestPromise } = await import("./retention-new-tables.test.ts");
+  await retentionNewTablesTestPromise;
+
+  const { migrationV17TestPromise } = await import("./migration-v17.test.ts");
+  await migrationV17TestPromise;
+
   const { attachmentGuardTestPromise } = await import("./attachment-guard.test.ts");
   await attachmentGuardTestPromise;
 
