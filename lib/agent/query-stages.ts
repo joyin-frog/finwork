@@ -17,6 +17,7 @@ import { sanitizeAttachments } from "@/lib/agent/attachment-guard";
 import {
   createChatConversation,
   getChatConversation,
+  getDb,
   insertChatAttachment,
   insertChatMessage,
   setChatConversationClaudeSessionId,
@@ -31,6 +32,17 @@ import { readClaudeSettings } from "@/lib/settings/claude-settings";
 import { createLogger } from "@/lib/runtime/logger";
 
 const log = createLogger("agent-query");
+
+/** 附件超过服务端大小上限时抛出此错误（带类型标记，便于 catch 分支精确识别）。 */
+class AttachmentTooLargeError extends Error {
+  readonly type = "AttachmentTooLarge" as const;
+  constructor(actualBytes: number, limitBytes: number) {
+    const actualMB = (actualBytes / (1024 * 1024)).toFixed(1);
+    const limitMB = (limitBytes / (1024 * 1024)).toFixed(0);
+    super(`附件大小 ${actualMB}MB 超过上限 ${limitMB}MB，请精简后重试`);
+    this.name = "AttachmentTooLargeError";
+  }
+}
 
 export type Stage<In, Out> = (ctx: In) => Promise<Out | Response>;
 
@@ -85,8 +97,10 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log.error("parse failed", { traceId, error });
-    const { NextResponse } = await import("next/server");
-    return NextResponse.json({ ok: false, error: `请求解析失败: ${message}` }, { status: 400 });
+    return new Response(JSON.stringify({ ok: false, error: `请求解析失败: ${message}` }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // 安全护栏:客户端提交的 attachments.storagePath 完全可控,会被拼进 agent 提示("路径: …")
@@ -138,20 +152,32 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
   let conversationId = ctxConversationId;
   let conversation = conversationId ? getChatConversation(conversationId) : null;
   if (lastUserContent) {
+    let skipInsert = false;
     if (!conversationId) {
       const shortTitle = generateShortTitle(lastUserContent);
       conversationId = createChatConversation(shortTitle);
       conversation = getChatConversation(conversationId);
       log.info("conversation created", { traceId, conversationId, title: shortTitle });
+    } else {
+      // 去重：若会话最后一条是同内容的 user 消息，跳过 insert（重试场景防双写）
+      const lastMsg = getDb()
+        .prepare("SELECT role, content FROM chat_messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 1")
+        .get(conversationId) as { role: string; content: string } | undefined;
+      if (lastMsg && lastMsg.role === "user" && lastMsg.content === lastUserContent) {
+        log.info("user message dedup skipped", { traceId, conversationId });
+        skipInsert = true;
+      }
     }
-    const messageId = insertChatMessage(conversationId, "user", lastUserContent);
-    for (const att of attachments) {
-      if (att.storagePath && conversationId) {
-        insertChatAttachment({
-          id: randomUUID(), messageId,
-          fileName: att.name, mimeType: att.mimeType, sizeBytes: att.size,
-          storagePath: path.relative(getConversationFilesDir(conversationId), att.storagePath), role: "user"
-        });
+    if (!skipInsert) {
+      const messageId = insertChatMessage(conversationId, "user", lastUserContent);
+      for (const att of attachments) {
+        if (att.storagePath && conversationId) {
+          insertChatAttachment({
+            id: randomUUID(), messageId,
+            fileName: att.name, mimeType: att.mimeType, sizeBytes: att.size,
+            storagePath: path.relative(getConversationFilesDir(conversationId), att.storagePath), role: "user"
+          });
+        }
       }
     }
   }
@@ -297,7 +323,12 @@ function generateShortTitle(text: string): string {
 // ─── Request parsing helpers (copied from route.ts) ─────────────────────────
 // Needed by parseStage. Kept here to make parseStage self-contained.
 
+const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+
 function saveAttachmentBuffer(conversationId: number, fileName: string, buffer: Buffer): string {
+  if (buffer.length > ATTACHMENT_MAX_BYTES) {
+    throw new AttachmentTooLargeError(buffer.length, ATTACHMENT_MAX_BYTES);
+  }
   const uploadDir = path.join(getConversationFilesDir(conversationId), "upload");
   mkdirSync(uploadDir, { recursive: true });
   const filePath = uniqueFilePath(uploadDir, fileName);
