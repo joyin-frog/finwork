@@ -74,6 +74,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__finalize_deliverable",      category: "finance", riskLevel: "safe" },
   // WP14a: 物化可勾选清单工件（safe，无角色白名单，v1 主对话专用）
   { name: "mcp__finance_worker__emit_checklist",            category: "finance", riskLevel: "safe" },
+  // 功能4首刀: 申报前复核批跑（safe，读取画像+派发；不进任何角色白名单，子代理不可递归批跑）
+  { name: "mcp__finance_worker__run_filing_precheck_batch", category: "finance", riskLevel: "safe" },
+  // 功能4第二刀: 银行对账批跑（safe，fan-out 资金专员；不进任何角色白名单，子代理不可递归批跑）
+  { name: "mcp__finance_worker__run_bank_recon_batch",      category: "finance", riskLevel: "safe" },
   // WP15: 撤销最近 agent 写操作（high 风险，经 confirm gate 拦截；无角色白名单——主对话动作）
   { name: "mcp__finance_worker__undo_last_write",           category: "finance", riskLevel: "high" },
 ];

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
-import { listRoleDispatchSummary, listRoleLatestStatus, listBlockedDispatches } from "@/lib/db/dispatch-store";
+import { listRoleDispatchSummary, listRoleLatestStatus, listBlockedDispatches, listDispatchesForPeriod } from "@/lib/db/dispatch-store";
 import { getInvoiceLedgerStats, getPayrollPeriodSummary, hasMetricsForMonth } from "@/lib/db/finance-store";
 import { listSkills } from "@/lib/agent/skills-store";
 import { skillLabel } from "@/lib/agent/tools/renderers";
@@ -8,6 +8,8 @@ import { getAppSetting, listConfirmedMetaDocRows } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
 import { deriveCashObligations, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
+import { deriveTaskBoard } from "@/lib/domain/task-board";
+import { currentYearMonth, TASK_TEMPLATES } from "@/lib/agent/roles/task-templates";
 import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
 
 function parseMeta(s: string): DocMetadata | null {
@@ -133,7 +135,10 @@ export async function GET() {
     const attention = [...ruleItems, ...gateItems];
     sortAttentionItems(attention);
 
-    return NextResponse.json({ ok: true, data: { roster, attention } });
+    const period = currentYearMonth(now);
+    const board = deriveTaskBoard(TASK_TEMPLATES, listDispatchesForPeriod(period), period);
+
+    return NextResponse.json({ ok: true, data: { roster, attention, board } });
   } catch (error) {
     console.error("[api/agents] error:", error);
     return NextResponse.json(

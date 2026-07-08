@@ -251,11 +251,25 @@ export function blockedDispatchToAttentionItem(
     blockedReason: string;
     conversationId: string | null;
     endedAt: string | null;
+    /** 业务对象标签（有值时拼入标题） */
+    businessObject?: string | null;
+    /** 期间，格式 YYYY-MM（有值时拼入标题） */
+    period?: string | null;
   },
   roleName: string
 ): AttentionItem {
   const summaryFirstLine = (row.summary ?? "").split("\n")[0].trim();
-  const title = `${roleName}的工作停在确认门：${summaryFirstLine}`;
+
+  // 标题前缀：有对象/期间时拼为「角色名 · 对象 期间」，否则只用角色名
+  let titlePrefix = roleName;
+  if (row.businessObject || row.period) {
+    const parts: string[] = [roleName];
+    const objPeriod = [row.businessObject, row.period].filter(Boolean).join(" ");
+    parts.push(objPeriod);
+    titlePrefix = parts.join(" · ");
+  }
+
+  const title = `${titlePrefix}的工作停在确认门：${summaryFirstLine}`;
 
   let action: { label: string; href: string; primary: true };
   if (row.conversationId) {

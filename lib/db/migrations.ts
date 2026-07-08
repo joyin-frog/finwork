@@ -851,6 +851,44 @@ export const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, "fact_payroll", "receipt_id", "INTEGER NULL");
     },
   },
+  // ⚠ 撞号史：本条目两度撞号（11→13→15，strange-mendel/PR #37 占用 11-14 且共享 dev 库
+  //   已被推到 14）。后续加迁移前必须核对 ①main 链尾 ②所有开放 worktree 的
+  //   migrations.ts 链尾 ③共享库 PRAGMA user_version，取三者最高 +1，否则被静默跳过。
+  {
+    version: 15,
+    name: "task-dispatch-objectify",
+    up: (db) => {
+      // spec-task-templates: 派发对象化——为 subagent_dispatches 增加五列
+      // 幂等：addColumnIfMissing 用 IF NOT EXISTS 语义
+      //
+      // 表存在性守卫（与 v9 同模式）：
+      // 少数测试用 initializeSchema(v1 快照) + 手动 user_version 绕过 v4 DDL，
+      // 导致 subagent_dispatches 实际未建——此时本迁移应静默跳过，
+      // 待完整迁移链（v4 建表 → v15 加列）在真实数据库上正确执行。
+      const tableExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='subagent_dispatches'"
+      ).get();
+      if (tableExists) {
+        addColumnIfMissing(db, "subagent_dispatches", "task_template_id", "TEXT");
+        addColumnIfMissing(db, "subagent_dispatches", "business_object",  "TEXT");
+        addColumnIfMissing(db, "subagent_dispatches", "period",           "TEXT");
+        addColumnIfMissing(db, "subagent_dispatches", "review_status",    "TEXT");
+        addColumnIfMissing(db, "subagent_dispatches", "locked_at",        "TEXT");
+      }
+
+      // 撞号愈合：本条目曾以 v13 之名把共享 dev 库推到 13，导致 PR #37 真正的
+      // v13（fact_invoices 回款三列）在该库上被静默跳过。此处幂等补齐——
+      // 全新库经 v13 已建三列，addColumnIfMissing 为 no-op；被撞库在此愈合。
+      const invoicesExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='fact_invoices'"
+      ).get();
+      if (invoicesExists) {
+        addColumnIfMissing(db, "fact_invoices", "settled_at", "TEXT NULL");
+        addColumnIfMissing(db, "fact_invoices", "settled_amount_cents", "INTEGER NULL");
+        addColumnIfMissing(db, "fact_invoices", "settlement_note", "TEXT NULL");
+      }
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */
