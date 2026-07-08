@@ -153,6 +153,45 @@ export const agentAttachmentsJsonTestPromise = (async () => {
     // Either no upload dir, or empty upload dir — both valid
   }
 
+  // ── A5: 超 20MB 附件（multipart）→ 400 响应，磁盘无残留文件 ──
+  {
+    // 记录发起请求前 tmpRoot 下所有文件数，用于后续对比
+    function countFiles(dir: string): number {
+      try {
+        const { readdirSync: rd } = require("node:fs");
+        let n = 0;
+        for (const e of rd(dir, { withFileTypes: true })) {
+          if (e.isDirectory()) n += countFiles(path.join(dir, e.name));
+          else n++;
+        }
+        return n;
+      } catch { return 0; }
+    }
+    const filesBefore = countFiles(tmpRoot);
+
+    // 创建 21MB blob（超过 20MB 上限）
+    const largeBuf = Buffer.alloc(21 * 1024 * 1024, 0x58); // 21MB of 'X'
+    const blob = new Blob([largeBuf], { type: "text/plain" });
+
+    const fd = new FormData();
+    fd.append("messages", JSON.stringify([{ role: "user", content: "test oversized attachment" }]));
+    fd.append("files", blob, "large.txt");
+
+    const req = new Request("http://localhost/api/agent/query?stream=false", {
+      method: "POST",
+      body: fd,
+    });
+
+    const res = await POST(req);
+    assert.equal(res.status, 400, `A5 FAIL: 超限附件应返回 400，实际 ${res.status}`);
+
+    const filesAfter = countFiles(tmpRoot);
+    assert.ok(filesAfter === filesBefore || filesAfter <= filesBefore,
+      `A5 FAIL: 超限附件被拒后磁盘不应有残留文件，前 ${filesBefore} 后 ${filesAfter}`);
+
+    console.log("agent-attachments-json A5 pass ✓");
+  }
+
   // Restore env
   if (prevAppDataDir === undefined) delete process.env.FINANCE_AGENT_APP_DATA_DIR;
   else process.env.FINANCE_AGENT_APP_DATA_DIR = prevAppDataDir;
@@ -160,5 +199,5 @@ export const agentAttachmentsJsonTestPromise = (async () => {
   if (prevDbPath === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
   else process.env.FINANCE_AGENT_DB_PATH = prevDbPath;
 
-  console.log("agent-attachments-json: all 4 checks passed ✓");
+  console.log("agent-attachments-json: all 5 checks passed ✓");
 })();
