@@ -124,6 +124,7 @@ export async function runSubagent(
         taskTemplateId: task.taskTemplateId,
         businessObject: task.businessObject,
         period: task.period,
+        files: task.files,
       });
     } catch (e) {
       console.warn("[dispatch] dispatch-start 失败(不影响任务):", e);

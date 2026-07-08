@@ -1579,6 +1579,14 @@
         "notnull": 0,
         "dflt_value": null,
         "pk": 0
+      },
+      {
+        "cid": 17,
+        "name": "files",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
       }
     ],
     "tool_executions": [

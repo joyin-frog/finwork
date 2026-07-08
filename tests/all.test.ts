@@ -646,6 +646,9 @@ process.on("unhandledRejection", (err) => {
   const { receiptStoreTestPromise } = await import("./receipt-store.test.ts");
   await receiptStoreTestPromise;
 
+  const { relativeTimeTestPromise } = await import("./relative-time.test.ts");
+  await relativeTimeTestPromise;
+
   const { suppressLockTestPromise } = await import("./ui/suppress-lock.test.ts");
   await suppressLockTestPromise;
 

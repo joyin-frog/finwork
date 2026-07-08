@@ -655,5 +655,142 @@ export const subagentDispatchesTestPromise = (async () => {
     }
   }
 
-  console.log("subagent-dispatches: all T1–T11 ✓");
+  // ─── T12 迁移 v16：files 列存在 + 旧行读出 files 为空数组 ─────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t12-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { LATEST_VERSION, getUserVersion } = await import("../lib/db/migrations.ts");
+
+      assert.ok(LATEST_VERSION >= 16, `T12 FAIL: LATEST_VERSION 须 >= 16，实际 ${LATEST_VERSION}`);
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+
+      assert.equal(getUserVersion(db), LATEST_VERSION, "T12 FAIL: 全新库应跑到最新版本");
+
+      // files 列存在
+      type ColInfo = { name: string };
+      const cols = db.prepare("PRAGMA table_info(subagent_dispatches)").all() as ColInfo[];
+      const colNames = cols.map((c) => c.name);
+      assert.ok(colNames.includes("files"), `T12 FAIL: v16 新增列 "files" 不存在，实有: ${colNames.join(", ")}`);
+
+      // 插入旧行（不指定 files），读出 files 为 null → store 层映射为 []
+      db.prepare("INSERT INTO subagent_dispatches (role_id, status) VALUES (?, ?)").run("bookkeeper", "running");
+      const rawRow = db
+        .prepare("SELECT files FROM subagent_dispatches WHERE role_id='bookkeeper' ORDER BY id DESC LIMIT 1")
+        .get() as { files: string | null } | undefined;
+      assert.ok(rawRow, "T12 FAIL: 插入行应存在");
+      assert.ok(rawRow!.files === null, `T12 FAIL: 旧行 files 应为 NULL，实际 ${rawRow!.files}`);
+
+      db.close();
+      console.log("subagent-dispatches T12: v16 files 列存在 + 旧行 NULL ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  // ─── T13 files 写读回环 ──────────────────────────────────────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t13-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { recordDispatchStart, getDispatchById } = await import("../lib/db/dispatch-store.ts");
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+      db.close();
+
+      const testFiles = ["/path/to/bank-flow.xlsx", "/path/to/recon.csv"];
+      const dispatchId = recordDispatchStart({
+        roleId: "bookkeeper",
+        label: "T13-files",
+        files: testFiles,
+      });
+
+      const row = getDispatchById(dispatchId);
+      assert.ok(row, "T13 FAIL: getDispatchById 应找到行");
+      assert.deepEqual(row!.files, testFiles, `T13 FAIL: files 回读应与写入一致，实际 ${JSON.stringify(row!.files)}`);
+
+      console.log("subagent-dispatches T13: files 写读回环 ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  // ─── T14 无 files → 读出 [] ────────────────────────────────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t14-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { recordDispatchStart, getDispatchById } = await import("../lib/db/dispatch-store.ts");
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+      db.close();
+
+      // 不传 files（undefined → NULL）
+      const dispatchId = recordDispatchStart({ roleId: "bookkeeper", label: "T14-no-files" });
+      const row = getDispatchById(dispatchId);
+      assert.ok(row, "T14 FAIL: getDispatchById 应找到行");
+      assert.deepEqual(row!.files, [], `T14 FAIL: 无 files 时读出应为 []，实际 ${JSON.stringify(row!.files)}`);
+
+      // 传空数组（[] → NULL → 读出 []）
+      const dispatchId2 = recordDispatchStart({ roleId: "bookkeeper", label: "T14-empty-files", files: [] });
+      const row2 = getDispatchById(dispatchId2);
+      assert.ok(row2, "T14 FAIL: getDispatchById 应找到空 files 行");
+      assert.deepEqual(row2!.files, [], `T14 FAIL: 空数组 files 时读出应为 []，实际 ${JSON.stringify(row2!.files)}`);
+
+      console.log("subagent-dispatches T14: 无 files → [] ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  // ─── T15 坏 JSON → 读出 [] 不抛 ──────────────────────────────────────────
+  {
+    const dbPath = path.join(tmpdir(), `fa-dispatches-t15-${process.pid}-${Date.now()}.db`);
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { openFinanceDatabase, initializeFinanceDatabase } = await import("../lib/db/sqlite.ts");
+      const { recordDispatchStart, getDispatchById } = await import("../lib/db/dispatch-store.ts");
+
+      const db = openFinanceDatabase(dbPath);
+      initializeFinanceDatabase(db, dbPath);
+      db.close();
+
+      // 先写一行
+      const dispatchId = recordDispatchStart({ roleId: "bookkeeper", label: "T15-bad-json" });
+
+      // 手工 UPDATE 塞入坏 JSON
+      const verifyDb = new DatabaseSync(dbPath, { open: true });
+      verifyDb.prepare("UPDATE subagent_dispatches SET files = ? WHERE id = ?").run("{bad json{{", dispatchId);
+      verifyDb.close();
+
+      // 读出：坏 JSON 应回退 []，不抛异常
+      let caughtError: unknown = null;
+      let row: ReturnType<typeof getDispatchById>;
+      try {
+        row = getDispatchById(dispatchId);
+      } catch (e) {
+        caughtError = e;
+      }
+      assert.ok(!caughtError, `T15 FAIL: 坏 JSON 不应抛异常，实际: ${caughtError}`);
+      assert.ok(row, "T15 FAIL: getDispatchById 应找到行");
+      assert.deepEqual(row!.files, [], `T15 FAIL: 坏 JSON 应回退 []，实际 ${JSON.stringify(row!.files)}`);
+
+      console.log("subagent-dispatches T15: 坏 JSON → [] 不抛 ✓");
+    } finally {
+      delete process.env.FINANCE_AGENT_DB_PATH;
+      try { rmSync(dbPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
+
+  console.log("subagent-dispatches: all T1–T15 ✓");
 })();

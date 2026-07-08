@@ -21,7 +21,20 @@ export type RecordDispatchStartInput = {
   businessObject?: string;
   /** 期间，格式 YYYY-MM（空时为 NULL） */
   period?: string;
+  /** 输入文件路径数组（来自 SubagentTask.files，空/undefined 落 NULL） */
+  files?: string[];
 };
+
+/** JSON.parse files 列，非数组或异常时回退 [] */
+function parseFiles(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * INSERT 一条 status='running' 的调度行,返回新行 id。
@@ -29,12 +42,13 @@ export type RecordDispatchStartInput = {
  */
 export function recordDispatchStart(input: RecordDispatchStartInput): number {
   const db = getDb();
+  const filesJson = input.files && input.files.length > 0 ? JSON.stringify(input.files) : null;
   const result = db
     .prepare(
       `INSERT INTO subagent_dispatches
          (role_id, skill, label, trace_id, conversation_id, status,
-          task_template_id, business_object, period)
-       VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)`
+          task_template_id, business_object, period, files)
+       VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`
     )
     .run(
       input.roleId,
@@ -44,7 +58,8 @@ export function recordDispatchStart(input: RecordDispatchStartInput): number {
       input.conversationId ?? null,
       input.taskTemplateId ?? null,
       input.businessObject ?? null,
-      input.period ?? null
+      input.period ?? null,
+      filesJson
     );
   return Number(result.lastInsertRowid);
 }
@@ -107,7 +122,7 @@ export function getDispatchById(id: number): DispatchRow | undefined {
   const row = db
     .prepare(
       `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
-              task_template_id, business_object, period, review_status
+              task_template_id, business_object, period, review_status, files
        FROM subagent_dispatches
        WHERE id = ?`
     )
@@ -125,6 +140,7 @@ export function getDispatchById(id: number): DispatchRow | undefined {
       business_object: string | null;
       period: string | null;
       review_status: string | null;
+      files: string | null;
     } | undefined;
   if (!row) return undefined;
   return {
@@ -141,6 +157,7 @@ export function getDispatchById(id: number): DispatchRow | undefined {
     businessObject: row.business_object ?? null,
     period: row.period ?? null,
     reviewStatus: row.review_status ?? null,
+    files: parseFiles(row.files),
   };
 }
 
@@ -210,6 +227,7 @@ export type DispatchRow = {
   businessObject: string | null;
   period: string | null;
   reviewStatus: string | null;
+  files: string[];
 };
 
 /**
@@ -221,7 +239,7 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
   const rows = db
     .prepare(
       `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
-              task_template_id, business_object, period, review_status
+              task_template_id, business_object, period, review_status, files
        FROM subagent_dispatches
        WHERE role_id = ?
        ORDER BY started_at DESC, id DESC
@@ -241,6 +259,7 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
       business_object: string | null;
       period: string | null;
       review_status: string | null;
+      files: string | null;
     }>;
   return rows.map((r) => ({
     id: Number(r.id),
@@ -256,6 +275,7 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
     businessObject: r.business_object ?? null,
     period: r.period ?? null,
     reviewStatus: r.review_status ?? null,
+    files: parseFiles(r.files),
   }));
 }
 
@@ -314,7 +334,7 @@ export function listDispatchesForPeriod(period: string): DispatchRow[] {
   const rows = db
     .prepare(
       `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
-              task_template_id, business_object, period, review_status
+              task_template_id, business_object, period, review_status, files
        FROM subagent_dispatches
        WHERE period = ?
        ORDER BY started_at DESC, id DESC`
@@ -333,6 +353,7 @@ export function listDispatchesForPeriod(period: string): DispatchRow[] {
       business_object: string | null;
       period: string | null;
       review_status: string | null;
+      files: string | null;
     }>;
   return rows.map((r) => ({
     id: Number(r.id),
@@ -348,6 +369,7 @@ export function listDispatchesForPeriod(period: string): DispatchRow[] {
     businessObject: r.business_object ?? null,
     period: r.period ?? null,
     reviewStatus: r.review_status ?? null,
+    files: parseFiles(r.files),
   }));
 }
 
