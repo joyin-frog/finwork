@@ -9,6 +9,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const docId = Number(id);
+    if (Number.isNaN(docId)) {
+      return NextResponse.json({ ok: false, error: "文档 id 无效" }, { status: 400 });
+    }
     const body = await req.json().catch(() => ({}));
 
     if (!getKnowledgeDocumentById(docId)) {
@@ -18,30 +21,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // P1 合同归纳: metadata + meta_status 写入
     if ("metaStatus" in body || "metadata" in body) {
       const validStatuses = ["none", "draft", "confirmed"] as const;
+      // 非法 metaStatus → 400，不做任何写（修复：之前静默降级 draft 并删义务）
+      if ("metaStatus" in body && !validStatuses.includes(body.metaStatus)) {
+        return NextResponse.json({ ok: false, error: `非法 metaStatus: ${body.metaStatus}` }, { status: 400 });
+      }
       const metaStatus: "none" | "draft" | "confirmed" =
         validStatuses.includes(body.metaStatus) ? body.metaStatus : "draft";
-      const metadata = body.metadata !== undefined ? body.metadata : null;
+      // metadata 不在 body 时传 undefined → setKnowledgeDocumentMeta 不覆盖该列
+      const metadata = "metadata" in body ? body.metadata : undefined;
       const db = getDb();
-      setKnowledgeDocumentMeta(docId, metadata, metaStatus, db);
 
-      // WP1b 写钩子：confirmed → 重派生落盘；none/draft → 清行
-      if (metaStatus === "confirmed") {
-        const confirmedRows = listConfirmedMetaDocRows(db);
-        const docRow = confirmedRows.find(r => r.id === docId);
-        if (docRow) {
-          let meta: DocMetadata | null = null;
-          try { meta = JSON.parse(docRow.metadata) as DocMetadata; } catch { meta = null; }
-          const obls = deriveCashObligations([{
-            id: docRow.id,
-            fileName: docRow.file_name,
-            metadata: meta,
-            metaStatus: docRow.meta_status as MetaStatus,
-          }]);
-          persistDerivedObligations(docId, obls, db);
+      // WP1b 写钩子：setKnowledgeDocumentMeta + persistDerivedObligations 包进同一事务
+      db.exec("BEGIN");
+      try {
+        setKnowledgeDocumentMeta(docId, metadata, metaStatus, db);
+
+        // confirmed → 重派生落盘；none/draft → 清行
+        if (metaStatus === "confirmed") {
+          const confirmedRows = listConfirmedMetaDocRows(db);
+          const docRow = confirmedRows.find(r => r.id === docId);
+          if (docRow) {
+            let meta: DocMetadata | null = null;
+            try { meta = JSON.parse(docRow.metadata) as DocMetadata; } catch { meta = null; }
+            const obls = deriveCashObligations([{
+              id: docRow.id,
+              fileName: docRow.file_name,
+              metadata: meta,
+              metaStatus: docRow.meta_status as MetaStatus,
+            }]);
+            persistDerivedObligations(docId, obls, db, { inTx: true });
+          }
+        } else {
+          // none / draft → 清行（降级）
+          db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(docId);
         }
-      } else {
-        // none / draft → 清行（降级）
-        db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(docId);
+
+        db.exec("COMMIT");
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
       }
 
       return NextResponse.json({ ok: true });
@@ -83,6 +101,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params;
     const docId = Number(id);
+    if (Number.isNaN(docId)) {
+      return NextResponse.json({ ok: false, error: "文档 id 无效" }, { status: 400 });
+    }
 
     const doc = getKnowledgeDocumentById(docId);
     if (doc?.content_hash) {

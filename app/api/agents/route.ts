@@ -1,22 +1,12 @@
 import { NextResponse } from "next/server";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import { listRoleDispatchSummary, listRoleLatestStatus, listBlockedDispatches } from "@/lib/db/dispatch-store";
-import { getInvoiceLedgerStats, getPayrollPeriodSummary, hasMetricsForMonth } from "@/lib/db/finance-store";
+import { getInvoiceLedgerStats, getPayrollPeriodSummary, hasMetricsForMonth, listCashObligations } from "@/lib/db/finance-store";
 import { listSkills } from "@/lib/agent/skills-store";
 import { skillLabel } from "@/lib/agent/tools/renderers";
-import { getAppSetting, listConfirmedMetaDocRows } from "@/lib/db/sqlite";
+import { getAppSetting } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
-import { deriveCashObligations, type ObligationSourceDoc } from "@/lib/domain/cash-obligations";
-import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
-
-function parseMeta(s: string): DocMetadata | null {
-  try {
-    return JSON.parse(s) as DocMetadata;
-  } catch {
-    return null;
-  }
-}
 
 export async function GET() {
   try {
@@ -99,13 +89,7 @@ export async function GET() {
     const calendar = getCalendarContext(now);
     const payroll = getPayrollPeriodSummary(year, month);
 
-    const oblDocs: ObligationSourceDoc[] = listConfirmedMetaDocRows().map((r) => ({
-      id: r.id,
-      fileName: r.file_name,
-      metadata: parseMeta(r.metadata),
-      metaStatus: r.meta_status as MetaStatus,
-    }));
-    const obligations = deriveCashObligations(oblDocs);
+    const obligations = listCashObligations();
 
     // 传完整 obligations(不按月过滤)——与 cockpit 同源:逾期的往月义务也算紧急,
     // 按月过滤会把上月未付、已逾期的合同从「等你拍板」里漏掉(cockpit 里却还在)。

@@ -674,16 +674,24 @@ export function setKnowledgeArchived(id: number, archived: boolean, db = getDb()
   );
 }
 
-/** P1 合同归纳:写入提炼 metadata（草稿）；status 为 'draft'|'confirmed'|'none' */
+/** P1 合同归纳:写入提炼 metadata（草稿）；status 为 'draft'|'confirmed'|'none'
+ *  metadata=undefined 表示「不更新 metadata 列」（只改 meta_status）。
+ */
 export function setKnowledgeDocumentMeta(
   id: number,
-  metadata: Record<string, unknown> | null,
+  metadata: Record<string, unknown> | null | undefined,
   metaStatus: "none" | "draft" | "confirmed",
   db = getDb()
 ): void {
-  db.prepare(
-    "UPDATE knowledge_documents SET metadata = ?, meta_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-  ).run(metadata ? JSON.stringify(metadata) : null, metaStatus, id);
+  if (metadata === undefined) {
+    db.prepare(
+      "UPDATE knowledge_documents SET meta_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).run(metaStatus, id);
+  } else {
+    db.prepare(
+      "UPDATE knowledge_documents SET metadata = ?, meta_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).run(metadata ? JSON.stringify(metadata) : null, metaStatus, id);
+  }
 }
 export function updateKnowledgeDocumentMetadata(
   id: number,
