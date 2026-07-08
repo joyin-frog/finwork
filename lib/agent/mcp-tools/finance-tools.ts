@@ -172,10 +172,14 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
     async (args: { year: number; month: number }) => {
       try {
         const breakdown = getInvoiceLedgerBreakdown(args.year, args.month);
+        // WP-D #6: 税额未录标注（仅当月进项中有 tax_amount_cents IS NULL 时追加）
+        const taxMissingNote = breakdown.taxMissingCount > 0
+          ? `（其中 ${breakdown.taxMissingCount} 张税额未录）`
+          : "";
         const lines: string[] = [
           `${args.year}年${args.month}月发票台账汇总：`,
           `- 台账总张数：${breakdown.total} 张`,
-          `- 进项发票：${breakdown.directionIn.count} 张，税额合计 ${(breakdown.directionIn.taxAmountCentsSum / 100).toFixed(2)} 元`,
+          `- 进项发票：${breakdown.directionIn.count} 张，税额合计 ${(breakdown.directionIn.taxAmountCentsSum / 100).toFixed(2)} 元${taxMissingNote}`,
           `- 未认证张数：${breakdown.uncertifiedCount} 张`,
         ];
         if (breakdown.directionUnknownCount > 0) {
@@ -188,6 +192,7 @@ export function createFinanceTools(sdk: Sdk, _outputDir: string) {
             directionIn: breakdown.directionIn,
             uncertifiedCount: breakdown.uncertifiedCount,
             directionUnknownCount: breakdown.directionUnknownCount,
+            taxMissingCount: breakdown.taxMissingCount,
           }
         };
       } catch (error) {

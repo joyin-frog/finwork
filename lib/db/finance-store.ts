@@ -432,6 +432,7 @@ export function recordInvoices(
   db: DatabaseSync = getDb(),
   auditHint?: RecordInvoicesAuditHint
 ): RecordInvoicesResult {
+  // 查重 SELECT 留事务外（已知 TOCTOU 局限，本批不处理）
   const existing = findInvoicesInLedger(items.map((i) => i.invoiceNo), db);
   const insert = db.prepare(
     `INSERT OR IGNORE INTO fact_invoices
@@ -441,39 +442,53 @@ export function recordInvoices(
   );
   const inserted: string[] = [];
   const duplicates: RecordInvoicesResult["duplicates"] = [];
+
+  // 预分类（无 DB 调用，仅查询 existing Map）
   for (const item of items) {
     const prior = existing.get(item.invoiceNo);
     if (prior) {
       duplicates.push({ invoiceNo: item.invoiceNo, recordedAt: prior.recordedAt });
-      continue;
+    } else {
+      inserted.push(item.invoiceNo);
     }
-    const ctx = `fact_invoices.${item.invoiceNo}`;
-    insert.run(
-      item.invoiceNo,
-      yuanToCents(item.amount, ctx),
-      item.invoiceDate ?? null,
-      item.category ?? null,
-      item.conversationId ?? null,
-      item.taxRate ?? null,
-      item.taxAmountCents ?? null,
-      item.counterparty ?? null,
-      item.direction ?? null,
-      item.certificationStatus ?? null,
-    );
-    inserted.push(item.invoiceNo);
   }
+
   if (inserted.length > 0) {
     // conversationId 从 items 第一条取（同一批次归同一会话）
     const convId = items.find((i) => i.conversationId != null)?.conversationId ?? null;
-    recordAudit(db, {
+    const insertableItems = items.filter((i) => !existing.has(i.invoiceNo));
+    // INSERT 与 recordAudit 包进同一事务，保证写+审计原子性
+    db.exec("BEGIN");
+    try {
+      for (const item of insertableItems) {
+        const ctx = `fact_invoices.${item.invoiceNo}`;
+        insert.run(
+          item.invoiceNo,
+          yuanToCents(item.amount, ctx),
+          item.invoiceDate ?? null,
+          item.category ?? null,
+          item.conversationId ?? null,
+          item.taxRate ?? null,
+          item.taxAmountCents ?? null,
+          item.counterparty ?? null,
+          item.direction ?? null,
+          item.certificationStatus ?? null,
+        );
+      }
       // 缺省保持报销路径原值；sales-invoices 传 auditHint 覆盖，使审计轨迹不混淆
-      eventType: auditHint?.eventType ?? "invoice_ledger_record",
-      payload: { inserted, duplicates: duplicates.map((d) => d.invoiceNo) },
-      conversationId: convId,
-      toolName: auditHint?.toolName ?? "record_reimbursement_invoices",
-      // undo=delete_rows 仅 inserted（被 INSERT OR IGNORE 忽略的重复行不进 inserted，不会误删）
-      undo: [{ op: "delete_rows", table: "fact_invoices", keyColumn: "invoice_no", keys: inserted }],
-    });
+      recordAudit(db, {
+        eventType: auditHint?.eventType ?? "invoice_ledger_record",
+        payload: { inserted, duplicates: duplicates.map((d) => d.invoiceNo) },
+        conversationId: convId,
+        toolName: auditHint?.toolName ?? "record_reimbursement_invoices",
+        // undo=delete_rows 仅 inserted（被 INSERT OR IGNORE 忽略的重复行不进 inserted，不会误删）
+        undo: [{ op: "delete_rows", table: "fact_invoices", keyColumn: "invoice_no", keys: inserted }],
+      });
+      db.exec("COMMIT");
+    } catch (err) {
+      try { db.exec("ROLLBACK"); } catch { /* ignore rollback error */ }
+      throw err;
+    }
   }
   return { inserted, duplicates };
 }
@@ -546,10 +561,12 @@ export type InvoiceLedgerBreakdown = {
   total: number;
   /** direction='in' 的进项发票张数与税额合计（分） */
   directionIn: { count: number; taxAmountCentsSum: number };
-  /** certification_status IS NULL 的张数（未认证/历史未设） */
+  /** 当月 certification_status IS NULL 的张数（未认证/历史未设，仅限当月口径） */
   uncertifiedCount: number;
-  /** direction IS NULL 的张数（历史记录未标注方向） */
+  /** 当月 direction IS NULL 的张数（历史记录未标注方向，仅限当月口径） */
   directionUnknownCount: number;
+  /** 当月 direction='in' 中 tax_amount_cents IS NULL 的张数（税额未录） */
+  taxMissingCount: number;
 };
 
 /**
@@ -571,12 +588,18 @@ export function getInvoiceLedgerBreakdown(year: number, month: number, db: Datab
      WHERE direction = 'in' AND invoice_date LIKE ?`
   ).get(`${prefix}%`) as { cnt: number; tax_sum: number } | undefined;
 
+  // WP-D #5: uncertifiedCount 与 directionUnknownCount 加与 total 相同的月份过滤
   const uncertified = (
-    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE certification_status IS NULL").get() as { n: number }
+    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE certification_status IS NULL AND invoice_date LIKE ?").get(`${prefix}%`) as { n: number }
   ).n;
 
   const dirUnknown = (
-    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE direction IS NULL").get() as { n: number }
+    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE direction IS NULL AND invoice_date LIKE ?").get(`${prefix}%`) as { n: number }
+  ).n;
+
+  // WP-D #6: 当月进项中税额未录张数
+  const taxMissing = (
+    db.prepare("SELECT COUNT(*) AS n FROM fact_invoices WHERE direction = 'in' AND tax_amount_cents IS NULL AND invoice_date LIKE ?").get(`${prefix}%`) as { n: number }
   ).n;
 
   return {
@@ -584,6 +607,7 @@ export function getInvoiceLedgerBreakdown(year: number, month: number, db: Datab
     directionIn: { count: dirInRow?.cnt ?? 0, taxAmountCentsSum: dirInRow?.tax_sum ?? 0 },
     uncertifiedCount: uncertified,
     directionUnknownCount: dirUnknown,
+    taxMissingCount: taxMissing,
   };
 }
 
@@ -644,67 +668,76 @@ export function upsertBusinessMetrics(
       updated_at     = datetime('now')
   `);
 
-  // 收集 before-images（写前 SELECT）用于 restore_rows 逆操作
-  // DatabaseSync 同步阻塞模型，无 TOCTOU 风险
+  // before-image SELECTs、写操作、ID 查询、recordAudit 全部在同一事务内，保证原子性
   type MetricBeforeImage = Record<string, unknown>;
-  const beforeImages: MetricBeforeImage[] = [];
-  const newInserts: Array<{ year: number; month: number }> = [];
-
-  for (const row of rows) {
-    const existing = db.prepare(
-      "SELECT * FROM fact_metrics WHERE year = ? AND month = ?"
-    ).get(row.year, row.month) as MetricBeforeImage | undefined;
-    if (existing) {
-      beforeImages.push(existing);
-    } else {
-      newInserts.push({ year: row.year, month: row.month });
-    }
-  }
-
-  for (const row of rows) {
-    const ctx = `fact_metrics(${row.year},${row.month})`;
-    stmt.run(
-      row.year,
-      row.month,
-      yuanToCents(row.revenue, ctx),
-      row.cost != null ? yuanToCents(row.cost, ctx) : null,
-      row.expense != null ? yuanToCents(row.expense, ctx) : null,
-      yuanToCents(row.profit, ctx),
-      row.note ?? null,
-      row.source ?? "user_dictated"
-    );
-  }
-
   // 构建 undo 载荷：新插入行用 delete_rows，更新行用 restore_rows（before-image）
   type UndoOpLocal = { op: "delete_rows"; table: string; keyColumn: string; keys: number[] } | { op: "restore_rows"; table: string; keyColumn: string; rows: MetricBeforeImage[] };
-  const undoOps: UndoOpLocal[] = [];
-  if (beforeImages.length > 0) {
-    undoOps.push({
-      op: "restore_rows",
-      table: "fact_metrics",
-      keyColumn: "id",
-      rows: beforeImages,
-    });
-  }
-  if (newInserts.length > 0) {
-    // 刚插入的行：按 (year,month) 查 id
-    const ids: number[] = [];
-    for (const ni of newInserts) {
-      const r = db.prepare("SELECT id FROM fact_metrics WHERE year = ? AND month = ?").get(ni.year, ni.month) as { id: number } | undefined;
-      if (r) ids.push(r.id);
-    }
-    if (ids.length > 0) {
-      undoOps.push({ op: "delete_rows", table: "fact_metrics", keyColumn: "id", keys: ids });
-    }
-  }
 
-  recordAudit(db, {
-    eventType: "business_metrics_write",
-    payload: { rows: rows.map((r) => ({ year: r.year, month: r.month })) },
-    conversationId: conversationId ?? null,
-    toolName: "record_business_metrics",
-    undo: undoOps.length > 0 ? undoOps : undefined,
-  });
+  db.exec("BEGIN");
+  try {
+    const beforeImages: MetricBeforeImage[] = [];
+    const newInserts: Array<{ year: number; month: number }> = [];
+
+    // 收集 before-images（事务内 SELECT，快照一致）
+    for (const row of rows) {
+      const existing = db.prepare(
+        "SELECT * FROM fact_metrics WHERE year = ? AND month = ?"
+      ).get(row.year, row.month) as MetricBeforeImage | undefined;
+      if (existing) {
+        beforeImages.push(existing);
+      } else {
+        newInserts.push({ year: row.year, month: row.month });
+      }
+    }
+
+    for (const row of rows) {
+      const ctx = `fact_metrics(${row.year},${row.month})`;
+      stmt.run(
+        row.year,
+        row.month,
+        yuanToCents(row.revenue, ctx),
+        row.cost != null ? yuanToCents(row.cost, ctx) : null,
+        row.expense != null ? yuanToCents(row.expense, ctx) : null,
+        yuanToCents(row.profit, ctx),
+        row.note ?? null,
+        row.source ?? "user_dictated"
+      );
+    }
+
+    const undoOps: UndoOpLocal[] = [];
+    if (beforeImages.length > 0) {
+      undoOps.push({
+        op: "restore_rows",
+        table: "fact_metrics",
+        keyColumn: "id",
+        rows: beforeImages,
+      });
+    }
+    if (newInserts.length > 0) {
+      // 刚插入的行：按 (year,month) 查 id
+      const ids: number[] = [];
+      for (const ni of newInserts) {
+        const r = db.prepare("SELECT id FROM fact_metrics WHERE year = ? AND month = ?").get(ni.year, ni.month) as { id: number } | undefined;
+        if (r) ids.push(r.id);
+      }
+      if (ids.length > 0) {
+        undoOps.push({ op: "delete_rows", table: "fact_metrics", keyColumn: "id", keys: ids });
+      }
+    }
+
+    recordAudit(db, {
+      eventType: "business_metrics_write",
+      payload: { rows: rows.map((r) => ({ year: r.year, month: r.month })) },
+      conversationId: conversationId ?? null,
+      toolName: "record_business_metrics",
+      undo: undoOps.length > 0 ? undoOps : undefined,
+    });
+
+    db.exec("COMMIT");
+  } catch (err) {
+    try { db.exec("ROLLBACK"); } catch { /* ignore rollback error */ }
+    throw err;
+  }
 }
 
 type MetricDbRow = {
@@ -975,24 +1008,31 @@ export function settleInvoice(input: SettleInvoiceInput, db: DatabaseSync = getD
     };
   }
 
-  // 2. UPDATE（B2：SELECT before-image 已在第1步完成）
-  db.prepare(`
-    UPDATE fact_invoices
-    SET settlement_status    = 'settled',
-        settled_at           = ?,
-        settled_amount_cents = ?,
-        settlement_note      = ?
-    WHERE invoice_no = ?
-  `).run(settledAt, amtCents, input.note ?? null, input.invoiceNo);
+  // 2+3. UPDATE + recordAudit 包进同一事务，保证写+审计原子性
+  let auditId: number;
+  db.exec("BEGIN");
+  try {
+    db.prepare(`
+      UPDATE fact_invoices
+      SET settlement_status    = 'settled',
+          settled_at           = ?,
+          settled_amount_cents = ?,
+          settlement_note      = ?
+      WHERE invoice_no = ?
+    `).run(settledAt, amtCents, input.note ?? null, input.invoiceNo);
 
-  // 3. recordAudit（undo=restore_rows，before-image 含全列）
-  const auditId = recordAudit(db, {
-    eventType: "invoice_settlement",
-    payload: { invoiceNo: input.invoiceNo, settledAmountYuan: input.settledAmountYuan, settledAt },
-    conversationId: input.conversationId ?? null,
-    toolName: "record_invoice_settlement",
-    undo: [{ op: "restore_rows", table: "fact_invoices", keyColumn: "invoice_no", rows: [existing] }],
-  });
+    auditId = recordAudit(db, {
+      eventType: "invoice_settlement",
+      payload: { invoiceNo: input.invoiceNo, settledAmountYuan: input.settledAmountYuan, settledAt },
+      conversationId: input.conversationId ?? null,
+      toolName: "record_invoice_settlement",
+      undo: [{ op: "restore_rows", table: "fact_invoices", keyColumn: "invoice_no", rows: [existing] }],
+    });
+    db.exec("COMMIT");
+  } catch (err) {
+    try { db.exec("ROLLBACK"); } catch { /* ignore rollback error */ }
+    throw err;
+  }
 
   return { success: true, auditId };
 }

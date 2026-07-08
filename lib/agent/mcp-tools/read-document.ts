@@ -2,8 +2,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod/v4";
-import { getPythonPath, getProjectRoot } from "@/lib/runtime/paths";
+import { getPythonPath, getProjectRoot, getAppDataDir } from "@/lib/runtime/paths";
 import { pythonSpawnEnv } from "@/lib/runtime/python-env";
+import { redact } from "@/lib/safety/pii";
 import type { SdkLike } from "./sdk-types";
 import { DocCache } from "./doc-cache";
 
@@ -27,7 +28,16 @@ export function createReadDocumentTool(sdk: SdkLike) {
     { filePath: z.string().describe("文件绝对路径") },
     async (args: { filePath: string }) => {
       const filePath = String(args.filePath ?? "").trim();
-      if (!filePath || !existsSync(filePath)) {
+      if (!filePath) {
+        return { content: [{ type: "text" as const, text: `文件不存在:${filePath}` }], isError: true as const };
+      }
+      // 路径白名单：归一化后必须位于应用数据目录内，防止 LLM 读取任意文件。
+      const resolvedPath = path.resolve(filePath);
+      const appDataDir = path.resolve(getAppDataDir());
+      if (resolvedPath !== appDataDir && !resolvedPath.startsWith(appDataDir + path.sep)) {
+        return { content: [{ type: "text" as const, text: `读取失败:路径不在安全目录内` }], isError: true as const };
+      }
+      if (!existsSync(filePath)) {
         return { content: [{ type: "text" as const, text: `文件不存在:${filePath}` }], isError: true as const };
       }
       const ext = path.extname(filePath).toLowerCase();
@@ -55,7 +65,7 @@ export function createReadDocumentTool(sdk: SdkLike) {
             return out.trim();
           }
         );
-        return { content: [{ type: "text" as const, text: text || "(未提取到文本;若为扫描件请确认清晰度)" }] };
+        return { content: [{ type: "text" as const, text: redact(text) || "(未提取到文本;若为扫描件请确认清晰度)" }] };
       } catch (err: unknown) {
         const e = err as { stderr?: string; message?: string };
         const hint = (e.stderr ?? "").toString().trim() || e.message || "未知错误";

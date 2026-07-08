@@ -133,11 +133,13 @@ export function daysBetween(today: Date, dueDate: string): number {
 export function persistDerivedObligations(
   sourceDocumentId: number,
   obligations: CashObligation[],
-  db: import("node:sqlite").DatabaseSync
+  db: import("node:sqlite").DatabaseSync,
+  opts?: { inTx?: boolean }
 ): void {
   // 幂等：先删该文档的所有旧义务行。delete+insert 整体包一层事务——
   // 若某行金额精度超差导致中途抛错，旧行需能整体回滚，不能出现"删了旧的、部分插了新的"半成品状态。
-  db.exec("BEGIN");
+  // opts.inTx=true 时调用方已持有事务，跳过自身 BEGIN/COMMIT/ROLLBACK 避免嵌套。
+  if (!opts?.inTx) db.exec("BEGIN");
   try {
     db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(sourceDocumentId);
 
@@ -184,9 +186,9 @@ export function persistDerivedObligations(
       );
     }
 
-    db.exec("COMMIT");
+    if (!opts?.inTx) db.exec("COMMIT");
   } catch (err) {
-    db.exec("ROLLBACK");
+    if (!opts?.inTx) db.exec("ROLLBACK");
     throw err;
   }
 }

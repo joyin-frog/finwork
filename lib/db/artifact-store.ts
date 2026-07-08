@@ -115,13 +115,12 @@ export function patchArtifactState(
     throw new Error(`itemId "${itemId}" 不在 payload items 中，无法更新`);
   }
 
-  const newState = { ...artifact.state, [itemId]: state };
-  const stateJson = JSON.stringify(newState);
   const now = new Date().toISOString().replace("T", " ").replace("Z", "");
 
+  // 原子合并：json_patch 把 {"itemId": state} 合入现有 state，避免并发读-改-写互相覆盖。
   db.prepare(`
-    UPDATE artifacts SET state = ?, updated_at = ? WHERE id = ?
-  `).run(stateJson, now, id);
+    UPDATE artifacts SET state = json_patch(state, json_object(?, ?)), updated_at = ? WHERE id = ?
+  `).run(itemId, state, now, id);
 
   return true;
 }

@@ -605,6 +605,9 @@ process.on("unhandledRejection", (err) => {
   const { obligationsLiveTestPromise } = await import("./obligations-live.test.ts");
   await obligationsLiveTestPromise;
 
+  const { confirmContractChainTestPromise } = await import("./confirm-contract-chain.test.ts");
+  await confirmContractChainTestPromise;
+
   const { invoiceWritePathTestPromise } = await import("./invoice-write-path.test.ts");
   await invoiceWritePathTestPromise;
 
@@ -642,6 +645,9 @@ process.on("unhandledRejection", (err) => {
 
   const { receiptStoreTestPromise } = await import("./receipt-store.test.ts");
   await receiptStoreTestPromise;
+
+  const { suppressLockTestPromise } = await import("./ui/suppress-lock.test.ts");
+  await suppressLockTestPromise;
 
 })().catch((err) => {
   console.error("[all.test] 测试链失败:", err);

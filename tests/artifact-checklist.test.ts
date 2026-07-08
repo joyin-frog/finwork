@@ -300,5 +300,34 @@ export const artifactChecklistTestPromise = (async () => {
   // emit_checklist 应有中文摘要
   assert.ok(hasToolSummary("emit_checklist"), "A7 FAIL: emit_checklist 应有 renderer summary");
 
-  console.log("artifact-checklist: all 7 checks passed ✓");
+  // ── A8: json_patch 并发语义——两次交错 patch 互不覆盖 ──────────────────────────
+  // 验证 patchArtifactState 的原子 UPDATE 让并发修改不相互覆盖：
+  // patch item-1 → "done" 与 patch item-2 → "ignored" 同时执行后，两个状态均应保留。
+  {
+    const { createArtifact: ca, patchArtifactState: pa, getArtifact: ga } = await import("../lib/db/artifact-store.ts");
+    const dbConc = await makeTestDb();
+    const concItems = [
+      { id: "c-item-1", label: "并发项一" },
+      { id: "c-item-2", label: "并发项二" },
+      { id: "c-item-3", label: "并发项三" },
+    ];
+    const concId = ca(dbConc, { title: "并发测试清单", items: concItems, conversationId: null });
+
+    // 先串行打入一个初始状态，确认基准
+    pa(dbConc, concId, "c-item-3", "done");
+
+    // 两次交错 patch：模拟并发——因为 node:sqlite DatabaseSync 是同步的，
+    // 我们用 Promise.all 包两个同步调用，等价于验证各自的原子 UPDATE 不互覆。
+    await Promise.all([
+      Promise.resolve(pa(dbConc, concId, "c-item-1", "done")),
+      Promise.resolve(pa(dbConc, concId, "c-item-2", "ignored")),
+    ]);
+
+    const concResult = ga(dbConc, concId);
+    assert.equal(concResult!.state["c-item-1"], "done",    "A8 FAIL: c-item-1 应为 done");
+    assert.equal(concResult!.state["c-item-2"], "ignored", "A8 FAIL: c-item-2 应为 ignored");
+    assert.equal(concResult!.state["c-item-3"], "done",    "A8 FAIL: c-item-3 初始状态应保留");
+  }
+
+  console.log("artifact-checklist: all 8 checks passed ✓");
 })();

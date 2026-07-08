@@ -8,6 +8,11 @@
  *   3. huggingface.co（原始源）
  *
  * 下载逻辑可注入（步骤注入），便于单测无真实网络。
+ * WP-C blindspot-fixes:
+ *   - 内置 fetch-based DownloadStep（单文件 120s 超时）
+ *   - download 参数改为可选（缺省用内置实现）
+ *   - 下载完成后写 manifest.json（记录各文件字节数）
+ *   - isEmbedModelReady 校验 manifest（存在时）；无 manifest 按原样放行
  */
 
 import * as fs from "node:fs";
@@ -18,6 +23,8 @@ export const EMBED_MODEL = "bge-small-zh-v1.5";
 const MODEL_NAME = EMBED_MODEL;
 const MODEL_FILES = ["model_quantized.onnx", "tokenizer.json"];
 const HF_REPO = "Xenova/bge-small-zh-v1.5";
+/** manifest 文件名（记录下载完成后各模型文件的字节数，用于完整性校验） */
+const MANIFEST_FILE = "manifest.json";
 
 /**
  * 各模型文件在 HF repo 中的相对路径。
@@ -43,11 +50,36 @@ export function getEmbedModelDir(modelName = MODEL_NAME): string {
 }
 
 /**
- * 检查模型文件是否完整（全部文件存在）。
+ * 检查模型文件是否完整。
+ * - 若 manifest.json 存在（由 ensureEmbedModel 写入），同时校验各文件字节数与 manifest 一致。
+ * - 若 manifest.json 不存在（用户手动放置场景），仅检查文件存在性（向后兼容）。
  */
 export function isEmbedModelReady(modelName = MODEL_NAME): boolean {
   const dir = getEmbedModelDir(modelName);
-  return MODEL_FILES.every(f => fs.existsSync(path.join(dir, f)));
+  const allExist = MODEL_FILES.every(f => fs.existsSync(path.join(dir, f)));
+  if (!allExist) return false;
+
+  const manifestPath = path.join(dir, MANIFEST_FILE);
+  if (!fs.existsSync(manifestPath)) {
+    // 无 manifest = 手动放置，按现状放行
+    return true;
+  }
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as Record<string, number>;
+    return MODEL_FILES.every(f => {
+      const expected = manifest[f];
+      if (expected === undefined) return true; // 未记录的文件不校验
+      try {
+        const actual = fs.statSync(path.join(dir, f)).size;
+        return actual === expected;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    // manifest 解析失败，回退到纯存在性检查
+    return true;
+  }
 }
 
 /**
@@ -100,18 +132,40 @@ export function resolveEmbedModelFileUrls(
 }
 
 /**
- * 下载模型文件（若已存在则跳过）。步骤注入便于单测。
- * 全部候选源失败时不抛——返回 ok:false，调用方降级。
+ * 内置 fetch-based DownloadStep（单文件 120s 超时，AbortController）。
+ * 失败时抛异常，由 ensureEmbedModel 捕获并降级。
  */
-export async function ensureEmbedModel(opts: {
+const builtinDownload: DownloadStep = async (url: string, destFile: string): Promise<void> => {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 120_000);
+  try {
+    const response = await fetch(url, { signal: ac.signal });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${url}`);
+    }
+    const buf = await response.arrayBuffer();
+    fs.writeFileSync(destFile, Buffer.from(buf));
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/**
+ * 下载模型文件（若已存在则跳过）。步骤注入便于单测。
+ * - download 参数可选，缺省用内置 fetch 实现。
+ * - 下载全部成功后写 manifest.json（记录各文件字节数，供 isEmbedModelReady 校验）。
+ * - 全部候选源失败时不抛——返回 ok:false，调用方降级。
+ */
+export async function ensureEmbedModel(opts?: {
   modelName?: string;
   files?: string[];
-  download: DownloadStep;
+  download?: DownloadStep;
   onProgress?: (msg: string) => void;
 }): Promise<{ ok: boolean; modelDir: string; detail: string }> {
-  const modelName = opts.modelName ?? MODEL_NAME;
-  const files = opts.files ?? MODEL_FILES;
-  const onProgress = opts.onProgress ?? (() => {});
+  const modelName = opts?.modelName ?? MODEL_NAME;
+  const files = opts?.files ?? MODEL_FILES;
+  const download = opts?.download ?? builtinDownload;
+  const onProgress = opts?.onProgress ?? (() => {});
   const modelDir = getEmbedModelDir(modelName);
 
   fs.mkdirSync(modelDir, { recursive: true });
@@ -131,7 +185,7 @@ export async function ensureEmbedModel(opts: {
     for (const url of urls) {
       try {
         onProgress(`正在下载 ${file}…`);
-        await opts.download(url, destFile);
+        await download(url, destFile);
         downloaded = true;
         break;
       } catch (err) {
@@ -146,5 +200,21 @@ export async function ensureEmbedModel(opts: {
   if (anyFailed) {
     return { ok: false, modelDir, detail: `模型文件下载失败:${lastError}` };
   }
+
+  // 写 manifest：记录各文件字节数，供 isEmbedModelReady 完整性校验
+  try {
+    const manifest: Record<string, number> = {};
+    for (const file of files) {
+      try {
+        manifest[file] = fs.statSync(path.join(modelDir, file)).size;
+      } catch {
+        // stat 失败不影响整体 ok（文件刚下载成功）
+      }
+    }
+    fs.writeFileSync(path.join(modelDir, MANIFEST_FILE), JSON.stringify(manifest));
+  } catch {
+    // manifest 写入失败不影响主流程（下次可重新写）
+  }
+
   return { ok: true, modelDir, detail: "embedding 模型已就绪" };
 }
