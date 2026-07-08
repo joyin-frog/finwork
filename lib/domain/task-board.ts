@@ -23,6 +23,8 @@ export type TaskBoardCard = {
   blockedReason: string | null;
   conversationId: string | null;
   startedAt: string | null;
+  /** 输入文件 basename 列表（从完整路径 split 取末段，空时 [] */
+  fileNames: string[];
 };
 
 export type TaskBoardNode =
@@ -123,6 +125,7 @@ export function deriveTaskBoard(
       blockedReason: row.blockedReason,
       conversationId: row.conversationId,
       startedAt: row.startedAt,
+      fileNames: row.files.map((p) => p.split(/[/\\]/).pop() ?? p),
     }));
 
     // counts：累加即只含非零项（键只在出现该状态卡片时才写入）

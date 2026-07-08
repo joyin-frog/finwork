@@ -889,6 +889,20 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 16,
+    name: "dispatch-files",
+    up: (db) => {
+      // 看板视觉刀：为 subagent_dispatches 增加 files 列（JSON 数组字符串，NULL 允许）
+      // 表存在性守卫（与 v15 同模式）：少数测试用 user_version 伪造版本号但未建表
+      const tableExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='subagent_dispatches'"
+      ).get();
+      if (tableExists) {
+        addColumnIfMissing(db, "subagent_dispatches", "files", "TEXT");
+      }
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

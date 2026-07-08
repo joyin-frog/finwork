@@ -55,6 +55,7 @@ export const taskBoardTestPromise = (async () => {
       conversationId: string | null;
       startedAt: string | null;
       label: string | null;
+      files: string[];
     }>
   ) {
     return {
@@ -71,6 +72,7 @@ export const taskBoardTestPromise = (async () => {
       businessObject: overrides.businessObject ?? null,
       period: PERIOD,
       reviewStatus: overrides.reviewStatus !== undefined ? overrides.reviewStatus : null,
+      files: overrides.files ?? [],
     };
   }
 
@@ -232,6 +234,33 @@ export const taskBoardTestPromise = (async () => {
     console.log("task-board TB13: startHref 与 buildTemplateDispatchHref 一致 ✓");
   }
 
+  // ─── TB14 fileNames 派生（basename 数组，空时 []） ─────────────────────────
+  {
+    // 有文件路径的行
+    const rowWithFiles = makeRow({
+      files: ["/home/user/uploads/bank-flow-2026-07.xlsx", "C:\\Users\\user\\docs\\recon.csv"],
+    });
+    const boardWith = deriveTaskBoard(TASK_TEMPLATES, [rowWithFiles], PERIOD);
+    const nodeWith = boardWith.nodes.find((n) => n.templateId === "month-close-precheck");
+    assert.ok(nodeWith && nodeWith.kind === "cards", "TB14a: 应为 cards 节点");
+    const cardWith = nodeWith.cards[0];
+    assert.deepEqual(
+      cardWith.fileNames,
+      ["bank-flow-2026-07.xlsx", "recon.csv"],
+      `TB14a FAIL: fileNames 应为 basename 数组，实际 ${JSON.stringify(cardWith.fileNames)}`
+    );
+
+    // 无文件路径的行（files: []）
+    const rowNoFiles = makeRow({ files: [] });
+    const boardNo = deriveTaskBoard(TASK_TEMPLATES, [rowNoFiles], PERIOD);
+    const nodeNo = boardNo.nodes.find((n) => n.templateId === "month-close-precheck");
+    assert.ok(nodeNo && nodeNo.kind === "cards", "TB14b: 应为 cards 节点");
+    const cardNo = nodeNo.cards[0];
+    assert.deepEqual(cardNo.fileNames, [], `TB14b FAIL: 无文件时 fileNames 应为 []，实际 ${JSON.stringify(cardNo.fileNames)}`);
+
+    console.log("task-board TB14: fileNames 派生 ✓");
+  }
+
   // ─── 源码契约 ─────────────────────────────────────────────────────────────
 
   // SC1: task-board.tsx 不含 fetch(
@@ -274,6 +303,20 @@ export const taskBoardTestPromise = (async () => {
     console.log("task-board SC4: route.ts 含 listDispatchesForPeriod( ✓");
   }
 
+  // SC5: task-board.tsx 含两个批跑深链 prompt 关键词
+  {
+    const taskBoardSrc = src("app/agents/task-board.tsx");
+    assert.ok(
+      taskBoardSrc.includes("申报前复核批量"),
+      "SC5 FAIL: app/agents/task-board.tsx 应含申报前复核批量 prompt 关键词"
+    );
+    assert.ok(
+      taskBoardSrc.includes("批量对一遍"),
+      "SC5 FAIL: app/agents/task-board.tsx 应含批量对一遍 prompt 关键词（银行对账批跑）"
+    );
+    console.log("task-board SC5: task-board.tsx 含两个批跑深链 prompt 关键词 ✓");
+  }
+
   // ─── currentYearMonth 可注入 Date ─────────────────────────────────────────
   {
     const d = new Date("2026-07-15T12:00:00");
@@ -283,5 +326,5 @@ export const taskBoardTestPromise = (async () => {
     console.log("task-board currentYearMonth: 可注入 Date ✓");
   }
 
-  console.log("task-board: all TB1–TB13 + SC1–SC4 ✓");
+  console.log("task-board: all TB1–TB14 + SC1–SC5 ✓");
 })();
