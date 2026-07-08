@@ -253,6 +253,26 @@ export const auditUndoTestPromise = (async () => {
   assert.ok(after12, "AU12 FAIL: 撤销后行应仍存在（restore_rows）");
   assert.equal(after12.revenue_cents, 300000, "AU12 FAIL: 撤销后应恢复到 3000元=300000分");
 
+  // ── AU13: 撤销守卫——UPDATE AND undone_at IS NULL 防双撤（WP-D #2）────────────
+  // 写一条有 undo 载荷的记录，撤销一次后再撤一次，第二次必须抛"已被撤销"错误。
+  // 现有外层检查（SELECT undone_at != null）已保证此行为；WP-D 在 UPDATE 层追加守卫
+  // 以增加纵深防御（并发/外层绕过场景）。测试验证行为正确性。
+  recordInvoices([{ invoiceNo: "INV-AU13-GUARD", amount: 500 }], db);
+  const auditId13 = recordAudit(db, {
+    eventType: "guard_test",
+    payload: {},
+    undo: [{ op: "delete_rows", table: "fact_invoices", keyColumn: "invoice_no", keys: ["INV-AU13-GUARD"] }],
+  });
+  undoAuditEntry(auditId13, db); // 第一次撤销（成功）
+  const rowAU13 = db.prepare("SELECT undone_at FROM audit_logs WHERE id=?").get(auditId13) as { undone_at: string | null };
+  assert.ok(rowAU13.undone_at != null, "AU13 FAIL: 第一次撤销后 undone_at 应已设置");
+  // 第二次撤销——不管外层检查还是 UPDATE 守卫，都应抛错
+  assert.throws(
+    () => undoAuditEntry(auditId13, db),
+    (err: unknown) => err instanceof Error && /已撤销|already/i.test(err.message),
+    "AU13 FAIL: 第二次撤销应抛'已撤销'错误（WP-D 守卫）"
+  );
+
   db.close();
   console.log("audit-undo: all checks passed ✓");
 })();

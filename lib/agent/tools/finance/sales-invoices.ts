@@ -102,7 +102,7 @@ export function createSalesInvoiceTools(sdk: Sdk) {
     "登记销项发票回款（settlement_status→'settled'，写实收金额/日期/备注），写审计日志，支持撤销。仅限 direction='out' 的销项发票；已回款发票再次调用会拒绝并回显首次回款信息。",
     {
       invoiceNo: z.string().describe("发票号码"),
-      settledAmountYuan: z.number().describe("实收金额（元），可与发票额不同（差额不做科目处理，仅记录）"),
+      settledAmountYuan: z.number().positive().describe("实收金额（元），须为正数；可与发票额不同（差额不做科目处理，仅记录）"),
       settledAt: z.string().nullish().describe("实收日期 YYYY-MM-DD，缺省当日"),
       note: z.string().nullish().describe("回款备注（可选）"),
       conversationId: z.number().nullish().describe("当前会话 ID，用于溯源")
@@ -114,6 +114,13 @@ export function createSalesInvoiceTools(sdk: Sdk) {
       note?: string | null;
       conversationId?: number | null;
     }) => {
+      // 负数/零回款守卫（Zod schema 层已有 .positive()，此处提供处理器层防御纵深）
+      if (args.settledAmountYuan <= 0) {
+        return {
+          content: [{ type: "text" as const, text: `实收金额 ${args.settledAmountYuan} 元非法：须为正数（不含零）` }],
+          isError: true as const
+        };
+      }
       try {
         const result = settleInvoice({
           invoiceNo: args.invoiceNo,
@@ -184,6 +191,8 @@ export function createSalesInvoiceTools(sdk: Sdk) {
 
         // 发票层专属分箱（已开票 0-30 / 31-60 / 61-90 / 90+ 天）
         // B1 符号约定：正值=已开票天数；不复用合同层分箱逻辑
+        // WP-D #4: 增加未来日期分箱（agingDays < 0，开票日在基准日之后）
+        const futureDated = rows.filter((r) => r.agingDays != null && r.agingDays < 0);
         const bucket0_30 = rows.filter((r) => r.agingDays != null && r.agingDays >= 0 && r.agingDays <= 30);
         const bucket31_60 = rows.filter((r) => r.agingDays != null && r.agingDays >= 31 && r.agingDays <= 60);
         const bucket61_90 = rows.filter((r) => r.agingDays != null && r.agingDays >= 61 && r.agingDays <= 90);
@@ -193,6 +202,7 @@ export function createSalesInvoiceTools(sdk: Sdk) {
         const sumCents = (arr: typeof rows) => arr.reduce((s, r) => s + r.amountCents, 0);
 
         const agingSummary = {
+          futureDateCount: futureDated.length,
           bucket0_30: { count: bucket0_30.length, amountCents: sumCents(bucket0_30) },
           bucket31_60: { count: bucket31_60.length, amountCents: sumCents(bucket31_60) },
           bucket61_90: { count: bucket61_90.length, amountCents: sumCents(bucket61_90) },
@@ -205,6 +215,7 @@ export function createSalesInvoiceTools(sdk: Sdk) {
           `销项发票清单（截至 ${asOf}，共 ${rows.length} 张）`,
           `未回款：${totalUnsettled.length} 张`,
           `账龄分箱（已开票天数，正值）：`,
+          agingSummary.futureDateCount > 0 ? `  另有 ${agingSummary.futureDateCount} 张开票日期在基准日之后（未来日期），未纳入账龄分箱` : "",
           `  0-30 天: ${agingSummary.bucket0_30.count} 张 / ${(agingSummary.bucket0_30.amountCents / 100).toFixed(2)} 元`,
           `  31-60 天: ${agingSummary.bucket31_60.count} 张 / ${(agingSummary.bucket31_60.amountCents / 100).toFixed(2)} 元`,
           `  61-90 天: ${agingSummary.bucket61_90.count} 张 / ${(agingSummary.bucket61_90.amountCents / 100).toFixed(2)} 元`,
