@@ -620,4 +620,7 @@ void (async () => {
   const { filingPrecheckBatchTestPromise } = await import("./filing-precheck-batch.test.ts");
   await filingPrecheckBatchTestPromise;
 
+  const { bankReconBatchTestPromise } = await import("./bank-recon-batch.test.ts");
+  await bankReconBatchTestPromise;
+
 })();

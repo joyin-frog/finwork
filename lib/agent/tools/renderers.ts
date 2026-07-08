@@ -135,6 +135,14 @@ const summaries: Record<string, SummaryFn> = {
     return period ? `批跑申报前复核（增值税+个税）${period}` : "批跑申报前复核（增值税+个税）";
   },
 
+  // ─── 功能4第二刀: 银行对账批跑 ───
+  run_bank_recon_batch: (i) => {
+    const files = Array.isArray((i as Record<string, unknown>)?.statement_files)
+      ? (i as Record<string, unknown>).statement_files as unknown[]
+      : [];
+    return `银行对账批跑 ${files.length} 个账户`;
+  },
+
   // ─── 收尾:声明最终产物 ───
   finalize_deliverable: (i) => {
     const files = Array.isArray((i as Record<string, unknown>)?.files) ? (i as Record<string, unknown>).files as unknown[] : [];
