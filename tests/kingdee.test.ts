@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { z } from "zod/v4";
 import { getDb } from "../lib/db/sqlite.ts";
 import { loadChartOfAccounts, saveChartOfAccounts, EXAMPLE_CHART_OF_ACCOUNTS } from "../lib/db/finance-store.ts";
 import { createKingdeeTools } from "../lib/agent/mcp-tools/kingdee-tools.ts";
@@ -66,4 +67,51 @@ export const kingdeeTestPromise = (async () => {
   getDb().prepare("DELETE FROM app_settings WHERE key = 'kingdee_chart_of_accounts'").run();
 
   console.log("kingdee: 科目表数据驱动(示例兜底 / 导入清洗 / 校验对照真表 / import 工具 / 维度保留)✓");
+
+  // ── T6: build_voucher_sheet 描述不含 "run_python"（防回归）──
+  const descsT6 = new Map<string, string>();
+  const schemasT7 = new Map<string, unknown>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mockSdkT6T7: any = {
+    tool: (name: string, desc: string, s: unknown, h: (a: unknown) => unknown) => {
+      descsT6.set(name, desc);
+      schemasT7.set(name, s);
+      return { name, handler: h };
+    },
+  };
+  createKingdeeTools(mockSdkT6T7);
+
+  const bvsDesc = descsT6.get("build_voucher_sheet");
+  assert.ok(bvsDesc !== undefined, "T6 FAIL: build_voucher_sheet 未注册");
+  assert.ok(
+    !bvsDesc!.includes("run_python"),
+    `T6 FAIL: build_voucher_sheet 描述不应含 run_python，实际：${bvsDesc}`
+  );
+  console.log("kingdee: T6 build_voucher_sheet 描述防回归 ✓");
+
+  // ── T7: 超长摘要（>100 字符）被 export_kingdee_draft schema 拒绝，错误含「精简」──
+  const exportDraftSch = schemasT7.get("export_kingdee_draft") as Parameters<typeof z.object>[0];
+  assert.ok(exportDraftSch !== undefined, "T7 FAIL: export_kingdee_draft schema 未捕获");
+  const longSummary = "超".repeat(101); // 101 字符，超出 100 字符上限
+  const parseResult = z.object(exportDraftSch).safeParse({
+    company: "测试公司",
+    period: "2024-01",
+    entries: [
+      {
+        date: "2024-01-01",
+        summary: longSummary,
+        debitAccount: "1001",
+        debitAmount: 100,
+        creditAccount: "6602",
+        creditAmount: 100,
+        attachmentCount: 0,
+      },
+    ],
+  });
+  assert.equal(parseResult.success, false, "T7 FAIL: 超长摘要（101字符）应被 schema 拒绝");
+  assert.ok(
+    parseResult.error?.issues?.some((i) => i.message.includes("精简")),
+    `T7 FAIL: 错误信息应含「精简」，实际：${JSON.stringify(parseResult.error?.issues)}`
+  );
+  console.log("kingdee: T7 摘要长度上限校验 ✓");
 })();

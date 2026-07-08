@@ -17,6 +17,14 @@ export type RetentionConfig = {
   /** null 表示禁用。chat_agent_events 是历史对话里的过程时间线(工具步骤/思考/时长),
    *  最终答案在 chat_messages 里不受影响。默认给一个长保留期封住无界增长,而非彻底禁用。 */
   chatEventDays: number | null;
+  /** 路由决策日志——90 天覆盖典型审计窗口。 */
+  modelRoutingLogDays: number;
+  /** 子代理调度史——90 天，与路由日志对齐。 */
+  subagentDispatchesDays: number;
+  /** 工具幂等缓存——30 天，短生命周期。 */
+  toolExecutionsDays: number;
+  /** 计算凭据——180 天，与 auditLog 一致。 */
+  calcReceiptsDays: number;
 };
 
 export type RetentionStats = {
@@ -26,6 +34,10 @@ export type RetentionStats = {
   auditLogs: number;
   chatEvents: number;
   sessionTranscripts: number;
+  modelRoutingLogs: number;
+  subagentDispatches: number;
+  toolExecutions: number;
+  calcReceipts: number;
 };
 
 /** 内置 Claude CLI 会话 transcript(claude-config/projects/)的保留天数。
@@ -40,6 +52,10 @@ export const DEFAULT_RETENTION_CONFIG: Readonly<RetentionConfig> = Object.freeze
   // 保留一年滚动窗口:重度使用下 chat_agent_events 每任务数百行会无界增长、拖慢会话加载,
   // 一年足够覆盖可见历史;想彻底关闭清理可在设置里显式设为 null。
   chatEventDays: 365,
+  modelRoutingLogDays: 90,
+  subagentDispatchesDays: 90,
+  toolExecutionsDays: 30,
+  calcReceiptsDays: 180,
 });
 
 function isRetentionDays(value: unknown): value is number {
@@ -50,13 +66,20 @@ export function isValidRetentionSettingsValue(value: string): boolean {
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
-    const allowed = new Set(["traceDays", "appErrorDays", "auditLogDays", "chatEventDays"]);
+    const allowed = new Set([
+      "traceDays", "appErrorDays", "auditLogDays", "chatEventDays",
+      "modelRoutingLogDays", "subagentDispatchesDays", "toolExecutionsDays", "calcReceiptsDays",
+    ]);
     if (Object.keys(parsed).some((key) => !allowed.has(key))) return false;
     return (
       (parsed.traceDays === undefined || isRetentionDays(parsed.traceDays)) &&
       (parsed.appErrorDays === undefined || isRetentionDays(parsed.appErrorDays)) &&
       (parsed.auditLogDays === undefined || isRetentionDays(parsed.auditLogDays)) &&
-      (parsed.chatEventDays === undefined || parsed.chatEventDays === null || isRetentionDays(parsed.chatEventDays))
+      (parsed.chatEventDays === undefined || parsed.chatEventDays === null || isRetentionDays(parsed.chatEventDays)) &&
+      (parsed.modelRoutingLogDays === undefined || isRetentionDays(parsed.modelRoutingLogDays)) &&
+      (parsed.subagentDispatchesDays === undefined || isRetentionDays(parsed.subagentDispatchesDays)) &&
+      (parsed.toolExecutionsDays === undefined || isRetentionDays(parsed.toolExecutionsDays)) &&
+      (parsed.calcReceiptsDays === undefined || isRetentionDays(parsed.calcReceiptsDays))
     );
   } catch {
     return false;
@@ -75,6 +98,10 @@ export function loadRetentionConfig(db: DatabaseSync = getDb()): RetentionConfig
     appErrorDays: parsed.appErrorDays ?? DEFAULT_RETENTION_CONFIG.appErrorDays,
     auditLogDays: parsed.auditLogDays ?? DEFAULT_RETENTION_CONFIG.auditLogDays,
     chatEventDays: parsed.chatEventDays === undefined ? DEFAULT_RETENTION_CONFIG.chatEventDays : parsed.chatEventDays,
+    modelRoutingLogDays: parsed.modelRoutingLogDays ?? DEFAULT_RETENTION_CONFIG.modelRoutingLogDays,
+    subagentDispatchesDays: parsed.subagentDispatchesDays ?? DEFAULT_RETENTION_CONFIG.subagentDispatchesDays,
+    toolExecutionsDays: parsed.toolExecutionsDays ?? DEFAULT_RETENTION_CONFIG.toolExecutionsDays,
+    calcReceiptsDays: parsed.calcReceiptsDays ?? DEFAULT_RETENTION_CONFIG.calcReceiptsDays,
   };
 }
 
@@ -117,6 +144,34 @@ export function pruneOldAuditLogs(days: number, db: DatabaseSync = getDb(), now 
 export function pruneOldChatEvents(days: number, db: DatabaseSync = getDb(), now = Date.now()): number {
   const result = db
     .prepare("DELETE FROM chat_agent_events WHERE unixepoch(created_at) < ?")
+    .run(cutoffEpochSeconds(days, now));
+  return Number(result.changes);
+}
+
+export function pruneOldModelRoutingLogs(days: number, db: DatabaseSync = getDb(), now = Date.now()): number {
+  const result = db
+    .prepare("DELETE FROM model_routing_log WHERE unixepoch(created_at) < ?")
+    .run(cutoffEpochSeconds(days, now));
+  return Number(result.changes);
+}
+
+export function pruneOldSubagentDispatches(days: number, db: DatabaseSync = getDb(), now = Date.now()): number {
+  const result = db
+    .prepare("DELETE FROM subagent_dispatches WHERE unixepoch(started_at) < ?")
+    .run(cutoffEpochSeconds(days, now));
+  return Number(result.changes);
+}
+
+export function pruneOldToolExecutions(days: number, db: DatabaseSync = getDb(), now = Date.now()): number {
+  const result = db
+    .prepare("DELETE FROM tool_executions WHERE unixepoch(created_at) < ?")
+    .run(cutoffEpochSeconds(days, now));
+  return Number(result.changes);
+}
+
+export function pruneOldCalcReceipts(days: number, db: DatabaseSync = getDb(), now = Date.now()): number {
+  const result = db
+    .prepare("DELETE FROM calc_receipts WHERE unixepoch(created_at) < ?")
     .run(cutoffEpochSeconds(days, now));
   return Number(result.changes);
 }
@@ -173,7 +228,10 @@ export function runRetentionCycle(
   db: DatabaseSync = getDb(),
   now = Date.now()
 ): { stats: RetentionStats; errors: string[] } {
-  const stats: RetentionStats = { traces: 0, spans: 0, appErrors: 0, auditLogs: 0, chatEvents: 0, sessionTranscripts: 0 };
+  const stats: RetentionStats = {
+    traces: 0, spans: 0, appErrors: 0, auditLogs: 0, chatEvents: 0, sessionTranscripts: 0,
+    modelRoutingLogs: 0, subagentDispatches: 0, toolExecutions: 0, calcReceipts: 0,
+  };
   const errors: string[] = [];
 
   const run = (name: keyof RetentionStats, operation: () => number) => {
@@ -192,6 +250,10 @@ export function runRetentionCycle(
     run("chatEvents", () => pruneOldChatEvents(config.chatEventDays!, db, now));
   }
   run("sessionTranscripts", () => pruneOldSessionTranscripts(SESSION_TRANSCRIPT_DAYS, getClaudeConfigDir(), now));
+  run("modelRoutingLogs", () => pruneOldModelRoutingLogs(config.modelRoutingLogDays, db, now));
+  run("subagentDispatches", () => pruneOldSubagentDispatches(config.subagentDispatchesDays, db, now));
+  run("toolExecutions", () => pruneOldToolExecutions(config.toolExecutionsDays, db, now));
+  run("calcReceipts", () => pruneOldCalcReceipts(config.calcReceiptsDays, db, now));
 
   try {
     insertAuditLog("retention_cycle", {

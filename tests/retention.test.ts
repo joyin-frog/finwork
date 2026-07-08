@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, w
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { NextRequest } from "next/server";
-import { initializeSchema } from "../lib/db/schema.ts";
+import { runMigrations } from "../lib/db/migrations.ts";
 import { isTrustedLocalMutation } from "../lib/api/local-request.ts";
 import {
   claimRetentionRun,
@@ -23,7 +23,8 @@ export const retentionTestPromise = (async () => {
   process.env.FINANCE_AGENT_CLAUDE_CONFIG_DIR = configDir;
 
   const db = new DatabaseSync(":memory:");
-  initializeSchema(db);
+  db.exec("PRAGMA foreign_keys = ON");
+  runMigrations(db, ":memory:", () => null);
   const now = Date.parse("2026-06-30T00:00:00.000Z");
   const oldIso = new Date(now - 8 * 86_400_000).toISOString();
   const freshIso = new Date(now - 1 * 86_400_000).toISOString();
@@ -56,12 +57,18 @@ export const retentionTestPromise = (async () => {
   ).run(Number(message.lastInsertRowid), freshIso);
 
   const result = runRetentionCycle(
-    { traceDays: 7, appErrorDays: 7, auditLogDays: 7, chatEventDays: null },
+    {
+      traceDays: 7, appErrorDays: 7, auditLogDays: 7, chatEventDays: null,
+      modelRoutingLogDays: 7, subagentDispatchesDays: 7, toolExecutionsDays: 7, calcReceiptsDays: 7,
+    },
     db,
     now
   );
   assert.deepEqual(result.errors, []);
-  assert.deepEqual(result.stats, { traces: 1, spans: 1, appErrors: 1, auditLogs: 1, chatEvents: 0, sessionTranscripts: 0 });
+  assert.deepEqual(result.stats, {
+    traces: 1, spans: 1, appErrors: 1, auditLogs: 1, chatEvents: 0, sessionTranscripts: 0,
+    modelRoutingLogs: 0, subagentDispatches: 0, toolExecutions: 0, calcReceipts: 0,
+  });
   assert.equal(
     (db.prepare("SELECT COUNT(*) AS n FROM agent_traces").get() as { n: number }).n,
     1,

@@ -152,32 +152,37 @@ export function vectorSearch(
 ): Array<{ docId: number; score: number; chunkText: string; chunkIndex: number }> {
   if (!queryVec || queryVec.length === 0) return [];
 
-  let rows: Array<{ document_id: number; chunk_index: number; embedding: Buffer; text: string }>;
+  const qfa = new Float32Array(queryVec);
+
+  // 文档级最高分聚合（O(唯一文档数)，不截断——截断会破坏按文档聚合的正确性）
+  const best = new Map<number, { score: number; chunkText: string; chunkIndex: number }>();
+
   try {
-    rows = db.prepare(
+    const stmt = db.prepare(
       `SELECT ke.document_id, ke.chunk_index, ke.embedding, ke.text
        FROM knowledge_embeddings ke
        JOIN knowledge_documents kd ON kd.id = ke.document_id
        WHERE kd.archived = 0 AND ke.model = ?`
-    ).all(model) as Array<{ document_id: number; chunk_index: number; embedding: Buffer; text: string }>;
+    );
+    // iterate() 逐行返回，BLOB 用完即弃，不物化全表数组
+    for (const row of stmt.iterate(model) as Iterable<{
+      document_id: number;
+      chunk_index: number;
+      embedding: Buffer;
+      text: string;
+    }>) {
+      const emb = bufferToFloat32Array(row.embedding);
+      const score = cosine(qfa, emb);
+      const prev = best.get(row.document_id);
+      if (!prev || score > prev.score) {
+        best.set(row.document_id, { score, chunkText: row.text, chunkIndex: row.chunk_index });
+      }
+    }
   } catch {
     return [];
   }
 
-  if (rows.length === 0) return [];
-
-  const qfa = new Float32Array(queryVec);
-
-  // 文档级最高分聚合
-  const best = new Map<number, { score: number; chunkText: string; chunkIndex: number }>();
-  for (const row of rows) {
-    const emb = bufferToFloat32Array(row.embedding);
-    const score = cosine(qfa, emb);
-    const prev = best.get(row.document_id);
-    if (!prev || score > prev.score) {
-      best.set(row.document_id, { score, chunkText: row.text, chunkIndex: row.chunk_index });
-    }
-  }
+  if (best.size === 0) return [];
 
   return Array.from(best.entries())
     .map(([docId, v]) => ({ docId, score: v.score, chunkText: v.chunkText, chunkIndex: v.chunkIndex }))

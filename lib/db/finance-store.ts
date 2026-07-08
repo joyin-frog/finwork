@@ -247,6 +247,10 @@ export function savePayrollDraft(
 
   const ctx = `fact_payroll(${result.employeeName},${year},${month})`;
   const receiptId = options?.receiptId ?? null;
+  // SQL 层守卫：仅在非显式覆盖时（overwriteConfirmed 未设置）加 WHERE 条件，
+  // 防止并发进程在快照 SELECT 之后、UPSERT 之前悄悄确认导致的降级（多进程防写）。
+  // 显式 overwriteConfirmed=true 时单进程行为保持不变，不加守卫。
+  const conflictGuard = options?.overwriteConfirmed ? "" : "\n    WHERE settlement_status != 'confirmed'";
   db.prepare(
     `INSERT INTO fact_payroll (
       employee_name, year, month,
@@ -274,7 +278,7 @@ export function savePayrollDraft(
       detail_json = excluded.detail_json,
       settlement_status = 'draft',
       confirmed_at = NULL,
-      receipt_id = excluded.receipt_id`
+      receipt_id = excluded.receipt_id${conflictGuard}`
   ).run(
     result.employeeName,
     year,
@@ -377,17 +381,22 @@ export function confirmPayrollPeriod(
   );
   db.exec("BEGIN");
   try {
+    // 用 UPDATE 实际 changes 行数对应的员工集合，不再用事务前快照——
+    // 0 行更新时审计不得声称确认了 N 人（并发防审计虚报）。
+    const actuallyConfirmed: string[] = [];
     for (const draft of drafts) {
-      update.run(draft.employeeName, year, month);
+      const result = update.run(draft.employeeName, year, month);
+      if (result.changes > 0) {
+        actuallyConfirmed.push(draft.employeeName);
+      }
     }
-    const confirmed = drafts.map((d) => d.employeeName);
     recordAudit(db, {
       eventType: "payroll_confirm",
-      payload: { year, month, employees: confirmed },
+      payload: { year, month, employees: actuallyConfirmed },
       // undo=null: 周期确认是业务动作，撤销走业务流程（event_type 逐字不变——哨兵 payroll-card.test.ts:72-75）
     });
     db.exec("COMMIT");
-    return { confirmed, alreadyConfirmed };
+    return { confirmed: actuallyConfirmed, alreadyConfirmed };
   } catch (err) {
     db.exec("ROLLBACK");
     throw err;
@@ -969,6 +978,7 @@ export type SettleInvoiceResult =
   | { success: true; auditId: number }
   | { success: false; notFound: true }
   | { success: false; wrongDirection: true }
+  | { success: false; directionUnknown: true }
   | { success: false; alreadySettled: true; settledAt: string | null; settledAmountCents: number | null };
 
 /**
@@ -996,6 +1006,10 @@ export function settleInvoice(input: SettleInvoiceInput, db: DatabaseSync = getD
   if (!existing) {
     return { success: false, notFound: true };
   }
+  // direction IS NULL 的历史发票单独标注，不得误报为进项
+  if (existing.direction === null || existing.direction === undefined) {
+    return { success: false, directionUnknown: true };
+  }
   if (existing.direction !== "out") {
     return { success: false, wrongDirection: true };
   }
@@ -1009,17 +1023,35 @@ export function settleInvoice(input: SettleInvoiceInput, db: DatabaseSync = getD
   }
 
   // 2+3. UPDATE + recordAudit 包进同一事务，保证写+审计原子性
+  // SQL 守卫：AND (settlement_status IS NULL OR settlement_status != 'settled')
+  // 并发防写——若另一进程在快照 SELECT 之后已落盘 settled，本次 UPDATE 影响 0 行。
   let auditId: number;
   db.exec("BEGIN");
   try {
-    db.prepare(`
+    const updateResult = db.prepare(`
       UPDATE fact_invoices
       SET settlement_status    = 'settled',
           settled_at           = ?,
           settled_amount_cents = ?,
           settlement_note      = ?
       WHERE invoice_no = ?
+        AND (settlement_status IS NULL OR settlement_status != 'settled')
     `).run(settledAt, amtCents, input.note ?? null, input.invoiceNo);
+
+    if (updateResult.changes === 0) {
+      // 守卫命中：另一进程已结算。先 ROLLBACK（不得带开放事务 return），
+      // 再重新 SELECT 取最新快照（事务外快照已过期）。
+      db.exec("ROLLBACK");
+      const fresh = db.prepare(
+        "SELECT settled_at, settled_amount_cents FROM fact_invoices WHERE invoice_no = ?"
+      ).get(input.invoiceNo) as Record<string, unknown> | undefined;
+      return {
+        success: false,
+        alreadySettled: true,
+        settledAt: (fresh?.settled_at ?? null) as string | null,
+        settledAmountCents: (fresh?.settled_amount_cents ?? null) as number | null,
+      };
+    }
 
     auditId = recordAudit(db, {
       eventType: "invoice_settlement",

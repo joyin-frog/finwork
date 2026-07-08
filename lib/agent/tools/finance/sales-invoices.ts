@@ -144,6 +144,13 @@ export function createSalesInvoiceTools(sdk: Sdk) {
           };
         }
 
+        if ("directionUnknown" in result) {
+          return {
+            content: [{ type: "text" as const, text: `发票 ${args.invoiceNo} 为历史发票未标注方向，请先确认为销项后重录方向，再进行回款登记` }],
+            isError: true as const
+          };
+        }
+
         if ("wrongDirection" in result) {
           return {
             content: [{ type: "text" as const, text: `发票 ${args.invoiceNo} 为进项发票（direction='in'），本工具仅用于销项发票回款；进项付款请使用其他工具` }],

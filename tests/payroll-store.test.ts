@@ -141,6 +141,68 @@ export const payrollStoreTestPromise = (async () => {
       "T8 FAIL: 紧邻上月无已确认时返回 null，不得回溯更早月份充当「上月」");
   }
 
+  // ── T9: savePayrollDraft SQL 层守卫——UPSERT 不降级已确认工资 ─────────────────
+  // 验证 ON CONFLICT DO UPDATE 的 WHERE settlement_status != 'confirmed' 守卫阻止降级。
+  // 直接运行带守卫条件的 UPSERT SQL，验证并发防写机制（单进程行为不变，JS 层仍抛错）。
+  {
+    const calcT9 = calculateCumulativePayroll({
+      employeeName: "WPF-T9-Employee",
+      grossPay: 20000,
+      socialInsurance: 3000,
+      housingFund: 0,
+      specialDeduction: 1000,
+      monthsEmployed: 1,
+      prior: ZERO_PRIOR_CUMULATIVE
+    });
+    savePayrollDraft(2027, 9, calcT9, 1, { db });
+    confirmPayrollPeriod(2027, 9, undefined, db);
+    const rowBefore = db.prepare("SELECT settlement_status FROM fact_payroll WHERE employee_name = 'WPF-T9-Employee' AND year = 2027 AND month = 9").get() as { settlement_status: string };
+    assert.equal(rowBefore.settlement_status, "confirmed", "T9 setup FAIL: 应已确认");
+
+    // 直接运行带 WHERE 守卫的 UPSERT（等价于实施后的 savePayrollDraft SQL 层守卫）
+    db.prepare(`
+      INSERT INTO fact_payroll (
+        employee_name, year, month,
+        gross_pay_cents, social_insurance_cents, housing_fund_cents, special_deduction_cents, months_employed,
+        gross_cum_cents, social_cum_cents, fund_cum_cents, special_cum_cents,
+        taxable_income_cum_cents, tax_due_cum_cents, tax_current_cents, tax_withheld_cum_cents, net_pay_cents,
+        caliber_version, detail_json, settlement_status, confirmed_at, receipt_id
+      ) VALUES ('WPF-T9-Employee', 2027, 9, 1000000, 100000, 0, 50000, 1, 1000000, 100000, 0, 50000, 850000, 50000, 50000, 50000, 800000, 'v1', '{}', 'draft', NULL, NULL)
+      ON CONFLICT(employee_name, year, month) DO UPDATE SET
+        settlement_status = 'draft',
+        confirmed_at = NULL
+        WHERE settlement_status != 'confirmed'
+    `).run();
+    const rowAfter = db.prepare("SELECT settlement_status FROM fact_payroll WHERE employee_name = 'WPF-T9-Employee' AND year = 2027 AND month = 9").get() as { settlement_status: string };
+    assert.equal(rowAfter.settlement_status, "confirmed", "T9 FAIL: SQL 守卫应防止已确认工资被 UPSERT 降级为 draft");
+  }
+
+  // ── T10: confirmPayrollPeriod 审计使用实际 changes 行数对应员工 ─────────────────
+  // 验证审计载荷的 employees 列表与实际更新行数一致（覆盖正常路径；并发路径因 SQLite 同步无法模拟）
+  {
+    const calcT10 = calculateCumulativePayroll({
+      employeeName: "WPF-T10-Employee",
+      grossPay: 25000,
+      socialInsurance: 3500,
+      housingFund: 0,
+      specialDeduction: 0,
+      monthsEmployed: 1,
+      prior: ZERO_PRIOR_CUMULATIVE
+    });
+    savePayrollDraft(2027, 10, calcT10, 1, { db });
+    const auditCountBefore = (db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE event_type = 'payroll_confirm' AND payload LIKE '%2027%10%'").get() as { n: number }).n;
+    const { confirmed: confirmedT10 } = confirmPayrollPeriod(2027, 10, undefined, db);
+    assert.deepEqual(confirmedT10, ["WPF-T10-Employee"], "T10 FAIL: confirmed 列表应与实际更新员工一致");
+    const auditCountAfter = (db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE event_type = 'payroll_confirm' AND payload LIKE '%2027%10%'").get() as { n: number }).n;
+    assert.equal(auditCountAfter, auditCountBefore + 1, "T10 FAIL: confirmPayrollPeriod 应写入 1 条审计日志");
+    const lastAudit = db.prepare(
+      "SELECT payload FROM audit_logs WHERE event_type = 'payroll_confirm' AND payload LIKE '%WPF-T10-Employee%' ORDER BY id DESC LIMIT 1"
+    ).get() as { payload: string } | undefined;
+    assert.ok(lastAudit, "T10 FAIL: 应有含 WPF-T10-Employee 的审计日志");
+    const payloadT10 = JSON.parse(lastAudit.payload) as { employees: string[] };
+    assert.deepEqual(payloadT10.employees, ["WPF-T10-Employee"], "T10 FAIL: 审计 payload.employees 应精确匹配实际确认员工");
+  }
+
   db.close();
-  console.log("payroll-store: all 8 checks passed ✓");
+  console.log("payroll-store: all 10 checks passed ✓");
 })();

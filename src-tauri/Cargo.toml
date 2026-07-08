@@ -26,6 +26,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 
 # Windows:用 Job Object 把内置 next-server 子进程绑定到 KILL_ON_JOB_CLOSE,父进程(本 app)无论正常退出
