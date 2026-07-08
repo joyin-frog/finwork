@@ -889,6 +889,17 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 17,
+    name: "idx_fact_invoices_invoice_date",
+    up: (db) => {
+      // WP-G 台账索引：按发票日期查询是最常见的过滤条件，补上 B-Tree 索引加速。
+      // CREATE INDEX IF NOT EXISTS 幂等，连跑两次无副作用。
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_fact_invoices_invoice_date ON fact_invoices(invoice_date)"
+      );
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */
