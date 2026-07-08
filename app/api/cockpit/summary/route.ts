@@ -8,6 +8,7 @@ import { listRoleDispatchSummary, listBlockedDispatches } from "@/lib/db/dispatc
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import { listSkills } from "@/lib/agent/skills-store";
 import { appendServerLog } from "@/lib/runtime/server-log";
+import { redact } from "@/lib/safety/pii";
 
 export async function GET() {
   try {
@@ -73,7 +74,7 @@ export async function GET() {
     return NextResponse.json({ ok: true, data });
   } catch (error) {
     console.error("[cockpit/summary] error:", error);
-    void appendServerLog(`[cockpit/summary] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    void appendServerLog(`[cockpit/summary] ${redact(error instanceof Error ? error.stack ?? error.message : String(error))}`);
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : "加载失败" },
       { status: 500 }
