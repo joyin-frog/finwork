@@ -17,6 +17,13 @@ const HOST_LOG_MAX_BYTES: u128 = 2 * 1024 * 1024;
 pub fn run() {
   tauri::Builder::default()
     .manage(ServerProcess(Mutex::new(None)))
+    // single-instance 守卫必须在 Builder 链上、.setup() 之前注册，
+    // 应用启动前挂钩；第二实例启动时聚焦已有主窗口。
+    .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+      if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_focus();
+      }
+    }))
     .setup(|app| {
       let is_release = !cfg!(debug_assertions);
       let boot_id = generate_boot_id();

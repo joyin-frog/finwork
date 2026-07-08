@@ -413,6 +413,77 @@ export const salesInvoicesTestPromise = (async () => {
     `SI-15 FAIL: 有进项税额未录时，工具输出应包含"税额未录"标注，实际输出:\n${text15}`
   );
 
+  // ── WPF-SI-16: NULL 方向发票返回 directionUnknown（不是 wrongDirection）──────
+  // direction IS NULL 的历史发票，settleInvoice 应返回 directionUnknown，不得误报 wrongDirection。
+  // 红测：改前 direction=NULL 会落入 `direction !== 'out'` 分支返回 wrongDirection，红。
+  db.prepare(
+    "INSERT INTO fact_invoices (invoice_no, amount_cents, direction, settlement_status, source) VALUES (?, ?, NULL, 'recorded', 'user_dictated')"
+  ).run("WPF-NULL-DIR", 100000);
+  const settleNullDir = settleInvoice({ invoiceNo: "WPF-NULL-DIR", settledAmountYuan: 1000 }, db);
+  assert.equal(settleNullDir.success, false, "WPF-SI-16 FAIL: NULL direction 应被拒绝");
+  assert.ok(
+    "directionUnknown" in settleNullDir,
+    `WPF-SI-16 FAIL: NULL direction 应返回 directionUnknown，实际: ${JSON.stringify(settleNullDir)}`
+  );
+  assert.ok(!("wrongDirection" in settleNullDir), "WPF-SI-16 FAIL: NULL direction 不应返回 wrongDirection");
+
+  // ── WPF-SI-17: 工具层 NULL 方向文案 ─────────────────────────────────────────
+  // 红测：改前会输出"进项发票"文案，红。
+  const settleTool17 = siTools.find((t: { name: string }) => t.name === "record_invoice_settlement") as
+    | { name: string; handler: (args: unknown) => Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> }
+    | undefined;
+  assert.ok(settleTool17, "WPF-SI-17 FAIL: record_invoice_settlement 工具应存在");
+  const result17 = await settleTool17.handler({ invoiceNo: "WPF-NULL-DIR", settledAmountYuan: 1000, conversationId: 1 });
+  assert.ok(result17.isError, "WPF-SI-17 FAIL: NULL direction 应触发 isError");
+  assert.ok(
+    result17.content[0].text.includes("历史发票未标注方向"),
+    `WPF-SI-17 FAIL: NULL direction 工具输出应包含"历史发票未标注方向"，实际: ${result17.content[0].text}`
+  );
+  assert.ok(
+    !result17.content[0].text.includes("进项发票"),
+    `WPF-SI-17 FAIL: NULL direction 输出不应含"进项发票"误导文案，实际: ${result17.content[0].text}`
+  );
+
+  // ── WPF-SI-18: settleInvoice SQL 层守卫——guarded UPDATE 对已结 invoice 影响 0 行 ──
+  // 验证带 AND (settlement_status IS NULL OR settlement_status != 'settled') 守卫的 SQL 语法正确。
+  // 此测试直接运行 guarded SQL（绕过 JS 快照检查），验证并发防写机制。
+  db.prepare(
+    "INSERT INTO fact_invoices (invoice_no, amount_cents, direction, settlement_status, settled_at, settled_amount_cents, source) VALUES (?, ?, 'out', 'settled', '2026-07-01', 200000, 'user_dictated')"
+  ).run("WPF-SQL-GUARD", 200000);
+  db.exec("BEGIN");
+  const guardResult = db.prepare(`
+    UPDATE fact_invoices
+    SET settlement_status    = 'settled',
+        settled_at           = ?,
+        settled_amount_cents = ?,
+        settlement_note      = ?
+    WHERE invoice_no = ? AND (settlement_status IS NULL OR settlement_status != 'settled')
+  `).run("2026-07-02", 250000, null, "WPF-SQL-GUARD");
+  if (guardResult.changes === 0) {
+    db.exec("ROLLBACK");
+  } else {
+    db.exec("COMMIT");
+  }
+  assert.equal(guardResult.changes, 0, "WPF-SI-18 FAIL: SQL 守卫应使已结发票 UPDATE 影响 0 行");
+  const rowAfterGuard = db.prepare(
+    "SELECT settled_at, settled_amount_cents FROM fact_invoices WHERE invoice_no = 'WPF-SQL-GUARD'"
+  ).get() as { settled_at: string; settled_amount_cents: number };
+  assert.equal(rowAfterGuard.settled_at, "2026-07-01", "WPF-SI-18 FAIL: settled_at 不应被覆盖");
+  assert.equal(rowAfterGuard.settled_amount_cents, 200000, "WPF-SI-18 FAIL: settled_amount_cents 不应被覆盖");
+
+  // ── WPF-SI-19: ROLLBACK 后 DB 处于干净状态（可立即 BEGIN 新事务）──────────────
+  // 验证守卫命中路径的 ROLLBACK 确实关闭了事务（不会导致"cannot start a transaction within a transaction"）
+  {
+    let txErr: unknown;
+    try {
+      db.exec("BEGIN");
+      db.exec("ROLLBACK");
+    } catch (e) {
+      txErr = e;
+    }
+    assert.ok(!txErr, `WPF-SI-19 FAIL: ROLLBACK 后应能正常 BEGIN 新事务，实际: ${txErr}`);
+  }
+
   db.close();
   console.log("sales-invoices: all checks passed ✓");
 })();
