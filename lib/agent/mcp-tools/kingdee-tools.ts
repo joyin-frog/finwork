@@ -39,7 +39,7 @@ const queryAccountsSchema = {
 
 const exportDraftEntrySchema = z.object({
   date: z.string().describe("凭证日期,yyyy-MM-dd"),
-  summary: z.string().describe("摘要"),
+  summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简").describe("摘要"),
   debitAccount: z.string().describe("借方科目编码"),
   debitAmount: z.number().positive().describe("借方金额"),
   creditAccount: z.string().describe("贷方科目编码"),
@@ -368,7 +368,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
     expenses: z
       .array(
         z.object({
-          summary: z.string(),
+          summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
           account: z.string(),
           accountName: z.string().optional(),
           dimensionValue: z.string().optional(),
@@ -391,7 +391,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
     };
   });
 
-  // ── 凭证 → 金蝶对照手填清单(行数据,列对齐录入界面);实际 xlsx 由 run_python 写 ──
+  // ── 凭证 → 金蝶对照手填清单(行数据,列对齐录入界面);仅用于预览，实际 xlsx 由 export_voucher_list 生成 ──
   const buildSheetSchema = {
     vouchers: z
       .array(
@@ -400,7 +400,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
           voucherWord: z.string().optional(),
           lines: z.array(
             z.object({
-              summary: z.string(),
+              summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
               account: z.string(),
               accountName: z.string().optional(),
               dimensionType: z.string().optional(),
@@ -429,7 +429,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
         z.object({
           file: z.string(),
           date: z.string().describe("凭证日期 yyyy-MM-dd"),
-          lineItems: z.array(z.object({ summary: z.string(), amountYuan: z.number() })).describe("费用明细行"),
+          lineItems: z.array(z.object({ summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"), amountYuan: z.number() })).describe("费用明细行"),
           totalYuan: z.number().optional().describe("合计(元)"),
           capitalText: z.string().optional().describe("大写金额文本"),
           advanceYuan: z.number().optional().describe("单据「原借款」栏金额,>0 走冲销"),
@@ -530,7 +530,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
           status: z.string().describe("auto / confirmed / needs_confirm"),
           lines: z.array(
             z.object({
-              summary: z.string(),
+              summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
               account: z.string(),
               accountName: z.string().optional(),
               dimensionType: z.string().optional(),
@@ -670,7 +670,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
   return [
     sdk.tool("query_kingdee_accounts", "查询金蝶科目表(贵司导入的真表;未导入则用示例表并提示),支持按公司名、科目编码、科目名称过滤。返回科目列表含编码、名称、类型、余额。", queryAccountsSchema, queryAccountsHandler),
     sdk.tool("process_voucher_batch", "【批量·首选】一次处理整批单据:传所有单据的字段(每张:日期/费用明细/金额/大写/原借款/部门),内部逐张做金额勾稽+科目映射+分录构造(含预借款冲销)+汇总+出对照清单,一次返回。用它避免逐张逐工具几十次往返导致超时。科目表工具内部自动读。", batchSchema, batchHandler),
-    sdk.tool("build_voucher_sheet", "把确认后的凭证整理成金蝶「对照手填清单」行数据(表头+行,列对齐录入界面:日期/凭证字/摘要/科目编码/科目全名/核算维度/借方/贷方,借贷分列)。拿到后用 run_python(openpyxl)写成 xlsx 交付。", buildSheetSchema, buildSheetHandler),
+    sdk.tool("build_voucher_sheet", "把确认后的凭证整理成金蝶「对照手填清单」行数据(表头+行,列对齐录入界面:日期/凭证字/摘要/科目编码/科目全名/核算维度/借方/贷方,借贷分列)。仅用于向用户预览凭证行数据；生成交付 xlsx 必须用 export_voucher_list。", buildSheetSchema, buildSheetHandler),
     sdk.tool("build_voucher_lines", "构造多行凭证分录:传费用明细(多借方)+付款科目,自动配平出贷方。单据「原借款」栏有金额时(advanceYuan>0)自动生成预借款冲销:贷其他应收款-个人往来(挂报销人)、差额进银行(应退借/应补贷)。返回多行借贷+是否平衡。", buildVoucherSchema, buildVoucherHandler),
     sdk.tool("check_voucher_amount", "金额勾稽校验:传明细行/合计/大写(元 + 大写文本),校验三者是否一致。一致→高置信度可自动用;不平→指出对不上处、列候选值,交人工。大写解析在工具内做,不要 LLM 心算。", checkAmountSchema, checkAmountHandler),
     sdk.tool("map_voucher_account", "科目映射:传摘要文本 + 从知识库查到的对照表条目,返回科目编码(经科目表验证存在才输出)、名称、维度类型。未命中/编码失效会明确告知,不编造科目码。", mapAccountSchema, mapAccountHandler),
