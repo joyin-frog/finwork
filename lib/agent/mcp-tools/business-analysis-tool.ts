@@ -5,6 +5,7 @@ import {
   type BudgetData,
 } from "@/lib/domain/business-analysis";
 import type { CanonicalBalanceSheet, CanonicalIncomeStatement } from "@/lib/domain/canonical-financials";
+import { getDb } from "@/lib/db/sqlite";
 import type { SdkLike } from "./sdk-types";
 
 type Sdk = SdkLike;
@@ -209,9 +210,42 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
         const title = "经营分析表 v2";
         const md = renderAnalysisMarkdownV2(report, title);
 
+        // WP4b: 在 handler 层用 getDb() 组装 provenance（buildBusinessAnalysisV2 是无 DB 纯函数，保持不动）
+        const caliberVersion = args.caliber ?? "未审计草稿";
+        const provenanceAsOf = args.asOf ?? report.asOf ?? new Date().toISOString().slice(0, 7);
+        // 查询 fact_metrics 数据范围（有就记录，无则 recordCount=0）
+        let metricsRecordCount = 0;
+        let metricsMonths: string | undefined;
+        try {
+          const db = getDb();
+          const metricsCount = db.prepare("SELECT COUNT(*) AS c FROM fact_metrics").get() as { c: number } | undefined;
+          metricsRecordCount = metricsCount?.c ?? 0;
+          if (metricsRecordCount > 0) {
+            const range = db.prepare("SELECT MIN(year*100+month) AS mn, MAX(year*100+month) AS mx FROM fact_metrics").get() as { mn: number; mx: number } | undefined;
+            if (range) {
+              const mn = String(range.mn);
+              const mx = String(range.mx);
+              metricsMonths = `${mn.slice(0, 4)}-${mn.slice(4)}/至/${mx.slice(0, 4)}-${mx.slice(4)}`;
+            }
+          }
+        } catch {
+          // fact_metrics 不可达时降级，不阻断
+        }
+        const provenance = {
+          sources: [{
+            table: "fact_metrics",
+            ...(metricsMonths ? { months: metricsMonths } : {}),
+            recordCount: metricsRecordCount,
+          }],
+          caliberVersion,
+          asOf: provenanceAsOf,
+        };
+        // content 尾部加溯源说明（中文）
+        const provenanceLine = `\n\n> 数据口径：${caliberVersion}；截至 ${provenanceAsOf}；事实库 fact_metrics 共 ${metricsRecordCount} 条记录。`;
+
         return {
-          content: [{ type: "text" as const, text: md }],
-          structuredContent: { report, title, version: "v2" },
+          content: [{ type: "text" as const, text: md + provenanceLine }],
+          structuredContent: { report, title, version: "v2", provenance },
         };
       } catch (error) {
         return {

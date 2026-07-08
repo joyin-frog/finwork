@@ -10,6 +10,7 @@ import { createKingdeeTools } from "./kingdee-tools";
 import { createFinanceTools } from "./finance-tools";
 import { createPayrollTools } from "../tools/finance/payroll";
 import { createReimbursementTools } from "../tools/finance/reimbursement";
+import { createSalesInvoiceTools } from "../tools/finance/sales-invoices";
 import { createReconciliationTools } from "../tools/finance/reconciliation";
 import { createRecordDocumentMetadataTool } from "./document-metadata";
 import { createUpdateCompanyProfileTool } from "./profile";
@@ -17,6 +18,7 @@ import { createFinalizeDeliverableTool } from "./finalize-deliverable";
 import { createEmitChecklistTool } from "./emit-checklist";
 import { createRunFilingPrecheckBatchTool } from "./filing-precheck-batch";
 import { createRunBankReconBatchTool } from "./bank-recon-batch";
+import { createUndoLastWriteTool } from "./undo-write";
 import type { SdkLike } from "./sdk-types";
 import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
 
@@ -39,6 +41,7 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createBusinessAnalysisTool(sdk),
       ...createPayrollTools(sdk, outputDir),
       ...createReimbursementTools(sdk),
+      ...createSalesInvoiceTools(sdk),
       ...createReconciliationTools(sdk),
       ...createFinanceTools(sdk, outputDir),
       createRecordDocumentMetadataTool(sdk),
@@ -52,6 +55,8 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createRunFilingPrecheckBatchTool(sdk, outputDir, traceId, conversationId, onSubagentEvent),
       // 功能4第二刀: 银行对账批跑（N 个账户并行派发）
       createRunBankReconBatchTool(sdk, outputDir, traceId, conversationId, onSubagentEvent),
+      // WP15: 撤销最近 agent 写操作（high 风险，confirm gate 拦截）
+      createUndoLastWriteTool(sdk),
     ],
   });
 }

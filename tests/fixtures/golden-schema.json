@@ -6,6 +6,7 @@
     "app_settings",
     "artifacts",
     "audit_logs",
+    "calc_receipts",
     "chat_agent_events",
     "chat_attachments",
     "chat_conversations",
@@ -17,6 +18,7 @@
     "fact_payroll",
     "feature_events",
     "knowledge_documents",
+    "knowledge_embeddings",
     "library_files",
     "model_routing_log",
     "policy_rule_sets",
@@ -29,8 +31,10 @@
     "idx_agent_traces_conv",
     "idx_artifacts_conversation_id",
     "idx_agent_traces_started",
+    "idx_calc_receipts_conversation_id",
     "idx_app_errors_fingerprint",
     "idx_app_errors_reported",
+    "idx_audit_logs_created_at",
     "idx_audit_logs_trace",
     "idx_audit_logs_type_created",
     "idx_chat_agent_events_message_id",
@@ -51,6 +55,7 @@
     "idx_fact_obligations_src_doc",
     "idx_fact_payroll_period",
     "idx_knowledge_documents_category",
+    "idx_knowledge_embeddings_doc",
     "idx_library_files_created",
     "idx_model_routing_log_conv",
     "idx_model_routing_log_trace",
@@ -67,6 +72,10 @@
       "table": "artifacts"
     },
     {
+      "name": "idx_calc_receipts_conversation_id",
+      "table": "calc_receipts"
+    },
+    {
       "name": "idx_agent_traces_conv",
       "table": "agent_traces"
     },
@@ -81,6 +90,10 @@
     {
       "name": "idx_app_errors_reported",
       "table": "app_errors"
+    },
+    {
+      "name": "idx_audit_logs_created_at",
+      "table": "audit_logs"
     },
     {
       "name": "idx_audit_logs_trace",
@@ -163,6 +176,10 @@
       "table": "knowledge_documents"
     },
     {
+      "name": "idx_knowledge_embeddings_doc",
+      "table": "knowledge_embeddings"
+    },
+    {
       "name": "idx_library_files_created",
       "table": "library_files"
     },
@@ -184,6 +201,14 @@
     }
   ],
   "columns": {
+    "calc_receipts": [
+      { "cid": 0, "name": "id",              "type": "INTEGER", "notnull": 0, "dflt_value": null,                "pk": 1 },
+      { "cid": 1, "name": "tool_name",       "type": "TEXT",    "notnull": 1, "dflt_value": null,                "pk": 0 },
+      { "cid": 2, "name": "conversation_id", "type": "INTEGER", "notnull": 0, "dflt_value": null,                "pk": 0 },
+      { "cid": 3, "name": "trace_id",        "type": "TEXT",    "notnull": 0, "dflt_value": null,                "pk": 0 },
+      { "cid": 4, "name": "receipt",         "type": "TEXT",    "notnull": 1, "dflt_value": null,                "pk": 0 },
+      { "cid": 5, "name": "created_at",      "type": "TEXT",    "notnull": 1, "dflt_value": "CURRENT_TIMESTAMP", "pk": 0 }
+    ],
     "artifacts": [
       { "cid": 0, "name": "id",              "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 1 },
       { "cid": 1, "name": "kind",            "type": "TEXT",    "notnull": 1, "dflt_value": "'checklist'",    "pk": 0 },
@@ -626,6 +651,38 @@
         "notnull": 0,
         "dflt_value": null,
         "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "conversation_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "tool_name",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "undo",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "undone_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
       }
     ],
     "chat_agent_events": [
@@ -941,7 +998,10 @@
       { "cid": 11, "name": "source", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
       { "cid": 12, "name": "provenance", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
       { "cid": 13, "name": "conversation_id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
-      { "cid": 14, "name": "recorded_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 }
+      { "cid": 14, "name": "recorded_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 },
+      { "cid": 15, "name": "settled_at", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 16, "name": "settled_amount_cents", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 17, "name": "settlement_note", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 }
     ],
     "fact_metrics": [
       { "cid": 0, "name": "id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 1 },
@@ -999,7 +1059,8 @@
       { "cid": 20, "name": "source", "type": "TEXT", "notnull": 1, "dflt_value": "'agent_derived'", "pk": 0 },
       { "cid": 21, "name": "detail_json", "type": "TEXT", "notnull": 1, "dflt_value": null, "pk": 0 },
       { "cid": 22, "name": "created_at", "type": "TEXT", "notnull": 1, "dflt_value": "datetime('now')", "pk": 0 },
-      { "cid": 23, "name": "confirmed_at", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 }
+      { "cid": 23, "name": "confirmed_at", "type": "TEXT", "notnull": 0, "dflt_value": null, "pk": 0 },
+      { "cid": 24, "name": "receipt_id", "type": "INTEGER", "notnull": 0, "dflt_value": null, "pk": 0 }
     ],
     "feature_events": [
       {
@@ -1164,6 +1225,15 @@
         "dflt_value": "'none'",
         "pk": 0
       }
+    ],
+    "knowledge_embeddings": [
+      { "cid": 0, "name": "id",          "type": "INTEGER", "notnull": 1, "dflt_value": null,              "pk": 1 },
+      { "cid": 1, "name": "document_id", "type": "INTEGER", "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 2, "name": "chunk_index", "type": "INTEGER", "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 3, "name": "text",        "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 4, "name": "embedding",   "type": "BLOB",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 5, "name": "model",       "type": "TEXT",    "notnull": 1, "dflt_value": null,              "pk": 0 },
+      { "cid": 6, "name": "created_at",  "type": "TEXT",    "notnull": 1, "dflt_value": "CURRENT_TIMESTAMP", "pk": 0 }
     ],
     "library_files": [
       {

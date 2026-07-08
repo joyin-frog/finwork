@@ -36,7 +36,12 @@ export const toolRegistryTestPromise = (async () => {
     "tax_calculator",
     "search_knowledge",
     "query_knowledge",
-    "read_file"
+    "read_file",
+    "undo_last_write",
+    // WP13b: 销项发票三工具
+    "record_sales_invoices",
+    "record_invoice_settlement",
+    "query_sales_invoices",
   ]) {
     assert.ok(serverToolNames.includes(shortName), `T2 FAIL: ${shortName} 未注册进 finance_worker MCP server`);
   }
@@ -76,19 +81,37 @@ export const toolRegistryTestPromise = (async () => {
     assert.ok(hasToolSummary(bare(t.name)), `T6 FAIL: finance tool ${t.name} 缺少 renderer summary`);
   }
 
-  // 已实现卡片的工具必须是已登记的 finance 工具
-  // (tool-cards.tsx 因 JSX/hugeicons 无法直接 import 进 Node 测试,故此处镜像 TOOLS_WITH_RESULT_CARD)
-  // WP14a: 新增 emit_checklist（kind 判别优先，与工具名无关，此处补全镜像）
-  // 同步对齐 diff_payroll_period（tool-cards.tsx 中已有，之前镜像漂移遗漏，顺带对齐）
-  const TOOLS_WITH_RESULT_CARD = [
+  // 已实现卡片的工具必须是已登记的 finance 工具。
+  // 历史：tool-cards.tsx 因 JSX/hugeicons 无法直接 import 进 Node，之前手写镜像数组导致
+  // diff_payroll_period 漂移。现改为 readFileSync 源码解析——TOOL_CARD_REGISTRY 是唯一事实源，
+  // 消除"两处手写清单"的漂移面。
+  const toolCardsSrc = await readFile("app/components/tool-cards.tsx", "utf-8");
+
+  // 先定位 TOOL_CARD_REGISTRY 块（从声明行到闭合的 `};`），再从块内抽取 key 列表。
+  // 这样不会错误捕获 KIND_CARD_REGISTRY 中的 kind 字符串（artifact_checklist 等）。
+  const registryBlockMatch = toolCardsSrc.match(
+    /const TOOL_CARD_REGISTRY[\s\S]*?=\s*\{([\s\S]*?)\n\};/
+  );
+  assert.ok(registryBlockMatch, "T6 FAIL: tool-cards.tsx 中未找到 TOOL_CARD_REGISTRY 块");
+  const registryBlock = registryBlockMatch![1];
+  const toolCardKeys = Array.from(
+    registryBlock.matchAll(/^\s{2}(\w+):\s*\(structured\)/gm),
+    (m) => m[1]
+  );
+  assert.ok(toolCardKeys.length >= 6, `T6 FAIL: TOOL_CARD_REGISTRY 应至少含 6 个条目，实际 ${toolCardKeys.length}`);
+
+  const EXPECTED_CARD_TOOLS = [
     "calculate_payroll_batch",
     "check_reimbursement_batch",
     "export_kingdee_draft",
     "validate_kingdee_voucher",
-    "diff_payroll_period",  // 漂移对齐：tool-cards.tsx 中已有，镜像之前漏列
-    "emit_checklist",       // WP14a 新增
+    "diff_payroll_period",
+    "emit_checklist",
   ] as const;
-  for (const name of TOOLS_WITH_RESULT_CARD) {
+  for (const name of EXPECTED_CARD_TOOLS) {
+    assert.ok(toolCardKeys.includes(name), `T6 FAIL: TOOL_CARD_REGISTRY 缺少条目 ${name}`);
+  }
+  for (const name of toolCardKeys) {
     assert.ok(
       TOOL_REGISTRY.some((d) => bare(d.name) === name && d.category === "finance"),
       `T6 FAIL: card tool ${name} must be a registered finance tool`

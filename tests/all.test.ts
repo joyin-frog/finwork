@@ -622,5 +622,16 @@ void (async () => {
 
   const { bankReconBatchTestPromise } = await import("./bank-recon-batch.test.ts");
   await bankReconBatchTestPromise;
+  const { semanticSearchTestPromise } = await import("./semantic-search.test.ts");
+  await semanticSearchTestPromise;
+
+  const { auditUndoTestPromise } = await import("./audit-undo.test.ts");
+  await auditUndoTestPromise;
+
+  const { salesInvoicesTestPromise } = await import("./sales-invoices.test.ts");
+  await salesInvoicesTestPromise;
+
+  const { receiptStoreTestPromise } = await import("./receipt-store.test.ts");
+  await receiptStoreTestPromise;
 
 })();

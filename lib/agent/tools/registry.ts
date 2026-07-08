@@ -50,6 +50,10 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__query_invoice_ledger",    category: "finance", riskLevel: "safe" },
   // 应收账龄只读清单（WP13a）
   { name: "mcp__finance_worker__query_receivables",       category: "finance", riskLevel: "safe" },
+  // 销项发票登记 + 发票级账龄 + 回款落盘（WP13b）
+  { name: "mcp__finance_worker__record_sales_invoices",   category: "finance", riskLevel: "medium" },
+  { name: "mcp__finance_worker__record_invoice_settlement", category: "finance", riskLevel: "medium" },
+  { name: "mcp__finance_worker__query_sales_invoices",    category: "finance", riskLevel: "safe" },
   // Kingdee MCP tools
   { name: "mcp__kingdee_worker__query_kingdee_accounts",    category: "finance", riskLevel: "safe" },
   { name: "mcp__kingdee_worker__export_kingdee_draft",      category: "finance", riskLevel: "high" },
@@ -74,6 +78,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__run_filing_precheck_batch", category: "finance", riskLevel: "safe" },
   // 功能4第二刀: 银行对账批跑（safe，fan-out 资金专员；不进任何角色白名单，子代理不可递归批跑）
   { name: "mcp__finance_worker__run_bank_recon_batch",      category: "finance", riskLevel: "safe" },
+  // WP15: 撤销最近 agent 写操作（high 风险，经 confirm gate 拦截；无角色白名单——主对话动作）
+  { name: "mcp__finance_worker__undo_last_write",           category: "finance", riskLevel: "high" },
 ];
 
 // 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。

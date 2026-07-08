@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Reset knowledge base: drop chunks, vec table, and storage dir.
- * Use after switching embedding model (dimension change).
+ * Reset knowledge base: clear embeddings, documents, and storage dir.
+ * Use after switching embedding model or full knowledge reset.
  * Usage: node scripts/knowledge-reset.mjs
  */
 
@@ -9,7 +9,6 @@ import { rmSync, existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import * as sqliteVec from "sqlite-vec";
 
 function getDefaultAppDataRoot() {
   if (process.platform === "win32") {
@@ -35,16 +34,14 @@ console.log("Knowledge dir:", knowledgeDir);
 if (!existsSync(dbPath)) {
   console.log("DB not found, nothing to drop.");
 } else {
-  const db = new DatabaseSync(dbPath, { allowExtension: true });
-  db.loadExtension(sqliteVec.getLoadablePath());
+  const db = new DatabaseSync(dbPath);
   const before = (db.prepare("SELECT COUNT(*) AS c FROM knowledge_documents").get()).c;
-  db.exec("DELETE FROM knowledge_chunks");
+  // 清 embeddings（WP12 新表，CASCADE 会跟随 knowledge_documents 删除，此处提前清以避免外键约束顺序问题）
+  db.exec("DELETE FROM knowledge_embeddings");
   db.exec("DELETE FROM knowledge_documents");
   // WP1b: 同步清 fact_obligations，防幽灵义务行（知识库文档已删，派生义务行需一并清除）
   db.exec("DELETE FROM fact_obligations");
-  db.exec("DROP TABLE IF EXISTS knowledge_vec");
-  db.exec("DELETE FROM app_settings WHERE key='knowledge_embed_dim'");
-  console.log(`Cleared ${before} documents + chunks + vec table.`);
+  console.log(`Cleared ${before} documents + embeddings.`);
   db.close();
 }
 

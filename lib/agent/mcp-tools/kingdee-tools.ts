@@ -6,6 +6,9 @@ import type { SdkLike } from "./sdk-types";
 import { wrapToolHandler } from "./sdk-types";
 import { withIdempotency } from "@/lib/agent/tools/idempotency";
 import { loadChartOfAccounts, saveChartOfAccounts, type KingdeeAccount } from "@/lib/db/finance-store";
+import { saveCalcReceiptSafe } from "@/lib/db/receipt-store";
+import { getDb } from "@/lib/db/sqlite";
+import { makeCalcReceipt } from "@/lib/domain/receipt";
 import { parseChineseAmount, reconcileAmount } from "@/lib/domain/voucher-reconcile";
 import { yuanToFen } from "@/lib/domain/money";
 import { resolveAccount } from "@/lib/domain/account-mapping";
@@ -278,9 +281,35 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
     try {
       const result = reconcileAmount(input);
       const note = capitalText && capitalFen == null ? "⚠ 大写金额未能可靠解析,已排除出勾稽,请人工核对大写。" : undefined;
+      // WP4b: ok=true 时产 receipt+落库（reviewer N3：不平衡 ok=false 不产 receipt）
+      let receiptId: number | undefined;
+      let voucherReceipt: ReturnType<typeof makeCalcReceipt> | undefined;
+      if (result.ok === true) {
+        const lineItems = lineItemsYuan ?? [];
+        const now = new Date();
+        const asOf = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        voucherReceipt = makeCalcReceipt({
+          value: result.valueFen, // 单位：分（lineItemsFen 已是分）
+          steps: lineItems.map((amt, i) => ({
+            label: `明细行${i + 1}`,
+            expr: `${amt} 元`,
+            inputs: { amountYuan: amt },
+            subtotal: yuanToFen(amt),
+          })),
+          source: [{ ref: "check_voucher_amount", recordCount: lineItems.length }],
+          basis: { caliberVersion: "voucher-check-v1", settlementStatus: "draft", asOf },
+          rounding: "half_up",
+        });
+        receiptId = saveCalcReceiptSafe(getDb(), { toolName: "check_voucher_amount", receipt: voucherReceipt }, "check_voucher_amount");
+      }
+      const structuredContent = {
+        ...result,
+        ...(voucherReceipt ? { receipt: voucherReceipt } : {}),
+        ...(receiptId !== undefined ? { receiptId } : {}),
+      };
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ ...result, ...(note ? { note } : {}) }, null, 2) }],
-        structuredContent: result,
+        structuredContent,
       };
     } catch (e) {
       return {
@@ -433,9 +462,37 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
       paymentAccount: paymentAccount ?? { code: "1002", name: "银行存款" },
       advanceAccount: advanceAccount ?? { code: "1221.03", name: "其他应收款-个人往来" },
     });
+    // WP4b: 构造批次 receipt（批次总金额/逐单据 steps），落库，structuredContent 增 receipt+receiptId 子字段
+    const now = new Date();
+    const asOf = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    // 批次总金额（分）= 所有单据 amount.valueFen 之和（只含勾稽结果有值的单据；mismatch 行无 valueFen，取 0）
+    function getValueFen(r: { ok: boolean; valueFen?: number }): number {
+      return "valueFen" in r && typeof r.valueFen === "number" ? r.valueFen : 0;
+    }
+    const totalFen = out.vouchers.reduce((sum, v) => sum + getValueFen(v.amount as { ok: boolean; valueFen?: number }), 0);
+    const batchReceipt = makeCalcReceipt({
+      value: totalFen,
+      steps: out.vouchers.map((v, i) => {
+        const fen = getValueFen(v.amount as { ok: boolean; valueFen?: number });
+        return {
+          label: `单据${i + 1}: ${v.file}`,
+          expr: `valueFen=${fen}`,
+          inputs: { file: v.file, date: v.date },
+          subtotal: fen,
+        };
+      }),
+      source: slips.map((s) => ({ file: s.file, ref: s.date })),
+      basis: { caliberVersion: "voucher-batch-v1", settlementStatus: "draft", asOf },
+      rounding: "half_up",
+    });
+    const batchReceiptId = saveCalcReceiptSafe(getDb(), { toolName: "process_voucher_batch", receipt: batchReceipt }, "process_voucher_batch");
     return {
       content: [{ type: "text" as const, text: JSON.stringify({ ...out, ...(isExample ? { notice: EXAMPLE_NOTICE } : {}) }, null, 2) }],
-      structuredContent: out,
+      structuredContent: {
+        ...out,
+        receipt: batchReceipt,
+        ...(batchReceiptId !== undefined ? { receiptId: batchReceiptId } : {}),
+      },
     };
   });
 

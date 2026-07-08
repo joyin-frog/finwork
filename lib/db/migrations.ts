@@ -706,13 +706,154 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
-  // ⚠ v11-v14 已被并行 worktree 占用（分支 claude/strange-mendel-cfd23e / PR #37：
-  //   v11 knowledge_embeddings / v12 audit_logs_semantics /
-  //   v13 fact_invoices_settlement_columns / v14 calc_receipts_and_payroll_receipt_id），
-  //   共享 dev 库（app-data finance-agent.db）已被其推到 user_version=14。
-  //   本条目曾两度撞号（11→13→15）：后续加迁移前必须核对
-  //   ①main 链尾 ②所有开放 worktree 的 migrations.ts 链尾 ③共享库 PRAGMA user_version，
-  //   取三者最高 +1，否则撞号迁移会被静默跳过。
+  {
+    version: 11,
+    name: "knowledge_embeddings",
+    up: (db) => {
+      // WP12: 语义检索——本地 embedding 落库
+      // 表名刻意避开 legacy knowledge_chunks（baseline DROP 已清，不复活）
+      // embedding BLOB 存 Float32 小端 512 维（2048 bytes/行）
+      // UNIQUE(document_id, chunk_index) 防重复切块；ON DELETE CASCADE 跟随文档删除
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS knowledge_embeddings (
+          id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+          document_id INTEGER NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+          chunk_index INTEGER NOT NULL,
+          text        TEXT    NOT NULL,
+          embedding   BLOB    NOT NULL,
+          model       TEXT    NOT NULL,
+          created_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(document_id, chunk_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_doc
+          ON knowledge_embeddings(document_id);
+      `);
+    },
+  },
+  {
+    version: 12,
+    name: "audit_logs_semantics",
+    up: (db) => {
+      // WP15: 给 audit_logs 补齐撤销语义列 + 归因列
+      // - conversation_id: 哪次对话触发（不加 FK——audit 须比会话长寿）
+      // - tool_name: 哪个 MCP 工具写的
+      // - undo: JSON 逆操作数组（仅两种原语 delete_rows / restore_rows）
+      // - undone_at: 撤销时间戳（非 null 表示已撤销）
+      // - idx_audit_logs_created_at: 列表查询按时间倒序
+      //
+      // 防御性：某些测试绕过 initializeSchema 直接设 user_version。
+      // 若 audit_logs 表不存在，先幂等建表（完整 baseline 形状）再加新列。
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_type TEXT    NOT NULL,
+          payload    TEXT    NOT NULL,
+          created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      // trace_id 是 baseline 里 addColumnIfMissing 加的；守卫性补全
+      addColumnIfMissing(db, "audit_logs", "trace_id", "TEXT");
+      addColumnIfMissing(db, "audit_logs", "conversation_id", "INTEGER NULL");
+      addColumnIfMissing(db, "audit_logs", "tool_name", "TEXT NULL");
+      addColumnIfMissing(db, "audit_logs", "undo", "TEXT NULL");
+      addColumnIfMissing(db, "audit_logs", "undone_at", "TEXT NULL");
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
+          ON audit_logs(created_at DESC)
+      `);
+    },
+  },
+  {
+    version: 13,
+    name: "fact_invoices_settlement_columns",
+    up: (db) => {
+      // WP13b: fact_invoices 补三列支持销项回款落盘
+      // - settled_at: 实收日期（YYYY-MM-DD），NULL 表示未回款
+      // - settled_amount_cents: 实收金额（分），v1 单次结清，可与发票额不同
+      // - settlement_note: 回款备注，自由文本
+      // 三列均 NULL 允许（addColumnIfMissing 幂等，兼容已存在列）
+      //
+      // 防御性：某些测试绕过 initializeSchema 直接设 user_version。
+      // 若 fact_invoices 表不存在，先幂等建表（完整 baseline 形状）再加新列。
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS fact_invoices (
+          invoice_no          TEXT PRIMARY KEY,
+          direction           TEXT,
+          amount_cents        INTEGER NOT NULL,
+          tax_rate            REAL,
+          tax_amount_cents    INTEGER,
+          certification_status TEXT,
+          counterparty        TEXT,
+          invoice_date        TEXT,
+          category            TEXT,
+          settlement_status   TEXT NOT NULL DEFAULT 'recorded',
+          caliber_version     TEXT NOT NULL DEFAULT 'v1',
+          source              TEXT NOT NULL,
+          provenance          TEXT,
+          conversation_id     INTEGER,
+          recorded_at         TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      addColumnIfMissing(db, "fact_invoices", "settled_at", "TEXT NULL");
+      addColumnIfMissing(db, "fact_invoices", "settled_amount_cents", "INTEGER NULL");
+      addColumnIfMissing(db, "fact_invoices", "settlement_note", "TEXT NULL");
+    },
+  },
+  {
+    version: 14,
+    name: "calc_receipts_and_payroll_receipt_id",
+    up: (db) => {
+      // WP4b: CalcReceipt 持久化
+      // calc_receipts: 独立表（无会话 FK——计算凭据须比会话长寿，同 audit_logs 设计）
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS calc_receipts (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          tool_name       TEXT    NOT NULL,
+          conversation_id INTEGER NULL,
+          trace_id        TEXT    NULL,
+          receipt         TEXT    NOT NULL,
+          created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_calc_receipts_conversation_id
+          ON calc_receipts(conversation_id);
+      `);
+      // fact_payroll 补 receipt_id（引用 calc_receipts，NULL 允许兼容历史行）
+      // 防御性：某些测试绕过 initializeSchema 直接设 user_version，fact_payroll 可能不存在
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS fact_payroll (
+          id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+          employee_name             TEXT NOT NULL,
+          year                      INTEGER NOT NULL,
+          month                     INTEGER NOT NULL,
+          gross_pay_cents           INTEGER NOT NULL,
+          social_insurance_cents    INTEGER NOT NULL,
+          housing_fund_cents        INTEGER NOT NULL,
+          special_deduction_cents   INTEGER NOT NULL,
+          months_employed           INTEGER NOT NULL,
+          gross_cum_cents           INTEGER NOT NULL,
+          social_cum_cents          INTEGER NOT NULL,
+          fund_cum_cents            INTEGER NOT NULL,
+          special_cum_cents         INTEGER NOT NULL,
+          taxable_income_cum_cents  INTEGER NOT NULL,
+          tax_due_cum_cents         INTEGER NOT NULL,
+          tax_current_cents         INTEGER NOT NULL,
+          tax_withheld_cum_cents    INTEGER NOT NULL,
+          net_pay_cents             INTEGER NOT NULL,
+          settlement_status         TEXT NOT NULL DEFAULT 'draft',
+          caliber_version           TEXT NOT NULL,
+          source                    TEXT NOT NULL DEFAULT 'agent_derived',
+          detail_json               TEXT NOT NULL,
+          created_at                TEXT NOT NULL DEFAULT (datetime('now')),
+          confirmed_at              TEXT,
+          UNIQUE(employee_name, year, month)
+        )
+      `);
+      addColumnIfMissing(db, "fact_payroll", "receipt_id", "INTEGER NULL");
+    },
+  },
+  // ⚠ 撞号史：本条目两度撞号（11→13→15，strange-mendel/PR #37 占用 11-14 且共享 dev 库
+  //   已被推到 14）。后续加迁移前必须核对 ①main 链尾 ②所有开放 worktree 的
+  //   migrations.ts 链尾 ③共享库 PRAGMA user_version，取三者最高 +1，否则被静默跳过。
   {
     version: 15,
     name: "task-dispatch-objectify",
@@ -721,19 +862,31 @@ export const MIGRATIONS: Migration[] = [
       // 幂等：addColumnIfMissing 用 IF NOT EXISTS 语义
       //
       // 表存在性守卫（与 v9 同模式）：
-      // 少数测试用 initializeSchema(v1 快照) + 手动 user_version=4 绕过 v4 DDL，
+      // 少数测试用 initializeSchema(v1 快照) + 手动 user_version 绕过 v4 DDL，
       // 导致 subagent_dispatches 实际未建——此时本迁移应静默跳过，
-      // 待完整迁移链（v4 建表 → v11 加列）在真实数据库上正确执行。
+      // 待完整迁移链（v4 建表 → v15 加列）在真实数据库上正确执行。
       const tableExists = db.prepare(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='subagent_dispatches'"
       ).get();
-      if (!tableExists) return;
+      if (tableExists) {
+        addColumnIfMissing(db, "subagent_dispatches", "task_template_id", "TEXT");
+        addColumnIfMissing(db, "subagent_dispatches", "business_object",  "TEXT");
+        addColumnIfMissing(db, "subagent_dispatches", "period",           "TEXT");
+        addColumnIfMissing(db, "subagent_dispatches", "review_status",    "TEXT");
+        addColumnIfMissing(db, "subagent_dispatches", "locked_at",        "TEXT");
+      }
 
-      addColumnIfMissing(db, "subagent_dispatches", "task_template_id", "TEXT");
-      addColumnIfMissing(db, "subagent_dispatches", "business_object",  "TEXT");
-      addColumnIfMissing(db, "subagent_dispatches", "period",           "TEXT");
-      addColumnIfMissing(db, "subagent_dispatches", "review_status",    "TEXT");
-      addColumnIfMissing(db, "subagent_dispatches", "locked_at",        "TEXT");
+      // 撞号愈合：本条目曾以 v13 之名把共享 dev 库推到 13，导致 PR #37 真正的
+      // v13（fact_invoices 回款三列）在该库上被静默跳过。此处幂等补齐——
+      // 全新库经 v13 已建三列，addColumnIfMissing 为 no-op；被撞库在此愈合。
+      const invoicesExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='fact_invoices'"
+      ).get();
+      if (invoicesExists) {
+        addColumnIfMissing(db, "fact_invoices", "settled_at", "TEXT NULL");
+        addColumnIfMissing(db, "fact_invoices", "settled_amount_cents", "INTEGER NULL");
+        addColumnIfMissing(db, "fact_invoices", "settlement_note", "TEXT NULL");
+      }
     },
   },
 ];

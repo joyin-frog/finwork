@@ -101,6 +101,20 @@ const summaries: Record<string, SummaryFn> = {
     const settled = (i as Record<string, unknown>)?.includeSettled === true ? "（含已收）" : "";
     return `查询应收账款清单${settled}`;
   },
+  // WP13b: 销项发票登记 + 回款落盘 + 发票级账龄（T6）
+  record_sales_invoices: (i) => {
+    const count = arrayLen(i, "items");
+    return `登记销项发票${count ? `（${count} 张）` : ""}进台账`;
+  },
+  record_invoice_settlement: (i) => {
+    const no = (i as Record<string, unknown>)?.invoiceNo;
+    const amt = num(i, "settledAmountYuan");
+    return no ? `登记发票 ${no} 回款${amt != null ? `（实收 ${amt} 元）` : ""}` : "登记发票回款";
+  },
+  query_sales_invoices: (i) => {
+    const settled = (i as Record<string, unknown>)?.includeSettled === true ? "（含已回款）" : "";
+    return `查询销项发票账龄清单${settled}`;
+  },
   tax_calculator: (i) => {
     const kind = str(i, "type") === "cit" ? "企业所得税" : "增值税";
     const amount = num(i, "amount");
@@ -141,6 +155,12 @@ const summaries: Record<string, SummaryFn> = {
       ? (i as Record<string, unknown>).statement_files as unknown[]
       : [];
     return `银行对账批跑 ${files.length} 个账户`;
+  },
+
+  // ─── WP15: 撤销最近 agent 写操作 ───
+  undo_last_write: (i) => {
+    const auditId = (i as Record<string, unknown>)?.auditId;
+    return auditId != null ? `撤销写操作(auditId=${auditId})` : "查询最近可撤销写操作";
   },
 
   // ─── 收尾:声明最终产物 ───
