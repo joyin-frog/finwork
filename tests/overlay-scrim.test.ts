@@ -15,7 +15,6 @@ export const overlayScrimTestPromise = (async () => {
   const modalFiles = [
     "components/ui/dialog.tsx",
     "components/ui/sheet.tsx",
-    "app/config/skill-center.tsx",
     "app/shared/global-search-dialog.tsx",
     "app/shared/global-shortcuts.tsx",
   ];
