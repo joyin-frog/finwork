@@ -10,7 +10,6 @@ import { SPRING_DEFAULT } from "@/app/shared/motion-presets";
 import type { AskUserQuestionPayload } from "@/app/chat/chat-types";
 import { cn } from "@/lib/utils";
 import { surfaceVariants } from "@/components/ui/surface";
-import { extractAnswerSnippet } from "@/app/chat/answer-snippet";
 
 const FALLBACK_OPTIONS: Array<{ label: string; description?: string }> = [{ label: "确认" }, { label: "取消" }];
 
@@ -149,20 +148,26 @@ export function AskAnsweredSummary({ header, answer }: { header?: string; answer
   }
 
   const multi = parseMultiAnswer(answer!);
-  // 多问:折叠成一行「已确认 N 项」+ 答案摘要灰字,点开看逐条 —— 不再把 JSON 平铺成一坨。
+  // 多问:折叠成一行「用户已确认 N 个问题」,点开在框内逐条 问→答 —— 不再把 JSON 平铺成一坨。
   if (multi && multi.length > 1) {
-    const snippet = extractAnswerSnippet(answer!);
     return (
-      <details className="py-0.5 text-body min-w-0">
-        <summary className="flex items-center gap-1.5 cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors min-w-0">
-          <span className="shrink-0">{header ? `${header}：已确认 ${multi.length} 项` : `已确认 ${multi.length} 项`}</span>
-          {snippet ? (
-            <span className="truncate text-muted-foreground/60 min-w-0">{snippet}</span>
-          ) : null}
-          <HugeiconsIcon icon={ChevronRightIcon} size={12} className="details-chevron transition-transform shrink-0 text-muted-foreground/60" aria-hidden="true" />
+      <details className="text-body min-w-0">
+        {/* 与工具步骤组的折叠头同款:无前导图标 + group flex + py-1 + gap-2,chevron 默认隐藏 hover 显现 */}
+        <summary className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
+          <span className="min-w-0 truncate">用户已确认 {multi.length} 个问题</span>
+          <HugeiconsIcon icon={ChevronRightIcon} size={14} className="details-chevron shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity" aria-hidden="true" />
         </summary>
-        <div className="mt-1 flex flex-col gap-1 pl-1">
-          {multi.map(([q, a], i) => <AnswerPair key={i} question={q} answer={a} />)}
+        <div className="mt-1.5 flex flex-col gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+          {multi.map(([q, a], i) => (
+            <div key={i} className="flex flex-col gap-1 min-w-0">
+              <p className="text-body font-normal leading-relaxed text-muted-foreground">
+                <span className="text-muted-foreground/60">问：</span>{q}
+              </p>
+              <p className="text-body font-medium leading-relaxed text-foreground">
+                <span className="font-normal text-muted-foreground/60">答：</span>{stripRecommended(a)}
+              </p>
+            </div>
+          ))}
         </div>
       </details>
     );
