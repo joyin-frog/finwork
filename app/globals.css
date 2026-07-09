@@ -509,34 +509,25 @@ html button.composer-send-button.stop {
 /* 紧急待办红点扩散脉冲 */
 .fa-dot-pulse { animation: fa-dot-pulse 2s ease-in-out infinite; }
 
-/* 过程区子命令连接线(YouTube 评论式弯钩):
-   每个子项 ::after 画一个「竖线+圆角弯钩」拐进行首,::before 画贯穿竖轨保证连续;
-   末项去掉贯穿轨,以弯钩自然收尾。颜色走 --border token,暗色自动跟随。
-   高度按单行步骤行(text-body 1.6 行高 + py-1)对齐行首文字中线。 */
-.fa-thread { padding-left: 16px; margin-left: 4px; }
-.fa-thread > * { position: relative; }
-.fa-thread > *::before {
+/* 过程区子步骤时间线:节点(行首图标/圆点 .fa-node)串在竖线上,线挂在节点上,
+   图标上下各一节(一节线 + 图标 + 一节线);不缩进,展开的明细区不带线
+   (线只挂 .fa-node,明细区没有 .fa-node)。首节点去上线、末节点去下线,不悬空。
+   首/末抑制用全 child 组合器,避免命中嵌套子线程的节点。颜色走 --border token。 */
+.fa-thread .fa-node { position: relative; }
+.fa-thread .fa-node::before,
+.fa-thread .fa-node::after {
   content: "";
   position: absolute;
-  left: -12px;
-  top: -4px;
-  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 8px;
   border-left: 1px solid var(--border);
   pointer-events: none;
 }
-.fa-thread > *:last-child::before { content: none; }
-.fa-thread > *::after {
-  content: "";
-  position: absolute;
-  left: -12px;
-  top: -4px;
-  width: 9px;
-  height: 19px;
-  border-left: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  border-bottom-left-radius: 9px;
-  pointer-events: none;
-}
+.fa-thread .fa-node::before { bottom: 100%; }
+.fa-thread .fa-node::after { top: 100%; }
+.fa-thread > *:first-child > button > .fa-node::before { content: none; }
+.fa-thread > *:last-child > button > .fa-node::after { content: none; }
 
 @keyframes fa-think-breathe { 0%, 100% { transform: scale(0.6); opacity: 0; } 50% { transform: scale(1); opacity: 0.22; } }
 @keyframes fa-dot-pulse { 0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--tone-alarm) l c h / 35%); } 55% { box-shadow: 0 0 0 5px oklch(from var(--tone-alarm) l c h / 0%); } }
