@@ -54,7 +54,7 @@ export default function CockpitPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0">
+      <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
         <DragHandle />
         <SidebarToggle />
         <h1 className="text-title">总览</h1>
@@ -67,7 +67,7 @@ export default function CockpitPage() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto p-6 flex flex-col gap-6">
+      <div className="content-fade-top flex-1 overflow-auto p-page flex flex-col gap-section">
         {error ? (
           <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
             <p>{error}</p>
@@ -78,10 +78,10 @@ export default function CockpitPage() {
             <RoleActivityTicker calendar={calendar} />
             <AttentionSection items={summary?.attention ?? []} calendar={calendar} />
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-card">
               {/* 左列：经营数据在上，合同收付在下（v1.1 评审决定） */}
-              <div className="lg:col-span-2 flex flex-col gap-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="lg:col-span-2 flex flex-col gap-card">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-card">
                   <BusinessMetricsCard business={summary?.business ?? null} />
                   <RecentWorkCard items={summary?.recentWork ?? []} />
                 </div>
@@ -89,7 +89,7 @@ export default function CockpitPage() {
               </div>
 
               {/* 右列：智能体摘要卡（有记录）或生长引导卡（冷启动），日历在下 */}
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-card">
                 {(summary?.team ?? []).length > 0 ? (
                   <TeamPanel team={summary!.team} />
                 ) : (

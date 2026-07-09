@@ -9,6 +9,8 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { BubbleChatAddIcon } from "@hugeicons/core-free-icons";
 import type { TeamRoleItem } from "./types";
 import { Surface } from "@/components/ui/surface";
 import { ROLE_UI } from "@/lib/domain/role-ui";
@@ -190,12 +192,13 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
                 {/* 行尾「派活」次动作 → 预填派活入口并聚焦 */}
                 <button
                   type="button"
-                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                  className="shrink-0 text-meta text-muted-foreground hover:text-foreground px-2 py-0.5 rounded hover:bg-muted transition-colors"
-                  onClick={handleDispatch}
+                  title="派活"
                   aria-label={`让${item.name}派活`}
+                  // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+                  className="shrink-0 inline-grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  onClick={handleDispatch}
                 >
-                  派活
+                  <HugeiconsIcon icon={BubbleChatAddIcon} size={14} />
                 </button>
               </div>
 

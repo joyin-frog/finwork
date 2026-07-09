@@ -16,7 +16,7 @@ export const CONFIG_TABS = [
   { key: "appearance", label: "外观", icon: PaintBoardIcon },
   { key: "personalization", label: "个性化", icon: BrainIcon },
   { key: "model", label: "模型", icon: BotIcon },
-  { key: "shortcuts", label: "键盘快捷键", icon: KeyboardIcon },
+  { key: "shortcuts", label: "快捷键", icon: KeyboardIcon },
   { key: "about", label: "关于", icon: InformationCircleIcon },
 ] as const;
 

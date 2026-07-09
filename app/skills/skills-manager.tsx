@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -13,6 +13,10 @@ import { IconButton, api, SKILL_NAME_RE } from "@/app/skills/skills-shared";
 import type { SkillSummary } from "@/app/skills/skills-shared";
 import { SkillCard } from "@/app/skills/skill-card";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
+import { PageSearchBar } from "@/app/shared/page-search-dialog";
+import { DragHandle } from "@/app/shared/window-controls";
+import { SidebarToggle } from "@/app/shared/sidebar-toggle";
+import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { cn } from "@/lib/utils";
 
 type Category = "all" | "finance" | "file-tool" | "user";
@@ -21,14 +25,11 @@ export function SkillsManager() {
   const router = useRouter();
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [category, setCategory] = useState<Category>("all");
   const [creating, setCreating] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useShortcutEvent("search-skills", () => {
-    searchInputRef.current?.focus();
-    searchInputRef.current?.select();
-  });
+  useShortcutEvent("search-skills", () => setSearchOpen(true));
 
   const loadSkills = useCallback(async () => {
     const r = await api<SkillSummary[]>("/api/skills");
@@ -51,33 +52,30 @@ export function SkillsManager() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <div className="flex items-center gap-2 px-4 h-12 shrink-0 border-b border-border">
+      <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
+        <DragHandle />
+        <SidebarToggle />
         <h1 className="text-title font-semibold">技能</h1>
-        <div className="flex-1" />
-        {/* 常驻搜索框:无边框,图标+placeholder */}
-        <div className="relative">
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-          />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索技能..."
-            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            className="w-44 h-8 pl-7 pr-3 text-body rounded-md placeholder:text-muted-foreground focus:outline-none"
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <ShortcutHint label="搜索" combo="mod+f">
+            <button
+              type="button"
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+              className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", query && "bg-accent text-foreground")}
+              onClick={() => setSearchOpen(true)}
+              aria-label="搜索技能"
+            >
+              <HugeiconsIcon icon={Search01Icon} size={16} />
+            </button>
+          </ShortcutHint>
+          <IconButton
+            icon={Add01Icon}
+            label="新建技能"
+            onClick={() => setCreating(true)}
+            active={creating}
           />
         </div>
-        <IconButton
-          icon={Add01Icon}
-          label="新建技能"
-          onClick={() => setCreating(true)}
-          active={creating}
-        />
-      </div>
+      </header>
 
       {creating ? (
         <NewSkillForm
@@ -90,6 +88,14 @@ export function SkillsManager() {
         />
       ) : (
         <>
+          <PageSearchBar
+            open={searchOpen}
+            onOpenChange={(open) => { setSearchOpen(open); if (!open) setQuery(""); }}
+            value={query}
+            onValueChange={setQuery}
+            placeholder="搜索技能"
+            label="技能"
+          />
           {/* 筛选 chip 行 */}
           <div className="flex items-center gap-1 px-4 pt-3 pb-2 shrink-0">
             {chips.map((c) => (

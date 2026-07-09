@@ -39,7 +39,7 @@ export const settingsSkillsRedesignTestPromise = (async () => {
     profile: "personalization",
     usage: "model",
   }, "旧 tab key 应完整映射");
-  assert.ok(read("app/config/skill-center.tsx").includes('placeholder="搜索设置..."'), "设置侧栏应保留搜索框");
+  assert.ok(read("app/config/skill-center.tsx").includes('placeholder="搜索设置"'), "设置侧栏应保留搜索框");
 
   console.log("settings-skills-redesign checks passed ✓");
 })();

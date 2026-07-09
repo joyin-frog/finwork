@@ -175,7 +175,7 @@ export default function AgentsPage() {
         list={
           <>
             {/* Topbar —— 只跨列表列，不横跨预览：预览卡浮在右侧、脱离标题栏（对齐 files/knowledge） */}
-            <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0">
+            <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
               <DragHandle />
               <SidebarToggle />
               {/* 分段切换：团队 ｜ 本月任务（state 版，不改 URL） */}
@@ -218,7 +218,7 @@ export default function AgentsPage() {
               )}
             </header>
 
-            <div className="flex-1 overflow-auto p-6 flex flex-col gap-5">
+            <div className="content-fade-top flex-1 overflow-auto p-page flex flex-col gap-5">
             {error ? (
               <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
                 <p>{error}</p>

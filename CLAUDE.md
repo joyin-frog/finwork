@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 ## UIUX前端设计
-参考 app/globals.css，最好围绕token设计
+参考 app/globals.css，最好围绕token设计。间距节奏、交互态、界面文案约定见 `docs/ui-conventions.md`。
 
 ## Agent skills
 

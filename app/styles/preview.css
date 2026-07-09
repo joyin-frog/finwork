@@ -117,7 +117,7 @@
 }
 
 .attach-card-name {
-  font-size: var(--font-caption);
+  font-size: var(--text-caption);
   line-height: 1.35;
   color: var(--text);
   display: -webkit-box;
@@ -426,7 +426,7 @@
 .preview-page-shell.is-docked {
   height: calc(100% - 8px);
   margin: 4px;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border);
   box-shadow: var(--elevation-1);
   overflow: hidden;          /* 裁住四角圆角 */
@@ -441,7 +441,7 @@
    视觉与 .is-docked 一致;作为 row 的 flex 子项,高度靠 stretch + 上下 margin 自适应,不写 height。 */
 .preview-card-frame {
   margin: 4px;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border);
   box-shadow: var(--elevation-1);
   overflow: hidden;
@@ -595,14 +595,14 @@
 }
 
 .preview-status.error {
-  color: #f2a4a4;
+  color: oklch(from var(--tone-alarm) calc(l + 0.2) c h);
 }
 
 .preview-status.warning {
   min-height: 0;
   display: block;
   margin-bottom: 14px;
-  color: #f1d18a;
+  color: oklch(from var(--tone-notice) calc(l + 0.2) c h);
   text-align: left;
 }
 
@@ -981,6 +981,28 @@
   box-shadow: inset 0 0 0 2px var(--preview-accent, var(--primary));
   position: relative;
   z-index: 1;
+}
+
+/* 整列 / 整行 / 全表选中态 (Office 式)
+   is-range-sel = 数据格浅色 wash（列选、行选、全表三种来源共用同一 class）
+   is-header-sel = 列头 / 行号 / 角格更深 wash + 强调色字
+   与 focusCell 单格 is-selected 互斥：点列头/行号/角格时清 focusCell，点数据格时清选区。
+   不做多选/框选。 */
+.preview-excel-cell.is-range-sel {
+  background: color-mix(in srgb, var(--preview-accent, var(--primary)) 8%, var(--doc-paper-bg));
+}
+
+/* 单格 is-selected 与选区 is-range-sel 同时命中时保持描边，底色略深提示「选区内当前格」 */
+.preview-excel-cell.is-selected.is-range-sel {
+  background: color-mix(in srgb, var(--preview-accent, var(--primary)) 12%, var(--doc-paper-bg));
+}
+
+.preview-excel-column-header.is-header-sel,
+.preview-excel-row-header.is-header-sel,
+.preview-excel-corner.is-header-sel {
+  background: color-mix(in srgb, var(--preview-accent, var(--primary)) 22%, var(--doc-grid-bg));
+  color: var(--preview-accent, var(--primary));
+  font-weight: 700;
 }
 
 .preview-excel-cell span {

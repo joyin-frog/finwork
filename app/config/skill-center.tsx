@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { PageSearchBar } from "@/app/shared/page-search-dialog";
+import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import type { PublicClaudeSettings } from "@/lib/settings/claude-settings";
 import { CONFIG_TABS, type ConfigTabKey } from "@/app/config/tabs";
-import { Surface } from "@/components/ui/surface";
 import { GeneralSettings } from "./general/general-settings";
 import { AppearanceSettings } from "./appearance/appearance-settings";
 import { PersonalizationSettings } from "./personalization/personalization-settings";
@@ -18,7 +18,6 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
 import { useUserIdentity } from "@/app/shared/user-identity";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 type SettingsTab = ConfigTabKey;
@@ -44,13 +43,9 @@ export default function SkillCenter({
   const [activeTab, setActiveTab] = useState<SettingsTab>(isSettingsTab(initialTab) ? initialTab : "general");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const identity = useUserIdentity();
-  const router = useRouter();
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  useShortcutEvent("search-settings", () => {
-    searchInputRef.current?.focus();
-    searchInputRef.current?.select();
-  });
+  useShortcutEvent("search-settings", () => setSearchOpen(true));
 
   const saveClaudeRef = useRef(saveClaudeSettings);
   saveClaudeRef.current = saveClaudeSettings;
@@ -96,40 +91,37 @@ export default function SkillCenter({
   const filteredTabs = CONFIG_TABS.filter((t) => t.label.includes(query.trim()));
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim-modal p-4"
-      onClick={() => router.push("/cockpit")}
-    >
-      <Surface
-        level="overlay"
-        edge="none"
-        shape="panel"
-        className="relative flex w-full max-w-3xl h-[82vh] max-h-[700px] ring-1 ring-foreground/10 overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* 页头:复用全站 header 模式(h-11 + app-page-header 统一底线),含拖拽区与侧栏收起按钮 */}
+      <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
+        <DragHandle />
+        <SidebarToggle />
+        <h1 className="text-title font-semibold">设置</h1>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <ShortcutHint label="搜索" combo="mod+f">
+            <button
+              type="button"
+              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+              className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", query && "bg-accent text-foreground")}
+              onClick={() => setSearchOpen(true)}
+              aria-label="搜索设置"
+            >
+              <HugeiconsIcon icon={Search01Icon} size={16} />
+            </button>
+          </ShortcutHint>
+        </div>
+      </header>
+      <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar: shares the outer box with content, just a vertical divider — no gap, no separate corners */}
         <aside className="w-52 shrink-0 flex flex-col border-r border-border overflow-hidden">
-          {/* Search box — left-flush with the tab list's own left padding below; drag/toggle sit after it so they don't push the search icon/text off-center */}
-          <div className="flex items-center gap-1 px-3 pt-3 pb-2 border-b border-border">
-            <DragHandle />
-            <div className="relative flex-1">
-              <HugeiconsIcon
-                icon={Search01Icon}
-                size={14}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-              />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索设置..."
-                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                className="w-full h-8 pl-7 pr-3 text-body rounded-md placeholder:text-muted-foreground focus:outline-none"
-              />
-            </div>
-            <SidebarToggle />
-          </div>
+          <PageSearchBar
+            open={searchOpen}
+            onOpenChange={(open) => { setSearchOpen(open); if (!open) setQuery(""); }}
+            value={query}
+            onValueChange={setQuery}
+            placeholder="搜索设置"
+            label="设置"
+          />
           {/* Tab list */}
           <nav className="flex flex-col gap-0.5 px-2 py-2 flex-1 overflow-y-auto">
             {filteredTabs.length === 0 ? (
@@ -157,16 +149,8 @@ export default function SkillCenter({
           </nav>
         </aside>
 
-        {/* Right content: the close button only occupies this panel's space, not the sidebar's */}
+        {/* Right content */}
         <div className="relative flex-1 flex flex-col overflow-hidden">
-          <Link
-            href="/cockpit"
-            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            className="absolute right-3 top-3 z-10 p-1.5 rounded-md hover:bg-accent text-muted-foreground transition-colors"
-            aria-label="关闭设置"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={16} />
-          </Link>
           <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
             <h2 className="text-title font-semibold">{activeTabMeta.label}</h2>
             <SaveStatusText status={saveStatus} />
@@ -212,7 +196,7 @@ export default function SkillCenter({
             {activeTab === "about" && <AboutSettings />}
           </div>
         </div>
-      </Surface>
+      </div>
     </div>
   );
 }
