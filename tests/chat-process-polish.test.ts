@@ -265,16 +265,16 @@ export const chatProcessPolishTestPromise = (async () => {
   {
     const askCardSrc = src("app/components/ask-user-card.tsx");
 
-    // 9-C1: extractAnswerSnippet 被引用
+    // 9-C1: 多问确认块折叠头与工具组同款——group-hover 显隐的 chevron(无前导图标)
     assert.ok(
-      askCardSrc.includes("extractAnswerSnippet"),
-      "C9-1 FAIL: ask-user-card.tsx 应引用 extractAnswerSnippet"
+      askCardSrc.includes("group-hover:opacity-100") && askCardSrc.includes("details-chevron"),
+      "C9-1 FAIL: ask-user-card.tsx 多问确认块折叠头应与工具组同款(chevron 默认隐藏 hover 显现)"
     );
 
-    // 9-C2: 「已确认 N 项」标题后有 snippet 渲染
+    // 9-C2: 标题为「用户已确认 N 个问题」,展开框内逐条 问:/答:
     assert.ok(
-      askCardSrc.includes("已确认") && askCardSrc.includes("snippet"),
-      "C9-2 FAIL: ask-user-card.tsx 「已确认 N 项」标题后应有 snippet 渲染"
+      askCardSrc.includes("用户已确认") && askCardSrc.includes("问：") && askCardSrc.includes("答："),
+      "C9-2 FAIL: ask-user-card.tsx 多问确认块应为「用户已确认 N 个问题」+ 问:/答: 逐条"
     );
 
     console.log("chat-process-polish C9: ask-user-card 答案摘要源码契约 ✓");

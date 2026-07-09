@@ -95,10 +95,21 @@ const TOOL_FAMILY: Record<string, keyof typeof STEP_ICON_BY_FAMILY> = {
   check_voucher_amount: "finance",
 };
 
-function stepIcon(name: string): IconSvgElement {
+// 有家族图标返回之,无则返回 null(是否补节点由 StepIcon 按 threaded 决定)。
+function stepIcon(name: string): IconSvgElement | null {
   const bare = name.replace(/^mcp__\w+__/, "");
   const family = TOOL_FAMILY[bare];
-  return family ? STEP_ICON_BY_FAMILY[family] : File01Icon;
+  return family ? STEP_ICON_BY_FAMILY[family] : null;
+}
+
+/** 行首节点:有家族图标就渲染淡色小图标。无图标时——
+ *  子步骤(threaded)串在连接线上,补一个大实心圆点作节点;
+ *  非子步骤(顶层行,无连接线)保持原样,回落文档图标,不加圆点。 */
+function StepIcon({ name, className, threaded = false }: { name: string; className?: string; threaded?: boolean }) {
+  const icon = stepIcon(name);
+  if (icon) return <HugeiconsIcon icon={icon} size={13} className={className} />;
+  if (threaded) return <span className="block h-2 w-2 rounded-full bg-foreground" aria-hidden="true" />;
+  return <HugeiconsIcon icon={File01Icon} size={13} className={className} />;
 }
 
 // 把路径/文件名这类技术 token 嵌成等宽小芯片(参考 Claude Code 的行内 code 风格),人话里更分得清。
@@ -251,7 +262,7 @@ function ExpandedDetail({
   );
 }
 
-function ToolCallStep({ pair, degraded = false }: { pair: ToolPair; degraded?: boolean }) {
+function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: ToolPair; degraded?: boolean; threaded?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   // 日常:每步只一行人话、不可展开;技术模式:可点开看原始输入/输出(调试用)。
   const roleMode = useRoleMode();
@@ -277,12 +288,12 @@ function ToolCallStep({ pair, degraded = false }: { pair: ToolPair; degraded?: b
         {/* 每行一个类型图标是视觉噪音(Claude 过程行几乎无图标):仅运行中保留星芒,静止行无图标 */}
         {/* 运行中→星芒;否则→淡色家族图标(与竖线对齐,给过程行结构感) */}
         <span
-          className="inline-flex shrink-0 w-4 h-4 items-center justify-center"
+          className="fa-node inline-flex shrink-0 w-4 h-4 items-center justify-center"
           style={{ color: isError && !isDegraded ? "var(--tone-alarm)" : "var(--muted-foreground)" }}
         >
           {running
             ? <ThinkingSpark size={13} speed="1.0s" />
-            : <HugeiconsIcon icon={stepIcon(pair.name)} size={13} className="opacity-70" />}
+            : <StepIcon name={pair.name} className="opacity-70" threaded={threaded} />}
         </span>
         <span
           className={cn(
@@ -343,8 +354,10 @@ function ToolCallStep({ pair, degraded = false }: { pair: ToolPair; degraded?: b
  *  展开显示组内逐步明细（复用 ToolCallStep）。*/
 function RetryGroupRow({
   group,
+  threaded = false,
 }: {
   group: Extract<AggregatedStep, { kind: "retry-group" }>;
+  threaded?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { label, count, recovered, items } = group;
@@ -362,10 +375,10 @@ function RetryGroupRow({
         onClick={() => setExpanded((v) => !v)}
       >
         <span
-          className="inline-flex shrink-0 w-4 h-4 items-center justify-center"
+          className="fa-node inline-flex shrink-0 w-4 h-4 items-center justify-center"
           style={{ color: recovered ? "var(--muted-foreground)" : "var(--tone-alarm)" }}
         >
-          <HugeiconsIcon icon={stepIcon(group.toolName)} size={13} className="opacity-70" />
+          <StepIcon name={group.toolName} className="opacity-70" threaded={threaded} />
         </span>
         <span
           className={cn(
@@ -404,10 +417,10 @@ function RetryGroupRow({
             style={{ overflow: "hidden" }}
             className="py-0.5"
           >
-            {/* fa-thread 必须挂在逐行的直接父级(伪元素按直接子项画弯钩) */}
+            {/* fa-thread 必须挂在逐行的直接父级(节点线按 .fa-node 画);嵌套子步骤恒为 threaded */}
             <div className="fa-thread flex flex-col gap-0.5">
               {subPairs.map((p) => (
-                <ToolCallStep key={p.id} pair={p} degraded={recovered} />
+                <ToolCallStep key={p.id} pair={p} degraded={recovered} threaded />
               ))}
             </div>
           </motion.div>
@@ -529,15 +542,18 @@ export function ToolStepList({
   // spec 4: 将 aggregated 结果转为子步骤渲染
   const pairs = buildPairs(toolItems, !isActive);
 
+  // threaded = 折叠成 fa-thread 时间线的分支(见下)。仅该分支的行首无图标才补大圆点节点;
+  //           顶层实时行(非 fa-thread)保持原样,无图标回落文档图标、不加圆点。
+  const threaded = !isActive && aggregated.length >= 2;
   const rows = aggregated.map((agg, idx) => {
     if (agg.kind === "retry-group") {
-      return <RetryGroupRow key={`group-${idx}`} group={agg} />;
+      return <RetryGroupRow key={`group-${idx}`} group={agg} threaded={threaded} />;
     }
     // kind:"step"
     // 从 pairs 找对应的 ToolPair（按 item.id 匹配）
     const pair = pairs.find((p) => p.id === agg.item.id);
     if (!pair) return null;
-    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} />;
+    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} threaded={threaded} />;
   });
 
   // 已完成的多步段默认收成一行摘要(带对象与统计),点开才见逐步明细——密度对齐 Claude 的
