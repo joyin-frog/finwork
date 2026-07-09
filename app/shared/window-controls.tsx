@@ -110,7 +110,7 @@ export function WindowTitleBar() {
       data-tauri-drag-region
       // relative z-[60]:让顶栏叠在全屏模态(如设置 fixed inset-0 z-50)之上,任何时候都能最小化/关窗
       // ——沿用旧浮动控件的 z-[60];position:relative 保留其在 flex 列中的 32px 占位。
-      className="relative z-[60] flex h-8 shrink-0 items-center justify-end gap-0.5 border-b border-border bg-background pr-1"
+      className="app-titlebar relative z-[60] flex h-8 shrink-0 items-center justify-end gap-0.5 border-b border-border bg-background pr-1"
       role="group"
       aria-label="窗口控制"
     >

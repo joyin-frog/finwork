@@ -44,24 +44,25 @@ const KIND_LABELS: Record<string, string> = {
 // 卡片整圈边框 + 淡色底,按 kind 上色
 // 静止态用全局 token 边框(border-border,同其他卡);只在 hover 时叠加对应 kind 色(上传蓝/生成紫/知识绿/库琥珀)。
 const KIND_CARD_CLS: Record<string, string> = {
-  upload: "border-border hover:border-blue-400 hover:bg-blue-50/40 dark:hover:border-blue-800 dark:hover:bg-blue-950/20",
-  generated: "border-border hover:border-violet-400 hover:bg-violet-50/40 dark:hover:border-violet-800 dark:hover:bg-violet-950/20",
-  knowledge: "border-border hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20",
-  library: "border-border hover:border-amber-400 hover:bg-amber-50/40 dark:hover:border-amber-800 dark:hover:bg-amber-950/20",
+  upload: "border-border hover:border-[var(--tone-neutral)]/60 hover:bg-accent",
+  generated: "border-border hover:border-[var(--tone-receivables)]/60 hover:bg-accent",
+  knowledge: "border-border hover:border-[var(--tone-ok)]/60 hover:bg-accent",
+  library: "border-border hover:border-[var(--tone-notice)]/60 hover:bg-accent",
 };
 
+// text-white: tone 实色底（L ≤ 0.57），白字 AA 通过，无需 token 化
 const KIND_CHIP_SELECTED: Record<string, string> = {
-  upload: "bg-blue-600 text-white border-blue-600",
-  generated: "bg-violet-600 text-white border-violet-600",
-  knowledge: "bg-emerald-600 text-white border-emerald-600",
-  library: "bg-amber-600 text-white border-amber-600",
+  upload: "bg-[var(--tone-neutral)] text-white border-[var(--tone-neutral)]",
+  generated: "bg-[var(--tone-receivables)] text-white border-[var(--tone-receivables)]",
+  knowledge: "bg-[var(--tone-ok)] text-white border-[var(--tone-ok)]",
+  library: "bg-[var(--tone-notice)] text-white border-[var(--tone-notice)]",
 };
 
 const KIND_CHIP_UNSELECTED: Record<string, string> = {
-  upload: "border-blue-200 text-blue-700 hover:border-blue-400 dark:border-blue-800 dark:text-blue-400",
-  generated: "border-violet-200 text-violet-700 hover:border-violet-400 dark:border-violet-800 dark:text-violet-400",
-  knowledge: "border-emerald-200 text-emerald-700 hover:border-emerald-400 dark:border-emerald-800 dark:text-emerald-400",
-  library: "border-amber-200 text-amber-700 hover:border-amber-400 dark:border-amber-800 dark:text-amber-400",
+  upload: "border-[var(--tone-neutral)]/40 text-[oklch(from_var(--tone-neutral)_calc(l-0.12)_c_h)] hover:border-[var(--tone-neutral)]",
+  generated: "border-[var(--tone-receivables)]/40 text-[oklch(from_var(--tone-receivables)_calc(l-0.12)_c_h)] hover:border-[var(--tone-receivables)]",
+  knowledge: "border-[var(--tone-ok)]/40 text-[oklch(from_var(--tone-ok)_calc(l-0.12)_c_h)] hover:border-[var(--tone-ok)]",
+  library: "border-[var(--tone-notice)]/40 text-[oklch(from_var(--tone-notice)_calc(l-0.12)_c_h)] hover:border-[var(--tone-notice)]",
 };
 
 function fmtBytes(n: number): string {
@@ -511,7 +512,7 @@ function FilesPageContent() {
         list={
           <>
             {/* Topbar —— 只跨列表列,不横跨预览:预览卡浮在右侧、脱离标题栏。窄列时各项不换行,真放不下横向滚动(不露滚动条)。 */}
-            <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <DragHandle />
               <SidebarToggle />
               <ResourceTabs active="files" />
@@ -561,7 +562,7 @@ function FilesPageContent() {
             </header>
 
             {/* Filter chips + sort */}
-            <div className="flex items-center gap-2 px-3.5 py-2 border-b border-border overflow-x-auto [scrollbar-width:none] shrink-0">
+            <div className="flex items-center gap-2 px-3.5 py-2 overflow-x-auto [scrollbar-width:none] shrink-0">
               {(["all", "upload", "generated", "library"] as const).map((k) => (
                 <button
                   key={k}
@@ -611,7 +612,7 @@ function FilesPageContent() {
             />
 
             {/* Card grid with grouping */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="content-fade-top flex-1 overflow-y-auto">
               {loading && (
                 <div className="flex items-center justify-center h-24 text-body text-muted-foreground">
                   正在加载...
@@ -646,7 +647,7 @@ function FilesPageContent() {
                         meta={
                           <>
                             {file.kept && (
-                              <span className="inline-flex items-center text-amber-600 dark:text-amber-500" title="已保留">
+                              <span className="inline-flex items-center text-[var(--tone-notice)]" title="已保留">
                                 <HugeiconsIcon icon={BookmarkAdd01Icon} size={12} />
                               </span>
                             )}

@@ -10,17 +10,17 @@ import { ThinkingSpark } from "@/app/shared/thinking-spark";
 const KEY_CHAR = "rounded bg-muted px-1 py-0.5 font-mono text-foreground/80";
 
 export const COMPOSER_TIPS: ReactNode[] = [
-  <>输入 <span className={KEY_CHAR}>/</span> 引用技能</>,
-  <>输入 <span className={KEY_CHAR}>@</span> 引用已有文件</>,
-  <>开「深度思考」解决复杂推理问题</>,
-  <>拖文件到窗口也能上传</>,
-  <>点生成的文件可直接预览</>,
-  <>对话里的文件可加入知识库</>,
-  <>发我金蝶报表,可做经营分析</>,
-  <>报销单据发我,可批量核对</>,
-  <>发薪前可让我算工资和个税</>,
+  <>输入 <span className={KEY_CHAR}>/</span> 唤起技能，输入 <span className={KEY_CHAR}>@</span> 引用文件</>,
+  <>复杂的活可以交给多个专员协作</>,
+  <>开「深度思考」啃复杂推理问题</>,
+  <>拖文件到窗口即可上传</>,
+  <>生成的文件点开就能预览</>,
+  <>对话里的文件可存进知识库</>,
+  <>发我利润表，帮你做经营分析</>,
+  <>报销单据发我，批量核对不漏项</>,
+  <>发薪前让我算工资和个税</>,
   <>月末让我列结账核对清单</>,
-  <>可把报销 / 薪资导成金蝶凭证草稿</>,
+  <>报销、薪资可导成金蝶凭证草稿</>,
   <>问我公司能享哪些税收优惠</>,
 ];
 

@@ -6,16 +6,24 @@ import { useTheme } from "next-themes";
 import { toast, Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppNav } from "@/app/shared/app-nav";
+import { AppTabBar } from "@/app/shared/app-tab-bar";
 import { GlobalShortcuts } from "@/app/shared/global-shortcuts";
 import { ChatFloat } from "@/app/shared/chat-float";
 import { IsMacProvider } from "@/app/shared/use-is-mac";
 import { useDetectPlatform, WindowTitleBar } from "@/app/shared/window-controls";
 import { FirstRunGate } from "@/app/shared/first-run-gate";
+import { useNavState } from "@/app/shared/nav-state";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { resolvedTheme } = useTheme();
   useDetectPlatform();
+  const { collapsed } = useNavState();
+
+  // 把侧栏收起态写到 <html> 上,供 CSS 依 data-nav-collapsed 做条件样式(同 useDetectPlatform 写 data-platform 的做法)。
+  useEffect(() => {
+    document.documentElement.dataset.navCollapsed = String(collapsed);
+  }, [collapsed]);
 
   // 启动触发遥测上报:fire-and-forget,失败静默,节流由 reporter 内部保证(每天最多一次)。
   useEffect(() => {
@@ -110,8 +118,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <TooltipProvider delayDuration={300}>
       {/* 背板用主内容底色;侧栏做成浮起的圆角卡片(见 app-nav),主区平铺为底层。
           最外层竖排:Windows 自绘标题栏在最上(非 Windows 渲染 null、不占高),下方一行为侧栏 + 主区。 */}
-      <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <div className="flex h-screen flex-col overflow-hidden bg-[var(--shell-canvas)]">
         <WindowTitleBar />
+        <AppTabBar active={active} />
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <a
             href="#main-content"
@@ -126,7 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <main
             id="main-content"
             tabIndex={-1}
-            className="flex-1 min-w-0 overflow-auto bg-background"
+            className="app-main flex-1 min-w-0 overflow-auto bg-background"
           >
             <FirstRunGate>{children}</FirstRunGate>
           </main>

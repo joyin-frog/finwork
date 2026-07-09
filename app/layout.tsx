@@ -52,7 +52,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html
       lang="zh-CN"
-      data-style="default"
+      data-style="linear"
       className={cn(GeistSans.variable, GeistMono.variable, inter.variable, jetbrainsMono.variable)}
       suppressHydrationWarning
     >
@@ -64,6 +64,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           rel="stylesheet"
         />
         <style dangerouslySetInnerHTML={{ __html: `${highlightLightCSS}\n${highlightDarkCSS}` }} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var s=localStorage.getItem("app-style");if(s==="default")document.documentElement.dataset.style="default"}catch(e){}`,
+          }}
+        />
       </head>
       <body className="antialiased font-sans bg-background text-foreground">
         <AppThemeProvider>

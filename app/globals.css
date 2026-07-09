@@ -24,6 +24,11 @@
     --color-tone-treasury: var(--tone-treasury);
     --color-tone-receivables: var(--tone-receivables);
     --color-tone-analysis: var(--tone-analysis);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -51,6 +56,11 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    /* 密度 spacing 工具类:生成 p-page / gap-section / gap-card 等(Tailwind v4 --spacing-* 机制);
+       值走 :root 定义的密度 token,linear 风格下自动缩减一档,默认风格零变化。 */
+    --spacing-page: var(--page-pad);
+    --spacing-section: var(--section-gap);
+    --spacing-card: var(--card-gap);
 }
 
 /* 排版字阶(重要性分层):每层带 字号·字重·行距·字间距,生成 text-* 工具类(Tailwind v4)。
@@ -103,6 +113,16 @@
     /* ════ Surface 语义 token ════ */
     /* chip 圆角（0.25rem = 4px）：承接试点里裸 rounded 8 处，像素不变 */
     --radius-chip: 0.25rem;
+    --shell-canvas: var(--background); /* 窗口背板色;默认风格与页面底同色(不可见),linear 风格下变灰/近黑背板 */
+    /* ── 外壳几何 token(单一来源):所有依赖侧栏宽度/红绿灯净空的定位一律引用它们,禁止再写镜像常量 ── */
+    --nav-width: 15rem;      /* 侧栏展开宽度(240px)。app-nav 的 w-[var(--nav-width)] 与 motion animate 的 240 配对,改这里须同步 NAV_WIDTH_PX */
+    --tl-inset: 5rem;        /* macOS 红绿灯净空;Windows 平台规则覆写为 0.5rem */
+    /* 密度 token:间距随风格切换的旋钮。默认值与既有 Tailwind class 严格等值(p-4=1rem 等),保证默认风格像素零变化 */
+    --surface-pad: 1rem;       /* 卡片内边距(原 p-4) */
+    --surface-pad-sm: 0.75rem; /* 紧凑卡内边距(原 p-3) */
+    --page-pad: 1.5rem;        /* 页面容器内边距(原 p-6) */
+    --section-gap: 1.5rem;     /* 页面区块间距(原 gap-6) */
+    --card-gap: 1rem;          /* 卡片网格间距(原 gap-4) */
 
     /* ════ 可调设计 token(亮)—— 调试台 /dev/theme 导出对应这一节,导入时整段替换 ════ */
     --background: oklch(1 0 0);
@@ -145,6 +165,12 @@
     --tone-treasury: oklch(0.56 0.10 190);
     --tone-receivables: oklch(0.56 0.10 290);
     --tone-analysis: oklch(0.58 0.10 105);
+    /* Chart 系列色:图表按序取 1..5;ChartConfig 的 color 传 var(--chart-n)。基于 tone,自动适配明暗。 */
+    --chart-1: var(--tone-neutral);
+    --chart-2: var(--tone-treasury);
+    --chart-3: var(--tone-notice);
+    --chart-4: var(--tone-receivables);
+    --chart-5: var(--tone-ok);
     /* —— Elevation 高度阶(语义,非尺寸):一处定浓淡,全站协同;light/dark 各一套 —— */
     /* 1 raised 纸面微升(卡片) · 2 overlay 浮层(菜单/下拉/气泡) · 3 modal 模态(弹窗/抽屉/大面板) */
     --elevation-1: 0 1px 3px 0 oklch(0.16 0.018 253 / 4%), 0 1px 2px -1px oklch(0.16 0.018 253 / 6%);
@@ -157,6 +183,10 @@
     /* 全屏遮罩只保留两档语义：常规模态保持上下文，阻塞决策稍加强；均随 foreground 自动适配明暗主题。 */
     --scrim-modal: color-mix(in oklch, var(--foreground) 8%, transparent);
     --scrim-blocking: color-mix(in oklch, var(--foreground) 16%, transparent);
+    /* Motion token:CSS 侧时长/缓动。JS 侧孪生是 app/shared/motion-presets.ts(EASE_OUT_QUICK 等),调整时两处对照。 */
+    --motion-fast: 120ms;   /* 即时反馈:hover 过渡/按压/淡出 */
+    --motion-slow: 300ms;   /* 大面积浮现:滚动条淡入淡出/入场 */
+    --ease-out-quick: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark {
@@ -228,7 +258,6 @@
   --focus-border: var(--ring);
   --popover-bg: var(--popover);
   --shadow-lg: var(--elevation-3);   /* 旧名:并入 modal 高度档,preview.css / skill-center 共用一处 */
-  --font-caption: 0.6875rem;
   /* 文档/表格预览 token:统一 alias 语义 token,风格一致 + 自动日夜模式(不再单独维护 .dark 覆盖)。 */
   --doc-paper-bg: var(--card);
   --doc-paper-text: var(--card-foreground);
@@ -254,6 +283,21 @@
   /* doc-paper/grid 已 alias 语义 token,随 .dark 的 card/muted/border 自动适配,无需在此覆盖 */
   --doc-negative: oklch(0.70 0.18 26);   /* 暗色纸上提亮的赤字红 */
   --doc-shadow: 0 2px 16px oklch(0 0 0 / 40%);
+}
+
+/* 页面标题栏统一底线:伪元素画线,两端留缝 0.75rem,比原 border-bottom 更淡(混入 40% transparent)。
+   ::after 在 bottom:0 盒内不溢出;overflow-x-auto 的 header 已 relative,安全。 */
+.app-page-header { position: relative; }
+.app-page-header::after {
+  content: ""; position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0; height: 1px;
+  background: color-mix(in srgb, var(--border), transparent 40%);
+  pointer-events: none;
+}
+
+/* 内容滚动区顶部渐隐:靠近上方标题栏时内容淡出(fade,非 blur)。挂在各页主内容滚动容器上。 */
+.content-fade-top {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
 }
 
 /* 纯图标按钮统一尺寸:容器 32px + 图标 16px,全站唯一标准。
@@ -405,9 +449,10 @@ details[open] > summary .details-chevron {
 }
 .md-content th, .md-content td {
   border: none; border-bottom: 1px solid var(--border);
-  /* 统一左对齐:!important 盖掉 remark-gfm 按列对齐标记(:--- / ---:)生成的内联 text-align,
-     避免同一表格里数字列右对齐、文字列左对齐的混排。 */
-  padding: 0.5em 0.9em 0.5em 0; text-align: left !important; vertical-align: top;
+  /* 财务表:默认左对齐(科目/项目/文字列),但不再 !important 锁死——尊重 remark-gfm 的列对齐标记
+     (---: 右对齐),让金额/数字列可右对齐;配 tabular-nums 等宽,个十百千位竖向对齐便于比大小(财务核对直觉)。 */
+  padding: 0.5em 0.9em 0.5em 0; text-align: left; vertical-align: top;
+  font-variant-numeric: tabular-nums;
 }
 .md-content th:last-child, .md-content td:last-child { padding-right: 0; }
 .md-content thead th { font-weight: 600; color: var(--foreground); border-bottom: 1.5px solid var(--border); }
@@ -420,7 +465,7 @@ details[open] > summary .details-chevron {
 
 html button.composer-send-button:not(:disabled) {
   animation: btn-breathe 2.6s ease-in-out infinite;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition: transform var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
 html button.composer-send-button:not(:disabled):hover {
   animation: none;
@@ -602,7 +647,7 @@ html button.composer-send-button.stop {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  .fa-team-enter { animation: fa-team-enter 0.32s ease-out both; }
+  .fa-team-enter { animation: fa-team-enter var(--motion-slow) ease-out both; }
 }
 /* prefers-reduced-motion: reduce 时无动画,直接出现(无需额外声明,无 animation 属性即可) */
 
@@ -625,7 +670,7 @@ html button.composer-send-button.stop {
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
-  transition: background-color 0.3s ease;
+  transition: background-color var(--motion-slow) ease;
 }
 /* 只有「正在被滚动的那个容器自己」(.fa-scrolling,由 ScrollbarFade 按元素加)才显形;
    注意是元素自身伪元素(无空格),不是后代——否则一个容器滚动会把别处滚动条一起点亮。
@@ -678,3 +723,98 @@ html button.composer-send-button.stop {
 
    默认风格（data-style="default"）：零覆盖，完全继承 :root / .dark。
    ════════════════════════════════════════════════════════════════════ */
+
+/* ── Linear 风格（亮）── 布局反转:侧栏平铺、主内容浮起卡 */
+[data-style='linear'] {
+  --shell-canvas: oklch(0.945 0.003 260);      /* 浅灰背板:比白卡深一档,白色标签/浮起卡靠色差浮出(对照 Linear 实物校准) */
+  --sidebar: transparent;                       /* 侧栏融入背板 */
+  --radius: 0.625rem;                           /* 派生 md=8px(按钮)/xl=14px,贴近 Linear 8/12 谱 */
+  --border: oklch(0.90 0.004 260);              /* 发丝线略实,浮起卡靠描边而非阴影 */
+  /* 密度收紧(间距与明暗无关,直接挂在 data-style 上) */
+  --surface-pad: 0.75rem;
+  --surface-pad-sm: 0.5rem;
+  --page-pad: 1rem;
+  --section-gap: 1rem;
+  --card-gap: 0.75rem;
+}
+/* shadcn Card 内部用 [--card-spacing:--spacing(4)] 类设置内边距(优先级 0,1,0)。
+   此规则特异性 (0,1,1) 覆盖之,让 Card 组件在 linear 风格下也随密度 token 收紧。 */
+[data-style='linear'] [data-slot="card"] {
+  --card-spacing: var(--surface-pad);
+}
+[data-style='linear'] .app-side {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
+}
+[data-style='linear'] .app-main {
+  margin: 0.25rem 0.375rem 0.375rem 0.5rem; /* 上4px收更紧(标签条已隔开)/右下6px略收/左8px不变(侧栏间距) */
+  border-radius: var(--radius-xl);   /* 0.625rem x 1.4 = ~14px,走 token 不写死 */
+  border: 1px solid var(--border);
+  background: var(--background);
+  box-shadow: var(--elevation-1);    /* 有意不用 --elevation-inset:侧栏已透明,无"左墙"可投;inset 留给默认风格的休眠语义 */
+}
+[data-style='linear'] .app-titlebar {
+  background: var(--shell-canvas);   /* Windows 标题栏落背板层;默认风格不受影响 */
+}
+/* ── Linear 风格（暗）── 必须组合选择器压过 .dark */
+html.dark[data-style='linear'] {
+  --shell-canvas: oklch(0.13 0.003 260);        /* 近黑背板(oklch 换算值实施时以肉眼校准为准) */
+  --background: oklch(0.178 0.002 260);         /* 主卡面 */
+  --card: oklch(0.205 0.002 260);               /* 内部卡片抬一档 */
+  --popover: oklch(0.225 0.002 260);
+  --foreground: oklch(0.975 0.001 260);         /* 近白文字 */
+  --muted-foreground: oklch(0.635 0.005 260);   /* 次要文字 */
+  --border: oklch(0.26 0.003 260);              /* hairline */
+  --input: oklch(0.26 0.003 260);
+  --sidebar: transparent;
+  /* 暗色深度弃投影、靠描边:elevation 大幅减弱 */
+  --elevation-1: 0 0 0 1px oklch(1 0 0 / 4%);
+  --elevation-2: 0 4px 12px -4px oklch(0 0 0 / 50%);
+  --elevation-3: 0 12px 32px -8px oklch(0 0 0 / 60%);
+}
+html.dark[data-style='linear'] .app-main {
+  box-shadow: none;                              /* 暗色只靠 1px 描边分层 */
+}
+/* Windows 平台:红绿灯净空归零(三键在上方独立标题栏) */
+:root[data-platform="windows"] { --tl-inset: 0.5rem; }
+/* ── Linear 风格标签条 ──
+   几何契约:标签左缘 = 主卡左缘(--nav-width + main 左边距 0.5rem)。
+   实现:bar 无左 padding;lead 在展开态定宽 var(--nav-width),bar 的 gap 0.5rem 恰好 = main 左边距,
+   故 lead 之后的标签自然落在主卡左缘——对齐由共享 token 保证,不靠手算常量。 */
+[data-style='linear'] .app-tabbar {
+  display: flex;
+  height: 2.5rem;
+  padding-right: 0.5rem;
+  background: var(--shell-canvas);
+}
+[data-style='linear'] .app-tabbar-lead {
+  justify-content: flex-end;              /* 按钮簇贴标签一侧(Linear 实物:控件簇挨着标签,不挨红绿灯) */
+  padding-left: var(--tl-inset);          /* 红绿灯净空:收起态 lead 自然宽时靠它保住 */
+}
+[data-style='linear'][data-nav-collapsed="false"] .app-tabbar-lead {
+  width: var(--nav-width);                /* 展开态:lead 与侧栏同宽 → 标签左缘=主卡左缘 */
+}
+[data-style='linear'] .app-tab {
+  background: var(--background);
+  border-radius: var(--radius-md);
+  min-width: 11.25rem;
+}
+html.dark[data-style='linear'] .app-tab {
+  border: 1px solid var(--border);
+}
+/* 红绿灯与搜索/收起已由标签条承接,原顶条整行隐藏 */
+[data-style='linear'] .app-nav-topbar { display: none; }
+/* 收起侧栏后,展开入口在标签条(NavTopControls),内容页头的展开按钮多余,linear 下隐藏 */
+[data-style='linear'] .app-sidebar-toggle { display: none; }
+/* Linear:预览全屏占满主卡内容区,去卡框的缝/圆角/描边/影(默认风格不动) */
+[data-style='linear'] .preview-card-frame.is-maximized,
+[data-style='linear'] .preview-page-shell.is-docked.is-maximized {
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  height: 100%;
+}

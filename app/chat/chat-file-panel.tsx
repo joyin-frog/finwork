@@ -6,6 +6,7 @@ import type { StoredChatAttachment } from "@/lib/db/sqlite";
 import { FileGroup, type PreviewableConversationFile } from "@/app/chat/chat-file-browser";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 
 export function ChatFilePanel({
   conversationId,
@@ -48,8 +49,11 @@ export function ChatFilePanel({
           </Button>
         </ShortcutHint>
         {filePanelOpen ? (
-          <div
-            className="fixed top-[46px] z-40 w-[340px] max-w-[calc(100vw-32px)] max-h-[min(60vh,560px)] overflow-x-hidden overflow-y-auto p-3.5 rounded-xl bg-popover shadow-[var(--elevation-3)]"
+          <Surface
+            level="overlay"
+            edge="none"
+            shape="panel"
+            className="fixed top-[46px] z-40 w-[340px] max-w-[calc(100vw-32px)] max-h-[min(60vh,560px)] overflow-x-hidden overflow-y-auto p-3.5"
             role="dialog"
             aria-label="文件面板"
             style={{ right: panelRightOffset }}
@@ -93,7 +97,7 @@ export function ChatFilePanel({
                 <div className="text-meta text-muted-foreground/60">暂无来源</div>
               )}
             </div>
-          </div>
+          </Surface>
         ) : null}
       </div>
       {sidebarCollapsed ? (

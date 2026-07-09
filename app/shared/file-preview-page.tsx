@@ -167,6 +167,10 @@ export function FilePreviewPage({
   const [error, setError] = useState<string | null>(null);
   const [activeSheet, setActiveSheet] = useState(0);
   const [focusCell, setFocusCell] = useState<{ label: string; barValue: string } | null>(null);
+  // 整列 / 整行 / 全表选中 (Office 式)。与 focusCell/activeCellPos 互斥：点列头/行号/角格清 focusCell，点数据格清选区。
+  const [colSel, setColSel] = useState<number | null>(null);
+  const [rowSel, setRowSel] = useState<number | null>(null);
+  const [allSel, setAllSel] = useState(false);
   const [pdfPage, setPdfPage] = useState(1);
   const [pdfPages, setPdfPages] = useState(0);
   const [pdfComponents, setPdfComponents] = useState<PdfComponents>(null);
@@ -237,6 +241,9 @@ export function FilePreviewPage({
       setError(null);
       setPdfLoadError(null);
       setActiveSheet(0);
+      setColSel(null);
+      setRowSel(null);
+      setAllSel(false);
       setPdfPage(1);
       setPdfPages(0);
 
@@ -630,11 +637,25 @@ export function FilePreviewPage({
                     </colgroup>
                     <thead>
                       <tr>
-                        <th className="preview-excel-corner" />
+                        <th
+                          className={`preview-excel-corner${allSel ? " is-header-sel" : ""}`}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => { setAllSel(true); setColSel(null); setRowSel(null); setFocusCell(null); }}
+                        />
                         {(activeExcelSheet?.columnHeaders ?? []).map((label, index) => (
                           <th
                             key={label}
-                            className={`preview-excel-column-header${activeCellPos?.col === index ? " is-active" : ""}`}
+                            className={`preview-excel-column-header${
+                              colSel === index || allSel
+                                ? " is-header-sel"
+                                : colSel === null && rowSel === null && !allSel && activeCellPos?.col === index
+                                ? " is-active"
+                                : ""
+                            }`}
+                            role="columnheader"
+                            aria-selected={colSel === index || allSel}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => { setColSel(index); setRowSel(null); setAllSel(false); setFocusCell(null); }}
                           >
                             {label}
                           </th>
@@ -648,7 +669,18 @@ export function FilePreviewPage({
                           data-rownum={row.rowNumber}
                           className={row.rowNumber === flashRow ? "preview-excel-row-flash" : undefined}
                         >
-                          <th className={`preview-excel-row-header${activeCellPos?.row === row.rowNumber ? " is-active" : ""}`}>{row.rowNumber}</th>
+                          <th
+                            className={`preview-excel-row-header${
+                              rowSel === row.rowNumber || allSel
+                                ? " is-header-sel"
+                                : colSel === null && rowSel === null && !allSel && activeCellPos?.row === row.rowNumber
+                                ? " is-active"
+                                : ""
+                            }`}
+                            aria-selected={rowSel === row.rowNumber || allSel}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => { setRowSel(row.rowNumber); setColSel(null); setAllSel(false); setFocusCell(null); }}
+                          >{row.rowNumber}</th>
                           {row.cells.map((cell) => {
                             // 构造内联样式:背景色 + 边框(AC4) + 字重 + 对齐 + 字色
                             const s = cell.style;
@@ -667,17 +699,19 @@ export function FilePreviewPage({
                             return (
                               <td
                                 key={cell.key}
-                                className={cell.key === focusCell?.label ? "preview-excel-cell is-selected" : "preview-excel-cell"}
+                                className={`preview-excel-cell${cell.key === focusCell?.label ? " is-selected" : ""}${colSel === cell.columnIndex || rowSel === row.rowNumber || allSel ? " is-range-sel" : ""}`}
                                 colSpan={cell.colSpan}
                                 rowSpan={cell.rowSpan}
                                 data-column-index={cell.columnIndex}
                                 data-numeric={cell.isNumeric ? "true" : undefined}
                                 style={Object.keys(inlineStyle).length > 0 ? inlineStyle : undefined}
                                 title={cell.value || undefined}
-                                onClick={() => setFocusCell({
-                                  label: cell.key,
-                                  barValue: cell.formula ? "=" + cell.formula : cell.value
-                                })}
+                                onClick={() => {
+                                  setFocusCell({ label: cell.key, barValue: cell.formula ? "=" + cell.formula : cell.value });
+                                  setColSel(null);
+                                  setRowSel(null);
+                                  setAllSel(false);
+                                }}
                               >
                                 <span>{cell.value || " "}</span>
                               </td>
@@ -713,7 +747,7 @@ export function FilePreviewPage({
                   key={sheet.name}
                   type="button"
                   className={index === activeSheet ? "active" : ""}
-                  onClick={() => { setActiveSheet(index); setFocusCell(null); }}
+                  onClick={() => { setActiveSheet(index); setFocusCell(null); setColSel(null); setRowSel(null); setAllSel(false); }}
                   role="tab"
                   aria-selected={index === activeSheet}
                 >

@@ -10,6 +10,7 @@ type Oklch = { l: number; c: number; h: number; a: number };
 type ColorKey = "background" | "foreground" | "primary" | "primary-foreground" | "ring" | "card" | "sidebar" | "muted" | "accent" | "border";
 type Tier = { key: string; label: string; px: number; weight: number; lh: number; tracking: number };
 type Mode = "light" | "dark";
+type StyleMode = "default" | "linear";
 
 const LS_KEY = "fa-theme-playground-v3";
 // 顺序对齐 globals.css :root「可调」节,导出即与该节一致
@@ -59,11 +60,96 @@ const SHADOW_PRESETS: { id: string; label: string; light: string; dark: string }
   { id: "finance", label: "finance-card(微距立体·蓝染)", light: "0 1px 3px 0 oklch(0.16 0.018 253 / 4%), 0 1px 2px -1px oklch(0.16 0.018 253 / 6%)", dark: "0 1px 3px 0 oklch(0 0 0 / 30%), 0 1px 2px -1px oklch(0 0 0 / 50%)" },
 ];
 
+// Linear 风格新 token 的初始值(对齐 globals.css [data-style='linear'] / html.dark[data-style='linear'])
+const DEFAULT_SHELL_CANVAS_LIGHT: Oklch = { l: 0.962, c: 0.003, h: 260, a: 1 };
+const DEFAULT_SHELL_CANVAS_DARK: Oklch = { l: 0.13, c: 0.003, h: 260, a: 1 };
+const DEFAULT_DENSITY = { surfacePad: 1, surfacePadSm: 0.75, pagePad: 1.5, sectionGap: 1.5, cardGap: 1 };
+const DEFAULT_MOTION = { fast: 120, slow: 300 };
+
 const round = (n: number, p: number) => { const m = 10 ** p; return Math.round(n * m) / m; };
 const oklchStr = (c: Oklch) => c.a < 1
   ? `oklch(${round(c.l, 3)} ${round(c.c, 3)} ${round(c.h, 1)} / ${round(c.a * 100, 1)}%)`
   : `oklch(${round(c.l, 3)} ${round(c.c, 3)} ${round(c.h, 1)})`;
 const pxToRem = (px: number) => round(px / 16, 4);
+
+// oklch 字符串解析（失败返回 null）
+function parseOklch(str: string): Oklch | null {
+  const s = str.trim();
+  const m = s.match(/^oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+)(%)?)?\s*\)$/);
+  if (!m) return null;
+  const aRaw = m[4] ? parseFloat(m[4]) : 1;
+  const a = m[5] === "%" ? aRaw / 100 : aRaw;
+  return { l: parseFloat(m[1]), c: parseFloat(m[2]), h: parseFloat(m[3]), a };
+}
+
+function readComputedDensity(el: HTMLElement): typeof DEFAULT_DENSITY {
+  const g = (prop: string) => parseFloat(getComputedStyle(el).getPropertyValue(prop).trim());
+  return {
+    surfacePad: g("--surface-pad") || DEFAULT_DENSITY.surfacePad,
+    surfacePadSm: g("--surface-pad-sm") || DEFAULT_DENSITY.surfacePadSm,
+    pagePad: g("--page-pad") || DEFAULT_DENSITY.pagePad,
+    sectionGap: g("--section-gap") || DEFAULT_DENSITY.sectionGap,
+    cardGap: g("--card-gap") || DEFAULT_DENSITY.cardGap,
+  };
+}
+
+function readComputedMotion(el: HTMLElement): typeof DEFAULT_MOTION {
+  const g = (prop: string) => parseFloat(getComputedStyle(el).getPropertyValue(prop).trim());
+  return {
+    fast: g("--motion-fast") || DEFAULT_MOTION.fast,
+    slow: g("--motion-slow") || DEFAULT_MOTION.slow,
+  };
+}
+
+// 双模快照：移除 inline 覆盖，临时切换 dark class 读亮/暗两套级联值后恢复。
+// 同步完成，无重排，不产生闪帧。用于切风格和首次挂载（无 localStorage 时）。
+function snapshotStyleColors(el: HTMLElement, isDark: boolean): {
+  light: Record<ColorKey, Oklch>;
+  dark: Record<ColorKey, Oklch>;
+  shellCanvasLight: Oklch;
+  shellCanvasDark: Oklch;
+  radius: number;
+  density: typeof DEFAULT_DENSITY;
+  motion: typeof DEFAULT_MOTION;
+} {
+  // 保存并移除所有 inline 覆盖，让 getComputedStyle 读到纯 CSS 级联值
+  const PROPS = [
+    ...COLOR_KEYS.map((k) => `--${k}`),
+    "--shell-canvas", "--radius",
+    "--surface-pad", "--surface-pad-sm", "--page-pad", "--section-gap", "--card-gap", "--motion-fast", "--motion-slow",
+  ];
+  const savedInline = PROPS.map((p) => el.style.getPropertyValue(p));
+  const savedFontSize = el.style.fontSize;
+  PROPS.forEach((p) => el.style.removeProperty(p));
+  el.style.fontSize = "";  // 移除根字号覆盖，避免影响 rem 解析
+
+  // transparent → a=0 的 oklch；其余 CSS 关键字/var() 无法解析则回退到硬编码默认值
+  const readColor = (prop: string): Oklch | null => {
+    const val = getComputedStyle(el).getPropertyValue(prop).trim();
+    if (val === "transparent") return { l: 0, c: 0, h: 0, a: 0 };
+    return parseOklch(val);
+  };
+
+  // 读亮色（含 radius，风格间可能不同）
+  el.classList.remove("dark");
+  const light = Object.fromEntries(COLOR_KEYS.map((k) => [k, readColor(`--${k}`) ?? LIGHT[k]])) as Record<ColorKey, Oklch>;
+  const shellCanvasLight = readColor("--shell-canvas") ?? DEFAULT_SHELL_CANVAS_LIGHT;
+  const radius = parseFloat(getComputedStyle(el).getPropertyValue("--radius").trim()) || DEFAULT_RADIUS;
+  const density = readComputedDensity(el);
+  const motion = readComputedMotion(el);
+
+  // 读暗色
+  el.classList.add("dark");
+  const dark = Object.fromEntries(COLOR_KEYS.map((k) => [k, readColor(`--${k}`) ?? DARK[k]])) as Record<ColorKey, Oklch>;
+  const shellCanvasDark = readColor("--shell-canvas") ?? DEFAULT_SHELL_CANVAS_DARK;
+
+  // 恢复原状
+  if (isDark) el.classList.add("dark"); else el.classList.remove("dark");
+  PROPS.forEach((p, i) => { if (savedInline[i]) el.style.setProperty(p, savedInline[i]); });
+  el.style.fontSize = savedFontSize;
+
+  return { light, dark, shellCanvasLight, shellCanvasDark, radius, density, motion };
+}
 
 function applyCss(text: string) {
   const r = document.documentElement;
@@ -74,13 +160,60 @@ function applyCss(text: string) {
   if (fs) r.style.fontSize = fs[1];
 }
 
-function buildExport(light: Record<ColorKey, Oklch>, dark: Record<ColorKey, Oklch>, radius: number, tiers: Tier[], root: number, fontId: string, cardShadow: string, ringAlpha: number, lh: typeof DEFAULT_LH): string {
+function buildExport(
+  light: Record<ColorKey, Oklch>, dark: Record<ColorKey, Oklch>, radius: number, tiers: Tier[], root: number,
+  fontId: string, cardShadow: string, ringAlpha: number, lh: typeof DEFAULT_LH,
+  styleMode: StyleMode, shellCanvasLight: Oklch, shellCanvasDark: Oklch,
+  density: typeof DEFAULT_DENSITY, motion: typeof DEFAULT_MOTION,
+): string {
   const shadow = SHADOW_PRESETS.find((s) => s.id === cardShadow) ?? SHADOW_PRESETS[0];
   const ringStr = (fg: Oklch) => `oklch(${round(fg.l, 3)} ${round(fg.c, 3)} ${round(fg.h, 1)} / ${round(ringAlpha * 100, 1)}%)`;
   const theme = tiers.map((t) =>
     [`  --text-${t.key}: ${pxToRem(t.px)}rem;`, `  --text-${t.key}--line-height: ${t.lh};`, `  --text-${t.key}--font-weight: ${t.weight};`, t.tracking ? `  --text-${t.key}--letter-spacing: ${t.tracking}em;` : null].filter(Boolean).join("\n")
   ).join("\n\n");
   const font = FONT_OPTIONS.find((f) => f.id === fontId);
+
+  if (styleMode === "linear") {
+    // 生成 [data-style='linear'] 与 html.dark[data-style='linear'] 覆盖块
+    // 按行合并回挂载区：暗块里的 --popover/--muted-foreground/--input/--elevation-* 等非旋钮 token 不在导出中，整块替换会把它们丢掉
+    const lines = [
+      "/* === 字阶:替换 @theme {} 内容(UI 按 px,导出 rem=px/16,明暗共用)=== */",
+      "@theme {", theme, "}", "",
+      "/* 贴回 globals.css 风格挂载区:按行合并进对应选择器块(同名行覆盖,导出中没有的行保留——暗块的 popover/muted-foreground/input/elevation 等不在旋钮内,整块替换会丢) */",
+      "/* === Linear 亮色覆盖块 === */",
+      "[data-style='linear'] {",
+      `  --shell-canvas: ${oklchStr(shellCanvasLight)};`,
+      ...COLOR_KEYS.map((k) => `  --${k}: ${oklchStr(light[k])};`),
+      `  --radius: ${radius}rem;`,
+      `  /* 密度/动效与明暗无关，放亮块 */`,
+      `  --surface-pad: ${density.surfacePad}rem;`,
+      `  --surface-pad-sm: ${density.surfacePadSm}rem;`,
+      `  --page-pad: ${density.pagePad}rem;`,
+      `  --section-gap: ${density.sectionGap}rem;`,
+      `  --card-gap: ${density.cardGap}rem;`,
+      `  --motion-fast: ${motion.fast}ms;`,
+      `  --motion-slow: ${motion.slow}ms;`,
+      ...(ringAlpha !== DEFAULT_RING_ALPHA ? [`  --card-ring: ${ringStr(light.foreground)};`] : []),
+      ...(cardShadow !== "flat" ? [`  --card-lift: ${shadow.light};`] : []),
+      ...(font?.sans ? [`  --font-sans: ${font.sans};`] : []),
+      ...(font?.mono ? [`  --font-mono: ${font.mono};`] : []),
+      "}",
+      "",
+      "/* === Linear 暗色覆盖块 === */",
+      "html.dark[data-style='linear'] {",
+      `  --shell-canvas: ${oklchStr(shellCanvasDark)};`,
+      ...COLOR_KEYS.map((k) => `  --${k}: ${oklchStr(dark[k])};`),
+      ...(ringAlpha !== DEFAULT_RING_ALPHA ? [`  --card-ring: ${ringStr(dark.foreground)};`] : []),
+      ...(cardShadow !== "flat" ? [`  --card-lift: ${shadow.dark};`] : []),
+      "}",
+    ];
+    if (root !== DEFAULT_ROOT) lines.push("", "/* 全局缩放:根字号(默认16) */", `html { font-size: ${root}px; }`);
+    return lines.join("\n") + "\n";
+  }
+
+  // 默认风格：维持现状，:root / .dark 两段（密度/动效有变化时追加）
+  const densityChanged = density.surfacePad !== DEFAULT_DENSITY.surfacePad || density.surfacePadSm !== DEFAULT_DENSITY.surfacePadSm || density.pagePad !== DEFAULT_DENSITY.pagePad || density.sectionGap !== DEFAULT_DENSITY.sectionGap || density.cardGap !== DEFAULT_DENSITY.cardGap;
+  const motionChanged = motion.fast !== DEFAULT_MOTION.fast || motion.slow !== DEFAULT_MOTION.slow;
   const lines = [
     "/* === 字阶:替换 @theme {} 内容(UI 按 px,导出 rem=px/16,明暗共用)=== */",
     "@theme {", theme, "}", "",
@@ -92,6 +225,19 @@ function buildExport(light: Record<ColorKey, Oklch>, dark: Record<ColorKey, Oklc
     ...(cardShadow !== "flat" ? [`  --card-lift: ${shadow.light};`] : []),
     ...(font?.sans ? [`  --font-sans: ${font.sans};`] : []),
     ...(font?.mono ? [`  --font-mono: ${font.mono};`] : []),
+    ...(densityChanged ? [
+      `  /* 密度 token (与明暗无关，默认风格修改时粘回 :root) */`,
+      `  --surface-pad: ${density.surfacePad}rem;`,
+      `  --surface-pad-sm: ${density.surfacePadSm}rem;`,
+      `  --page-pad: ${density.pagePad}rem;`,
+      `  --section-gap: ${density.sectionGap}rem;`,
+      `  --card-gap: ${density.cardGap}rem;`,
+    ] : []),
+    ...(motionChanged ? [
+      `  /* 动效 token */`,
+      `  --motion-fast: ${motion.fast}ms;`,
+      `  --motion-slow: ${motion.slow}ms;`,
+    ] : []),
     "}", "",
     "/* === 暗色:替换 .dark 对应行 === */", ".dark {",
     ...COLOR_KEYS.map((k) => `  --${k}: ${oklchStr(dark[k])};`),
@@ -124,9 +270,19 @@ export function ThemePlayground() {
   const [snippet, setSnippet] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
+  // 新增：风格、外壳色、密度、动效
+  const [styleMode, setStyleMode] = useState<StyleMode>("default");
+  const [shellCanvasLight, setShellCanvasLight] = useState<Oklch>(DEFAULT_SHELL_CANVAS_LIGHT);
+  const [shellCanvasDark, setShellCanvasDark] = useState<Oklch>(DEFAULT_SHELL_CANVAS_DARK);
+  const [density, setDensity] = useState(DEFAULT_DENSITY);
+  const [motion, setMotion] = useState(DEFAULT_MOTION);
 
   useEffect(() => {
     try {
+      // 风格读 DOM（由设置页写入），不读 localStorage，确保刷新后回到设置页所选风格
+      const domStyle = document.documentElement.dataset.style;
+      setStyleMode(domStyle === "linear" ? "linear" : "default");
+
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
         const s = JSON.parse(raw);
@@ -140,8 +296,23 @@ export function ThemePlayground() {
         if (typeof s.cardShadow === "string") setCardShadow(s.cardShadow);
         if (typeof s.ringAlpha === "number") setRingAlpha(s.ringAlpha);
         if (s.lh) setLh({ ...DEFAULT_LH, ...s.lh });
+        if (s.shellCanvasLight) setShellCanvasLight(s.shellCanvasLight);
+        if (s.shellCanvasDark) setShellCanvasDark(s.shellCanvasDark);
+        if (s.density) setDensity({ ...DEFAULT_DENSITY, ...s.density });
+        if (s.motion) setMotion({ ...DEFAULT_MOTION, ...s.motion });
       } else {
-        setMode(document.documentElement.classList.contains("dark") ? "dark" : "light");
+        // 无 localStorage：双模快照读 CSS 级联值，确保亮/暗 state 与当前风格对齐
+        const r = document.documentElement;
+        const isDark = r.classList.contains("dark");
+        setMode(isDark ? "dark" : "light");
+        const snap = snapshotStyleColors(r, isDark);
+        setLight(snap.light);
+        setDark(snap.dark);
+        setShellCanvasLight(snap.shellCanvasLight);
+        setShellCanvasDark(snap.shellCanvasDark);
+        setRadius(snap.radius);
+        setDensity(snap.density);
+        setMotion(snap.motion);
       }
     } catch { /* ignore */ }
     setLoaded(true);
@@ -171,21 +342,65 @@ export function ThemePlayground() {
     r.style.setProperty("--lh-tight", String(lh.tight));
     r.style.setProperty("--lh-snug", String(lh.snug));
     r.style.setProperty("--lh-body", String(lh.body));
-    setSnippet(buildExport(light, dark, radius, tiers, root, fontId, cardShadow, ringAlpha, lh));
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ light, dark, mode, radius, root, tiers, fontId, cardShadow, ringAlpha, lh })); } catch { /* ignore */ }
-  }, [light, dark, mode, radius, root, tiers, fontId, cardShadow, ringAlpha, lh, loaded]);
+    // 风格模式
+    if (styleMode === "linear") r.dataset.style = "linear";
+    else r.removeAttribute("data-style");
+    // 新 token：shell-canvas（linear 风格才覆盖，默认风格走 CSS 级联 var(--background)）
+    const activeShellCanvas = mode === "dark" ? shellCanvasDark : shellCanvasLight;
+    if (styleMode === "linear") r.style.setProperty("--shell-canvas", oklchStr(activeShellCanvas));
+    else r.style.removeProperty("--shell-canvas");
+    // 密度
+    r.style.setProperty("--surface-pad", `${density.surfacePad}rem`);
+    r.style.setProperty("--surface-pad-sm", `${density.surfacePadSm}rem`);
+    r.style.setProperty("--page-pad", `${density.pagePad}rem`);
+    r.style.setProperty("--section-gap", `${density.sectionGap}rem`);
+    r.style.setProperty("--card-gap", `${density.cardGap}rem`);
+    // 动效
+    r.style.setProperty("--motion-fast", `${motion.fast}ms`);
+    r.style.setProperty("--motion-slow", `${motion.slow}ms`);
+
+    setSnippet(buildExport(light, dark, radius, tiers, root, fontId, cardShadow, ringAlpha, lh, styleMode, shellCanvasLight, shellCanvasDark, density, motion));
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ light, dark, mode, radius, root, tiers, fontId, cardShadow, ringAlpha, lh, shellCanvasLight, shellCanvasDark, density, motion })); } catch { /* ignore */ }
+  }, [light, dark, mode, radius, root, tiers, fontId, cardShadow, ringAlpha, lh, styleMode, shellCanvasLight, shellCanvasDark, density, motion, loaded]);
+
+  // 切风格：双模快照读新风格的 CSS 级联值，重置亮/暗全部颜色及新 token
+  const handleStyleModeChange = (newStyle: StyleMode) => {
+    const r = document.documentElement;
+    if (newStyle === "linear") r.dataset.style = "linear";
+    else r.removeAttribute("data-style");
+    const snap = snapshotStyleColors(r, mode === "dark");
+    setLight(snap.light);
+    setDark(snap.dark);
+    setShellCanvasLight(snap.shellCanvasLight);
+    setShellCanvasDark(snap.shellCanvasDark);
+    setRadius(snap.radius);
+    setDensity(snap.density);
+    setMotion(snap.motion);
+    setStyleMode(newStyle);
+  };
 
   const reset = () => {
     setLight(LIGHT); setDark(DARK); setRadius(DEFAULT_RADIUS); setRoot(DEFAULT_ROOT); setTiers(DEFAULT_TIERS); setFontId("default");
     setCardShadow("flat"); setRingAlpha(DEFAULT_RING_ALPHA); setLh(DEFAULT_LH);
-    document.documentElement.style.fontSize = "";
-    document.documentElement.style.removeProperty("--card-lift");
-    document.documentElement.style.removeProperty("--card-ring");
-    for (const k of ["--lh-tight", "--lh-snug", "--lh-body"]) document.documentElement.style.removeProperty(k);
+    setShellCanvasLight(DEFAULT_SHELL_CANVAS_LIGHT);
+    setShellCanvasDark(DEFAULT_SHELL_CANVAS_DARK);
+    setDensity(DEFAULT_DENSITY);
+    setMotion(DEFAULT_MOTION);
+    setStyleMode("default");
+    const r = document.documentElement;
+    r.style.fontSize = "";
+    r.style.removeProperty("--card-lift");
+    r.style.removeProperty("--card-ring");
+    r.style.removeProperty("--shell-canvas");
+    for (const k of ["--lh-tight", "--lh-snug", "--lh-body"]) r.style.removeProperty(k);
+    for (const k of ["--surface-pad", "--surface-pad-sm", "--page-pad", "--section-gap", "--card-gap", "--motion-fast", "--motion-slow"]) r.style.removeProperty(k);
+    r.removeAttribute("data-style");
     try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
   };
   const active = mode === "dark" ? dark : light;
   const setActiveColor = (k: ColorKey, v: Oklch) => (mode === "dark" ? setDark : setLight)((p) => ({ ...p, [k]: v }));
+  const activeShellCanvas = mode === "dark" ? shellCanvasDark : shellCanvasLight;
+  const setActiveShellCanvas = (v: Oklch) => (mode === "dark" ? setShellCanvasDark : setShellCanvasLight)(v);
   const setTier = (i: number, patch: Partial<Tier>) => setTiers((prev) => prev.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   const copy = async () => { try { await navigator.clipboard.writeText(snippet); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ } };
 
@@ -193,11 +408,19 @@ export function ThemePlayground() {
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <header className="flex items-center gap-3 border-b border-border px-5 py-3 shrink-0">
         <h1 className="text-h2">主题调试台</h1>
+        {/* 风格选择器 */}
+        <div className="flex overflow-hidden rounded-md border border-border text-meta">
+          <button onClick={() => handleStyleModeChange("default")} className={styleMode === "default" ? "bg-primary px-3 py-1 text-primary-foreground" : "px-3 py-1 text-muted-foreground"}>默认</button>
+          <button onClick={() => handleStyleModeChange("linear")} className={styleMode === "linear" ? "bg-primary px-3 py-1 text-primary-foreground" : "px-3 py-1 text-muted-foreground"}>Linear</button>
+        </div>
+        {/* 明暗切换 */}
         <div className="flex overflow-hidden rounded-md border border-border text-meta">
           <button onClick={() => setMode("light")} className={mode === "light" ? "bg-primary px-3 py-1 text-primary-foreground" : "px-3 py-1 text-muted-foreground"}>亮</button>
           <button onClick={() => setMode("dark")} className={mode === "dark" ? "bg-primary px-3 py-1 text-primary-foreground" : "px-3 py-1 text-muted-foreground"}>暗</button>
         </div>
-        <span className="text-meta text-muted-foreground">当前编辑「{mode === "dark" ? "暗色" : "亮色"}」调色板 · 字号/圆角/字体明暗共用</span>
+        <span className="text-meta text-muted-foreground">
+          风格「{styleMode === "linear" ? "Linear" : "默认"}」· 编辑「{mode === "dark" ? "暗色" : "亮色"}」· 预览开关，刷新后回到设置页所选风格
+        </span>
         <Button variant="outline" size="sm" className="ml-auto" onClick={reset}>重置</Button>
       </header>
 
@@ -211,6 +434,41 @@ export function ThemePlayground() {
               ))}
             </section>
           ))}
+
+          {/* 外壳组：--shell-canvas */}
+          <section className="flex flex-col gap-3">
+            <h2 className="text-title">外壳（明暗各调）</h2>
+            {styleMode === "linear" ? (
+              <ColorControl
+                label={`窗口背板 --shell-canvas（${mode === "dark" ? "暗" : "亮"}）`}
+                value={activeShellCanvas}
+                onChange={setActiveShellCanvas}
+              />
+            ) : (
+              <p className="text-caption text-muted-foreground rounded-lg border border-border p-3">
+                默认风格下 <code>--shell-canvas</code> 继承自 <code>--background</code>，切换至 <strong>Linear</strong> 风格后可编辑。
+              </p>
+            )}
+          </section>
+
+          {/* 密度组：五件套 rem */}
+          <section className="flex flex-col gap-2">
+            <h2 className="text-title">密度（rem · 明暗共用）</h2>
+            <Field label="surface-pad" unit="rem" value={density.surfacePad} min={0} max={2} step={0.125} onChange={(v) => setDensity((d) => ({ ...d, surfacePad: v }))} />
+            <Field label="surface-pad-sm" unit="rem" value={density.surfacePadSm} min={0} max={2} step={0.125} onChange={(v) => setDensity((d) => ({ ...d, surfacePadSm: v }))} />
+            <Field label="page-pad" unit="rem" value={density.pagePad} min={0} max={3} step={0.125} onChange={(v) => setDensity((d) => ({ ...d, pagePad: v }))} />
+            <Field label="section-gap" unit="rem" value={density.sectionGap} min={0} max={3} step={0.125} onChange={(v) => setDensity((d) => ({ ...d, sectionGap: v }))} />
+            <Field label="card-gap" unit="rem" value={density.cardGap} min={0} max={2} step={0.125} onChange={(v) => setDensity((d) => ({ ...d, cardGap: v }))} />
+            <p className="text-caption text-muted-foreground">密度调整后 cockpit 间距实时可见；p-page 等工具类走 var 链。</p>
+          </section>
+
+          {/* 动效组：fast / slow ms */}
+          <section className="flex flex-col gap-2">
+            <h2 className="text-title">动效（ms · 明暗共用）</h2>
+            <Field label="motion-fast" unit="ms" value={motion.fast} min={0} max={500} step={10} onChange={(v) => setMotion((m) => ({ ...m, fast: v }))} />
+            <Field label="motion-slow" unit="ms" value={motion.slow} min={0} max={1000} step={10} onChange={(v) => setMotion((m) => ({ ...m, slow: v }))} />
+            <p className="text-caption text-muted-foreground">调整后 hover 过渡/入场动画实时变化。</p>
+          </section>
 
           <section className="flex flex-col gap-2">
             <h2 className="text-title">圆角 & 全局缩放 & 字体（明暗共用）</h2>
@@ -355,7 +613,10 @@ export function ThemePlayground() {
 
           <section className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
-              <p className="text-meta text-muted-foreground">导出 / 编辑片段(可直接改,实时生效;含亮/暗两块,粘回 app/globals.css)</p>
+              <p className="text-meta text-muted-foreground">
+                导出 / 编辑片段（可直接改,实时生效;
+                {styleMode === "linear" ? "Linear 风格覆盖块,按行合并回 globals.css 风格挂载区(勿整块替换)" : "含亮/暗两块,粘回 app/globals.css"}）
+              </p>
               <Button size="sm" variant="outline" className="ml-auto" onClick={copy}>{copied ? "已复制 ✓" : "复制"}</Button>
             </div>
             <textarea
@@ -376,7 +637,7 @@ function Field({ label, unit, value, min, max, step, onChange }: {
 }) {
   return (
     <label className="flex items-center gap-2 text-meta">
-      <span className="w-24 shrink-0 text-muted-foreground">{label}{unit ? ` (${unit})` : ""}</span>
+      <span className="w-28 shrink-0 text-muted-foreground">{label}{unit ? ` (${unit})` : ""}</span>
       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="flex-1 accent-[color:var(--primary)]" />
       <input type="number" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-20 rounded border border-border bg-background px-1.5 py-0.5 text-meta tabular-nums" />
     </label>

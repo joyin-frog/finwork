@@ -71,12 +71,24 @@ const surfaceVariants = cva("", {
       true: "shadow-[var(--elevation-inset)]",
       false: "",
     },
+    /**
+     * pad – 内边距密度(走 --surface-pad token,随风格切换)
+     *   none    : 不管内边距(调用方自带,默认,兼容存量)
+     *   card    : p-[var(--surface-pad)](常规卡)
+     *   compact : p-[var(--surface-pad-sm)](紧凑卡/列表行)
+     */
+    pad: {
+      none: "",
+      card: "p-[var(--surface-pad)]",
+      compact: "p-[var(--surface-pad-sm)]",
+    },
   },
   defaultVariants: {
     level: "card",
     edge: "hairline",
     shape: "card",
     inset: false,
+    pad: "none",
   },
 });
 
@@ -109,6 +121,7 @@ function Surface({
   edge,
   shape,
   inset,
+  pad,
   className,
   children,
   ...props
@@ -116,7 +129,7 @@ function Surface({
   return (
     <div
       data-slot="surface"
-      className={cn(surfaceVariants({ level, edge, shape, inset }), className)}
+      className={cn(surfaceVariants({ level, edge, shape, inset, pad }), className)}
       {...props}
     >
       {children}

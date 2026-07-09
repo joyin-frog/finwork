@@ -19,7 +19,7 @@ export function SidebarToggle() {
   // 展开时折叠按钮在侧栏里(见 app-nav),内容栏不放;但留一点左侧缩进,让标题不要贴边。
   if (!collapsed) return <div className="w-3 shrink-0" aria-hidden />;
   return (
-    <div className={cn("flex items-center shrink-0", isMac ? "pl-[70px]" : "pl-2")}>
+    <div className={cn("app-sidebar-toggle flex items-center shrink-0", isMac ? "pl-[var(--tl-inset)]" : "pl-2")}>
       <ShortcutHint label={collapsed ? "展开菜单" : "收起菜单"} combo="mod+b" side="right">
         <Button
           variant="ghost"

@@ -813,7 +813,7 @@ function KnowledgePageContent() {
           <>
 
           {/* Topbar —— 只跨列表列,不横跨预览:预览卡浮在右侧、脱离标题栏。窄列时各项不换行,真放不下横向滚动(不露滚动条)。 */}
-          <header className="relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <DragHandle />
             <SidebarToggle />
             <ResourceTabs active="knowledge" />
@@ -858,7 +858,7 @@ function KnowledgePageContent() {
           </header>
 
           {/* Category chips */}
-          <div className="flex gap-2 px-3.5 py-2 border-b border-border overflow-x-auto [scrollbar-width:none] shrink-0">
+          <div className="flex gap-2 px-3.5 py-2 overflow-x-auto [scrollbar-width:none] shrink-0">
             {chips.map(({ key, label }) => (
               // eslint-disable-next-line no-restricted-syntax
               <button
@@ -904,7 +904,7 @@ function KnowledgePageContent() {
           />
 
           {/* Doc grid / search results */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="content-fade-top flex-1 overflow-y-auto">
             {isSearchMode ? (
               <SearchResults
                 results={results}

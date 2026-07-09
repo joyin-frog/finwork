@@ -12,7 +12,7 @@ const GROUPS: Array<{ title: string; scopes: Array<"global" | "chat" | "composer
 export function ShortcutsSettings() {
   const isMac = useIsMac();
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-8">
       {GROUPS.map((group) => (
         <SettingsSection key={group.title} title={group.title}>
           <div className="flex flex-col">
