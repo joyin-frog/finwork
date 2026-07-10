@@ -185,6 +185,15 @@ function toStr(v: unknown): string | null {
   return String(v);
 }
 
+/** modelUsageJson 单字段上限:超限置空(截断会破坏 JSON,下游可能 parse)。 */
+export const MODEL_USAGE_JSON_MAX = 2048;
+
+function boundedJsonStr(v: unknown, max: number): string | null {
+  const s = toStr(v);
+  if (s == null) return null;
+  return s.length <= max ? s : null;
+}
+
 function toEpochMs(v: unknown): number {
   if (v == null) return 0;
   if (typeof v === "number") return v;
@@ -231,7 +240,7 @@ export function projectTrace(
     cacheCreationTokens: toInt(row.cache_creation_tokens),
     totalCostUsd: toNumber(row.total_cost_usd),
     errorMessage: safeRedactTruncate(row.error_message, 200),
-    modelUsageJson: toStr(row.model_usage_json),
+    modelUsageJson: boundedJsonStr(row.model_usage_json, MODEL_USAGE_JSON_MAX),
     spans: spans.map(projectSpan),
   };
 }

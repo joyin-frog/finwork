@@ -7,13 +7,16 @@
  * 设计:
  * - 开关默认关,关则直接 return。
  * - 节流:每个 installId 每天最多一次,只传 lastReportedAt 之后的增量。
+ * - 体积防线:组包后按字节预算自动缩批(接收端 /api/ingest 上限 1 MiB);
+ *   413 对半缩批重试,429 按 retryAfterMs 延后重试一次。缩批时水位线只推进
+ *   到已发送数据的时间戳,漏发部分下次继续(接收端幂等,重发不翻倍)。
  * - 失败静默吞掉,绝不阻塞启动。
  */
 
 import os from "node:os";
 import { getDb, insertAuditLog, getAppSetting, setAppSetting, getFeatureEventRows } from "@/lib/db/sqlite";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
-import { buildEnvelope } from "@/lib/telemetry/projection";
+import { buildEnvelope, type TelemetryEnvelope } from "@/lib/telemetry/projection";
 import { fetchUnreportedAppErrors, markAppErrorsReported } from "@/lib/runtime/app-errors";
 
 // package.json version 在 build 时注入;fallback 用 "0.0.0"。
@@ -40,11 +43,10 @@ function getLastReportedAt(): number {
   }
 }
 
-/** 更新 lastReportedAt 并记录本次批次大小到 DB(供设置页展示)。 */
-function markReported(count: number): void {
-  const now = Date.now();
+/** 更新 lastReportedAt 并记录本次批次大小到 DB(供设置页展示)。缩批时传入已发送数据的时间戳。 */
+function markReported(count: number, at: number = Date.now()): void {
   try {
-    setAppSetting(SETTING_LAST_REPORTED_AT, String(now));
+    setAppSetting(SETTING_LAST_REPORTED_AT, String(at));
     setAppSetting("telemetry:lastReportedCount", String(count));
   } catch {
     // best-effort
@@ -107,6 +109,186 @@ function fetchIncrementalFeedback(sinceMs: number): Record<string, unknown>[] {
   `).all(sinceIso) as Record<string, unknown>[];
 }
 
+// ─── 体积预算 + 413/429 恢复 ─────────────────────────────────────────────────
+
+/** 接收端 /api/ingest 请求体上限 1 MiB(INGEST_MAX_BODY_BYTES 默认值);留余量防边界误差。 */
+export const MAX_BODY_BYTES = 900 * 1024;
+const MAX_413_RETRIES = 4;
+const MAX_RETRY_AFTER_MS = 60_000;
+const DEFAULT_RETRY_AFTER_MS = 5_000;
+
+type EnvelopeParams = Parameters<typeof buildEnvelope>[0];
+
+export type BoundedEnvelope = {
+  envelope: TelemetryEnvelope;
+  body: string;
+  traceRows: Record<string, unknown>[];
+  appErrorRows: Record<string, unknown>[];
+  feedbackRows: Record<string, unknown>[];
+  /** 单条超限降级:已剥掉 spans 组包(防毒丸堵队列,见 buildBoundedEnvelope)。 */
+  spansDropped: boolean;
+};
+
+/** 按当前批次行数重新组包(featureRows 极小,永不缩);dropSpans 时剥掉全部 spans。 */
+function buildWith(
+  params: EnvelopeParams,
+  rows: Pick<BoundedEnvelope, "traceRows" | "appErrorRows" | "feedbackRows">,
+  dropSpans = false,
+): BoundedEnvelope {
+  const envelope = buildEnvelope({
+    ...params,
+    spansByTraceId: dropSpans ? new Map() : params.spansByTraceId,
+    traceRows: rows.traceRows,
+    appErrorRows: rows.appErrorRows.length > 0 ? rows.appErrorRows : undefined,
+    feedbackRows: rows.feedbackRows.length > 0 ? rows.feedbackRows : undefined,
+  });
+  return {
+    envelope,
+    body: JSON.stringify(envelope),
+    // 注意别 spread rows:halveRows 传入的对象可能携带旧的 envelope/body
+    traceRows: rows.traceRows,
+    appErrorRows: rows.appErrorRows,
+    feedbackRows: rows.feedbackRows,
+    spansDropped: dropSpans,
+  };
+}
+
+/** 对半缩批,优先砍大头 traces;全部缩到 1 条仍超限则返回 null(交给调用方放弃)。 */
+function halveRows(
+  rows: Pick<BoundedEnvelope, "traceRows" | "appErrorRows" | "feedbackRows">,
+): Pick<BoundedEnvelope, "traceRows" | "appErrorRows" | "feedbackRows"> | null {
+  if (rows.traceRows.length > 1) {
+    return { ...rows, traceRows: rows.traceRows.slice(0, Math.floor(rows.traceRows.length / 2)) };
+  }
+  if (rows.appErrorRows.length > 1) {
+    return { ...rows, appErrorRows: rows.appErrorRows.slice(0, Math.floor(rows.appErrorRows.length / 2)) };
+  }
+  if (rows.feedbackRows.length > 1) {
+    return { ...rows, feedbackRows: rows.feedbackRows.slice(0, Math.floor(rows.feedbackRows.length / 2)) };
+  }
+  return null;
+}
+
+/**
+ * 组包并保证 body ≤ maxBytes:超限时按 traces → appErrors → feedback 顺序对半缩批。
+ * 行序是时间升序,保留前半 = 保留最旧的,配合水位线让漏发部分下次继续。
+ *
+ * 毒丸防护:缩到单条仍超限(典型是一条 trace 挂了海量 spans)时剥掉 spans 降级
+ * 组包——剥完只剩定长标量(errorMessage ≤200、modelUsageJson ≤2KB),必然进预算。
+ * 该条照常发送、水位线照常推进,不会永远堵在队头。
+ */
+export function buildBoundedEnvelope(params: EnvelopeParams, maxBytes: number = MAX_BODY_BYTES): BoundedEnvelope {
+  let rows: Pick<BoundedEnvelope, "traceRows" | "appErrorRows" | "feedbackRows"> = {
+    traceRows: params.traceRows,
+    appErrorRows: params.appErrorRows ?? [],
+    feedbackRows: params.feedbackRows ?? [],
+  };
+  let dropSpans = false;
+  for (;;) {
+    const bounded = buildWith(params, rows, dropSpans);
+    if (Buffer.byteLength(bounded.body, "utf8") <= maxBytes) return bounded;
+    const shrunk = halveRows(rows);
+    if (shrunk) {
+      rows = shrunk;
+      continue;
+    }
+    if (!dropSpans) {
+      dropSpans = true; // 单条仍超限:剥 spans 降级再试
+      continue;
+    }
+    return bounded; // 纯标量仍超限(理论不可达):照发,交给接收端裁决
+  }
+}
+
+/** 解析 429 响应体里的 retryAfterMs(接收端返回 { error: "rate_limited", retryAfterMs })。 */
+export function parseRetryAfterMs(bodyText: string): number | null {
+  try {
+    const v = (JSON.parse(bodyText) as { retryAfterMs?: unknown }).retryAfterMs;
+    return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export type SendOutcome = {
+  ok: boolean;
+  status: number | null;
+  attempts: number;
+  sent: BoundedEnvelope;
+};
+
+/**
+ * 发送 envelope,带两类恢复(可注入 fetch/sleep 供单测):
+ * - 413:对半缩批立即重试,最多 MAX_413_RETRIES 次
+ * - 429:读响应 retryAfterMs(封顶 60s,缺省 5s)等待后重试一次
+ * 其余非 2xx / 网络错误不在此吞,由调用方兜底。
+ */
+export async function sendEnvelopeWithRecovery(opts: {
+  url: string;
+  token: string;
+  params: EnvelopeParams;
+  maxBytes?: number;
+  fetchImpl?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<SendOutcome> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const maxBytes = opts.maxBytes ?? MAX_BODY_BYTES;
+
+  let bounded = buildBoundedEnvelope(opts.params, maxBytes);
+  let retries413 = 0;
+  let retried429 = false;
+  let attempts = 0;
+
+  for (;;) {
+    attempts++;
+    const res = await fetchImpl(opts.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${opts.token}`,
+        "X-Schema-Version": String(bounded.envelope.schemaVersion),
+      },
+      body: bounded.body,
+    });
+
+    if (res.ok) return { ok: true, status: res.status, attempts, sent: bounded };
+
+    if (res.status === 413 && retries413 < MAX_413_RETRIES) {
+      const shrunk = halveRows(bounded);
+      if (shrunk) {
+        retries413++;
+        bounded = buildWith(opts.params, shrunk, bounded.spansDropped);
+        continue;
+      }
+      if (!bounded.spansDropped) {
+        // 单条仍被 413:剥 spans 降级重试,防毒丸堵死队列
+        retries413++;
+        bounded = buildWith(opts.params, bounded, true);
+        continue;
+      }
+    }
+
+    if (res.status === 429 && !retried429) {
+      retried429 = true;
+      const retryAfterMs = parseRetryAfterMs(await res.text().catch(() => ""));
+      await sleep(Math.min(retryAfterMs ?? DEFAULT_RETRY_AFTER_MS, MAX_RETRY_AFTER_MS));
+      continue;
+    }
+
+    return { ok: false, status: res.status, attempts, sent: bounded };
+  }
+}
+
+/** 已发送批次里最后一条的时间戳(升序取末尾),供缩批后回退水位线。 */
+function lastRowEpochMs(rows: Record<string, unknown>[], column: string): number | null {
+  if (rows.length === 0) return null;
+  const v = rows[rows.length - 1][column];
+  if (v == null) return null;
+  const ms = typeof v === "number" ? v : new Date(String(v)).getTime();
+  return isNaN(ms) ? null : ms;
+}
+
 /**
  * 运行一次遥测上报。
  * - 开关关闭 → 直接 return(无副作用)。
@@ -150,17 +332,6 @@ export async function runTelemetryReport(): Promise<void> {
 
     const windowFrom = lastReportedAt;
     const windowTo = Date.now();
-    const envelope = buildEnvelope({
-      installId: settings.telemetryInstallId,
-      appVersion: getAppVersion(),
-      platform: { os: os.platform(), arch: os.arch() },
-      window: { from: windowFrom, to: windowTo },
-      traceRows,
-      spansByTraceId,
-      appErrorRows: appErrorRows.length > 0 ? (appErrorRows as Record<string, unknown>[]) : undefined,
-      feedbackRows: feedbackRows.length > 0 ? feedbackRows : undefined,
-      featureRows: featureRows.length > 0 ? featureRows : undefined,
-    });
 
     // 接收端是 Next.js 应用,ingest 路由在 /api/ingest;endpoint 配基址即可。
     const url = `${resolvedEndpoint.replace(/\/+$/, "")}/api/ingest`;
@@ -175,38 +346,59 @@ export async function runTelemetryReport(): Promise<void> {
       isExternal: true,
     });
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${resolvedToken}`,
-        "X-Schema-Version": String(envelope.schemaVersion),
+    const outcome = await sendEnvelopeWithRecovery({
+      url,
+      token: resolvedToken,
+      params: {
+        installId: settings.telemetryInstallId,
+        appVersion: getAppVersion(),
+        platform: { os: os.platform(), arch: os.arch() },
+        window: { from: windowFrom, to: windowTo },
+        traceRows,
+        spansByTraceId,
+        appErrorRows: appErrorRows.length > 0 ? (appErrorRows as Record<string, unknown>[]) : undefined,
+        feedbackRows: feedbackRows.length > 0 ? feedbackRows : undefined,
+        featureRows: featureRows.length > 0 ? featureRows : undefined,
       },
-      body: JSON.stringify(envelope),
     });
 
-    if (res.ok) {
-      markReported(traceRows.length);
-      // 把 appErrors 标为已上报(增量,别重发)。
-      if (appErrorRows.length > 0) {
-        markAppErrorsReported(appErrorRows.map((r) => r.id));
+    if (outcome.ok) {
+      const sent = outcome.sent;
+      // 缩批过 → 水位线只推进到已发送数据的最后时间戳,漏发部分下次继续
+      //(traces 按 started_at、feedback 按 updated_at,取更早者;接收端幂等,重发无害)。
+      const watermarks: number[] = [];
+      if (sent.traceRows.length < traceRows.length) {
+        const ts = lastRowEpochMs(sent.traceRows, "started_at");
+        if (ts != null) watermarks.push(ts);
+      }
+      if (sent.feedbackRows.length < feedbackRows.length) {
+        const ts = lastRowEpochMs(sent.feedbackRows, "updated_at");
+        if (ts != null) watermarks.push(ts);
+      }
+      markReported(sent.traceRows.length, watermarks.length > 0 ? Math.min(...watermarks) : undefined);
+      // 把已发送的 appErrors 标为已上报(增量,别重发;缩批漏发的下次再报)。
+      if (sent.appErrorRows.length > 0) {
+        markAppErrorsReported(sent.appErrorRows.map((r) => r.id as number));
       }
       // 落成功审计。
       insertAuditLog("telemetry:report_success", {
         installId: settings.telemetryInstallId,
         endpoint: url,
-        traceCount: traceRows.length,
-        appErrorCount: appErrorRows.length,
-        status: res.status,
+        traceCount: sent.traceRows.length,
+        appErrorCount: sent.appErrorRows.length,
+        attempts: outcome.attempts,
+        shrunk: sent.traceRows.length < traceRows.length,
+        status: outcome.status,
         isExternal: true,
       });
     } else {
-      // 失败:静默,记审计(供回溯)。
+      // 失败:静默,记审计(供回溯)。水位线不推进,下次启动重试。
       insertAuditLog("telemetry:report_failed", {
         installId: settings.telemetryInstallId,
         endpoint: url,
         traceCount: traceRows.length,
-        status: res.status,
+        attempts: outcome.attempts,
+        status: outcome.status,
         isExternal: true,
       });
     }
@@ -275,10 +467,10 @@ export async function runTelemetryTestReport(): Promise<TestReportResult> {
 
   const featureRows = getFeatureEventRows();
 
-  // 构造 envelope
+  // 构造 envelope(同样过体积预算,超限自动缩批;诊断路径不做重试)
   const windowFrom = sevenDaysAgo;
   const windowTo = Date.now();
-  const envelope = buildEnvelope({
+  const bounded = buildBoundedEnvelope({
     installId: settings.telemetryInstallId,
     appVersion: getAppVersion(),
     platform: { os: os.platform(), arch: os.arch() },
@@ -289,6 +481,7 @@ export async function runTelemetryTestReport(): Promise<TestReportResult> {
     feedbackRows: feedbackRows.length > 0 ? feedbackRows : undefined,
     featureRows: featureRows.length > 0 ? featureRows : undefined,
   });
+  const envelope = bounded.envelope;
 
   const url = `${resolvedEndpoint.replace(/\/+$/, "")}/api/ingest`;
 
@@ -311,7 +504,7 @@ export async function runTelemetryTestReport(): Promise<TestReportResult> {
         "Authorization": `Bearer ${resolvedToken}`,
         "X-Schema-Version": String(envelope.schemaVersion),
       },
-      body: JSON.stringify(envelope),
+      body: bounded.body,
     });
 
     if (res.ok) {
