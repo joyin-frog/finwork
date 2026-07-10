@@ -1,4 +1,4 @@
-# Finance Agent
+# Finwork
 
 [![CI](https://github.com/joyin-frog/finwork/actions/workflows/ci.yml/badge.svg)](https://github.com/joyin-frog/finwork/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/joyin-frog/finwork?sort=semver)](https://github.com/joyin-frog/finwork/releases)
@@ -45,9 +45,9 @@ npm run tauri:build        # 打包，产物在 src-tauri/target/release/bundle/
 
 <a name="english"></a>
 
-# Finance Agent (English)
+# Finwork (English)
 
-[中文](#finance-agent) · **English**
+[中文](#finwork) · **English**
 
 ## Requirements
 

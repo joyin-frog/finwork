@@ -78,7 +78,7 @@ export function exportDiagnostics(
     writeFileSync(
       path.join(bundlePath, warningName),
       [
-        "Finance Agent diagnostics export",
+        "Finwork diagnostics export",
         "",
         "SENSITIVE DATA WARNING",
         "- finance-agent.db is a complete local database snapshot.",

@@ -186,9 +186,9 @@ GitHub Actions 触发 `.github/workflows/release.yml`:
 
 1. 进入 GitHub → Releases → 找到草稿 Release
 2. 确认产物包含:
-   - `Finance Agent_1.2.0_aarch64.dmg`(macOS Apple Silicon)
-   - `Finance Agent_1.2.0_x64.dmg`(macOS Intel)
-   - `Finance Agent_1.2.0_x64-setup.exe` / `.msi`(Windows)
+   - `Finwork_1.2.0_aarch64.dmg`(macOS Apple Silicon)
+   - `Finwork_1.2.0_x64.dmg`(macOS Intel)
+   - `Finwork_1.2.0_x64-setup.exe` / `.msi`(Windows)
    - `latest.json`(必须存在,含各平台签名)
 3. 下载 `latest.json` 验证:
    ```bash
@@ -204,7 +204,7 @@ GitHub Actions 触发 `.github/workflows/release.yml`:
 
 ### 4.1 安装旧版本
 
-安装一个较旧版本(如 v1.1.0)的 Finance Agent 到测试机器。
+安装一个较旧版本(如 v1.1.0)的 Finwork 到测试机器。
 
 ### 4.2 发布新版本
 
@@ -212,7 +212,7 @@ GitHub Actions 触发 `.github/workflows/release.yml`:
 
 ### 4.3 触发更新检查
 
-1. 打开旧版 Finance Agent
+1. 打开旧版 Finwork
 2. 进入 **设置 → 常规 → 应用更新**
 3. 点击 **检查更新**
 

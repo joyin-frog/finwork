@@ -40,7 +40,7 @@ const highlightDarkCSS = prefixCssScope(
 );
 
 export const metadata: Metadata = {
-  title: "Finance Agent",
+  title: "Finwork",
   description: "财务 Agent 第一版工作台",
 };
 
