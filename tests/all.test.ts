@@ -658,6 +658,15 @@ process.on("unhandledRejection", (err) => {
   const { suppressLockTestPromise } = await import("./ui/suppress-lock.test.ts");
   await suppressLockTestPromise;
 
+  const { runtimeEventsTestPromise } = await import("./runtime-events.test.ts");
+  await runtimeEventsTestPromise;
+
+  const { coerceJsonTestPromise } = await import("./coerce-json.test.ts");
+  await coerceJsonTestPromise;
+
+  const { recapSummaryTestPromise } = await import("./recap-summary.test.ts");
+  await recapSummaryTestPromise;
+
 })().catch((err) => {
   console.error("[all.test] 测试链失败:", err);
   process.exitCode = 1;

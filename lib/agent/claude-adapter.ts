@@ -29,6 +29,8 @@ import { ensureConventionsMigrated } from "@/lib/memory/migrate-conventions";
 import { readCompanyProfile } from "@/lib/profile/file-store";
 import { writeSpan } from "@/lib/observability/spans";
 import { listRecentNegativeReasons } from "@/lib/db/sqlite";
+import type { AgentRuntimeEvent } from "./runtime-events";
+import { buildStructuredRecap, createPostCompactHookCallback } from "./recap-summary";
 
 const log = createLogger("claude-agent");
 
@@ -57,21 +59,16 @@ export type AgentQuestion = {
   kind?: "confirm";
 };
 
-export type AgentRunEvent =
-  | { type: "system"; subtype?: string; message: string; data?: unknown }
-  | { type: "tool_use"; id?: string; name: string; input?: unknown }
-  | { type: "tool_result"; toolUseId?: string; name?: string; content?: string; isError?: boolean; durationMs?: number; structured?: unknown }
-  | { type: "subagent"; label: string; roleId: string; phase: "start" | "tool" | "blocked" | "done"; summary?: string; toolName?: string; durationMs?: number; isError?: boolean; success?: boolean };
-
 export type ClaudeAgentRunOptions = {
   claudeSessionId?: string | null;
   resumeSession?: boolean;
   requestId?: string;
   attachments?: AgentAttachment[];
   outputDir?: string;
-  onChunk?: (text: string) => void;
-  onThinking?: (text: string) => void;
-  onAgentEvent?: (event: AgentRunEvent) => void;
+  /** 统一事件发射口（AR2a）：主 Agent 事件；替代原 onChunk / onThinking / onAgentEvent 三路回调。 */
+  emit?: (event: AgentRuntimeEvent) => void;
+  /** 子代理里程碑事件（AR2a）：每次 runSubagent 生成新 instanceId，随事件一起回传。 */
+  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void;
   resolveUserQuestion?: (question: AgentQuestion) => Promise<string>;
   signal?: AbortSignal;
   /** 路由器的模型分层结果:简单任务用更轻的模型;缺省走设置里的主模型 */
@@ -207,7 +204,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     outputDir,
     requestId,
     runOptions.conversationId != null ? String(runOptions.conversationId) : undefined,
-    runOptions.onAgentEvent
+    runOptions.onSubagentEvent
   );
   // 静态工具全集(含 Bash/Write 供 skill 脚本);不再按 skill 收敛,高风险工具经确认门兜底。
   const allowedTools = ALLOWED_TOOLS;
@@ -284,6 +281,9 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     settingSources: skillPlugin.settingSources,
     systemPrompt,
     canUseTool,
+    hooks: {
+      PostCompact: [{ hooks: [createPostCompactHookCallback(requestId, writeSpan)] }],
+    },
     includePartialMessages: true,
     maxTurns: 30,
     permissionMode: "acceptEdits",
@@ -315,7 +315,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   };
 
   const pickedMessages = pickPromptMessages(messages, { resumeSession: Boolean(runOptions.resumeSession), retried: false });
-  const promptInput = buildPromptInput(pickedMessages, runOptions.attachments ?? []);
+  const promptInput = buildPromptInput(pickedMessages, runOptions.attachments ?? [], settings);
   const queryOpts: Record<string, unknown> = options;
   const sdkQueryStartedAt = Date.now();
   let sessionRetried = false;
@@ -350,7 +350,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       // 重试使用全量历史，确保上下文完整
       const retryPromptInput = buildPromptInput(
         pickPromptMessages(messages, { resumeSession: true, retried: true }),
-        runOptions.attachments ?? []
+        runOptions.attachments ?? [],
+        settings
       );
       writeSpan({
         traceId: requestId,
@@ -377,10 +378,10 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       error: resolved.isError ? resolved.content : undefined,
     });
 
-    runOptions.onAgentEvent?.({
-      type: "tool_result",
-      toolUseId: resolved.toolUseId,
-      name: resolved.name,
+    runOptions.emit?.({
+      type: "tool_completed",
+      toolCallId: resolved.toolUseId,
+      toolName: resolved.name,
       content: resolved.content,
       isError: resolved.isError,
       durationMs: resolved.durationMs,
@@ -448,12 +449,21 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
         // 单会话实测可达数千条。若无差别转发,会污染时间线、撑爆 SSE,并把 chat_agent_events 灌成
         // 几千行垃圾(DB 膨胀)。只放行对用户/审计有意义的 system 子类型,其余在源头直接丢弃。
         if (isMeaningfulSystemEvent(message.subtype)) {
-          runOptions.onAgentEvent?.({
-            type: "system",
-            subtype: message.subtype,
-            message: buildSystemEventMessage(message),
-            data: message,
-          });
+          if (message.subtype === "compact_boundary") {
+            const compactMeta = (message as SDKCompactBoundaryMessage).compact_metadata;
+            runOptions.emit?.({
+              type: "compaction_completed",
+              preTokens: compactMeta?.pre_tokens,
+              postTokens: compactMeta?.post_tokens,
+              trigger: compactMeta?.trigger,
+            });
+          } else {
+            runOptions.emit?.({
+              type: "system_note",
+              subtype: message.subtype,
+              message: buildSystemEventMessage(message),
+            });
+          }
         }
       }
 
@@ -465,7 +475,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
           if (delta.type === "text_delta" && delta.text) {
             streamedText = true;
             chunks.push(delta.text);
-            runOptions.onChunk?.(delta.text);
+            runOptions.emit?.({ type: "message_delta", channel: "text", delta: delta.text });
           }
           // thinking 增量不收不推:不向前端展示;模型思考能力不变
         }
@@ -483,20 +493,20 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
         for (const block of assistantMsg.message.content) {
           if (block.type === "text" && "text" in block && block.text && !streamedText) {
             chunks.push(block.text);
-            runOptions.onChunk?.(block.text);
+            runOptions.emit?.({ type: "message_delta", channel: "text", delta: block.text });
           }
           // thinking 块:整块上报(不收 stream_event 的 thinking_delta 增量,避免重复 + 跨片模型名漏过滤)。
           // 是否对外展示/如何脱敏由上层(route)按安全红线处理;此处只负责把完整思考文本透出。
           if (block.type === "thinking" && "thinking" in block) {
             const thinkingText = (block as { thinking?: unknown }).thinking;
             if (typeof thinkingText === "string" && thinkingText.trim()) {
-              runOptions.onThinking?.(thinkingText);
+              runOptions.emit?.({ type: "message_delta", channel: "thinking", delta: thinkingText });
             }
           }
           if (block.type === "tool_use" && "name" in block) {
             const toolUseBlock = block as { id?: string; name: string; input?: unknown };
             toolTracker.trackToolUse(toolUseBlock);
-            runOptions.onAgentEvent?.({ type: "tool_use", id: toolUseBlock.id, name: toolUseBlock.name, input: toolUseBlock.input });
+            runOptions.emit?.({ type: "tool_started", toolName: toolUseBlock.name, input: toolUseBlock.input, toolCallId: toolUseBlock.id });
           }
           if (block.type === "mcp_tool_result" && "tool_use_id" in block) {
             // MCP tool result blocks from the Beta API
@@ -603,7 +613,11 @@ function safeJsonStringify(value: unknown): string | undefined {
   try { return JSON.stringify(value); } catch { return String(value); }
 }
 
-export function buildPromptInput(messages: AgentMessage[], attachments: AgentAttachment[]): string | AsyncIterable<SDKUserMessage> {
+export function buildPromptInput(
+  messages: AgentMessage[],
+  attachments: AgentAttachment[],
+  settings?: { apiKey: string; apiUrl: string; mainModel?: string; model?: string }
+): string | AsyncIterable<SDKUserMessage> {
   const attachmentBlocks = buildAttachmentBlocks(attachments);
   const lastContent = messages[messages.length - 1]?.content ?? "";
   const lastPromptText = buildPromptText(lastContent, attachments);
@@ -612,24 +626,21 @@ export function buildPromptInput(messages: AgentMessage[], attachments: AgentAtt
     return lastPromptText;
   }
 
-  return yieldMessages(messages, attachmentBlocks, lastPromptText);
+  return yieldMessages(messages, attachmentBlocks, lastPromptText, settings);
 }
 
 async function* yieldMessages(
   messages: AgentMessage[],
   attachmentBlocks: Array<Record<string, unknown>>,
-  lastPromptText: string
+  lastPromptText: string,
+  settings?: { apiKey: string; apiUrl: string; mainModel?: string; model?: string }
 ): AsyncIterable<SDKUserMessage> {
   // SDK 的 prompt 流只接受 user 角色;历史里的 assistant 轮若按原角色发出会被拒
   // ("Expected message role 'user', got 'assistant'")。这里把历史(含 assistant)
   // 压成一段 user 角色的「对话回顾」,拼到当前消息前——既合法又保住上下文。
+  // AR1a：长历史走结构化摘要（mainModel + 最近 RECENT_KEEP 条原文），短历史/失败降级到全量压平。
   const history = messages.slice(0, -1);
-  const recap = history.length
-    ? `<对话回顾>\n${history
-        .map((m) => `${m.role === "user" ? "用户" : "助手"}:${m.content}`)
-        .join("\n")}\n</对话回顾>\n\n当前请求:\n`
-    : "";
-  const text = `${recap}${lastPromptText}`;
+  const text = await buildStructuredRecap(history, lastPromptText, settings);
 
   if (!attachmentBlocks.length) {
     yield {

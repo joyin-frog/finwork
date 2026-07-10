@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod/v4";
+import { jsonCoercible } from "./coerce-json";
 import type { SdkLike } from "./sdk-types";
 import { wrapToolHandler } from "./sdk-types";
 import { withIdempotency } from "@/lib/agent/tools/idempotency";
@@ -50,7 +51,7 @@ const exportDraftEntrySchema = z.object({
 const exportDraftSchema = {
   company: z.string().describe("公司名称"),
   period: z.string().describe("会计期间,yyyy-MM"),
-  entries: z.array(exportDraftEntrySchema).describe("凭证分录列表"),
+  entries: jsonCoercible(z.array(exportDraftEntrySchema).describe("凭证分录列表")),
   idempotency_key: z.string().optional().describe("幂等键"),
 };
 
@@ -59,16 +60,18 @@ const validateVoucherSchema = {
 };
 
 const importAccountsSchema = {
-  accounts: z
-    .array(
-      z.object({
-        code: z.string().describe("科目编码,如6602.01"),
-        name: z.string().describe("科目名称"),
-        type: z.string().optional().describe("科目类别(资产/负债/权益/收入/费用),拿不准留空"),
-        balance: z.number().optional().describe("余额(元),可空"),
-      })
-    )
-    .describe("贵司金蝶导出的科目表(逐条:科目编码 + 名称 + 类别)"),
+  accounts: jsonCoercible(
+    z
+      .array(
+        z.object({
+          code: z.string().describe("科目编码,如6602.01"),
+          name: z.string().describe("科目名称"),
+          type: z.string().optional().describe("科目类别(资产/负债/权益/收入/费用),拿不准留空"),
+          balance: z.number().optional().describe("余额(元),可空"),
+        })
+      )
+      .describe("贵司金蝶导出的科目表(逐条:科目编码 + 名称 + 类别)")
+  ),
 };
 
 export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
@@ -263,7 +266,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
 
   // ── 金额勾稽:明细Σ/合计/大写三来源交叉验证,不靠 LLM 心算(确定性关键)──
   const checkAmountSchema = {
-    lineItemsYuan: z.array(z.number()).optional().describe("各明细行金额(元),如[1377,2323]"),
+    lineItemsYuan: jsonCoercible(z.array(z.number()).optional().describe("各明细行金额(元),如[1377,2323]")),
     totalYuan: z.number().optional().describe("合计金额(元)"),
     capitalText: z.string().optional().describe("大写金额文本,如「叁仟柒佰元整」"),
   };
@@ -322,9 +325,11 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
   // ── 科目映射:对照表命中→科目表验证→维度类型带出(编码必须存在才输出)──
   const mapAccountSchema = {
     text: z.string().describe("摘要/收款方文本,如「付杰强劳务费」"),
-    mappings: z
-      .array(z.object({ keyword: z.string(), code: z.string(), dimensionValue: z.string().optional() }))
-      .describe("从知识库对照表(search_knowledge)查到的条目:关键词→科目码→维度值"),
+    mappings: jsonCoercible(
+      z
+        .array(z.object({ keyword: z.string(), code: z.string(), dimensionValue: z.string().optional() }))
+        .describe("从知识库对照表(search_knowledge)查到的条目:关键词→科目码→维度值")
+    ),
   };
   const mapAccountHandler = wrapToolHandler(mapAccountSchema, async (args: Record<string, unknown>) => {
     const { text, mappings } = args as {
@@ -341,18 +346,20 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
 
   // ── 汇总:聚合每张单据的金额/科目结论为大表 + 统计(失败行跳过不干扰)──
   const summarizeSchema = {
-    results: z
-      .array(
-        z.object({
-          file: z.string(),
-          ocrOk: z.boolean(),
-          amountOk: z.boolean().optional(),
-          amountIssue: z.string().optional(),
-          accountOk: z.boolean().optional(),
-          accountIssue: z.string().optional(),
-        })
-      )
-      .describe("每张单据的处理结论"),
+    results: jsonCoercible(
+      z
+        .array(
+          z.object({
+            file: z.string(),
+            ocrOk: z.boolean(),
+            amountOk: z.boolean().optional(),
+            amountIssue: z.string().optional(),
+            accountOk: z.boolean().optional(),
+            accountIssue: z.string().optional(),
+          })
+        )
+        .describe("每张单据的处理结论")
+    ),
   };
   const summarizeHandler = wrapToolHandler(summarizeSchema, async (args: Record<string, unknown>) => {
     const { results } = args as { results: SlipResult[] };
@@ -365,21 +372,23 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
 
   // ── 多行凭证构造 + 预借款冲销:费用明细→多借方行;「原借款」有金额→冲销分录 ──
   const buildVoucherSchema = {
-    expenses: z
-      .array(
-        z.object({
-          summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
-          account: z.string(),
-          accountName: z.string().optional(),
-          dimensionValue: z.string().optional(),
-          amountYuan: z.number(),
-        })
-      )
-      .describe("费用明细借方行(每行一个科目)"),
-    paymentAccount: z.object({ code: z.string(), name: z.string().optional() }).describe("付款科目(银行/现金)"),
+    expenses: jsonCoercible(
+      z
+        .array(
+          z.object({
+            summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
+            account: z.string(),
+            accountName: z.string().optional(),
+            dimensionValue: z.string().optional(),
+            amountYuan: z.number(),
+          })
+        )
+        .describe("费用明细借方行(每行一个科目)")
+    ),
+    paymentAccount: jsonCoercible(z.object({ code: z.string(), name: z.string().optional() }).describe("付款科目(银行/现金)")),
     departmentName: z.string().optional().describe("报销部门(费用行默认核算维度值)"),
     advanceYuan: z.number().optional().describe("单据「原借款」栏金额;>0 走冲销分录,空/0 走普通"),
-    advanceAccount: z.object({ code: z.string(), name: z.string().optional() }).optional().describe("预借款科目,默认其他应收款-个人往来 1221.03"),
+    advanceAccount: jsonCoercible(z.object({ code: z.string(), name: z.string().optional() }).optional().describe("预借款科目,默认其他应收款-个人往来 1221.03")),
     payeeName: z.string().optional().describe("报销人(冲销行核算维度=员工)"),
   };
   const buildVoucherHandler = wrapToolHandler(buildVoucherSchema, async (args: Record<string, unknown>) => {
@@ -393,25 +402,27 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
 
   // ── 凭证 → 金蝶对照手填清单(行数据,列对齐录入界面);仅用于预览，实际 xlsx 由 export_voucher_list 生成 ──
   const buildSheetSchema = {
-    vouchers: z
-      .array(
-        z.object({
-          date: z.string(),
-          voucherWord: z.string().optional(),
-          lines: z.array(
-            z.object({
-              summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
-              account: z.string(),
-              accountName: z.string().optional(),
-              dimensionType: z.string().optional(),
-              dimensionValue: z.string().optional(),
-              debitYuan: z.number().optional(),
-              creditYuan: z.number().optional(),
-            })
-          ),
-        })
-      )
-      .describe("确认后的凭证列表(每张含日期+多行分录)"),
+    vouchers: jsonCoercible(
+      z
+        .array(
+          z.object({
+            date: z.string(),
+            voucherWord: z.string().optional(),
+            lines: z.array(
+              z.object({
+                summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
+                account: z.string(),
+                accountName: z.string().optional(),
+                dimensionType: z.string().optional(),
+                dimensionValue: z.string().optional(),
+                debitYuan: z.number().optional(),
+                creditYuan: z.number().optional(),
+              })
+            ),
+          })
+        )
+        .describe("确认后的凭证列表(每张含日期+多行分录)")
+    ),
   };
   const buildSheetHandler = wrapToolHandler(buildSheetSchema, async (args: Record<string, unknown>) => {
     const { vouchers } = args as { vouchers: VoucherForSheet[] };
@@ -424,28 +435,32 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
 
   // ── 批量:一次处理整批单据(勾稽+映射+分录+汇总+清单),把 40+ 次 LLM 往返压成 1 次 ──
   const batchSchema = {
-    slips: z
-      .array(
-        z.object({
-          file: z.string(),
-          date: z.string().describe("凭证日期 yyyy-MM-dd"),
-          lineItems: z.array(z.object({ summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"), amountYuan: z.number() })).describe("费用明细行"),
-          totalYuan: z.number().optional().describe("合计(元)"),
-          capitalText: z.string().optional().describe("大写金额文本"),
-          advanceYuan: z.number().optional().describe("单据「原借款」栏金额,>0 走冲销"),
-          payeeName: z.string().optional().describe("报销人(冲销行维度)"),
-          departmentName: z.string().optional().describe("报销部门(费用行维度)"),
-          direction: z.enum(["expense", "income"]).optional().describe("资金方向,从单据本身的收/支继承:支出(默认)或收入(如结息,明细行记贷方、银行行记借方)"),
-          payerBankName: z.string().optional().describe("本张单据 OCR 出的付款银行/账户名,用作银行存款行的「银行账号」维度;识别不到就不传,严禁沿用其他单据的银行"),
-        })
-      )
-      .describe("整批单据(每张:字段已由 read_document + 提取得到)"),
-    mappings: z
-      .array(z.object({ keyword: z.string(), code: z.string(), dimensionValue: z.string().optional() }))
-      .default([])
-      .describe("从知识库对照表查到的条目(没有则传空)"),
-    paymentAccount: z.object({ code: z.string(), name: z.string().optional() }).optional().describe("付款科目,默认银行存款1002"),
-    advanceAccount: z.object({ code: z.string(), name: z.string().optional() }).optional().describe("预借款科目,默认其他应收款-个人往来1221.03"),
+    slips: jsonCoercible(
+      z
+        .array(
+          z.object({
+            file: z.string(),
+            date: z.string().describe("凭证日期 yyyy-MM-dd"),
+            lineItems: z.array(z.object({ summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"), amountYuan: z.number() })).describe("费用明细行"),
+            totalYuan: z.number().optional().describe("合计(元)"),
+            capitalText: z.string().optional().describe("大写金额文本"),
+            advanceYuan: z.number().optional().describe("单据「原借款」栏金额,>0 走冲销"),
+            payeeName: z.string().optional().describe("报销人(冲销行维度)"),
+            departmentName: z.string().optional().describe("报销部门(费用行维度)"),
+            direction: z.enum(["expense", "income"]).optional().describe("资金方向,从单据本身的收/支继承:支出(默认)或收入(如结息,明细行记贷方、银行行记借方)"),
+            payerBankName: z.string().optional().describe("本张单据 OCR 出的付款银行/账户名,用作银行存款行的「银行账号」维度;识别不到就不传,严禁沿用其他单据的银行"),
+          })
+        )
+        .describe("整批单据(每张:字段已由 read_document + 提取得到)")
+    ),
+    mappings: jsonCoercible(
+      z
+        .array(z.object({ keyword: z.string(), code: z.string(), dimensionValue: z.string().optional() }))
+        .default([])
+        .describe("从知识库对照表查到的条目(没有则传空)")
+    ),
+    paymentAccount: jsonCoercible(z.object({ code: z.string(), name: z.string().optional() }).optional().describe("付款科目,默认银行存款1002")),
+    advanceAccount: jsonCoercible(z.object({ code: z.string(), name: z.string().optional() }).optional().describe("预借款科目,默认其他应收款-个人往来1221.03")),
   };
   const batchHandler = wrapToolHandler(batchSchema, async (args: Record<string, unknown>) => {
     const { slips, mappings, paymentAccount, advanceAccount } = args as {
@@ -522,51 +537,57 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
   };
 
   const exportVoucherListSchema = {
-    vouchers: z
-      .array(
-        z.object({
-          file: z.string(),
-          date: z.string().describe("凭证日期 yyyy-MM-dd"),
-          status: z.string().describe("auto / confirmed / needs_confirm"),
-          lines: z.array(
-            z.object({
-              summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
-              account: z.string(),
-              accountName: z.string().optional(),
-              dimensionType: z.string().optional(),
-              dimensionValue: z.string().optional(),
-              debitYuan: z.number().optional(),
-              creditYuan: z.number().optional(),
-            })
-          ),
-          issues: z.array(z.string()).optional(),
-          voucherWord: z.string().optional(),
-        })
-      )
-      .describe("已确认凭证列表(process_voucher_batch 输出结构)"),
-    skipped: z
-      .array(
-        z.object({
-          file: z.string(),
-          reason: z.string(),
-          summary: z.string().optional(),
-          amountYuan: z.number().optional(),
-        })
-      )
-      .optional()
-      .describe("被跳过/排除的单据"),
-    chart: z
-      .array(
-        z.object({
-          code: z.string(),
-          name: z.string(),
-          type: z.string().optional(),
-          balance: z.number().optional(),
-          dimension: z.string().optional(),
-        })
-      )
-      .optional()
-      .describe("科目表条目,供维度合法性校验"),
+    vouchers: jsonCoercible(
+      z
+        .array(
+          z.object({
+            file: z.string(),
+            date: z.string().describe("凭证日期 yyyy-MM-dd"),
+            status: z.string().describe("auto / confirmed / needs_confirm"),
+            lines: z.array(
+              z.object({
+                summary: z.string().max(100, "摘要超长（金蝶上限约100字符），请精简"),
+                account: z.string(),
+                accountName: z.string().optional(),
+                dimensionType: z.string().optional(),
+                dimensionValue: z.string().optional(),
+                debitYuan: z.number().optional(),
+                creditYuan: z.number().optional(),
+              })
+            ),
+            issues: z.array(z.string()).optional(),
+            voucherWord: z.string().optional(),
+          })
+        )
+        .describe("已确认凭证列表(process_voucher_batch 输出结构)")
+    ),
+    skipped: jsonCoercible(
+      z
+        .array(
+          z.object({
+            file: z.string(),
+            reason: z.string(),
+            summary: z.string().optional(),
+            amountYuan: z.number().optional(),
+          })
+        )
+        .optional()
+        .describe("被跳过/排除的单据")
+    ),
+    chart: jsonCoercible(
+      z
+        .array(
+          z.object({
+            code: z.string(),
+            name: z.string(),
+            type: z.string().optional(),
+            balance: z.number().optional(),
+            dimension: z.string().optional(),
+          })
+        )
+        .optional()
+        .describe("科目表条目,供维度合法性校验")
+    ),
     fileName: z.string().optional().describe("输出文件名,默认:金蝶对照手填清单.xlsx"),
   };
 

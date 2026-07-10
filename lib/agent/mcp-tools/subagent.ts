@@ -3,11 +3,11 @@ import type { SdkLike } from "./sdk-types";
 import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import { listDispatchableRoleIds } from "@/lib/agent/roles/availability";
 import { TASK_TEMPLATES, expandTaskTemplate } from "@/lib/agent/roles/task-templates";
-import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
+import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 
 type Sdk = SdkLike;
 
-export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string, onSubagentEvent?: (event: AgentRunEvent) => void) {
+export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string, onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void) {
   // 从 ROLE_REGISTRY 按 available 过滤，再经 listDispatchableRoleIds 排除用户停用的角色
   const dispatchableIds = listDispatchableRoleIds();
   const ROLE_IDS = dispatchableIds as [string, ...string[]];

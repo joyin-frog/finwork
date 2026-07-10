@@ -1,13 +1,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { AgentMessage, AgentRunEvent, ClaudeAgentRunOptions } from "./claude-adapter";
+import type { AgentMessage, ClaudeAgentRunOptions } from "./claude-adapter";
+import type { AgentRuntimeEvent } from "./runtime-events";
 
 /**
  * 确定性模拟 Agent —— 给 e2e 用。
  *
  * 真 Agent 走 SDK + 真 LLM:非确定、要密钥、慢、易抖,没法当 CI 常态门。本模块在
  * `FINANCE_AGENT_MOCK_AGENT=1` 时接管 runClaudeAgent,按"用户最后一句话的关键词"
- * 挑一个脚本,沿真 Agent 同一套回调(onChunk / onAgentEvent / resolveUserQuestion)
+ * 挑一个脚本,沿真 Agent 同一套回调(emit / resolveUserQuestion)
  * 重放可预测的事件流,并把真实文件写进 outputDir —— 让"流式渲染 / 工具卡 / 生成文件
  * → 产物追踪 / 人机确认"这些 journey 能被确定性地 e2e。
  *
@@ -40,13 +41,13 @@ export async function runMockAgent(
   const text = lastUserText(messages);
   const claudeSessionId = runOptions.claudeSessionId ?? "mock-session";
   const delay = stepDelay();
-  const emitEvent = (e: AgentRunEvent) => runOptions.onAgentEvent?.(e);
+  const emitEvent = (e: AgentRuntimeEvent) => runOptions.emit?.(e);
 
   // 累计文本:既驱动实时流式,又作为最终落库 content,二者保持一致。
   let full = "";
   const say = async (t: string) => {
     full += t;
-    runOptions.onChunk?.(t);
+    runOptions.emit?.({ type: "message_delta", channel: "text", delta: t });
     await sleep(delay);
   };
   const done = (): MockResult => ({ mode: "mock", claudeSessionId, content: full });
@@ -54,7 +55,7 @@ export async function runMockAgent(
   // ── journey: 生成文件(写真文件进 outputDir,供产物追踪 + 预览验证)──────────
   if (/生成|导出|excel|表格|报表|xlsx|文件/i.test(text)) {
     await say("好的,我来生成一个示例表格。");
-    emitEvent({ type: "tool_use", id: "mock-gen-1", name: "run_python", input: { task: "build_xlsx" } });
+    emitEvent({ type: "tool_started", toolCallId: "mock-gen-1", toolName: "run_python", input: { task: "build_xlsx" } });
     await sleep(delay);
     const fileName = "示例报表.xlsx";
     if (runOptions.outputDir) {
@@ -64,7 +65,7 @@ export async function runMockAgent(
         writeFileSync(path.join(runOptions.outputDir, f), "mock-bytes");
       }
     }
-    emitEvent({ type: "tool_result", toolUseId: "mock-gen-1", name: "run_python", content: `已生成 ${fileName}`, durationMs: 6 });
+    emitEvent({ type: "tool_completed", toolCallId: "mock-gen-1", toolName: "run_python", content: `已生成 ${fileName}`, durationMs: 6 });
     await say(`已生成 ${fileName},可在下方查看。`);
     return done();
   }
@@ -88,12 +89,12 @@ export async function runMockAgent(
   // 放在宽口径"报销|…|税"之前,让"增值税"专走带 structuredContent 的回执链路。
   if (/增值税|算税|税额/i.test(text)) {
     await say("我来算一下这笔增值税。");
-    emitEvent({ type: "tool_use", id: "mock-tax-1", name: "tax_calculator", input: { type: "vat", amount: 100000 } });
+    emitEvent({ type: "tool_started", toolCallId: "mock-tax-1", toolName: "tax_calculator", input: { type: "vat", amount: 100000 } });
     await sleep(delay);
     emitEvent({
-      type: "tool_result",
-      toolUseId: "mock-tax-1",
-      name: "tax_calculator",
+      type: "tool_completed",
+      toolCallId: "mock-tax-1",
+      toolName: "tax_calculator",
       content: "不含税价 100000.00 元，税率 13%，销项税额 13000.00 元。",
       durationMs: 8,
       structured: {
@@ -115,12 +116,12 @@ export async function runMockAgent(
   // ── journey: 工具卡(确定性工具调用 + 结果渲染)──────────────────────────
   if (/报销|对账|核对|校验|薪|工资|税/i.test(text)) {
     await say("我来核对一下数据。");
-    emitEvent({ type: "tool_use", id: "mock-tool-1", name: "validate_reimbursement", input: { rows: 2 } });
+    emitEvent({ type: "tool_started", toolCallId: "mock-tool-1", toolName: "validate_reimbursement", input: { rows: 2 } });
     await sleep(delay);
     emitEvent({
-      type: "tool_result",
-      toolUseId: "mock-tool-1",
-      name: "validate_reimbursement",
+      type: "tool_completed",
+      toolCallId: "mock-tool-1",
+      toolName: "validate_reimbursement",
       content: "校验 2 条:1 条发票号重复需注意",
       durationMs: 9,
     });
@@ -133,7 +134,7 @@ export async function runMockAgent(
     await say("我按几个步骤来处理。");
     // 思考与工具按真实时序穿插上报:验证过程时间线里 thinking 步骤的交错展示。
     // 思考后停一拍再发工具:留出「星芒落在思考行」的可观察窗口(流动指示)。
-    runOptions.onThinking?.("先加载财务分析技能,再跑数、查制度,最后落盘报告。");
+    runOptions.emit?.({ type: "message_delta", channel: "thinking", delta: "先加载财务分析技能,再跑数、查制度,最后落盘报告。" });
     await sleep(delay);
     const steps: Array<{ name: string; input: unknown; result: string; isError?: boolean }> = [
       { name: "Skill", input: { command: "finance-skills:finance-analysis" }, result: "已加载技能" },
@@ -148,12 +149,12 @@ export async function runMockAgent(
       const s = steps[i];
       // 中途插一段思考:验证 thinking 夹在两个工具段之间时按时序拆段展示
       if (i === 3) {
-        runOptions.onThinking?.("**数据已就绪**:税率有更新,写报告前先确认口径。");
+        runOptions.emit?.({ type: "message_delta", channel: "thinking", delta: "**数据已就绪**:税率有更新,写报告前先确认口径。" });
         await sleep(delay);
       }
-      emitEvent({ type: "tool_use", id: `demo-${i}`, name: s.name, input: s.input });
+      emitEvent({ type: "tool_started", toolCallId: `demo-${i}`, toolName: s.name, input: s.input });
       await sleep(delay);
-      emitEvent({ type: "tool_result", toolUseId: `demo-${i}`, name: s.name, content: s.result, isError: s.isError, durationMs: 1000 + i * 300 });
+      emitEvent({ type: "tool_completed", toolCallId: `demo-${i}`, toolName: s.name, content: s.result, isError: s.isError, durationMs: 1000 + i * 300 });
       await sleep(delay);
     }
     await say("处理完成,以上是各步骤。");
@@ -163,7 +164,7 @@ export async function runMockAgent(
   // ── journey: 富 markdown 排版样例(验证自管 .md-content 渲染:标题/列表/表格/代码/引用/外链)──
   if (/排版|样例|markdown|渲染/i.test(text)) {
     // 思考过程(按时序穿插进过程时间线):整块上报,经 route 脱敏后落库 + 下发。
-    runOptions.onThinking?.("我先把标题、列表、表格和代码块组织好,再给一段结论。");
+    runOptions.emit?.({ type: "message_delta", channel: "thinking", delta: "我先把标题、列表、表格和代码块组织好,再给一段结论。" });
     await say(
       [
         "# 一级标题",

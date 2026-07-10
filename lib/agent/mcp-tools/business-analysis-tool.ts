@@ -6,6 +6,7 @@ import {
 } from "@/lib/domain/business-analysis";
 import type { CanonicalBalanceSheet, CanonicalIncomeStatement } from "@/lib/domain/canonical-financials";
 import { getDb } from "@/lib/db/sqlite";
+import { jsonCoercible } from "./coerce-json";
 import type { SdkLike } from "./sdk-types";
 
 type Sdk = SdkLike;
@@ -95,10 +96,10 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
       "先对话分析后生成报告:有疑问先问用户再调本工具(红线4/6)。",
     ].join("\n"),
     {
-      balanceSheet: canonicalBSSchema,
-      incomeStatement: canonicalISSchema,
-      budget: budgetSchema,
-      priorPeriod: z.object({
+      balanceSheet: jsonCoercible(canonicalBSSchema),
+      incomeStatement: jsonCoercible(canonicalISSchema),
+      budget: jsonCoercible(budgetSchema),
+      priorPeriod: jsonCoercible(z.object({
         bs: z.object({
           totalAssets:     z.number().finite().nullish(),
           equity:          z.number().finite().nullish(),
@@ -111,7 +112,7 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
           cost:      z.number().finite().nullish(),
           netProfit: z.number().finite().nullish(),
         }).nullish(),
-      }).nullish().describe("上期快照(用于跨期同比;若已在 balanceSheet.prior/incomeStatement.prior 中提供则此处可省)"),
+      }).nullish().describe("上期快照(用于跨期同比;若已在 balanceSheet.prior/incomeStatement.prior 中提供则此处可省)")),
       asOf:    z.string().nullish().describe("数据截止日,如 2025-12-31"),
       source:  z.string().nullish().describe("数据来源,如「2025年12月资产负债表+利润表」"),
       caliber: z.string().nullish().describe("口径,如「期末数·未审计」"),
