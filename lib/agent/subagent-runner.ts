@@ -312,7 +312,7 @@ export async function runSubagent(
               : "";
           // emit tool 里程碑（旁路）：pending 是刚 shift() 出的局部变量，input 只喂 getToolSummary，不进事件对象
           // B3 修复：补传 label/roleId，contractToLegacyEvents 据此分组，不再回退为随机 instanceId UUID
-          opts.onEvent?.({ type: "tool_completed", toolName: name, content, durationMs, isError, summary: getToolSummary(name, pending?.input), label: task.label, roleId: task.roleId }, instanceId);
+          opts.onEvent?.({ type: "tool_completed", toolName: name, durationMs, isError, summary: getToolSummary(name, pending?.input), label: task.label, roleId: task.roleId }, instanceId);
           runAfterHooks(hookChain, {
             toolName: name,
             input: pending?.input,

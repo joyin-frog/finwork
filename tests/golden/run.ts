@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
 import { runClaudeAgent } from "@/lib/agent/claude-adapter";
-import type { AgentMessage, AgentRunEvent } from "@/lib/agent/claude-adapter";
+import type { AgentMessage } from "@/lib/agent/claude-adapter";
 import { buildMessagesUrl } from "@/lib/agent/router";
 import { ALL_GOLDEN_CASES, type GoldenCase } from "./cases";
 
@@ -134,27 +134,18 @@ async function main() {
 
 async function runCase(gc: GoldenCase): Promise<{ toolCalls: string[]; response: string }> {
   const toolCalls: string[] = [];
-  const events: AgentRunEvent[] = [];
-  const chunks: string[] = [];
 
   const result = await runClaudeAgent(
     gc.input as AgentMessage[],
     {
       requestId: randomUUID(),
-      onChunk: (text) => { chunks.push(text); },
-      onAgentEvent: (event) => {
-        events.push(event);
-        if (event.type === "tool_use") toolCalls.push(event.name);
+      emit: (event) => {
+        if (event.type === "tool_started" && !toolCalls.includes(event.toolName)) {
+          toolCalls.push(event.toolName);
+        }
       },
     }
   );
-
-  // For cheap/mock paths, also extract tool calls from agent events
-  for (const evt of events) {
-    if (evt.type === "tool_use" && !toolCalls.includes(evt.name)) {
-      toolCalls.push(evt.name);
-    }
-  }
 
   return { toolCalls, response: result.content };
 }

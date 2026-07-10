@@ -185,7 +185,7 @@ function main() {
     "agent route should persist agent events"
   );
   assert.ok(
-    agentRouteContent.includes('type: "thinking"') && agentRouteContent.includes("redact(filterIdentity"),
+    agentRouteContent.includes('channel === "thinking"') && agentRouteContent.includes("redact(filterIdentity"),
     "agent route should surface thinking events, scrubbed via identity + PII filtering"
   );
   assert.ok(
