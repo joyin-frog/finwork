@@ -2,7 +2,7 @@
 
 ## 概览
 
-Finance Agent 集成 [Tauri updater 插件](https://tauri.app/plugin/updater/),支持:
+Finwork 集成 [Tauri updater 插件](https://tauri.app/plugin/updater/),支持:
 - 启动后"检查更新"按钮(设置 → 常规 → 应用更新)
 - 发现新版本时展示版本号和更新日志
 - **人工审核门**:用户确认后才下载安装,绝不静默更新
@@ -79,7 +79,7 @@ GitHub Actions 自动:
 
 ## 用户侧更新流程
 
-1. 打开 Finance Agent → 设置 → 常规 → 应用更新
+1. 打开 Finwork → 设置 → 常规 → 应用更新
 2. 点「检查更新」
 3. 若有新版本,显示版本号和更新日志
 4. 用户点「确认安装」→ 下载 + 校验签名 → 安装 → 应用重启

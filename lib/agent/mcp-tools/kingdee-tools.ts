@@ -159,7 +159,7 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
                 company,
                 period,
                 status: "draft",
-                preparedBy: "Finance Agent",
+                preparedBy: "Finwork",
                 preparedAt: now.toISOString(),
                 entries: enrichedEntries,
                 totalDebit,
