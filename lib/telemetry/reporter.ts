@@ -125,15 +125,19 @@ export type BoundedEnvelope = {
   traceRows: Record<string, unknown>[];
   appErrorRows: Record<string, unknown>[];
   feedbackRows: Record<string, unknown>[];
+  /** 单条超限降级:已剥掉 spans 组包(防毒丸堵队列,见 buildBoundedEnvelope)。 */
+  spansDropped: boolean;
 };
 
-/** 按当前批次行数重新组包(featureRows 极小,永不缩)。 */
+/** 按当前批次行数重新组包(featureRows 极小,永不缩);dropSpans 时剥掉全部 spans。 */
 function buildWith(
   params: EnvelopeParams,
   rows: Pick<BoundedEnvelope, "traceRows" | "appErrorRows" | "feedbackRows">,
+  dropSpans = false,
 ): BoundedEnvelope {
   const envelope = buildEnvelope({
     ...params,
+    spansByTraceId: dropSpans ? new Map() : params.spansByTraceId,
     traceRows: rows.traceRows,
     appErrorRows: rows.appErrorRows.length > 0 ? rows.appErrorRows : undefined,
     feedbackRows: rows.feedbackRows.length > 0 ? rows.feedbackRows : undefined,
@@ -145,6 +149,7 @@ function buildWith(
     traceRows: rows.traceRows,
     appErrorRows: rows.appErrorRows,
     feedbackRows: rows.feedbackRows,
+    spansDropped: dropSpans,
   };
 }
 
@@ -167,6 +172,10 @@ function halveRows(
 /**
  * 组包并保证 body ≤ maxBytes:超限时按 traces → appErrors → feedback 顺序对半缩批。
  * 行序是时间升序,保留前半 = 保留最旧的,配合水位线让漏发部分下次继续。
+ *
+ * 毒丸防护:缩到单条仍超限(典型是一条 trace 挂了海量 spans)时剥掉 spans 降级
+ * 组包——剥完只剩定长标量(errorMessage ≤200、modelUsageJson ≤2KB),必然进预算。
+ * 该条照常发送、水位线照常推进,不会永远堵在队头。
  */
 export function buildBoundedEnvelope(params: EnvelopeParams, maxBytes: number = MAX_BODY_BYTES): BoundedEnvelope {
   let rows: Pick<BoundedEnvelope, "traceRows" | "appErrorRows" | "feedbackRows"> = {
@@ -174,12 +183,20 @@ export function buildBoundedEnvelope(params: EnvelopeParams, maxBytes: number = 
     appErrorRows: params.appErrorRows ?? [],
     feedbackRows: params.feedbackRows ?? [],
   };
+  let dropSpans = false;
   for (;;) {
-    const bounded = buildWith(params, rows);
+    const bounded = buildWith(params, rows, dropSpans);
     if (Buffer.byteLength(bounded.body, "utf8") <= maxBytes) return bounded;
     const shrunk = halveRows(rows);
-    if (!shrunk) return bounded; // 单条仍超限:照发,交给接收端裁决
-    rows = shrunk;
+    if (shrunk) {
+      rows = shrunk;
+      continue;
+    }
+    if (!dropSpans) {
+      dropSpans = true; // 单条仍超限:剥 spans 降级再试
+      continue;
+    }
+    return bounded; // 纯标量仍超限(理论不可达):照发,交给接收端裁决
   }
 }
 
@@ -241,7 +258,13 @@ export async function sendEnvelopeWithRecovery(opts: {
       const shrunk = halveRows(bounded);
       if (shrunk) {
         retries413++;
-        bounded = buildWith(opts.params, shrunk);
+        bounded = buildWith(opts.params, shrunk, bounded.spansDropped);
+        continue;
+      }
+      if (!bounded.spansDropped) {
+        // 单条仍被 413:剥 spans 降级重试,防毒丸堵死队列
+        retries413++;
+        bounded = buildWith(opts.params, bounded, true);
         continue;
       }
     }

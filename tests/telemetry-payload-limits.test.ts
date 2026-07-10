@@ -158,6 +158,70 @@ async function main() {
     console.log("T5 passed: 500 不重试,ok=false 交调用方兜底");
   }
 
+  // ── T7: 毒丸防护 —— 单条 trace 挂海量 spans 超预算 → 剥 spans 降级组包 ──────
+  {
+    const traceId = "aaaa1111-1111-4111-8111-000000000099";
+    const spans = Array.from({ length: 200 }, (_, i) => ({
+      trace_id: traceId,
+      span_type: "tool_call",
+      name: `tool_${i}_${"x".repeat(80)}`,
+      started_at: new Date(1700000000000 + i).toISOString(),
+      duration_ms: 5,
+      tokens: null,
+      error: null,
+    }));
+    const params = {
+      ...baseParams([makeTraceRow(99, { trace_id: traceId })]),
+      spansByTraceId: new Map([[traceId, spans]]),
+    };
+    const maxBytes = 4_000; // 单条含 spans 远超预算
+    const bounded = buildBoundedEnvelope(params, maxBytes);
+    ok(bounded.spansDropped, "T7 FAIL: 应剥 spans 降级");
+    ok(Buffer.byteLength(bounded.body, "utf8") <= maxBytes, "T7 FAIL: 降级后应进预算");
+    const parsed = JSON.parse(bounded.body) as { traces: Array<{ spans: unknown[] }> };
+    equal(parsed.traces.length, 1); // trace 本体保留(水位线能推进),只丢 spans
+    equal(parsed.traces[0].spans.length, 0);
+    console.log("T7 passed: 单条超限剥 spans 降级,trace 保留、队列不堵");
+  }
+
+  // ── T8: 毒丸防护 —— 接收端对单条 413 → 剥 spans 重试后成功 ─────────────────
+  {
+    const traceId = "aaaa1111-1111-4111-8111-000000000098";
+    const spans = Array.from({ length: 50 }, (_, i) => ({
+      trace_id: traceId,
+      span_type: "tool_call",
+      name: `tool_${i}`,
+      started_at: new Date(1700000000000 + i).toISOString(),
+      duration_ms: 5,
+      tokens: null,
+      error: null,
+    }));
+    const params = {
+      ...baseParams([makeTraceRow(98, { trace_id: traceId })]),
+      spansByTraceId: new Map([[traceId, spans]]),
+    };
+    // 接收端视角:带 spans 一律 413(模拟其 1 MiB 判定比客户端预算更严)
+    const fetchImpl = (async (_url: unknown, init?: RequestInit) => {
+      const traces = (JSON.parse(String(init?.body ?? "")) as { traces: Array<{ spans: unknown[] }> }).traces;
+      return traces.some((t) => t.spans.length > 0)
+        ? jsonResponse(413, { error: "payload_too_large" })
+        : jsonResponse(200, { accepted: traces.length });
+    }) as typeof fetch;
+
+    const outcome = await sendEnvelopeWithRecovery({
+      url: "https://example.test/api/ingest",
+      token: "t",
+      params,
+      fetchImpl,
+      sleep: async () => {},
+    });
+    ok(outcome.ok, "T8 FAIL: 剥 spans 重试后应成功");
+    ok(outcome.sent.spansDropped, "T8 FAIL: 应标记 spansDropped");
+    equal(outcome.sent.traceRows.length, 1);
+    equal(outcome.attempts, 2);
+    console.log("T8 passed: 单条被 413 → 剥 spans 重试成功,水位线可推进");
+  }
+
   // ── T6: parseRetryAfterMs ─────────────────────────────────────────────────
   {
     equal(parseRetryAfterMs('{"error":"rate_limited","retryAfterMs":5000}'), 5000);
