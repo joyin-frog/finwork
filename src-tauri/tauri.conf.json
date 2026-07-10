@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Finance Agent",
-  "version": "0.1.5",
+  "productName": "Finwork",
+  "version": "0.1.6",
   "identifier": "com.gyro.financeagent",
   "build": {
     "frontendDist": "dist",
@@ -21,7 +21,7 @@
     "windows": [
       {
         "create": false,
-        "title": "Finance Agent",
+        "title": "Finwork",
         "width": 1280,
         "height": 860,
         "minWidth": 1024,
