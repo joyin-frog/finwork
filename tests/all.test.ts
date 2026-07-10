@@ -395,6 +395,9 @@ process.on("unhandledRejection", (err) => {
   const { telemetryAppErrorsTestPromise } = await import("./telemetry-app-errors.test.ts");
   await telemetryAppErrorsTestPromise;
 
+  const { telemetryPayloadLimitsTestPromise } = await import("./telemetry-payload-limits.test.ts");
+  await telemetryPayloadLimitsTestPromise;
+
   const { financialRatiosV2TestPromise } = await import("./financial-ratios-v2.test.ts");
   await financialRatiosV2TestPromise;
 

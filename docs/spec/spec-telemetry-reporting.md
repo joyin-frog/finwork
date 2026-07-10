@@ -109,9 +109,9 @@ finance-agent 在用户**显式开启**后,启动时把**纯运行指标**(token
 **响应:**
 ```jsonc
 // 200
-{ "accepted": 12, "deduped": 3, "appErrorsAccepted": 4, "appErrorsDeduped": 1 }
+{ "accepted": 12, "deduped": 3, "appErrorsAccepted": 4, "appErrorsDeduped": 1, "feedbackAccepted": 2, "feedbackDeduped": 0, "featureEventsAccepted": 5 }
 // 400
-{ "error": "unsupported schemaVersion", "supportedVersions": [1, 2] }
+{ "error": "unsupported schemaVersion", "supportedVersions": [1, 2, 3, 4] }
 // 401
 { "error": "unauthorized" }
 ```

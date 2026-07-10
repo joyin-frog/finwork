@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 4,
+  "installId": "11111111-1111-4111-8111-111111111111",
+  "appVersion": "0.1.2",
+  "platform": { "os": "darwin", "arch": "arm64" },
+  "reportedAt": 1718841600000,
+  "window": { "from": 1718236800000, "to": 1718841600000 },
+  "traces": [
+    {
+      "traceId": "aaaa4444-4444-4444-8444-444444444444",
+      "conversationId": "cccc4444-4444-4444-8444-444444444444",
+      "startedAt": 1718800000000,
+      "totalMs": 3120,
+      "status": "ok",
+      "roleMode": "analyst",
+      "modelUsed": "claude-sonnet-4-6",
+      "routerPath": "fast",
+      "numTurns": 2,
+      "llmCallCount": 1,
+      "toolCallCount": 3,
+      "inputTokens": 900,
+      "outputTokens": 600,
+      "cacheReadTokens": 128,
+      "cacheCreationTokens": 0,
+      "totalCostUsd": 0.0091,
+      "errorMessage": null,
+      "modelUsageJson": "{\"claude-sonnet-4-6\":{\"in\":900,\"out\":600}}",
+      "spans": [
+        { "spanType": "router", "name": "route", "startedAt": 1718800000000, "durationMs": 11, "tokens": null, "error": null }
+      ]
+    }
+  ],
+  "appErrors": [],
+  "feedback": [],
+  "featureEvents": [
+    { "name": "nav.cockpit", "count": 12, "firstAt": 1718236800000, "lastAt": 1718841600000, "appVersion": "0.1.2" },
+    { "name": "feature.business_analysis.open", "count": 3, "firstAt": 1718300000000, "lastAt": 1718800000000, "appVersion": "0.1.2" }
+  ]
+}
