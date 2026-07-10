@@ -24,6 +24,13 @@ import { sanitizeTurnEvents } from "@/lib/agent/persist-hygiene";
 import { appendServerLog } from "@/lib/runtime/server-log";
 import { createLogger } from "@/lib/runtime/logger";
 import { parseStage, sessionStage, quotaStage, routerStage } from "@/lib/agent/query-stages";
+import {
+  createEmitter,
+  contractToLegacyEvents,
+  type AgentRuntimeEvent,
+  type AgentEventEnvelope,
+  type AgentEmitter,
+} from "@/lib/agent/runtime-events";
 
 const log = createLogger("agent-query");
 
@@ -119,9 +126,13 @@ type AgentTurnParams = {
   modelOverride?: string;
   signal?: AbortSignal;
   resolveUserQuestion?: (question: AgentQuestion) => Promise<string>;
-  emitChunk?: (text: string) => void;
-  emitAgentEvent?: (event: Record<string, unknown>) => void;
+  /** 流式路径：每条 AgentEventEnvelope 发出时回调（非流式路径无此回调）。 */
+  emitEnvelope?: (env: AgentEventEnvelope) => void;
   conversationId?: number;
+  /** B2 修复：per-run 共享 eventId 计数器。流式路径由 createStreamingResponse 建立并经此字段注入，
+   *  保证 main / sub / stream 三处 emitter 的 eventId 在同一 run 内严格单调递增。
+   *  非流式路径不传，runAgentTurn 内部自建（main+sub 共享）。 */
+  runCounter?: { next: () => number };
 };
 
 type AgentTurnResult =
@@ -137,18 +148,53 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     const answer = filterIdentity(routerResult.decision.directAnswer);
     collector.collectedChunks.push(answer);
     coalesceTextIntoEvents(collector.collectedEvents, answer);
-    params.emitChunk?.(answer);
     return { result: { mode: "cheap", content: answer, claudeSessionId, direct: true }, collector };
   }
 
-  // 身份出站过滤(安全红线·机制兜底):流式逐 chunk 过滤,collector 与下发都用过滤后文本,
-  // 最终正文也以过滤后的拼接为准(覆盖 SDK 原始 content),让 prompt 里的"别透露模型"不再是唯一防线。
+  // 身份出站过滤(安全红线·机制兜底):流式逐 chunk 过滤,collector 与下发都用过滤后文本
   const idFilter = createStreamingIdentityFilter();
-  // 思考计时:从回合起算到「首个产出」(首条答案 chunk 或首个工具调用)= 模型动手前的思考时长,
-  // 持久化成 thinking_duration,供「已思考 X」展示(进行中的实时计时由前端跑)。
+  // 思考计时:从回合起算到「首个产出」
   const runStart = Date.now();
   let thinkingSeen = false;
   let firstOutputAt: number | undefined;
+
+  // AR2a: 主对话 emitter（instanceId=null）；子代理事件用 per-instance emitter。
+  // B2 修复：流式路径传入 runCounter（main/sub/stream 三处共享）；非流式路径自建（main+sub 共享）。
+  let _nonStreamSeq = 0;
+  const runCounter = params.runCounter ?? { next: () => ++_nonStreamSeq };
+  const mainEmitter = createEmitter(traceId, params.conversationId ?? null, null, runCounter);
+
+  /** 接收 AgentRuntimeEvent，应用过滤，包装 envelope，落库 + 推 SSE。 */
+  const handleEmit = (event: AgentRuntimeEvent, emitter: AgentEmitter) => {
+    let filteredEvent: AgentRuntimeEvent = event;
+
+    if (event.type === "message_delta" && event.channel === "text") {
+      if (firstOutputAt == null) firstOutputAt = Date.now();
+      const safe = idFilter.push(event.delta);
+      if (!safe) return;
+      filteredEvent = { type: "message_delta", channel: "text", delta: safe };
+      collector.collectedChunks.push(safe);
+    } else if (event.type === "message_delta" && event.channel === "thinking") {
+      thinkingSeen = true;
+      const safe = redact(filterIdentity(event.delta)).trim();
+      if (!safe) return;
+      filteredEvent = { type: "message_delta", channel: "thinking", delta: safe };
+    } else if (event.type === "tool_started") {
+      if (firstOutputAt == null) firstOutputAt = Date.now();
+    }
+
+    const env = emitter.wrap(filteredEvent);
+    // 转换为落库格式并并入 collector
+    for (const legacyEv of contractToLegacyEvents(env)) {
+      if (legacyEv.type === "text") {
+        coalesceTextIntoEvents(collector.collectedEvents, (legacyEv as { content: string }).content);
+      } else {
+        collector.collectedEvents.push(legacyEv as { type: string; [key: string]: unknown });
+      }
+    }
+    params.emitEnvelope?.(env);
+  };
+
   const data = await runClaudeAgent(agentMessages, {
     claudeSessionId,
     resumeSession: Boolean(existingClaudeSessionId),
@@ -160,33 +206,16 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     modelOverride: params.modelOverride,
     signal: params.signal,
     resolveUserQuestion: params.resolveUserQuestion,
-    onChunk: (text) => {
-      if (firstOutputAt == null) firstOutputAt = Date.now();
-      const safe = idFilter.push(text);
-      if (!safe) return;
-      collector.collectedChunks.push(safe);
-      coalesceTextIntoEvents(collector.collectedEvents, safe);
-      params.emitChunk?.(safe);
-    },
-    // 思考过程整块上报:按安全红线脱敏(身份过滤 + PII)后,作为 thinking 事件落库 + 下发,前端收进「思考」折叠块。
-    // 整块到达(非增量)→ filterIdentity 看到完整文本,不会有跨片模型名漏过滤。空白块跳过。
-    onThinking: (text) => {
-      thinkingSeen = true;
-      const safe = redact(filterIdentity(text)).trim();
-      if (!safe) return;
-      const event = { type: "thinking", content: safe };
-      collector.collectedEvents.push(event);
-      params.emitAgentEvent?.(event);
-    },
-    onAgentEvent: (event) => {
-      if (firstOutputAt == null && (event as { type?: string }).type === "tool_use") firstOutputAt = Date.now();
-      collector.collectedEvents.push(event);
-      params.emitAgentEvent?.(event);
+    // 主 Agent 事件走主 emitter
+    emit: (event) => handleEmit(event, mainEmitter),
+    // 子代理事件：每个子代理有唯一 instanceId，用 per-instance emitter 包装
+    // B2 修复：传入同一 runCounter，保证跨子代理事件 eventId 连续单调
+    onSubagentEvent: (event, instanceId) => {
+      const subEmitter = createEmitter(traceId, params.conversationId ?? null, instanceId, runCounter);
+      handleEmit(event, subEmitter);
     },
   }).catch((err: unknown) => {
-    // collector 随抛异常会丢 → 挂到错误上,让上层出错收尾把"已做的部分"(部分正文/中间事件)落库,
-    // 否则一抛异常整回合归零(见红线:出错不该把已完成的工作冲掉)。
-    // thinking_duration 同样只在正常返回后才 push——中断回合也补上,重载后"已思考 X"才有得显示。
+    // collector 随抛异常会丢 → 挂到错误上，让上层出错收尾把已做的部分落库
     if (thinkingSeen) {
       const thinkingMs = Math.max(0, (firstOutputAt ?? Date.now()) - runStart);
       collector.collectedEvents.push({ type: "system", subtype: "thinking_duration", message: String(thinkingMs) });
@@ -194,19 +223,21 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     (err as { __collector?: AgentTurnCollector }).__collector = collector;
     throw err;
   });
-  // flush 流式过滤器末尾残留的未完 token(模型名可能正好结在最后一片)
+  // flush 流式过滤器末尾残留
   const tail = idFilter.flush();
   if (tail) {
     collector.collectedChunks.push(tail);
     coalesceTextIntoEvents(collector.collectedEvents, tail);
-    params.emitChunk?.(tail);
+    // tail 也需要发 envelope（非流式路径 emitEnvelope 为空，流式路径已关流的情况忽略）
+    const tailEnv = mainEmitter.wrap({ type: "message_delta", channel: "text", delta: tail });
+    params.emitEnvelope?.(tailEnv);
   }
-  // 思考时长落库(有思考才记):回合起到首个产出。供前端「已思考 X」与重载后展示。
+  // 思考时长落库
   if (thinkingSeen) {
     const thinkingMs = Math.max(0, (firstOutputAt ?? Date.now()) - runStart);
     collector.collectedEvents.push({ type: "system", subtype: "thinking_duration", message: String(thinkingMs) });
   }
-  // 最终正文以"过滤后的拼接"为准;无流式增量时(模型只回最终)回退到过滤 SDK 原始 content。
+  // 最终正文以过滤后拼接为准
   const filteredContent = collector.collectedChunks.join("") || filterIdentity(data.content ?? "");
   return { result: { ...data, content: filteredContent, direct: false }, collector };
 }
@@ -218,8 +249,7 @@ type PersistTurnParams = {
   lastUserContent: string; roleMode: string;
 };
 
-/** 助手回合落库的唯一出口(成功 / 未完成两条收尾共用):写 assistant 消息 + 经 sanitize 落库 collector 事件。
- * turn_duration / turn_incomplete 等系统事件由调用方在调用前并入 collector。返回 messageId。 */
+/** 助手回合落库的唯一出口(成功 / 未完成两条收尾共用):写 assistant 消息 + 经 sanitize 落库 collector 事件。 */
 function insertAssistantTurn(conversationId: number, content: string, collector: AgentTurnCollector, traceId: string): number {
   const messageId = insertChatMessage(conversationId, "assistant", content);
   for (const event of sanitizeTurnEvents(collector.collectedEvents)) insertChatAgentEvent(messageId, event.type, event, traceId);
@@ -239,18 +269,15 @@ function persistAgentTurn(
   let messageId: number | undefined;
   const fullContent = result.content || collector.collectedChunks.join("");
   if (conversationId && fullContent.trim()) {
-    // 持久化本回合实际处理时长(墙钟),供前端"已处理 <时长>"展示(system 子类型不进可见时间线)。
+    // 持久化本回合实际处理时长(墙钟)
     collector.collectedEvents.push({
       type: "system",
       subtype: "turn_duration",
       message: String(Math.max(0, Date.now() - startedAt)),
     });
     messageId = insertAssistantTurn(conversationId, fullContent, collector, traceId);
-    // 标题提炼由调用方触发:流式路径在 done 后 await 并推 title 事件(前端两端同步),非流式路径 fire-and-forget。
   }
 
-  // 成功收尾:若 agent 声明了最终产物,清掉本回合未声明的中间/试错文件(未声明则全留)。
-  // 仅成功路径做;未完成/出错收尾(persistIncompleteTurn)不清,留着供「继续」。
   cleanupUnfinalizedFiles(conversationId, beforeGenerate);
   const generatedAttachments = recordNewGeneratedFiles(conversationId, messageId, beforeGenerate);
   const toolCallCount = collector.collectedEvents.filter((e) => e.type === "tool_use" || e.type === "tool_result").length;
@@ -268,9 +295,7 @@ function persistAgentTurn(
   return { messageId, fullContent, generatedAttachments };
 }
 
-/** 出错收尾:把本回合已完成的部分(部分正文 + 中间文本/工具事件 + 已生成文件)落库并标 turn_incomplete,
- * 让"一抛异常整回合归零"不再发生——已做的工作保留、reload 后照常展示,后续可「继续」。trace 记错误。
- * claude 会话 id 在回合开始前已写入会话(见 route 顶部),故此处不再处理。 */
+/** 出错收尾:把本回合已完成的部分落库并标 turn_incomplete。 */
 function persistIncompleteTurn(
   params: PersistTurnParams & { collector: AgentTurnCollector; errorMessage: string; modelUsage?: Record<string, ModelUsage> }
 ): { messageId?: number; fullContent: string; generatedAttachments: ReturnType<typeof recordNewGeneratedFiles> } {
@@ -291,7 +316,6 @@ function persistIncompleteTurn(
     traceId, conversationId, startedAt,
     modelUsed: modelLabel(routerResult), routerPath: routerResult.path, errorMessage,
     userMessage: lastUserContent, finalAnswer: fullContent, roleMode, toolCallCount,
-    // 中断/超时前已烧掉的 usage(adapter 逐条累计后挂在错误上):没有它,烧得最多的失败回合配额漏记。
     modelUsage,
   });
   return { messageId, fullContent, generatedAttachments };
@@ -332,10 +356,7 @@ function createStreamingResponse(params: {
         try { controller.close(); } catch { /* ok */ }
       }, { once: true });
 
-      // enqueue 不抛:客户端断开(abort)后 controller 已关,若任由 enqueue 抛异常,
-      // 会在 persistAgentTurn 成功落库之后把执行流打进 catch——那里的兜底 writeAgentTrace
-      // 会用一条无 usage 的 error trace 经 INSERT OR REPLACE 覆盖掉刚写好的成功 trace。
-      // 回合中断本身不依赖这里抛错:requestSignal 已透传给 adapter 去 abort SDK。
+      // enqueue 不抛:客户端断开(abort)后 controller 已关
       const enqueue = (payload: Record<string, unknown>) => {
         if (streamClosed) return;
         try {
@@ -345,64 +366,87 @@ function createStreamingResponse(params: {
         }
       };
 
-      // 新会话:一开始就把 conversationId 下发,前端可立刻进侧栏「最近」+ 改 URL,避免流式中切走丢记录
+      // B2 修复：run 级共享计数器，覆盖 streamEmitter + mainEmitter + 全部 subEmitter
+      let _streamSeq = 0;
+      const runCounter = { next: () => ++_streamSeq };
+      // AR2a: 主 emitter 用于流式路径的 settled/title 事件（ask_user 等旁路事件也经此包装）
+      const streamEmitter = createEmitter(traceId, conversationId ?? null, null, runCounter);
+
+      // enqueueEnvelope: 将 AgentEventEnvelope 序列化为 SSE 数据行
+      const enqueueEnvelope = (env: AgentEventEnvelope) => enqueue(env as unknown as Record<string, unknown>);
+
+      // 新会话:一开始就把 conversationId 下发（保留 meta 帧兼容旧客户端）
       if (conversationId) enqueue({ type: "meta", conversationId });
 
-      // 确认事件在回合执行中产生,先本地收集,回合结束后并入 collector 落库
+      // 确认事件在回合执行中产生，先本地收集，回合结束后并入 collector 落库
       const askEvents: Array<{ type: string; [key: string]: unknown }> = [];
+
+      /** AR2a: 三路径共用收口 —— 发 run_ended + run_settled。 */
+      const settleRun = (outcome: "completed" | "aborted" | "error", opts?: { message?: string }) => {
+        const endedEnv = streamEmitter.wrap({
+          type: "run_ended",
+          kind: outcome === "completed" ? "complete" : "incomplete",
+          message: opts?.message,
+        });
+        enqueueEnvelope(endedEnv);
+        const settledEnv = streamEmitter.wrap({ type: "run_settled", outcome, error: opts?.message });
+        enqueueEnvelope(settledEnv);
+      };
 
       try {
         const { result, collector } = await runAgentTurn({
           ...turnParams,
           signal: requestSignal,
-          // 人机确认链路:把 hook 链的提问下发到前端,挂起等待 /api/agent/answer 应答
+          emitEnvelope: enqueueEnvelope,
+          runCounter, // B2 修复：流式路径共享计数器
+          // 人机确认链路：把提问下发到前端，挂起等待 /api/agent/answer 应答
           resolveUserQuestion: async (question) => {
             const { id, promise } = createPendingQuestion(traceId, question);
-            const askEvent = { type: "ask_user", questionId: id, question };
-            askEvents.push(askEvent);
-            enqueue(askEvent);
+            const askEnv = streamEmitter.wrap({ type: "ask_user", questionId: id, question });
+            askEvents.push({ type: "ask_user", questionId: id, question: question as unknown as Record<string, unknown> });
+            enqueueEnvelope(askEnv);
             const answer = await promise;
-            const answeredEvent = { type: "ask_user_answered", questionId: id, answer };
-            askEvents.push(answeredEvent);
-            enqueue(answeredEvent);
+            const answeredEnv = streamEmitter.wrap({ type: "ask_user_answered", questionId: id, answer });
+            askEvents.push({ type: "ask_user_answered", questionId: id, answer });
+            enqueueEnvelope(answeredEnv);
             return answer;
           },
-          emitChunk: (text) => enqueue({ type: "chunk", content: text }),
-          emitAgentEvent: (event) => enqueue({ type: "agent_event", event }),
         });
 
         collector.collectedEvents.push(...askEvents);
         const { generatedAttachments } = persistAgentTurn({ ...persistParams, result, collector });
         writeSpan({ traceId, spanType: "stream", name: "SSE stream", startedAt, durationMs: Date.now() - startedAt });
 
+        // AR2a: 三路径收口 — 成功路径
+        settleRun("completed");
+        // 向前兼容：继续发送旧帧 done，chat-stream.tsx onDone 由此驱动（含 conversation/attachments）
         enqueue({ type: "done", conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined });
-        // done 已发(前端先进 done/绿点);标题异步提炼,保持流开到它落定再推一条 title 事件,
-        // 让对话内 header 与侧栏标题一次性同步(回合已离开页面也能收到,因为生成不随导航 abort)。
+        // 标题异步提炼，settled 已发（前端不阻塞），title_updated 随后到达
         try {
           if (conversationId) {
             const improvedTitle = await improveConversationTitle(conversationId);
-            if (improvedTitle) enqueue({ type: "title", conversationId, title: improvedTitle });
+            if (improvedTitle) {
+              const titleEnv = streamEmitter.wrapConversation({ type: "title_updated", title: improvedTitle, conversationId });
+              enqueueEnvelope(titleEnv);
+            }
           }
         } catch { /* 已被停止/abort 关流 → 忽略 */ }
         try { controller.close(); } catch { /* already closed */ }
       } catch (error) {
         cancelPendingQuestions(traceId);
         const msg = error instanceof Error ? error.message : String(error);
-        // 流式聊天的真实失败路径:前端只收到 redact 后的 incomplete/error 文案,原始错误在这里落盘留底。
+        // 原始错误落盘
         void appendServerLog(`[agent-query/stream] failed traceId=${traceId} ${redact(error instanceof Error ? error.stack ?? error.message : String(error))}`);
         const collector = (error as { __collector?: AgentTurnCollector }).__collector;
         const partialUsage = (error as { __modelUsage?: Record<string, ModelUsage> }).__modelUsage;
+        // AR2a: 三路径收口 — abort 路径 vs 错误路径
+        const isAbort = error instanceof Error && error.name === "AbortError";
         if (collector) {
-          // 出错也保留已完成的部分:落库(消息+中间事件+文件)并发 incomplete,让前端立刻展示、可「继续」。
           collector.collectedEvents.push(...askEvents);
           const { generatedAttachments } = persistIncompleteTurn({ ...persistParams, collector, errorMessage: msg, modelUsage: partialUsage });
-          enqueue({
-            type: "incomplete",
-            conversationId,
-            conversation: conversationId ? getChatConversation(conversationId) : null,
-            generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined,
-            message: redact(msg),
-          });
+          settleRun(isAbort ? "aborted" : "error", { message: redact(msg) });
+          // 向前兼容：发旧帧 incomplete，chat-stream.tsx onIncomplete 由此驱动
+          enqueue({ type: "incomplete", conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined, message: redact(msg) });
         } else {
           writeAgentTrace({
             traceId, conversationId, startedAt,
@@ -410,6 +454,8 @@ function createStreamingResponse(params: {
             userMessage: persistParams.lastUserContent, finalAnswer: "", roleMode: persistParams.roleMode, toolCallCount: 0,
             modelUsage: partialUsage,
           });
+          settleRun(isAbort ? "aborted" : "error", { message: redact(msg) });
+          // 向前兼容：发旧帧 error
           enqueue({ type: "error", message: redact(msg) });
         }
         try { controller.close(); } catch { /* already closed */ }
@@ -425,7 +471,7 @@ function modelLabel(routerResult?: Awaited<ReturnType<typeof runRouter>>) {
   return routerResult?.decision?.mainModelTier ?? "main";
 }
 
-/** 观测保真:有真实 usage 时记真实模型 id(modelUsage 的键),否则回落到分层名(cheap/错误路径无 usage)。 */
+/** 观测保真:有真实 usage 时记真实模型 id(modelUsage 的键),否则回落到分层名。 */
 function pickRealModel(result: AgentTurnResult, routerResult?: Awaited<ReturnType<typeof runRouter>>): string {
   if ("modelUsage" in result && result.modelUsage) {
     const keys = Object.keys(result.modelUsage);
@@ -435,8 +481,7 @@ function pickRealModel(result: AgentTurnResult, routerResult?: Awaited<ReturnTyp
 }
 
 /**
- * 首个完整回合(用户+助手各一条)提炼对话标题并落库,返回新标题(无改进/非首回合/失败 → null)。
- * 流式路径会 await 它再推 title 事件;非流式路径 fire-and-forget。失败静默(保留初始短标题,红线 4 不编造)。
+ * 首个完整回合(用户+助手各一条)提炼对话标题并落库，返回新标题（无改进/非首回合/失败 → null）。
  */
 async function improveConversationTitle(conversationId: number): Promise<string | null> {
   const conv = getChatConversation(conversationId);
@@ -457,4 +502,3 @@ async function improveConversationTitle(conversationId: number): Promise<string 
     return null;
   }
 }
-

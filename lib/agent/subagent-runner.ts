@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
@@ -11,7 +12,7 @@ import { Semaphore } from "@/lib/utils/semaphore";
 import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
 import { getToolRiskLevel } from "./tools/registry";
 import * as _dispatchStore from "@/lib/db/dispatch-store";
-import type { AgentRunEvent } from "./claude-adapter";
+import type { AgentRuntimeEvent } from "./runtime-events";
 import { getToolSummary } from "./tools/renderers";
 
 export type SubagentTask = {
@@ -64,9 +65,10 @@ export function buildSubagentSystemPrompt(role: RoleDefinition): string {
 
 export async function runSubagent(
   task: SubagentTask,
-  opts: { parentOutputDir: string; signal?: AbortSignal; conversationId?: string; traceId?: string; onEvent?: (event: AgentRunEvent) => void }
+  opts: { parentOutputDir: string; signal?: AbortSignal; conversationId?: string; traceId?: string; onEvent?: (event: AgentRuntimeEvent, instanceId: string) => void }
 ): Promise<SubagentResult> {
   const startedAt = Date.now();
+  const instanceId = randomUUID(); // AR2a: per-subagent-run 实例标识，随所有里程碑事件透传
   const safeLabel = task.label.replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
   const outputDir = path.join(opts.parentOutputDir, "subagents", safeLabel);
   mkdirSync(outputDir, { recursive: true });
@@ -131,7 +133,7 @@ export async function runSubagent(
     }
 
     // emit start 里程碑（旁路，不影响主流程）
-    opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "start", summary: task.label });
+    opts.onEvent?.({ type: "run_started", label: task.label, roleId: task.roleId }, instanceId);
 
     const settings = await readClaudeSettings();
 
@@ -212,7 +214,7 @@ export async function runSubagent(
       if (hookResult.behavior === "deny" && getToolRiskLevel(toolName) === "high") {
         blockedTools.add(toolName);
         // emit blocked 里程碑（旁路，不影响主流程）
-        opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "blocked", toolName, summary: "高风险动作已拦截，待主对话人工确认" });
+        opts.onEvent?.({ type: "run_blocked", toolName, label: task.label, roleId: task.roleId, summary: "高风险动作已拦截，待主对话人工确认" }, instanceId);
       }
       return hookResult;
     };
@@ -309,7 +311,8 @@ export async function runSubagent(
               ? JSON.stringify(block.content)
               : "";
           // emit tool 里程碑（旁路）：pending 是刚 shift() 出的局部变量，input 只喂 getToolSummary，不进事件对象
-          opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "tool", toolName: name, summary: getToolSummary(name, pending?.input), durationMs, isError });
+          // B3 修复：补传 label/roleId，contractToLegacyEvents 据此分组，不再回退为随机 instanceId UUID
+          opts.onEvent?.({ type: "tool_completed", toolName: name, durationMs, isError, summary: getToolSummary(name, pending?.input), label: task.label, roleId: task.roleId }, instanceId);
           runAfterHooks(hookChain, {
             toolName: name,
             input: pending?.input,
@@ -327,7 +330,7 @@ export async function runSubagent(
     const content = result || chunks.join("\n").trim() || "子 Agent 已执行，但没有返回文本结果。";
     const successDurationMs = Date.now() - startedAt;
     // emit done 里程碑（旁路，不夹带子代理正文）
-    opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "done", success: true, durationMs: successDurationMs });
+    opts.onEvent?.({ type: "run_ended", kind: "complete", label: task.label, roleId: task.roleId, success: true, durationMs: successDurationMs }, instanceId);
     const subagentResult: SubagentResult = {
       label: task.label,
       content,
@@ -350,7 +353,7 @@ export async function runSubagent(
     const content = error instanceof Error ? error.message : String(error);
     const failDurationMs = Date.now() - startedAt;
     // emit done 里程碑（失败，旁路，不夹带子代理正文）
-    opts.onEvent?.({ type: "subagent", label: task.label, roleId: task.roleId, phase: "done", success: false, durationMs: failDurationMs });
+    opts.onEvent?.({ type: "run_ended", kind: "incomplete", label: task.label, roleId: task.roleId, success: false, durationMs: failDurationMs }, instanceId);
     const subagentResult: SubagentResult = {
       label: task.label,
       content,
@@ -374,7 +377,7 @@ export async function runSubagent(
 
 export async function runSubagentsParallel(
   tasks: SubagentTask[],
-  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal; conversationId?: string; traceId?: string; onEvent?: (event: AgentRunEvent) => void }
+  opts: { parentOutputDir: string; concurrency?: number; signal?: AbortSignal; conversationId?: string; traceId?: string; onEvent?: (event: AgentRuntimeEvent, instanceId: string) => void }
 ): Promise<SubagentResult[]> {
   const concurrency = opts.concurrency ?? 5;
   const semaphore = new Semaphore(concurrency);

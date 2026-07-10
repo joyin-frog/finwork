@@ -70,17 +70,18 @@ export const subagentTransparencyTestPromise = (async () => {
     console.log("P1-P6: buildTurnSegments subagent 分组 ✓");
   }
 
-  // ─── §2a：源码契约——四个 emit 点 ─────────────────────────────────────────
+  // ─── §2a：源码契约——四个 emit 点（AR2a 后改为新合同事件类型）──────────────
   {
     const runnerSrc = src("lib/agent/subagent-runner.ts");
 
-    // 四个 phase
-    assert.ok(runnerSrc.includes('phase: "start"'), 'C1 FAIL: subagent-runner.ts 应含 phase: "start" emit');
-    assert.ok(runnerSrc.includes('phase: "tool"'), 'C2 FAIL: subagent-runner.ts 应含 phase: "tool" emit');
-    assert.ok(runnerSrc.includes('phase: "blocked"'), 'C3 FAIL: subagent-runner.ts 应含 phase: "blocked" emit');
-    assert.ok(runnerSrc.includes('phase: "done"'), 'C4 FAIL: subagent-runner.ts 应含 phase: "done" emit');
+    // AR2a：subagent-runner 改为 AgentRuntimeEvent 新类型，不再用 phase 字段
+    // run_started（子代理开始）/ run_blocked（高风险拦截）/ tool_completed（工具完成）/ run_ended（结束）
+    assert.ok(runnerSrc.includes('"run_started"'), 'C1 FAIL: subagent-runner.ts 应含 run_started emit（AR2a 取代 phase:"start"）');
+    assert.ok(runnerSrc.includes('"tool_completed"'), 'C2 FAIL: subagent-runner.ts 应含 tool_completed emit（AR2a 取代 phase:"tool"）');
+    assert.ok(runnerSrc.includes('"run_blocked"'), 'C3 FAIL: subagent-runner.ts 应含 run_blocked emit（AR2a 取代 phase:"blocked"）');
+    assert.ok(runnerSrc.includes('"run_ended"'), 'C4 FAIL: subagent-runner.ts 应含 run_ended emit（AR2a 取代 phase:"done"）');
 
-    console.log("C1-C4: 四个 phase emit 点 ✓");
+    console.log("C1-C4: 四个 emit 点（新合同类型）✓");
   }
 
   // ─── §2b：脱敏红线——emit 用 getToolSummary；字面量不含 input/content 原值 ──
@@ -144,15 +145,17 @@ export const subagentTransparencyTestPromise = (async () => {
     console.log("C8-C11: 透传链完整性 ✓");
   }
 
-  // ─── §2d：两份事件类型都含 subagent 变体 ──────────────────────────────────
+  // ─── §2d：AR2a 后 subagent 变体在统一合同中定义 ──────────────────────────
+  // AR2a 后，subagent 变体从前后端各自的本地联合移入 lib/agent/runtime-events.ts 的
+  // AgentRuntimeEvent，chat-types.ts 与 claude-adapter.ts 均通过 runtime-events 引用。
   {
-    const chatTypesSrc = src("app/chat/chat-types.ts");
+    const runtimeEventsSrc = src("lib/agent/runtime-events.ts");
     const adapterSrc = src("lib/agent/claude-adapter.ts");
 
-    assert.ok(chatTypesSrc.includes('type: "subagent"'), 'C12 FAIL: chat-types.ts AgentEvent 应含 type: "subagent" 变体');
-    assert.ok(adapterSrc.includes('type: "subagent"'), 'C13 FAIL: claude-adapter.ts AgentRunEvent 应含 type: "subagent" 变体');
+    assert.ok(runtimeEventsSrc.includes('type: "subagent"'), 'C12 FAIL: runtime-events.ts 应含 type: "subagent" 变体（唯一定义处）');
+    assert.ok(adapterSrc.includes("runtime-events"), 'C13 FAIL: claude-adapter.ts 应 import 自 runtime-events（AR2a 合并后）');
 
-    console.log("C12-C13: 两份事件类型含 subagent 变体 ✓");
+    console.log("C12-C13: AR2a subagent 变体在 runtime-events.ts 统一定义 ✓");
   }
 
   // ─── §2e：渲染文件含 subagent 分支 ───────────────────────────────────────

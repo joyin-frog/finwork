@@ -11,6 +11,7 @@
 
 import { z } from "zod/v4";
 import type { DatabaseSync } from "node:sqlite";
+import { jsonCoercible } from "./coerce-json";
 import type { SdkLike } from "./sdk-types";
 import { createArtifact, getArtifact } from "@/lib/db/artifact-store";
 
@@ -34,17 +35,19 @@ export function createEmitChecklistTool(
     ].join("\n"),
     {
       title: z.string().min(1).max(200).describe("清单标题，如「申报前复核清单 2026-07」"),
-      items: z
-        .array(
-          z.object({
-            label: z.string().min(1).max(500).describe("清单项文字"),
-            detail: z.string().max(2000).optional().describe("补充说明（可选）"),
-            severity: z.enum(["warn", "info"]).optional().describe("风险等级：warn=需处理 info=提示"),
-          })
-        )
-        .min(1)
-        .max(MAX_ITEMS)
-        .describe(`清单项列表，1-${MAX_ITEMS} 项`),
+      items: jsonCoercible(
+        z
+          .array(
+            z.object({
+              label: z.string().min(1).max(500).describe("清单项文字"),
+              detail: z.string().max(2000).optional().describe("补充说明（可选）"),
+              severity: z.enum(["warn", "info"]).optional().describe("风险等级：warn=需处理 info=提示"),
+            })
+          )
+          .min(1)
+          .max(MAX_ITEMS)
+          .describe(`清单项列表，1-${MAX_ITEMS} 项`)
+      ),
     },
     async (args: {
       title: string;

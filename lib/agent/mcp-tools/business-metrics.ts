@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import { upsertBusinessMetrics } from "@/lib/db/finance-store";
+import { jsonCoercible } from "./coerce-json";
 import type { SdkLike } from "./sdk-types";
 import { withIdempotency } from "@/lib/agent/tools/idempotency";
 
@@ -25,7 +26,7 @@ export function createRecordBusinessMetricsTool(sdk: Sdk) {
       "同一 (year, month) 重复调用为更新（upsert）。profit 允许为负数。"
     ].join("\n"),
     {
-      rows: z.array(rowSchema).min(1).max(24).describe("月度数据列表，每条对应一个自然月"),
+      rows: jsonCoercible(z.array(rowSchema).min(1).max(24).describe("月度数据列表，每条对应一个自然月")),
       conversationId: z.number().nullish().describe("当前会话 ID，用于溯源"),
     },
     withIdempotency("record_business_metrics", async (args: { rows: Array<z.infer<typeof rowSchema>>; conversationId?: number | null }) => {

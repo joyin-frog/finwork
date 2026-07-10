@@ -1,5 +1,6 @@
 import type { StoredAgentEvent, StoredChatAttachment } from "@/lib/db/sqlite";
 import type { TimelineItem } from "@/app/components/tool-call-step";
+import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 
 export type ChatMode = "new" | "recent";
 
@@ -71,26 +72,20 @@ export type AskUserQuestionPayload = {
   kind?: "confirm" | "question";
 };
 
-export type AgentEvent =
-  | { type: "system"; subtype?: string; message: string }
-  | { type: "text"; content: string }
-  | { type: "thinking"; content: string }
-  | { type: "tool_use"; id?: string; name: string; input?: unknown }
-  | { type: "tool_result"; toolUseId?: string; name?: string; content?: string; isError?: boolean; durationMs?: number; structured?: unknown }
-  | { type: "ask_user"; questionId: string; question: AskUserQuestionPayload }
-  | { type: "ask_user_answered"; questionId: string; answer: string }
-  | { type: "subagent"; label: string; roleId: string; phase: "start" | "tool" | "blocked" | "done"; summary?: string; toolName?: string; durationMs?: number; isError?: boolean; success?: boolean };
+/** AR2a: 统一事件合同别名（唯一定义在 lib/agent/runtime-events.ts）。 */
+export type AgentEvent = AgentRuntimeEvent;
 
 export type { TimelineItem };
 
 // system 事件用白名单渲染:只显示真正有意义的(目前仅上下文压缩)。
-// init/status 无展示价值;thinking_tokens 等网关噪声此前会渲染成「系统事件:thinking_tokens」刷屏,
-// 这里统一挡掉,顺带净化已落库的历史会话(getPersistedTimeline 复用本函数)。
+// thinking_tokens / init 等网关噪声一律挡掉,顺带净化已落库的历史会话(getPersistedTimeline 复用本函数)。
+// AR2a: 新合同事件（message_delta / run_started / run_settled 等）在 reducer 层已按职责分流，
+// 不进此函数的可见检测（它们不经 shouldHideAgentEvent 过滤，而是被 reduceAgentEvent 直接处理）。
 const VISIBLE_SYSTEM_SUBTYPES = new Set(["compact_boundary"]);
 
 export function shouldHideAgentEvent(event: AgentEvent) {
   if (event.type !== "system") return false;
-  return !VISIBLE_SYSTEM_SUBTYPES.has(event.subtype ?? "");
+  return !VISIBLE_SYSTEM_SUBTYPES.has((event as { subtype?: string }).subtype ?? "");
 }
 
 export function getDisplayContent(message: Message) {

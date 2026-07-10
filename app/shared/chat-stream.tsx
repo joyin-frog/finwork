@@ -16,8 +16,9 @@ import type {
   ModelTier
 } from "@/app/chat/chat-types";
 
-/** 与 chat-page 本地 TimelineItem 同构(event 用严格 AgentEvent 联合,便于 ask_user 等窄化)。 */
-export type StreamTimelineItem = { id: string; event: AgentEvent; createdAt: number };
+/** 与 chat-page 本地 TimelineItem 同构(event 用严格 AgentEvent 联合,便于 ask_user 等窄化)。
+ * AR2a: instanceId 标识子代理实例（主对话 = null；DB 历史条目 = undefined）。 */
+export type StreamTimelineItem = { id: string; event: AgentEvent; createdAt: number; instanceId?: string | null };
 
 /**
  * 跨页存活的对话流式 store。
@@ -89,13 +90,14 @@ export function reduceChunk(turn: StreamTurn, chunk: string, now: number): Strea
   };
 }
 
-export function reduceAgentEvent(turn: StreamTurn, event: AgentEvent, now: number): StreamTurn {
+/** AR2a: instanceId 为子代理实例标识（主对话 = null，未知/历史 = undefined）。 */
+export function reduceAgentEvent(turn: StreamTurn, event: AgentEvent, now: number, instanceId?: string | null): StreamTurn {
   if (shouldHideAgentEvent(event)) return turn;
   return {
     ...turn,
     // 工具结果到达 → 重置计时,后续文本重新算"已处理"
     processedEndedAt: event.type === "tool_result" ? null : turn.processedEndedAt,
-    timeline: [...turn.timeline, { id: crypto.randomUUID(), event, createdAt: now }]
+    timeline: [...turn.timeline, { id: crypto.randomUUID(), event, createdAt: now, instanceId: instanceId ?? null }]
   };
 }
 
@@ -254,7 +256,7 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
       if (contentType.includes("text/event-stream")) {
         await readSSEStream(response, {
           onChunk: (chunk) => update(key, (turn) => reduceChunk(turn, chunk, Date.now())),
-          onAgentEvent: (event) => update(key, (turn) => reduceAgentEvent(turn, event, Date.now())),
+          onAgentEvent: (event, instanceId) => update(key, (turn) => reduceAgentEvent(turn, event, Date.now(), instanceId ?? null)),
           onMeta: (cid) => update(key, (turn) => (turn.conversationId === cid ? turn : { ...turn, conversationId: cid })),
           onTitle: (cid, title) => updateTitleRef.current(cid, title),
           onDone: (payload) =>

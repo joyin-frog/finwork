@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { pickPromptMessages, buildPromptInput } from "../lib/agent/claude-adapter.ts";
-import type { AgentMessage } from "../lib/agent/claude-adapter.ts";
+import type { AgentMessage, AgentAttachment } from "../lib/agent/claude-adapter.ts";
 import { buildSystemPromptParts } from "../lib/agent/system-prompt.ts";
 import { sanitizeInline, wrapExternalContext } from "../lib/agent/external-context.ts";
 
@@ -68,6 +68,56 @@ export const agentContextTestPromise = (async () => {
   assert.ok(allText.includes("好的"), "AC3 FAIL: assistant 历史应作为「对话回顾」保留在 user 消息里");
   assert.ok(allText.includes("第二条"), "AC3 FAIL: 当前 user 消息应在 prompt 里");
   console.log("agent-context AC3: buildPromptInput user-only prompt ✓");
+
+  // ── AC4: stale 重建 + 附件 → attachment 分支不丢附件 ──────────────────
+  // 多条消息 (>1) + 非空 attachments → yieldMessages 走 content 数组分支
+  // RECENT_KEEP=8 > history.length=2 → buildStructuredRecap 走 fallbackFlatRecap，不打网络
+  process.env.SKIP_LLM = "1"; // 额外防线：确保 summarizeHistory 也不打网络
+  const staleMessages: AgentMessage[] = [
+    { role: "user", content: "第一问" },
+    { role: "assistant", content: "第一答" },
+    { role: "user", content: "当前问" },
+  ];
+  // text attachment 无 storagePath → buildAttachmentBlocks 产出 document 块
+  const staleAttachments: AgentAttachment[] = [
+    { name: "report.txt", mimeType: "text/plain", size: 5, dataUrl: "", text: "hello" },
+  ];
+  const staleStream = buildPromptInput(staleMessages, staleAttachments);
+  assert.ok(
+    typeof staleStream !== "string",
+    "AC4 FAIL: 多条消息+附件应返回 AsyncIterable 而非字符串"
+  );
+  let staleYield: { message: { role: string; content: unknown } } | undefined;
+  for await (const m of staleStream as AsyncIterable<{ message: { role: string; content: unknown } }>) {
+    staleYield = m;
+    break;
+  }
+  assert.ok(staleYield !== undefined, "AC4 FAIL: 应至少产出一条消息");
+  const staleContent = staleYield!.message.content;
+  // ① content 是数组（走了 attachment 分支，而非纯字符串）
+  assert.ok(
+    Array.isArray(staleContent),
+    "AC4 FAIL: 带附件时 content 应为数组（attachment 分支），不应为裸字符串"
+  );
+  const blocks = staleContent as Array<Record<string, unknown>>;
+  // ② content[0] 是 text 块，含"当前问"恰好一次，且含对话回顾段
+  assert.equal(blocks[0].type, "text", "AC4 FAIL: content[0].type 应为 text");
+  const textContent = blocks[0].text as string;
+  assert.equal(
+    textContent.split("当前问").length,
+    2,
+    "AC4 FAIL: lastPromptText「当前问」应在 content[0].text 中恰好出现一次（不重复）"
+  );
+  assert.ok(
+    textContent.includes("<对话回顾>") || textContent.includes("第一问"),
+    "AC4 FAIL: content[0].text 应包含对话回顾段（<对话回顾> 标签或历史内容）"
+  );
+  // ③ attachment 块跟在 text 块后面（未被丢弃）
+  assert.ok(
+    blocks.length >= 2,
+    "AC4 FAIL: content 数组应包含 text 块 + 至少一个 attachment 块（附件未丢失）"
+  );
+  console.log("agent-context AC4: stale rebuild with attachment retains recap text and attachment blocks ✓");
 
   // ── AC5: system prompt 负反馈注入 ──────────────────────────────────
   const withFeedback = buildSystemPromptParts({

@@ -20,11 +20,11 @@ import { createRunFilingPrecheckBatchTool } from "./filing-precheck-batch";
 import { createRunBankReconBatchTool } from "./bank-recon-batch";
 import { createUndoLastWriteTool } from "./undo-write";
 import type { SdkLike } from "./sdk-types";
-import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
+import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 
 type Sdk = SdkLike & { createSdkMcpServer: NonNullable<SdkLike["createSdkMcpServer"]> };
 
-export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string, onSubagentEvent?: (event: AgentRunEvent) => void) {
+export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string, onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void) {
   return sdk.createSdkMcpServer({
     name: "finance_worker",
     version: "0.1.0",
@@ -74,7 +74,7 @@ export async function buildFinanceMcpServers(
   outputDir: string,
   traceId?: string,
   conversationId?: string,
-  onSubagentEvent?: (event: AgentRunEvent) => void,
+  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
 ) {
   return {
     finance_worker: await createFinanceMcpServer(sdk, outputDir, traceId, conversationId, onSubagentEvent),

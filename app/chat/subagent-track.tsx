@@ -12,6 +12,8 @@ type TimelineItem = {
   id: string;
   event: AgentEvent;
   createdAt: number;
+  /** AR2a: 子代理实例标识（live 流 = 非空字符串；DB 历史条目 = undefined）。 */
+  instanceId?: string | null;
 };
 
 /**
@@ -28,7 +30,9 @@ export function SubagentTrack({
   items: TimelineItem[];
   isActive: boolean;
 }) {
+  // AR2a: 主判据 instanceId != null（live 流），兜底 event.type === "subagent"（DB 历史）
   const subagentEvents = items
+    .filter((item) => item.instanceId != null || item.event.type === "subagent")
     .map((item) => item.event)
     .filter((ev): ev is Extract<AgentEvent, { type: "subagent" }> => ev.type === "subagent");
 

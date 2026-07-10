@@ -16,7 +16,7 @@ import path from "node:path";
 import fs from "node:fs";
 import type { SdkLike } from "./sdk-types";
 import { currentYearMonth, expandTaskTemplate } from "@/lib/agent/roles/task-templates";
-import type { AgentRunEvent } from "@/lib/agent/claude-adapter";
+import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 import type { SubagentTask, SubagentResult } from "@/lib/agent/subagent-runner";
 
 type Sdk = SdkLike;
@@ -30,7 +30,7 @@ type RunParallelFn = (
     signal?: AbortSignal;
     conversationId?: string;
     traceId?: string;
-    onEvent?: (event: AgentRunEvent) => void;
+    onEvent?: (event: AgentRuntimeEvent, instanceId: string) => void;
   }
 ) => Promise<SubagentResult[]>;
 
@@ -46,7 +46,7 @@ export function createRunBankReconBatchTool(
   outputDir: string,
   traceId?: string,
   conversationId?: string,
-  onSubagentEvent?: (event: AgentRunEvent) => void,
+  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
   deps?: BankReconBatchDeps
 ) {
   return sdk.tool(
