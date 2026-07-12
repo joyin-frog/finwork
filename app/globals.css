@@ -800,6 +800,9 @@ html.dark[data-style='linear'] .app-tab {
 [data-style='linear'] .app-nav-topbar { display: none; }
 /* 收起侧栏后,展开入口在标签条(NavTopControls),内容页头的展开按钮多余,linear 下隐藏 */
 [data-style='linear'] .app-sidebar-toggle { display: none; }
+/* 上一行连带隐藏了折叠按钮承载的左内距,收起态下页头标题会贴主卡左缘。
+   此行(页头)不含红绿灯——红绿灯在顶部标签条——只需补一档常规左内距,与页面内容左缘对齐。 */
+[data-style='linear'][data-nav-collapsed="true"] .app-page-header { padding-left: var(--page-pad); }
 /* Linear:预览全屏占满主卡内容区,去卡框的缝/圆角/描边/影(默认风格不动) */
 [data-style='linear'] .preview-card-frame.is-maximized,
 [data-style='linear'] .preview-page-shell.is-docked.is-maximized {
