@@ -677,6 +677,11 @@ html button.composer-send-button.stop {
 ::-webkit-scrollbar-thumb:horizontal:hover { background-color: var(--sb-thumb-hover); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
+/* 侧栏对话列表:细滚动条 + 轨道上下内收——条更细(可见 ~4px)、只占中间一段,
+   右侧留白更小、更贴近左侧,不再是一条贯穿到底的粗条。仅作用侧栏列表,不改全局。 */
+.sidebar-nav-scroll::-webkit-scrollbar { width: 8px; }
+.sidebar-nav-scroll::-webkit-scrollbar-track { margin-block: 28px; }
+
 /* Windows 自绘标题栏(见 WindowTitleBar):三键已移到顶部独立横条,页面内容整体在其下方,
    故不再需要给各页 header / 预览卡右侧让位——旧的 padding-right 通配规则会误伤「右缘不在窗口右缘」
    的 header(对话/资料预览列、居中设置模态)而把按钮左推,已随顶栏方案一并去掉。

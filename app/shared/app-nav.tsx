@@ -275,7 +275,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             ref={listRef as React.RefObject<HTMLElement>}
             aria-label="主导航"
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto px-2 flex flex-col gap-4"
+            className="sidebar-nav-scroll flex-1 overflow-y-auto px-2 flex flex-col gap-4"
           >
             {pinnedConversations.length > 0 && (
               <div className="flex flex-col gap-1">
