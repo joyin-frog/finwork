@@ -115,7 +115,7 @@
     --radius-chip: 0.25rem;
     --shell-canvas: var(--background); /* 窗口背板色;默认风格与页面底同色(不可见),linear 风格下变灰/近黑背板 */
     /* ── 外壳几何 token(单一来源):所有依赖侧栏宽度/红绿灯净空的定位一律引用它们,禁止再写镜像常量 ── */
-    --nav-width: 15rem;      /* 侧栏展开宽度(240px)。app-nav 的 w-[var(--nav-width)] 与 motion animate 的 240 配对,改这里须同步 NAV_WIDTH_PX */
+    --nav-width: 13.5rem;    /* 侧栏展开默认宽度(216px)。首帧兜底；运行期由 app-nav useEffect 用实时 navWidth 覆盖 */
     --tl-inset: 5rem;        /* macOS 红绿灯净空;Windows 平台规则覆写为 0.5rem */
     /* 密度 token:间距随风格切换的旋钮。默认值与既有 Tailwind class 严格等值(p-4=1rem 等),保证默认风格像素零变化 */
     --surface-pad: 1rem;       /* 卡片内边距(原 p-4) */
@@ -717,7 +717,7 @@ html button.composer-send-button.stop {
 
 /* ── Linear 风格（亮）── 布局反转:侧栏平铺、主内容浮起卡 */
 [data-style='linear'] {
-  --shell-canvas: oklch(0.945 0.003 260);      /* 浅灰背板:比白卡深一档,白色标签/浮起卡靠色差浮出(对照 Linear 实物校准) */
+  --shell-canvas: oklch(0.930 0.017 264.5);    /* 浅蓝灰背板(≈rgb 226 232 244):比白卡深一档带冷蓝调,白色标签/浮起卡靠色差浮出 */
   --sidebar: transparent;                       /* 侧栏融入背板 */
   --radius: 0.625rem;                           /* 派生 md=8px(按钮)/xl=14px,贴近 Linear 8/12 谱 */
   --border: oklch(0.90 0.004 260);              /* 发丝线略实,浮起卡靠描边而非阴影 */

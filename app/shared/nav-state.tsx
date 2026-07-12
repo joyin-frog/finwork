@@ -2,6 +2,10 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
+export const MIN_NAV_WIDTH = 180;
+export const MAX_NAV_WIDTH = 360;
+export const DEFAULT_NAV_WIDTH = 216;
+
 type ConversationSummary = {
   id: number;
   title: string;
@@ -12,6 +16,8 @@ type ConversationSummary = {
 type NavState = {
   collapsed: boolean;
   setCollapsed: (v: boolean) => void;
+  navWidth: number;
+  setNavWidth: (v: number) => void;
   searchOpen: boolean;
   setSearchOpen: (v: boolean) => void;
   pinnedOpen: boolean;
@@ -50,6 +56,34 @@ export function useNavState() {
 
 export function NavStateProvider({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [navWidth, setNavWidthState] = useState(DEFAULT_NAV_WIDTH);
+
+  // Mount-only: restore persisted width from localStorage.
+  // Initial state is DEFAULT to keep SSR / client first-frame consistent (no hydration mismatch).
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("nav:width");
+      if (stored) {
+        const parsed = Number(stored);
+        if (Number.isFinite(parsed)) {
+          setNavWidthState(Math.max(MIN_NAV_WIDTH, Math.min(MAX_NAV_WIDTH, parsed)));
+        }
+      }
+    } catch {
+      // SSR / private-mode: silently ignore
+    }
+  }, []);
+
+  const setNavWidth = useCallback((v: number) => {
+    const clamped = Math.max(MIN_NAV_WIDTH, Math.min(MAX_NAV_WIDTH, v));
+    setNavWidthState(clamped);
+    try {
+      localStorage.setItem("nav:width", String(clamped));
+    } catch {
+      // SSR / private-mode: silently ignore
+    }
+  }, []);
+
   const [searchOpen, setSearchOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(true);
@@ -150,6 +184,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
 
   const contextValue = useMemo(() => ({
     collapsed, setCollapsed,
+    navWidth, setNavWidth,
     searchOpen, setSearchOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
@@ -161,6 +196,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     startDelete, confirmDelete, cancelDelete
   }), [
     collapsed, setCollapsed,
+    navWidth, setNavWidth,
     searchOpen, setSearchOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,

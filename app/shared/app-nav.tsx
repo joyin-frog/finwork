@@ -4,8 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trackFeature } from "@/lib/telemetry/track";
-import { motion } from "motion/react";
-import { useNavState } from "@/app/shared/nav-state";
+import { useNavState, DEFAULT_NAV_WIDTH } from "@/app/shared/nav-state";
 import { useChatStream } from "@/app/shared/chat-stream";
 import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { DragHandle } from "@/app/shared/window-controls";
@@ -15,7 +14,6 @@ import { useIsMac } from "@/app/shared/use-is-mac";
 import { useUserIdentity } from "@/app/shared/user-identity";
 import { UserAvatar } from "@/app/shared/user-avatar";
 import { formatShortcut } from "@/app/shared/shortcuts";
-import { SPRING_DEFAULT } from "@/app/shared/motion-presets";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,8 +48,7 @@ type ConversationSummary = {
 type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" | "skills";
 type ChatActive = "new" | "recent";
 
-/** 与 globals.css 的 --nav-width(15rem) 配对;动画需要数值,CSS 需要 token,改任一须同步另一处 */
-const NAV_WIDTH_PX = 240;
+/** 宽度由 navWidth(来自 NavStateProvider)驱动;useEffect 同步写回 --nav-width token,标签条 lead 自动跟随 */
 
 /** 长条菜单项专用:hover 行时右侧纯文字显示快捷键(只读提示,不是按钮——无盒子/边框)。 */
 function NavShortcut({ combo }: { combo: string }) {
@@ -73,6 +70,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   const searchParams = useSearchParams();
   const {
     collapsed,
+    navWidth, setNavWidth,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
     conversations, hasMore, loaded, fetchConversations,
@@ -81,6 +79,12 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     doPin, startRename, cancelRename, commitRename,
     startDelete, confirmDelete, cancelDelete,
   } = useNavState();
+  const [dragging, setDragging] = useState(false);
+
+  // Keep --nav-width token in sync with runtime navWidth so the tabbar lead tracks it.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--nav-width", navWidth + "px");
+  }, [navWidth]);
   const { statusByConversationId } = useChatStream();
   const { name: userName, avatar: userAvatar } = useUserIdentity();
 
@@ -213,18 +217,18 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   }
 
   return (
-    <motion.aside
+    <aside
       className={cn(
-        // w-[var(--nav-width)] 兜底首帧宽度:motion 的 animate width 在水合前不产生内联样式,无 class 时首次加载按内容
-        // 自然宽(~294px)撑开,点过一次收起/展开才回到 NAV_WIDTH_PX;标签条对齐与主卡位置都依赖此宽度,用 class 钉住,
-        // 动画开始后内联样式照常覆盖它。
-        "app-side flex flex-col overflow-hidden shrink-0 w-[var(--nav-width)]",
+        // 宽度用内联 style 单一驱动(collapsed→0,否则 navWidth):唯一权威源,拖拽即时生效。
+        // relative 是拖拽条绝对定位的上下文。
+        "relative app-side flex flex-col overflow-hidden shrink-0",
+        // 收起/展开走 CSS width 过渡(平滑);拖拽时去掉过渡,让跟手即时无迟滞。
+        !dragging && "transition-[width] duration-200 ease-out",
         // 展开时做成浮起卡片:四周留 4px 缝 + 圆角 + 描边 + 1 档柔影;折叠(width→0)时全部去掉,避免露出碎片。
         // eslint-disable-next-line no-restricted-syntax -- 容器 Surface 收敛（WP8b），bg-sidebar 必须保留覆盖 Surface 默认底色
         !collapsed && cn(surfaceVariants({ level: "panel", edge: "hairline", shape: "panel" }), "bg-sidebar m-1")
       )}
-      animate={{ width: collapsed ? 0 : NAV_WIDTH_PX }}
-      transition={SPRING_DEFAULT}
+      style={{ width: collapsed ? 0 : navWidth }}
     >
       {/* 顶栏:左侧为 macOS 红绿灯预留(DragHandle 拖拽区);右侧放收起按钮(展开态才在侧栏里)。
           Windows 无红绿灯,靠 .app-nav-topbar 的平台样式改为靠左,不留左上角空档(见 globals.css)。 */}
@@ -341,6 +345,37 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         destructive
         onConfirm={confirmDelete}
       />
-    </motion.aside>
+
+      {/* 右边缘拖拽条:仅展开时渲染;绝对定位于 aside 右侧整高 */}
+      {!collapsed && (
+        // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+        <div
+          className={cn(
+            "absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize hover:bg-primary/30 transition-colors",
+            dragging && "bg-primary/30"
+          )}
+          role="separator"
+          aria-orientation="vertical"
+          tabIndex={0}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startW = navWidth;
+            setDragging(true);
+            const onMove = (ev: MouseEvent) => {
+              setNavWidth(startW + (ev.clientX - startX));
+            };
+            const onUp = () => {
+              setDragging(false);
+              document.removeEventListener("mousemove", onMove);
+              document.removeEventListener("mouseup", onUp);
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+          }}
+          onDoubleClick={() => setNavWidth(DEFAULT_NAV_WIDTH)}
+        />
+      )}
+    </aside>
   );
 }
