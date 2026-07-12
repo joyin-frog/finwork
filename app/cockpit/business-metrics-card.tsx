@@ -7,6 +7,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { BarChartIcon, ChartDecreaseIcon, ChartIncreaseIcon } from "@hugeicons/core-free-icons";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrustBadge } from "@/app/shared/trust-badge";
+import { AnimatedNumber } from "@/app/shared/animated-number";
 import { deriveTrustTier } from "@/lib/domain/trust-tier";
 import type { TrustSource } from "@/lib/domain/trust-tier";
 import type { BusinessOverview, BusinessPeriodView } from "@/lib/db/finance-store";
@@ -59,7 +60,7 @@ function MetricRow({
           className="text-small tabular-nums"
           style={tone ? ({ color: tone } as CSSProperties) : undefined}
         >
-          {formatAmount(value)}
+          {value === null ? formatAmount(value) : <AnimatedNumber value={value} format={(v: number) => formatAmount(v)} />}
         </strong>
       </div>
     </div>

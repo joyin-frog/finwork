@@ -3,10 +3,10 @@
 import { useEffect } from "react";
 import { animate, useMotionValue, useTransform, motion, useReducedMotion } from "motion/react";
 
-export function AnimatedNumber({ value, duration = 0.9 }: { value: number; duration?: number }) {
+export function AnimatedNumber({ value, duration = 0.9, format }: { value: number; duration?: number; format?: (v: number) => string }) {
   const prefersReduced = useReducedMotion();
   const mv = useMotionValue(0);
-  const rounded = useTransform(mv, (v) => Math.round(v).toLocaleString());
+  const rounded = useTransform(mv, (v) => format ? format(v) : Math.round(v).toLocaleString());
 
   useEffect(() => {
     if (prefersReduced) {
@@ -18,7 +18,7 @@ export function AnimatedNumber({ value, duration = 0.9 }: { value: number; durat
   }, [value, duration, mv, prefersReduced]);
 
   if (prefersReduced) {
-    return <span>{value.toLocaleString()}</span>;
+    return <span>{format ? format(value) : value.toLocaleString()}</span>;
   }
   return <motion.span>{rounded}</motion.span>;
 }

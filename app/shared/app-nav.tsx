@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trackFeature } from "@/lib/telemetry/track";
@@ -80,6 +81,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     startDelete, confirmDelete, cancelDelete,
   } = useNavState();
   const [dragging, setDragging] = useState(false);
+  const reduce = useReducedMotion();
 
   // Keep --nav-width token in sync with runtime navWidth so the tabbar lead tracks it.
   useEffect(() => {
@@ -116,7 +118,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   const navLinkClass = (isActive: boolean) =>
     cn(
-      "flex items-center gap-2 px-3 min-h-[36px] rounded-md text-body transition-all duration-150",
+      "flex items-center gap-2 px-3 min-h-[36px] rounded-md text-body transition-all duration-150 motion-safe:active:scale-[0.98]",
       isActive
         ? "bg-primary/10 text-primary font-medium"
         : "text-foreground hover:bg-accent hover:text-accent-foreground"
@@ -135,11 +137,17 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           ? { tone: "var(--tone-alarm)", pulse: false, label: "未正常完成，点击查看" }
           : null;
     return (
-      <div
+      <motion.div
         key={c.id}
+        layout={!reduce}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
         // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
         className={cn(
           // 底色/边框作用在整行:标题 + 编辑按钮共用同一底,选中/悬停时是一个整体。
+          // 注:不在此行叠 active:scale——本行是 layout 动画的 motion.div,transform 由 motion 逐帧驱动,
+          // 再挂 CSS transition-transform 会盖掉 transition-colors 并与 layout 动画抢 transform。按压反馈只放导航链接。
           "group relative flex items-center rounded-md transition-colors",
           renamingId === c.id
             ? ""
@@ -212,7 +220,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           </DropdownMenuContent>
         </DropdownMenu>
         )}
-      </div>
+      </motion.div>
     );
   }
 
@@ -281,7 +289,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                 </button>
                 {pinnedOpen && (
                   <div className="flex flex-col gap-1">
-                    {pinnedConversations.map(renderConversationRow)}
+                    <AnimatePresence initial={false}>
+                      {pinnedConversations.map(renderConversationRow)}
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
@@ -301,7 +311,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                   {recentConversations.length === 0 && loaded ? (
                     <span className="px-3 py-2 text-meta text-muted-foreground">暂无对话</span>
                   ) : (
-                    recentConversations.map(renderConversationRow)
+                    <AnimatePresence initial={false}>
+                      {recentConversations.map(renderConversationRow)}
+                    </AnimatePresence>
                   )}
                 </div>
               )}
