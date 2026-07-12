@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { RefreshIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { getCalendarContext, type CalendarContext } from "@/lib/domain/tax-calendar";
+import { listContainer, slideUpIn } from "@/app/shared/motion-presets";
 import type { CockpitSummary } from "./types";
 import { RoleActivityTicker } from "./role-activity-ticker";
 import { AttentionSection } from "./attention-section";
@@ -31,6 +33,7 @@ export default function CockpitPage() {
   const [calendar, setCalendar] = useState<CalendarContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const reduce = useReducedMotion();
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);
@@ -67,18 +70,27 @@ export default function CockpitPage() {
         </div>
       </header>
 
-      <div className="content-fade-top flex-1 overflow-auto p-page flex flex-col gap-section">
+      <div className="content-fade-top flex-1 overflow-auto p-page">
         {error ? (
           <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
             <p>{error}</p>
             <Button variant="outline" size="sm" onClick={fetchSummary}>重试</Button>
           </div>
         ) : (
-          <>
-            <RoleActivityTicker calendar={calendar} />
-            <AttentionSection items={summary?.attention ?? []} calendar={calendar} />
+          <motion.div
+            className="flex flex-col gap-section"
+            variants={listContainer}
+            initial={reduce ? false : "hidden"}
+            animate="visible"
+          >
+            <motion.div variants={slideUpIn}>
+              <RoleActivityTicker calendar={calendar} />
+            </motion.div>
+            <motion.div variants={slideUpIn}>
+              <AttentionSection items={summary?.attention ?? []} calendar={calendar} />
+            </motion.div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-card">
+            <motion.div className="grid grid-cols-1 lg:grid-cols-3 gap-card" variants={slideUpIn}>
               {/* 左列：经营数据在上，合同收付在下（v1.1 评审决定） */}
               <div className="lg:col-span-2 flex flex-col gap-card">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-card">
@@ -97,8 +109,8 @@ export default function CockpitPage() {
                 )}
                 <FinanceCalendarCard calendar={calendar} />
               </div>
-            </div>
-          </>
+            </motion.div>
+          </motion.div>
         )}
       </div>
     </div>

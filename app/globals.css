@@ -115,7 +115,7 @@
     --radius-chip: 0.25rem;
     --shell-canvas: var(--background); /* 窗口背板色;默认风格与页面底同色(不可见),linear 风格下变灰/近黑背板 */
     /* ── 外壳几何 token(单一来源):所有依赖侧栏宽度/红绿灯净空的定位一律引用它们,禁止再写镜像常量 ── */
-    --nav-width: 15rem;      /* 侧栏展开宽度(240px)。app-nav 的 w-[var(--nav-width)] 与 motion animate 的 240 配对,改这里须同步 NAV_WIDTH_PX */
+    --nav-width: 13.5rem;    /* 侧栏展开默认宽度(216px)。首帧兜底；运行期由 app-nav useEffect 用实时 navWidth 覆盖 */
     --tl-inset: 5rem;        /* macOS 红绿灯净空;Windows 平台规则覆写为 0.5rem */
     /* 密度 token:间距随风格切换的旋钮。默认值与既有 Tailwind class 严格等值(p-4=1rem 等),保证默认风格像素零变化 */
     --surface-pad: 1rem;       /* 卡片内边距(原 p-4) */
@@ -677,6 +677,11 @@ html button.composer-send-button.stop {
 ::-webkit-scrollbar-thumb:horizontal:hover { background-color: var(--sb-thumb-hover); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
+/* 侧栏对话列表:细滚动条 + 轨道上下内收——条更细(可见 ~4px)、只占中间一段,
+   右侧留白更小、更贴近左侧,不再是一条贯穿到底的粗条。仅作用侧栏列表,不改全局。 */
+.sidebar-nav-scroll::-webkit-scrollbar { width: 8px; }
+.sidebar-nav-scroll::-webkit-scrollbar-track { margin-block: 28px; }
+
 /* Windows 自绘标题栏(见 WindowTitleBar):三键已移到顶部独立横条,页面内容整体在其下方,
    故不再需要给各页 header / 预览卡右侧让位——旧的 padding-right 通配规则会误伤「右缘不在窗口右缘」
    的 header(对话/资料预览列、居中设置模态)而把按钮左推,已随顶栏方案一并去掉。
@@ -717,7 +722,7 @@ html button.composer-send-button.stop {
 
 /* ── Linear 风格（亮）── 布局反转:侧栏平铺、主内容浮起卡 */
 [data-style='linear'] {
-  --shell-canvas: oklch(0.945 0.003 260);      /* 浅灰背板:比白卡深一档,白色标签/浮起卡靠色差浮出(对照 Linear 实物校准) */
+  --shell-canvas: oklch(0.930 0.017 264.5);    /* 浅蓝灰背板(≈rgb 226 232 244):比白卡深一档带冷蓝调,白色标签/浮起卡靠色差浮出 */
   --sidebar: transparent;                       /* 侧栏融入背板 */
   --radius: 0.625rem;                           /* 派生 md=8px(按钮)/xl=14px,贴近 Linear 8/12 谱 */
   --border: oklch(0.90 0.004 260);              /* 发丝线略实,浮起卡靠描边而非阴影 */
@@ -741,7 +746,7 @@ html button.composer-send-button.stop {
   margin: 0;
 }
 [data-style='linear'] .app-main {
-  margin: 0.25rem 0.375rem 0.375rem 0.5rem; /* 上4px收更紧(标签条已隔开)/右下6px略收/左8px不变(侧栏间距) */
+  margin: 0.25rem 0.375rem 0.375rem 0; /* 上4px收更紧(标签条已隔开)/右下6px略收/左0:主卡贴侧栏,拖拽条即分隔线,消掉浮空缝隙(标签对齐由 lead 宽补偿,见下) */
   border-radius: var(--radius-xl);   /* 0.625rem x 1.4 = ~14px,走 token 不写死 */
   border: 1px solid var(--border);
   background: var(--background);
@@ -772,9 +777,9 @@ html.dark[data-style='linear'] .app-main {
 /* Windows 平台:红绿灯净空归零(三键在上方独立标题栏) */
 :root[data-platform="windows"] { --tl-inset: 0.5rem; }
 /* ── Linear 风格标签条 ──
-   几何契约:标签左缘 = 主卡左缘(--nav-width + main 左边距 0.5rem)。
-   实现:bar 无左 padding;lead 在展开态定宽 var(--nav-width),bar 的 gap 0.5rem 恰好 = main 左边距,
-   故 lead 之后的标签自然落在主卡左缘——对齐由共享 token 保证,不靠手算常量。 */
+   几何契约:标签左缘 = 主卡左缘 = --nav-width(主卡已无左外边距,左缘恰在侧栏右缘)。
+   实现:lead 展开态定宽 calc(--nav-width - 0.5rem),bar 的 gap 0.5rem 恰好补回,
+   故 lead 之后的标签落在 --nav-width = 主卡左缘——对齐随 --nav-width(实时侧栏宽)自动跟随。 */
 [data-style='linear'] .app-tabbar {
   display: flex;
   height: 2.5rem;
@@ -786,7 +791,7 @@ html.dark[data-style='linear'] .app-main {
   padding-left: var(--tl-inset);          /* 红绿灯净空:收起态 lead 自然宽时靠它保住 */
 }
 [data-style='linear'][data-nav-collapsed="false"] .app-tabbar-lead {
-  width: var(--nav-width);                /* 展开态:lead 与侧栏同宽 → 标签左缘=主卡左缘 */
+  width: calc(var(--nav-width) - 0.5rem); /* 展开态:lead = 侧栏宽 - gap,+ bar gap 0.5rem 后标签左缘落在 --nav-width = 主卡左缘 */
 }
 [data-style='linear'] .app-tab {
   background: var(--background);
@@ -800,6 +805,9 @@ html.dark[data-style='linear'] .app-tab {
 [data-style='linear'] .app-nav-topbar { display: none; }
 /* 收起侧栏后,展开入口在标签条(NavTopControls),内容页头的展开按钮多余,linear 下隐藏 */
 [data-style='linear'] .app-sidebar-toggle { display: none; }
+/* 上一行连带隐藏了折叠按钮承载的左内距,收起态下页头标题会贴主卡左缘。
+   此行(页头)不含红绿灯——红绿灯在顶部标签条——只需补一档常规左内距,与页面内容左缘对齐。 */
+[data-style='linear'][data-nav-collapsed="true"] .app-page-header { padding-left: var(--page-pad); }
 /* Linear:预览全屏占满主卡内容区,去卡框的缝/圆角/描边/影(默认风格不动) */
 [data-style='linear'] .preview-card-frame.is-maximized,
 [data-style='linear'] .preview-page-shell.is-docked.is-maximized {
