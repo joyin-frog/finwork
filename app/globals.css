@@ -741,7 +741,7 @@ html button.composer-send-button.stop {
   margin: 0;
 }
 [data-style='linear'] .app-main {
-  margin: 0.25rem 0.375rem 0.375rem 0.5rem; /* 上4px收更紧(标签条已隔开)/右下6px略收/左8px不变(侧栏间距) */
+  margin: 0.25rem 0.375rem 0.375rem 0; /* 上4px收更紧(标签条已隔开)/右下6px略收/左0:主卡贴侧栏,拖拽条即分隔线,消掉浮空缝隙(标签对齐由 lead 宽补偿,见下) */
   border-radius: var(--radius-xl);   /* 0.625rem x 1.4 = ~14px,走 token 不写死 */
   border: 1px solid var(--border);
   background: var(--background);
@@ -772,9 +772,9 @@ html.dark[data-style='linear'] .app-main {
 /* Windows 平台:红绿灯净空归零(三键在上方独立标题栏) */
 :root[data-platform="windows"] { --tl-inset: 0.5rem; }
 /* ── Linear 风格标签条 ──
-   几何契约:标签左缘 = 主卡左缘(--nav-width + main 左边距 0.5rem)。
-   实现:bar 无左 padding;lead 在展开态定宽 var(--nav-width),bar 的 gap 0.5rem 恰好 = main 左边距,
-   故 lead 之后的标签自然落在主卡左缘——对齐由共享 token 保证,不靠手算常量。 */
+   几何契约:标签左缘 = 主卡左缘 = --nav-width(主卡已无左外边距,左缘恰在侧栏右缘)。
+   实现:lead 展开态定宽 calc(--nav-width - 0.5rem),bar 的 gap 0.5rem 恰好补回,
+   故 lead 之后的标签落在 --nav-width = 主卡左缘——对齐随 --nav-width(实时侧栏宽)自动跟随。 */
 [data-style='linear'] .app-tabbar {
   display: flex;
   height: 2.5rem;
@@ -786,7 +786,7 @@ html.dark[data-style='linear'] .app-main {
   padding-left: var(--tl-inset);          /* 红绿灯净空:收起态 lead 自然宽时靠它保住 */
 }
 [data-style='linear'][data-nav-collapsed="false"] .app-tabbar-lead {
-  width: var(--nav-width);                /* 展开态:lead 与侧栏同宽 → 标签左缘=主卡左缘 */
+  width: calc(var(--nav-width) - 0.5rem); /* 展开态:lead = 侧栏宽 - gap,+ bar gap 0.5rem 后标签左缘落在 --nav-width = 主卡左缘 */
 }
 [data-style='linear'] .app-tab {
   background: var(--background);
