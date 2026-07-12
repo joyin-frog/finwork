@@ -5,7 +5,7 @@ import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trackFeature } from "@/lib/telemetry/track";
-import { useNavState, DEFAULT_NAV_WIDTH } from "@/app/shared/nav-state";
+import { useNavState, DEFAULT_NAV_WIDTH, MIN_NAV_WIDTH, MAX_NAV_WIDTH } from "@/app/shared/nav-state";
 import { useChatStream } from "@/app/shared/chat-stream";
 import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { DragHandle } from "@/app/shared/window-controls";
@@ -140,9 +140,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       <motion.div
         key={c.id}
         layout={!reduce}
-        initial={{ opacity: 0 }}
+        initial={reduce ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        exit={reduce ? undefined : { opacity: 0 }}
         // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
         className={cn(
           // 底色/边框作用在整行:标题 + 编辑按钮共用同一底,选中/悬停时是一个整体。
@@ -368,7 +368,24 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           )}
           role="separator"
           aria-orientation="vertical"
+          aria-label="调整侧栏宽度"
+          aria-valuenow={Math.round(navWidth)}
+          aria-valuemin={MIN_NAV_WIDTH}
+          aria-valuemax={MAX_NAV_WIDTH}
           tabIndex={0}
+          // 键盘可操作(与鼠标拖拽等价):左右微调 16px,Home/End 到最小/最大,Enter 还原默认。
+          onKeyDown={(e) => {
+            const STEP = 16;
+            switch (e.key) {
+              case "ArrowLeft": setNavWidth(navWidth - STEP); break;
+              case "ArrowRight": setNavWidth(navWidth + STEP); break;
+              case "Home": setNavWidth(MIN_NAV_WIDTH); break;
+              case "End": setNavWidth(MAX_NAV_WIDTH); break;
+              case "Enter": setNavWidth(DEFAULT_NAV_WIDTH); break;
+              default: return;
+            }
+            e.preventDefault();
+          }}
           onMouseDown={(e) => {
             e.preventDefault();
             const startX = e.clientX;
