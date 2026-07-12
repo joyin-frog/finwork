@@ -49,6 +49,43 @@ type ConversationSummary = {
 type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" | "skills";
 type ChatActive = "new" | "recent";
 
+function NavActivePill({ reduce }: { reduce: boolean | null }) {
+  return (
+    <motion.span
+      layoutId="nav-active-pill"
+      initial={false}
+      transition={reduce ? { duration: 0 } : { type: "spring", duration: 0.5, bounce: 0.2 }}
+      className="pointer-events-none absolute inset-0 z-[-1] rounded-md bg-primary/10"
+    />
+  );
+}
+
+function CollapsibleSectionMotion({
+  open,
+  reduce,
+  children,
+}: {
+  open: boolean;
+  reduce: boolean | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div
+          initial={reduce ? false : { opacity: 0, transform: "translateY(-4px)" }}
+          animate={{ opacity: 1, transform: "translateY(0px)" }}
+          exit={reduce ? undefined : { opacity: 0, transform: "translateY(-4px)" }}
+          transition={{ duration: reduce ? 0 : 0.18, ease: [0.23, 1, 0.32, 1] }}
+          className="flex flex-col gap-1"
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 /** 宽度由 navWidth(来自 NavStateProvider)驱动;useEffect 同步写回 --nav-width token,标签条 lead 自动跟随 */
 
 /** 长条菜单项专用:hover 行时右侧纯文字显示快捷键(只读提示,不是按钮——无盒子/边框)。 */
@@ -118,9 +155,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   const navLinkClass = (isActive: boolean) =>
     cn(
-      "flex items-center gap-2 px-3 min-h-[36px] rounded-md text-body transition-all duration-150 motion-safe:active:scale-[0.98]",
+      "relative isolate flex items-center gap-2 px-3 min-h-[36px] rounded-md text-body transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
       isActive
-        ? "bg-primary/10 text-primary font-medium"
+        ? "text-primary font-medium"
         : "text-foreground hover:bg-accent hover:text-accent-foreground"
     );
 
@@ -229,15 +266,23 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       className={cn(
         // 宽度用内联 style 单一驱动(collapsed→0,否则 navWidth):唯一权威源,拖拽即时生效。
         // relative 是拖拽条绝对定位的上下文。
-        "relative app-side flex flex-col overflow-hidden shrink-0",
-        // 收起/展开走 CSS width 过渡(平滑);拖拽时去掉过渡,让跟手即时无迟滞。
-        !dragging && "transition-[width] duration-200 ease-out",
+        "relative app-side flex flex-col shrink-0",
+        collapsed ? "overflow-visible pointer-events-none" : "overflow-hidden",
         // 展开时做成浮起卡片:四周留 4px 缝 + 圆角 + 描边 + 1 档柔影;折叠(width→0)时全部去掉,避免露出碎片。
         // eslint-disable-next-line no-restricted-syntax -- 容器 Surface 收敛（WP8b），bg-sidebar 必须保留覆盖 Surface 默认底色
         !collapsed && cn(surfaceVariants({ level: "panel", edge: "hairline", shape: "panel" }), "bg-sidebar m-1")
       )}
       style={{ width: collapsed ? 0 : navWidth }}
     >
+      <motion.div
+        className="flex h-full flex-col overflow-hidden"
+        style={{ width: navWidth }}
+        initial={false}
+        animate={{ opacity: collapsed ? 0 : 1, transform: reduce ? "none" : collapsed ? "translateX(-8px)" : "translateX(0px)" }}
+        transition={{ duration: reduce || dragging ? 0 : 0.2, ease: [0.23, 1, 0.32, 1] }}
+        aria-hidden={collapsed}
+        inert={collapsed ? true : undefined}
+      >
       {/* 顶栏:左侧为 macOS 红绿灯预留(DragHandle 拖拽区);右侧放收起按钮(展开态才在侧栏里)。
           Windows 无红绿灯,靠 .app-nav-topbar 的平台样式改为靠左,不留左上角空档(见 globals.css)。 */}
       <div className="app-nav-topbar relative h-11 shrink-0 flex items-center justify-end pr-2">
@@ -245,27 +290,31 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         <NavTopControls />
       </div>
 
-      {!collapsed && (
         <>
           <div className="flex flex-col gap-1 px-2 pb-4 shrink-0">
             <Link href="/chat/new" onClick={() => trackFeature("nav.chat")} className={cn(navLinkClass(active === "chat" && chatActive === "new"), "group")}>
+              {active === "chat" && chatActive === "new" && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={ChatAddIcon} size={16} />
               <span>新对话</span>
               <NavShortcut combo="mod+n" />
             </Link>
             <Link href="/cockpit" onClick={() => trackFeature("nav.cockpit")} className={navLinkClass(active === "cockpit")}>
+              {active === "cockpit" && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={DashboardSquare02Icon} size={16} />
               <span>总览</span>
             </Link>
             <Link href="/agents" onClick={() => trackFeature("nav.agents")} className={navLinkClass(active === "agents")}>
+              {active === "agents" && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={UserGroupIcon} size={16} />
               <span>智能体</span>
             </Link>
             <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
+              {(active === "files" || active === "knowledge") && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={LibraryIcon} size={16} />
               <span>知识库</span>
             </Link>
             <Link href="/skills" onClick={() => trackFeature("nav.skills")} className={navLinkClass(active === "skills")}>
+              {active === "skills" && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={NoteIcon} size={16} />
               <span>技能</span>
             </Link>
@@ -285,15 +334,13 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                   className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <span>置顶</span>
-                  <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform", pinnedOpen && "rotate-180")} />
+                  <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", pinnedOpen && "rotate-180")} />
                 </button>
-                {pinnedOpen && (
-                  <div className="flex flex-col gap-1">
+                <CollapsibleSectionMotion open={pinnedOpen} reduce={reduce}>
                     <AnimatePresence initial={false}>
                       {pinnedConversations.map(renderConversationRow)}
                     </AnimatePresence>
-                  </div>
-                )}
+                </CollapsibleSectionMotion>
               </div>
             )}
 
@@ -304,10 +351,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                 className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
                 <span>最近</span>
-                <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform", recentOpen && "rotate-180")} />
+                <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", recentOpen && "rotate-180")} />
               </button>
-              {recentOpen && (
-                <div className="flex flex-col gap-1">
+              <CollapsibleSectionMotion open={recentOpen} reduce={reduce}>
                   {recentConversations.length === 0 && loaded ? (
                     <span className="px-3 py-2 text-meta text-muted-foreground">暂无对话</span>
                   ) : (
@@ -315,8 +361,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                       {recentConversations.map(renderConversationRow)}
                     </AnimatePresence>
                   )}
-                </div>
-              )}
+              </CollapsibleSectionMotion>
             </div>
           </nav>
 
@@ -346,7 +391,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             </ShortcutHint>
           </div>
         </>
-      )}
+      </motion.div>
 
       <ConfirmDialog
         open={!!deleteTarget}

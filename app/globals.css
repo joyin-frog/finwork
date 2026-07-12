@@ -467,14 +467,16 @@ html button.composer-send-button:not(:disabled) {
   animation: btn-breathe 2.6s ease-in-out infinite;
   transition: transform var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
-html button.composer-send-button:not(:disabled):hover {
-  animation: none;
-  transform: scale(1.1);
-  box-shadow: 0 0 14px oklch(from var(--primary) l c h / 35%);
-}
-html button.composer-send-button:not(:disabled):active {
-  animation: none;
-  transform: scale(0.93);
+@media (hover: hover) and (pointer: fine) {
+  html button.composer-send-button:not(:disabled):hover {
+    animation: none;
+    transform: scale(1.1);
+    box-shadow: 0 0 14px oklch(from var(--primary) l c h / 35%);
+  }
+  html button.composer-send-button:not(:disabled):active {
+    animation: none;
+    transform: scale(0.93);
+  }
 }
 /* 停止按钮不呼吸:呼吸光环是「召唤点击」的发送态信号,挂在停止键上等于持续催用户中断生成,语义反了。
    只去掉自发呼吸;hover 放大 / 按下回弹保留(transition 缓动仍继承自上面的发送态规则)。 */
@@ -483,7 +485,9 @@ html button.composer-send-button.stop {
 }
 /* 无限循环的呼吸光环对光敏感用户是负担(WCAG 2.3.3);减少动效时停掉自发呼吸,hover/active 反馈保留。 */
 @media (prefers-reduced-motion: reduce) {
-  html button.composer-send-button:not(:disabled) { animation: none; }
+  html button.composer-send-button:not(:disabled) { animation: none; transition-property: box-shadow, color, background-color; }
+  html button.composer-send-button:not(:disabled):hover,
+  html button.composer-send-button:not(:disabled):active { transform: none; }
 }
 
 /* ---------- Tone system utilities ----------

@@ -165,16 +165,16 @@ export const agentBoardTestPromise = (async () => {
   }
   console.log("C2: listMinW >= 400 ✓");
 
-  // C3: maximized 时左侧列 hidden（评审铁律）。装配已收进共享壳 ResizablePreviewPanel，
-  //     故此语义现在落在壳源码里，而非各页 page.tsx。
+  // C3: maximized 时左侧列不参与布局。共享壳用 presence 退出替代 CSS hidden，
+  //     既保持放大布局契约，也允许退出动效。
   {
     const shellSrc = src("app/shared/resizable-preview-panel.tsx");
     assert.ok(
-      shellSrc.includes('maximized && "hidden"') || shellSrc.includes("maximized && 'hidden'"),
-      "C3 FAIL: 共享预览壳 maximized 时左列应有 hidden 语义"
+      shellSrc.includes("!maximized &&") && shellSrc.includes("AnimatePresence"),
+      "C3 FAIL: 共享预览壳 maximized 时左列应通过 presence 退出布局"
     );
   }
-  console.log("C3: maximized → hidden（壳）✓");
+  console.log("C3: maximized → presence 退出布局（壳）✓");
 
   // C4: 文件产物用 FilePreviewPage
   {

@@ -13,7 +13,7 @@ import {
   HelpSquareIcon,
   Calculator01Icon,
 } from "@hugeicons/core-free-icons";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -27,6 +27,7 @@ import { formatToolInput, formatToolOutput } from "@/lib/agent/tools/content-for
 import { aggregateToolSegment, summarizeToolSegment } from "@/app/chat/step-aggregate";
 import type { AggregatedStep } from "@/app/chat/step-aggregate";
 import { cleanErrorDetail } from "@/app/chat/error-detail";
+import { EASE_OUT_QUICK } from "@/app/shared/motion-presets";
 
 // 时长徽章只在 ≥3s 时显示,避免每个快速步骤都挂毫秒级噪声
 const STEP_DURATION_FLOOR_MS = 3000;
@@ -262,8 +263,22 @@ function ExpandedDetail({
   );
 }
 
+function DetailMotion({ open, className, children }: { open: boolean; className?: string; children: React.ReactNode }) {
+  const reduce = useReducedMotion();
+  return <AnimatePresence initial={false}>{open ? (
+    <motion.div
+      initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(-4px) scale(0.99)" }}
+      animate={{ opacity: 1, transform: "translateY(0px) scale(1)" }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(-4px) scale(0.99)" }}
+      transition={EASE_OUT_QUICK}
+      className={className}
+    >{children}</motion.div>
+  ) : null}</AnimatePresence>;
+}
+
 function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: ToolPair; degraded?: boolean; threaded?: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const reduce = useReducedMotion();
   // 日常:每步只一行人话、不可展开;技术模式:可点开看原始输入/输出(调试用)。
   const roleMode = useRoleMode();
   const hasDetail = roleMode === "tech" && Boolean(pair.input || pair.result);
@@ -314,8 +329,8 @@ function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: Tool
         {/* spec 2: chevron 默认隐藏，hover/focus 显现；触屏兜底 */}
         {hasDetail && (
           <motion.span
-            animate={{ rotate: expanded ? 90 : 0 }}
-            transition={{ duration: 0.18 }}
+            animate={{ rotate: reduce ? 0 : expanded ? 90 : 0 }}
+            transition={EASE_OUT_QUICK}
             className="inline-flex shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
           >
             <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
@@ -331,20 +346,9 @@ function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: Tool
 
       <ToolResultCard name={pair.name} structured={pair.structured} />
 
-      <AnimatePresence initial={false}>
-        {expanded && hasDetail && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ height: { duration: 0.22, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.18 } }}
-            style={{ overflow: "hidden" }}
-            className="px-2 pb-1"
-          >
-            <ExpandedDetail pair={pair} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <DetailMotion open={expanded && hasDetail} className="px-2 pb-1">
+        <ExpandedDetail pair={pair} />
+      </DetailMotion>
     </div>
   );
 }
@@ -360,6 +364,7 @@ function RetryGroupRow({
   threaded?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const reduce = useReducedMotion();
   const { label, count, recovered, items } = group;
   const displayLabel = `${label}`;  // label 已含「×N」
   void count; // count 已编码进 label
@@ -398,8 +403,8 @@ function RetryGroupRow({
         )}
         {/* spec 2: chevron 默认隐藏，hover/focus 显现 */}
         <motion.span
-          animate={{ rotate: expanded ? 90 : 0 }}
-          transition={{ duration: 0.18 }}
+          animate={{ rotate: reduce ? 0 : expanded ? 90 : 0 }}
+          transition={EASE_OUT_QUICK}
           className="inline-flex shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
         >
           <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
@@ -407,25 +412,14 @@ function RetryGroupRow({
       </button>
 
       {/* 展开：组内逐步明细 */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ height: { duration: 0.22, ease: [0.16, 1, 0.3, 1] }, opacity: { duration: 0.18 } }}
-            style={{ overflow: "hidden" }}
-            className="py-0.5"
-          >
+      <DetailMotion open={expanded} className="py-0.5">
             {/* fa-thread 必须挂在逐行的直接父级(节点线按 .fa-node 画);嵌套子步骤恒为 threaded */}
             <div className="fa-thread flex flex-col gap-0.5">
               {subPairs.map((p) => (
                 <ToolCallStep key={p.id} pair={p} degraded={recovered} threaded />
               ))}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </DetailMotion>
     </div>
   );
 }

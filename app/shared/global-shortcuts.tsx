@@ -11,6 +11,7 @@ import { useNavState } from "@/app/shared/nav-state";
 import { useIsMac } from "@/app/shared/use-is-mac";
 import { formatShortcut, resolveShortcut, SHORTCUTS } from "@/app/shared/shortcuts";
 import { GlobalSearchDialog } from "@/app/shared/global-search-dialog";
+import { cn } from "@/lib/utils";
 
 const SHORTCUT_EVENT = "app-shortcut";
 
@@ -34,6 +35,8 @@ export function GlobalShortcuts() {
   const { collapsed, setCollapsed, searchOpen, setSearchOpen } = useNavState();
   const isMac = useIsMac();
   const [helpOpen, setHelpOpen] = useState(false);
+  const [searchInstant, setSearchInstant] = useState(false);
+  const [helpInstant, setHelpInstant] = useState(false);
 
   const stateRef = useRef({ collapsed, pathname, isMac, setSearchOpen });
   stateRef.current = { collapsed, pathname, isMac, setSearchOpen };
@@ -42,6 +45,7 @@ export function GlobalShortcuts() {
   useEffect(() => {
     const onShortcutEvent = (event: Event) => {
       if ((event as CustomEvent<{ id?: string }>).detail?.id === "global-search") {
+        setSearchInstant(true);
         setSearchOpen(true);
       }
     };
@@ -75,9 +79,11 @@ export function GlobalShortcuts() {
           router.push("/config");
           break;
         case "show-shortcuts":
+          setHelpInstant(true);
           setHelpOpen((open) => !open);
           break;
         case "global-search":
+          setSearchInstant(true);
           openSearch(true);
           break;
         default:
@@ -90,8 +96,8 @@ export function GlobalShortcuts() {
 
   return (
     <>
-      <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} isMac={isMac} />
-      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      <ShortcutsHelpDialog open={helpOpen} onOpenChange={(open) => { setHelpOpen(open); if (!open) setHelpInstant(false); }} isMac={isMac} instant={helpInstant} />
+      <GlobalSearchDialog open={searchOpen} onOpenChange={(open) => { setSearchOpen(open); if (!open) setSearchInstant(false); }} instant={searchInstant} />
     </>
   );
 }
@@ -104,11 +110,13 @@ const GROUPS: Array<{ title: string; scopes: Array<"global" | "chat" | "composer
 function ShortcutsHelpDialog({
   open,
   onOpenChange,
-  isMac
+  isMac,
+  instant,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isMac: boolean;
+  instant: boolean;
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -116,12 +124,12 @@ function ShortcutsHelpDialog({
         {/* 与全局搜索一致:浅色无模糊遮罩 */}
         <DialogPrimitive.Overlay
           data-slot="dialog-overlay"
-          className="fixed inset-0 z-50 bg-scrim-modal duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+          className={cn("fixed inset-0 z-50 bg-scrim-modal", !instant && "duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0")}
         />
         {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
         <DialogPrimitive.Content
           data-slot="dialog-content"
-          className="fixed top-[18%] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border-2 border-border bg-popover text-popover-foreground outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+          className={cn("fixed top-[18%] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border-2 border-border bg-popover text-popover-foreground outline-none", !instant && "duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95")}
         >
           {/* 标题行 + 关闭按钮(右侧竖直居中),下方横线分隔 */}
           <div className="flex items-center gap-2 border-b border-border px-4 py-3">

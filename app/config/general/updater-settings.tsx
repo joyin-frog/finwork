@@ -147,8 +147,8 @@ export function UpdaterBody() {
           {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
           <div className="h-1.5 w-full max-w-xs bg-muted rounded-full overflow-hidden">
             <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${status.progress}%` }}
+              className="h-full w-full origin-left bg-primary transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
+              style={{ transform: `scaleX(${Math.min(100, Math.max(0, status.progress)) / 100})` }}
             />
           </div>
         </div>

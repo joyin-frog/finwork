@@ -587,6 +587,9 @@ process.on("unhandledRejection", (err) => {
   const { resizablePreviewPanelTestPromise } = await import("./resizable-preview-panel.test.ts");
   await resizablePreviewPanelTestPromise;
 
+  const { animationMotionContractTestPromise } = await import("./animation-motion-contract.test.ts");
+  await animationMotionContractTestPromise;
+
   const { dbMigrationDisciplineTestPromise } = await import("./db-migration-discipline.test.ts");
   await dbMigrationDisciplineTestPromise;
 

@@ -2,6 +2,7 @@
 
 import type { ReactNode, RefObject } from "react";
 import { cn } from "@/lib/utils";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 /**
  * ResizablePreviewPanel — 共享的可拖宽预览面板外层装配壳。
@@ -59,14 +60,27 @@ export function ResizablePreviewPanel({
   preview,
 }: ResizablePreviewPanelProps) {
   const showRight = !collapsed && preview != null;
+  const reduce = useReducedMotion();
+  const transition = { duration: reduce || dragging ? 0 : 0.22, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] };
 
   return (
     <div className="flex flex-1 overflow-hidden" ref={mainRef}>
       {/* 左列 —— 放大时整列隐藏:预览宽=容器宽-4 已假定兄弟列消失(对齐 chat 隐藏主内容区),
           否则 min-w 列不收缩会把预览撑出容器、右侧「还原」按钮被 overflow-hidden 裁掉(看不见取消全屏) */}
-      <div className={cn("flex flex-col flex-1 overflow-hidden", listMinWidthClass, maximized && "hidden")}>
-        {list}
-      </div>
+      <AnimatePresence initial={false} mode="popLayout">
+        {!maximized && (
+          <motion.div
+            key="preview-list"
+            className={cn("flex flex-col flex-1 overflow-hidden", listMinWidthClass)}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateX(-2%)" }}
+            animate={{ opacity: 1, transform: "translateX(0%)" }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateX(-2%)" }}
+            transition={transition}
+          >
+            {list}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 分隔拖拽条 */}
       {showRight && (
@@ -84,14 +98,21 @@ export function ResizablePreviewPanel({
       )}
 
       {/* 右侧预览面板 */}
+      <AnimatePresence initial={false} mode="popLayout">
       {showRight && (
-        <div
+        <motion.div
+          key="preview-panel"
+          initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateX(2%)" }}
+          animate={{ opacity: 1, transform: "translateX(0%)" }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateX(2%)" }}
+          transition={transition}
           className={cn("flex flex-col shrink-0 preview-card-frame", maximized && "is-maximized")}
           style={{ width: previewW }}
         >
           {preview}
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
