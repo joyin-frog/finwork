@@ -21,7 +21,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "MultiEdit",        category: "builtin", riskLevel: "medium" },
   { name: "Bash",             category: "builtin", riskLevel: "high" },
   // Core MCP tools
-  { name: "mcp__finance_worker__run_python",            category: "finance", riskLevel: "medium" },
+  { name: "mcp__finance_worker__run_python",            category: "finance", riskLevel: "high" },
   { name: "mcp__finance_worker__spawn_subagent",        category: "finance", riskLevel: "medium" },
   { name: "mcp__finance_worker__search_knowledge", category: "finance", riskLevel: "safe" },
   { name: "mcp__finance_worker__query_knowledge",  category: "finance", riskLevel: "medium" },
@@ -93,12 +93,13 @@ const CONFIRM_REQUIRED_TOOL_NAMES = new Set<string>([
 /**
  * 静态工具全集:迁移到 SDK 原生 skill 后,工具不再按 skill 收敛。
  * 模型可见全部已登记工具,由 skill 描述引导选用、高风险工具经确认门兜底(见 createRiskConfirmHook)。
- * 高风险财务工具（riskLevel==="high" && category==="finance"）与 always-confirm 工具移出此列表，
+ * 所有内置工具、高风险财务工具与 always-confirm 工具移出此列表，
  * 使其经 canUseTool → risk-confirm hook → 弹确认卡，而非被 SDK 自动放行。
- * Bash（riskLevel:"high" 但 category:"builtin"）保留在此，由 createUnwiredToolHook 在链首 deny。
+ * 内置工具仍由 BUILTIN_TOOLS 提供定义，并通过 SDK 原生 PreToolUse 机制闸检查。
  */
 export const ALLOWED_TOOLS: string[] = TOOL_REGISTRY
-  .filter((t) => !((t.riskLevel === "high" && t.category === "finance") || CONFIRM_REQUIRED_TOOL_NAMES.has(t.name)))
+  .filter((t) => t.category !== "builtin")
+  .filter((t) => !(t.riskLevel === "high" || CONFIRM_REQUIRED_TOOL_NAMES.has(t.name)))
   .map((t) => t.name);
 
 /**

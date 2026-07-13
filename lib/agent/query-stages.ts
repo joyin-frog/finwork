@@ -169,15 +169,23 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
       }
     }
     if (!skipInsert) {
-      const messageId = insertChatMessage(conversationId, "user", lastUserContent);
-      for (const att of attachments) {
-        if (att.storagePath && conversationId) {
-          insertChatAttachment({
-            id: randomUUID(), messageId,
-            fileName: att.name, mimeType: att.mimeType, sizeBytes: att.size,
-            storagePath: path.relative(getConversationFilesDir(conversationId), att.storagePath), role: "user"
-          });
+      const db = getDb();
+      db.exec("BEGIN");
+      try {
+        const messageId = insertChatMessage(conversationId, "user", lastUserContent);
+        for (const att of attachments) {
+          if (att.storagePath && conversationId) {
+            insertChatAttachment({
+              id: randomUUID(), messageId,
+              fileName: att.name, mimeType: att.mimeType, sizeBytes: att.size,
+              storagePath: path.relative(getConversationFilesDir(conversationId), att.storagePath), role: "user"
+            });
+          }
         }
+        db.exec("COMMIT");
+      } catch (error) {
+        try { db.exec("ROLLBACK"); } catch { /* preserve original error */ }
+        throw error;
       }
     }
   }

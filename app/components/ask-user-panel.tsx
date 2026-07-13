@@ -125,7 +125,7 @@ export function AskUserPanel({
 
   // ── 确认卡分支 ────────────────────────────────────────────────────────────
   // kind==="confirm" 时渲染高风险动作确认卡:后果告警色、两按钮、无文本输入框。
-  // 非取消文本 = 放行(chain.ts 语义),故绝不能给自由文本框(见 spec §5)。
+  // chain.ts 采用精确肯定白名单:只有「确认」等明确肯定文本放行,其余(取消/含糊/空)一律拒绝,故绝不能给自由文本框(见 spec §5)。
   if (question.kind === "confirm") {
     // 将 prompt 按换行分段,最后一段视为「后果」用告警色渲染
     const lines = question.question.split("\n").filter((l) => l.trim() !== "");

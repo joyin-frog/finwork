@@ -8,6 +8,7 @@ import { writeAgentTrace } from "@/lib/observability/trace-write";
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
 import {
   getChatConversation,
+  getDb,
   insertChatAgentEvent,
   insertChatMessage,
   setChatConversationClaudeSessionId,
@@ -251,9 +252,17 @@ type PersistTurnParams = {
 
 /** 助手回合落库的唯一出口(成功 / 未完成两条收尾共用):写 assistant 消息 + 经 sanitize 落库 collector 事件。 */
 function insertAssistantTurn(conversationId: number, content: string, collector: AgentTurnCollector, traceId: string): number {
-  const messageId = insertChatMessage(conversationId, "assistant", content);
-  for (const event of sanitizeTurnEvents(collector.collectedEvents)) insertChatAgentEvent(messageId, event.type, event, traceId);
-  return messageId;
+  const db = getDb();
+  db.exec("BEGIN");
+  try {
+    const messageId = insertChatMessage(conversationId, "assistant", content);
+    for (const event of sanitizeTurnEvents(collector.collectedEvents)) insertChatAgentEvent(messageId, event.type, event, traceId);
+    db.exec("COMMIT");
+    return messageId;
+  } catch (error) {
+    try { db.exec("ROLLBACK"); } catch { /* preserve original error */ }
+    throw error;
+  }
 }
 
 /** 唯一的回合收尾:session 写回、消息+事件落库、标题、生成文件、trace。两条响应路径都走这里。 */

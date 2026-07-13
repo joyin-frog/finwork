@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import {
   deleteKnowledgeDocument,
+  countKnowledgeDocumentsByContentHash,
+  countKnowledgeDocumentsByStoragePath,
   getKnowledgeDocumentByFileName,
   getKnowledgeDocumentById,
   getDb,
@@ -11,7 +13,15 @@ import {
 import { parseDocument } from "./parsers";
 import type { KnowledgeCategory } from "./types";
 import { inferCategoryFromDocument } from "./category";
-import { writeTextMirror, deleteTextMirror, computeFileHash } from "./storage";
+import {
+  canonicalStoragePathKey,
+  computeFileHash,
+  deleteStoredFile,
+  deleteTextMirror,
+  hasActiveKnowledgeHashLease,
+  hasActiveKnowledgePathLease,
+  writeTextMirror,
+} from "./storage";
 import { chunkText } from "./chunker";
 import { embedTexts, storeEmbeddings, deleteEmbeddings, type EmbedRunner } from "./embeddings";
 import { EMBED_MODEL } from "./embed-model";
@@ -65,9 +75,8 @@ export async function ingestDocument(params: {
 
   if (oldDoc) {
     const hashChanged = oldDoc.content_hash !== contentHash;
+    const nextStoragePath = storagePath ?? oldDoc.storage_path;
     if (hashChanged) {
-      // Hash changed, delete old text mirror + embeddings
-      deleteTextMirror(oldDoc.content_hash);
       try {
         const db = getDb();
         deleteEmbeddings(db, oldDoc.id);
@@ -81,10 +90,30 @@ export async function ingestDocument(params: {
       mime_type: mimeType,
       category: resolvedCategory,
       size_bytes: sizeBytes,
+      content_hash: contentHash,
+      storage_path: nextStoragePath,
     });
     // chunk_count is kept as column but always 0 now
     const db = getDb();
     db.prepare("UPDATE knowledge_documents SET chunk_count = 0 WHERE id = ?").run(oldDoc.id);
+
+    // DB 已切换到新副本后再清理旧路径；历史共享/外部路径由 containment 守卫拒删。
+    if (
+      oldDoc.storage_path &&
+      canonicalStoragePathKey(oldDoc.storage_path) !== canonicalStoragePathKey(nextStoragePath) &&
+      countKnowledgeDocumentsByStoragePath(oldDoc.storage_path, db) === 0 &&
+      !hasActiveKnowledgePathLease(oldDoc.storage_path)
+    ) {
+      deleteStoredFile(oldDoc.storage_path);
+    }
+    if (
+      hashChanged &&
+      oldDoc.content_hash &&
+      countKnowledgeDocumentsByContentHash(oldDoc.content_hash, db) === 0 &&
+      !hasActiveKnowledgeHashLease(oldDoc.content_hash)
+    ) {
+      deleteTextMirror(oldDoc.content_hash);
+    }
 
     // 建立语义索引（hash 变化则重嵌；hash 不变则 embeddings 已存在，保留不动）
     if (hashChanged) {
@@ -120,12 +149,16 @@ export async function ingestDocument(params: {
 export function deleteDocument(documentId: number): void {
   const db = getDb();
   const doc = getKnowledgeDocumentById(documentId);
-  if (doc?.content_hash) {
-    deleteTextMirror(doc.content_hash);
-  }
   // WP1b 写钩子：删文档前先清 fact_obligations 行（防悬空义务）
   db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(documentId);
   // CASCADE 通常已处理 embeddings，兜底显式清（存量无 CASCADE 路径）
   deleteEmbeddings(db, documentId);
   deleteKnowledgeDocument(documentId);
+  if (
+    doc?.content_hash &&
+    countKnowledgeDocumentsByContentHash(doc.content_hash, db) === 0 &&
+    !hasActiveKnowledgeHashLease(doc.content_hash)
+  ) {
+    deleteTextMirror(doc.content_hash);
+  }
 }

@@ -11,6 +11,7 @@ import { buildFinanceMcpServers } from "./mcp-tools";
 import { ALLOWED_TOOLS, BUILTIN_TOOLS } from "./tools/registry";
 import { getSkillPluginConfig } from "./skill-plugin";
 import { runBeforeHooks, runAfterHooks } from "./hooks/chain";
+import { createSdkPreToolUseHook } from "./hooks/sdk-pre-tool-use";
 import {
   createAskUserQuestionHook,
   createPathSafetyHook,
@@ -237,6 +238,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       log.info("tool done", { traceId: requestId, name, durationMs, isError });
     }),
   ];
+  const sdkPreToolUseHook = createSdkPreToolUseHook(outputDir);
 
   const canUseTool = async (toolName: string, input: unknown) => {
     // Always allow internal SDK meta-tools
@@ -282,6 +284,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     systemPrompt,
     canUseTool,
     hooks: {
+      PreToolUse: [{ hooks: [sdkPreToolUseHook] }],
       PostCompact: [{ hooks: [createPostCompactHookCallback(requestId, writeSpan)] }],
     },
     includePartialMessages: true,

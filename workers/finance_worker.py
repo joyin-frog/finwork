@@ -38,13 +38,14 @@ def analyze_csv(path: Path):
     for row in rows:
         amount = float(row.get("amount") or 0)
         category = row.get("category") or "未分类"
-        invoice_no = row.get("invoice_no") or ""
+        invoice_no = (row.get("invoice_no") or "").strip()
         by_category_cents[category] += round(amount * 100)
         if amount <= 0:
             warnings.append({"invoice_no": invoice_no, "warning": "金额异常"})
-        if invoice_no in invoice_seen:
-            warnings.append({"invoice_no": invoice_no, "warning": "发票号重复"})
-        invoice_seen.add(invoice_no)
+        if invoice_no:
+            if invoice_no in invoice_seen:
+                warnings.append({"invoice_no": invoice_no, "warning": "发票号重复"})
+            invoice_seen.add(invoice_no)
 
     return {
         "row_count": len(rows),

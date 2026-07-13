@@ -27,7 +27,7 @@ const WORKER = path.join(process.cwd(), "workers", "finance_worker.py");
 function runAnalyzeCsv(csvPath: string): {
   row_count: number;
   by_category: Record<string, number>;
-  warnings: unknown[];
+  warnings: Array<{ invoice_no?: string; warning?: string }>;
   column_warnings?: string[];
 } {
   const pythonPath = getPythonPath();
@@ -181,6 +181,23 @@ export const parseCorpusTestPromise = (async () => {
     }
     assert.ok(threw, "csv-thousand-sep-currency: 千分位货币符号导致 float() 失败，worker 应报错退出");
     console.log("parse-corpus: csv-thousand-sep-currency (parse error) ✓");
+  }
+
+  // Blank invoice numbers are missing identifiers, not duplicate identifiers.
+  {
+    const result = runAnalyzeCsv(path.join(CORPUS, "csv-blank-invoices.csv"));
+    const duplicates = result.warnings.filter((warning) => warning.warning === "发票号重复");
+    assert.equal(
+      duplicates.filter((warning) => !warning.invoice_no).length,
+      0,
+      "csv-blank-invoices: 空发票号不得产生重复告警"
+    );
+    assert.equal(
+      duplicates.filter((warning) => warning.invoice_no === "INV-001").length,
+      1,
+      "csv-blank-invoices: 相同非空发票号仍只产生一条重复告警"
+    );
+    console.log("parse-corpus: csv-blank-invoices ✓");
   }
 
   // ─────────────────────────────────────────────────────────────────────────

@@ -8,9 +8,10 @@ import { buildFinanceMcpServers } from "./mcp-tools";
 import { getSkillPluginConfig } from "./skill-plugin";
 import { runBeforeHooks, runAfterHooks } from "./hooks/chain";
 import { createUnwiredToolHook, createPathSafetyHook, createTimingHook, createRiskConfirmHook } from "./hooks/built-in";
+import { createSdkPreToolUseHook } from "./hooks/sdk-pre-tool-use";
 import { Semaphore } from "@/lib/utils/semaphore";
 import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
-import { getToolRiskLevel } from "./tools/registry";
+import { BUILTIN_TOOLS, getToolRiskLevel } from "./tools/registry";
 import * as _dispatchStore from "@/lib/db/dispatch-store";
 import type { AgentRuntimeEvent } from "./runtime-events";
 import { getToolSummary } from "./tools/renderers";
@@ -196,6 +197,7 @@ export async function runSubagent(
         console.info("[subagent] tool done", { label: task.label, name, durationMs, isError });
       }),
     ];
+    const sdkPreToolUseHook = createSdkPreToolUseHook(outputDir);
 
     const canUseTool = async (toolName: string, input: unknown) => {
       if (toolName === "ToolSearch" || toolName === "ExitPlanMode") {
@@ -230,7 +232,7 @@ export async function runSubagent(
       abortController,
       cwd: getProjectRoot(),
       env,
-      tools: { type: "preset", preset: "claude_code" },
+      tools: [...BUILTIN_TOOLS, "Skill"],
       mcpServers,
       allowedTools,
       plugins: skillPlugin.plugins,
@@ -238,6 +240,9 @@ export async function runSubagent(
       settingSources: skillPlugin.settingSources,
       systemPrompt,
       canUseTool,
+      hooks: {
+        PreToolUse: [{ hooks: [sdkPreToolUseHook] }],
+      },
       includePartialMessages: true,
       maxTurns: 15,
       permissionMode: "acceptEdits",

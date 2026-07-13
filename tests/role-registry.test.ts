@@ -102,7 +102,7 @@ export const roleRegistryTestPromise = (async () => {
     );
   }
 
-  // ── G4c: bookkeeper 和 tax-officer 都含 SHARED_TOOLS 的全名 ─────────────
+  // ── G4c: bookkeeper 和 tax-officer 都含可自动放行的 SHARED_TOOLS ──────
   {
     const bookkeeperTools = resolveRoleAllowedTools("bookkeeper");
     const taxTools = resolveRoleAllowedTools("tax-officer");
@@ -118,13 +118,16 @@ export const roleRegistryTestPromise = (async () => {
                 t.name === `mcp__kingdee_worker__${sharedBare}`
             )?.name ?? sharedBare;
 
-      assert.ok(
+      const isAutoAllowed = ALLOWED_TOOLS.includes(sharedFullName);
+      assert.equal(
         bookkeeperTools.includes(sharedFullName),
-        `G4c FAIL: bookkeeper allowedTools 缺少 SHARED_TOOL "${sharedBare}" (全名: "${sharedFullName}")`
+        isAutoAllowed,
+        `G4c FAIL: bookkeeper 对 SHARED_TOOL "${sharedBare}" 的自动放行状态错误`
       );
-      assert.ok(
+      assert.equal(
         taxTools.includes(sharedFullName),
-        `G4c FAIL: tax-officer allowedTools 缺少 SHARED_TOOL "${sharedBare}" (全名: "${sharedFullName}")`
+        isAutoAllowed,
+        `G4c FAIL: tax-officer 对 SHARED_TOOL "${sharedBare}" 的自动放行状态错误`
       );
     }
   }
@@ -135,8 +138,8 @@ export const roleRegistryTestPromise = (async () => {
     for (const role of ROLE_REGISTRY) {
       const tools = resolveRoleAllowedTools(role.id);
       for (const t of tools) {
-        // SHARED_TOOLS 的裸名（如 run_python）会以全名（mcp__finance_worker__run_python）存在
-        // builtin 工具（如 Read）直接在 ALLOWED_TOOLS 里
+        // resolveRoleAllowedTools 只返回真正可自动放行的工具；builtin 与 high-risk
+        // 工具虽有定义，但必须从这个集合排除。
         const inAllowed =
           allowedSet.has(t) ||
           allowedSet.has(`mcp__finance_worker__${t}`) ||

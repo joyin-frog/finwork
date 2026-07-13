@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { getPythonPath, getBundledPluginRoot } from "../lib/runtime/paths.ts";
 import { getSkillPluginConfig } from "../lib/agent/skill-plugin.ts";
-import { ALLOWED_TOOLS } from "../lib/agent/tools/registry.ts";
+import { ALLOWED_TOOLS, BUILTIN_TOOLS } from "../lib/agent/tools/registry.ts";
 
 // 自写 xlsx skill(SDK 原生 plugin)+ 加载配置。行为测试优先:真实跑 recalc.py。
 export const skillXlsxTestPromise = (async () => {
@@ -31,7 +31,8 @@ export const skillXlsxTestPromise = (async () => {
   // skills 现为动态:干净态 'all',有用户技能/停用时为 plugin 限定名白名单数组。两者皆合法。
   assert.ok(cfg.skills === "all" || Array.isArray(cfg.skills), "AC-X2 FAIL: skills 应为 'all' 或白名单数组");
   assert.deepEqual(cfg.settingSources, [], "AC-X2 FAIL: 应隔离 ambient skill(settingSources: [])");
-  assert.ok(ALLOWED_TOOLS.includes("Bash") && ALLOWED_TOOLS.includes("Write"), "AC-X2 FAIL: 静态工具全集需含 Bash/Write 供 skill 脚本");
+  assert.ok(BUILTIN_TOOLS.includes("Bash") && BUILTIN_TOOLS.includes("Write"), "AC-X2 FAIL: 内置工具定义需含 Bash/Write 供 skill 使用");
+  assert.ok(!ALLOWED_TOOLS.includes("Bash") && !ALLOWED_TOOLS.includes("Write"), "AC-X2 FAIL: Bash/Write 不得被 SDK 自动放行");
 
   // ── AC-X3: recalc.py 缺文件时给结构化 JSON,不崩 ───────────────────
   const dir = mkdtempSync(path.join(tmpdir(), "finance-agent-skill-xlsx-"));

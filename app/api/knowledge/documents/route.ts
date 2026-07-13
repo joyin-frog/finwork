@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { listKnowledgeDocuments, getKnowledgeDocumentByHash, insertAuditLog } from "@/lib/db/sqlite";
 import { ingestDocument } from "@/lib/knowledge/pipeline";
-import { computeFileHash, writeUploadedFile } from "@/lib/knowledge/storage";
+import { acquireKnowledgeIngestLease, computeFileHash, knowledgeStoragePath, writeUploadedFile } from "@/lib/knowledge/storage";
 import type { KnowledgeCategory } from "@/lib/knowledge/types";
 
 export async function GET(req: NextRequest) {
@@ -43,26 +43,31 @@ export async function POST(req: NextRequest) {
     }
 
     const ext = path.extname(file.name);
-    const storagePath = writeUploadedFile(hash, buffer, ext);
-
-    // also write to tmp for parsing (parsers need a file path)
-    const tmpDir = mkdtempSync(path.join(tmpdir(), "knowledge-upload-"));
-    const tmpPath = path.join(tmpDir, path.basename(file.name) || "upload.bin");
-    writeFileSync(tmpPath, buffer);
-
+    const storagePath = knowledgeStoragePath(hash, ext);
+    const releaseLease = acquireKnowledgeIngestLease(hash, storagePath);
     let result;
     try {
-      result = await ingestDocument({
-        filePath: tmpPath,
-        title: title || file.name,
-        fileName: file.name,
-        mimeType: file.type || "text/plain",
-        category,
-        sizeBytes: file.size,
-        storagePath,
-      });
+      writeUploadedFile(hash, buffer, ext);
+
+      // also write to tmp for parsing (parsers need the original file name/extension)
+      const tmpDir = mkdtempSync(path.join(tmpdir(), "knowledge-upload-"));
+      const tmpPath = path.join(tmpDir, path.basename(file.name) || "upload.bin");
+      writeFileSync(tmpPath, buffer);
+      try {
+        result = await ingestDocument({
+          filePath: tmpPath,
+          title: title || file.name,
+          fileName: file.name,
+          mimeType: file.type || "text/plain",
+          category,
+          sizeBytes: file.size,
+          storagePath,
+        });
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
     } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
+      releaseLease();
     }
 
     // 落审计:覆盖更新时记录(红线 8)

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { getDatabasePath, getConversationFilesDir } from "@/lib/runtime/paths";
+import { canonicalStoragePathKey } from "@/lib/knowledge/storage";
 import { isFeatureEventName } from "@/lib/telemetry/feature-events";
 import { runMigrations, LATEST_VERSION, getUserVersion } from "./migrations";
 
@@ -695,14 +696,14 @@ export function setKnowledgeDocumentMeta(
 }
 export function updateKnowledgeDocumentMetadata(
   id: number,
-  doc: Pick<KnowledgeDocumentRow, "title" | "file_name" | "mime_type" | "category" | "size_bytes">
+  doc: Pick<KnowledgeDocumentRow, "title" | "file_name" | "mime_type" | "category" | "size_bytes" | "content_hash" | "storage_path">
 ) {
   const db = getDb();
   db.prepare(`
     UPDATE knowledge_documents
-    SET title = ?, file_name = ?, mime_type = ?, category = ?, size_bytes = ?, updated_at = CURRENT_TIMESTAMP
+    SET title = ?, file_name = ?, mime_type = ?, category = ?, size_bytes = ?, content_hash = ?, storage_path = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(doc.title, doc.file_name, doc.mime_type, doc.category, doc.size_bytes, id);
+  `).run(doc.title, doc.file_name, doc.mime_type, doc.category, doc.size_bytes, doc.content_hash, doc.storage_path, id);
 }
 
 export function deleteKnowledgeDocument(id: number) {
@@ -741,6 +742,26 @@ export function getKnowledgeDocumentByHash(hash: string): KnowledgeDocumentRow |
 export function getKnowledgeDocumentById(id: number): KnowledgeDocumentRow | undefined {
   const db = getDb();
   return db.prepare("SELECT * FROM knowledge_documents WHERE id = ?").get(id) as KnowledgeDocumentRow | undefined;
+}
+
+export function countKnowledgeDocumentsByStoragePath(storagePath: string, db = getDb()): number {
+  if (!storagePath) return 0;
+  const wanted = canonicalStoragePathKey(storagePath);
+  const rows = db.prepare(
+    "SELECT storage_path FROM knowledge_documents WHERE storage_path != ''"
+  ).all() as Array<{ storage_path: string }>;
+  return rows.reduce(
+    (count, row) => count + (canonicalStoragePathKey(row.storage_path) === wanted ? 1 : 0),
+    0
+  );
+}
+
+export function countKnowledgeDocumentsByContentHash(contentHash: string, db = getDb()): number {
+  if (!contentHash) return 0;
+  const row = db.prepare(
+    "SELECT COUNT(*) AS count FROM knowledge_documents WHERE content_hash = ?"
+  ).get(contentHash) as { count: number };
+  return row.count;
 }
 
 export function insertKnowledgeDocument(
