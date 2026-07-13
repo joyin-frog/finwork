@@ -7,8 +7,11 @@ const SECURITY_SENSITIVE_BUILTINS = new Set(["Bash", "Read", "Write", "Edit", "M
 /**
  * SDK 原生 PreToolUse 机制闸。
  *
- * 安全检查只负责 deny 或 defer：通过检查后仍交给 canUseTool 作最终裁决，
- * 避免原生 hook 抢先放行并绕过确认、交互等后续逻辑。
+ * 安全检查只负责 deny：命中即以 permissionDecision:"deny" 短路拒绝（deny 会绕过 canUseTool）。
+ * 通过检查时不下任何 permissionDecision，交回 SDK 正常权限流——由于内置工具已移出 allowedTools，
+ * 会继续走到 canUseTool 作最终裁决。绝不在原生 hook 中 approve/defer：
+ * "allow" 会抢先放行并绕过确认逻辑；"defer" 会触发 deferred_tool_use / tool_deferred 终止流程，
+ * 而 runClaudeAgent / runSubagent 未实现 deferred 恢复，会让合法工具调用中断整个回合。
  */
 export function createSdkPreToolUseHook(outputDir: string): HookCallback {
   const securityHooks = [
@@ -17,14 +20,17 @@ export function createSdkPreToolUseHook(outputDir: string): HookCallback {
     createPathSafetyHook(),
   ];
 
+  // 通过检查（含非安全敏感工具）：不下 permissionDecision，交回正常权限流。
+  const passThrough: HookJSONOutput = {
+    continue: true,
+    hookSpecificOutput: { hookEventName: "PreToolUse" },
+  };
+
   return async (input): Promise<HookJSONOutput> => {
     if (input.hook_event_name !== "PreToolUse") return { continue: true };
 
     if (!SECURITY_SENSITIVE_BUILTINS.has(input.tool_name)) {
-      return {
-        continue: true,
-        hookSpecificOutput: { hookEventName: "PreToolUse" },
-      };
+      return passThrough;
     }
 
     const result = await runBeforeHooks(securityHooks, {
@@ -33,18 +39,17 @@ export function createSdkPreToolUseHook(outputDir: string): HookCallback {
       outputDir,
     });
 
-    return {
-      continue: true,
-      hookSpecificOutput: result.behavior === "deny"
-        ? {
-            hookEventName: "PreToolUse",
-            permissionDecision: "deny",
-            permissionDecisionReason: result.message,
-          }
-        : {
-            hookEventName: "PreToolUse",
-            permissionDecision: "defer",
-          },
-    };
+    if (result.behavior === "deny") {
+      return {
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: result.message,
+        },
+      };
+    }
+
+    return passThrough;
   };
 }

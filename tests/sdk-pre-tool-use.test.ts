@@ -39,8 +39,14 @@ export const sdkPreToolUseTestPromise = (async () => {
     "write-inside",
     options
   );
-  assert.equal(insideWrite.hookSpecificOutput?.permissionDecision, "defer", "SPT-3 FAIL: 合法 Write 应 defer 给 canUseTool");
-  assert.notEqual(insideWrite.hookSpecificOutput?.permissionDecision, "allow", "SPT-3 FAIL: 原生 hook 不得直接 approve");
+  // 通过安全检查时不下任何 permissionDecision,交回正常权限流由 canUseTool 裁决。
+  // 不能用 "allow"(抢先放行绕过确认)或 "defer"(触发未实现的 deferred_tool_use 恢复流程,会中断回合)。
+  assert.equal(insideWrite.continue, true, "SPT-3 FAIL: 合法 Write 应继续");
+  assert.equal(
+    insideWrite.hookSpecificOutput?.permissionDecision,
+    undefined,
+    "SPT-3 FAIL: 合法 Write 不得下 permissionDecision,须交回正常权限流(canUseTool)"
+  );
 
   const otherTool = await callback(preToolInput("AskUserQuestion", { questions: [] }), "ask-1", options);
   assert.equal(otherTool.continue, true, "SPT-4 FAIL: 非安全敏感内置工具应继续");
