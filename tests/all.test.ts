@@ -158,6 +158,9 @@ process.on("unhandledRejection", (err) => {
   const { agentConfirmFlowTestPromise } = await import("./agent-confirm-flow.test.ts");
   await agentConfirmFlowTestPromise;
 
+  const { sdkPreToolUseTestPromise } = await import("./sdk-pre-tool-use.test.ts");
+  await sdkPreToolUseTestPromise;
+
   const { agentEventStreamTestPromise } = await import("./agent-event-stream.test.ts");
   await agentEventStreamTestPromise;
 
@@ -631,6 +634,9 @@ process.on("unhandledRejection", (err) => {
 
   const { queryStagesTestPromise } = await import("./query-stages.test.ts");
   await queryStagesTestPromise;
+
+  const { atomicMultirowWritesTestPromise } = await import("./atomic-multirow-writes.test.ts");
+  await atomicMultirowWritesTestPromise;
 
   const { artifactChecklistTestPromise } = await import("./artifact-checklist.test.ts");
   await artifactChecklistTestPromise;

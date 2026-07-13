@@ -24,7 +24,7 @@ import {
 import { analyzeConversationDuplicates, cleanupConversationDuplicates } from "@/lib/maintenance/dedup";
 import { getConversationFilesDir } from "@/lib/runtime/paths";
 import { ingestDocument } from "@/lib/knowledge/pipeline";
-import { computeFileHash } from "@/lib/knowledge/storage";
+import { acquireKnowledgeIngestLease, computeFileHash, knowledgeStoragePath, writeUploadedFile } from "@/lib/knowledge/storage";
 import type { ListFilesOptions } from "@/lib/db/sqlite";
 
 export async function GET(request: Request) {
@@ -165,15 +165,23 @@ export async function POST(request: Request) {
       const ext = path.extname(fileName).toLowerCase();
       const mimeType = guessMimeByExt(ext);
       const sizeBytes = fileBuffer.byteLength;
+      const knowledgePath = knowledgeStoragePath(contentHash, ext);
+      const releaseLease = acquireKnowledgeIngestLease(contentHash, knowledgePath);
 
-      const { documentId } = await ingestDocument({
-        filePath: absPath,
-        title: fileName,
-        fileName,
-        mimeType,
-        sizeBytes,
-        storagePath: absPath,
-      });
+      let documentId: number;
+      try {
+        writeUploadedFile(contentHash, fileBuffer, ext);
+        ({ documentId } = await ingestDocument({
+          filePath: knowledgePath,
+          title: fileName,
+          fileName,
+          mimeType,
+          sizeBytes,
+          storagePath: knowledgePath,
+        }));
+      } finally {
+        releaseLease();
+      }
 
       insertAuditLog("file_promoted", {
         fileId,

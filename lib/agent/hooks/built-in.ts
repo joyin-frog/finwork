@@ -6,6 +6,7 @@ import { getToolSummary } from "@/lib/agent/tools/renderers";
 // 高风险工具确认时,除了"做什么"还要点明"会有什么后果"(尤其不可逆/锁定类),
 // 让非技术财务在按"确认"前看清影响,而不是面对一句裸工具名。
 const RISK_IMPACT_NOTES: Record<string, string> = {
+  run_python: "它可以读取、修改本机文件并执行代码；请只在你理解并接受这些影响时确认。",
   confirm_payroll_period: "确认后该月工资将「生效锁定」,后续累计预扣以此为基准,不可静默更改。",
   calculate_payroll_batch: "将按累计预扣预缴法计算并保存为草稿(需再次确认才生效)。",
   export_kingdee_draft: "将生成金蝶凭证草稿文件(仅草稿,不直接落账,可在金蝶内复核后过账)。",
@@ -64,7 +65,7 @@ export function createPathSafetyHook(): Hook {
   };
 }
 
-/** 未接线工具的机制兜底:不依赖 skill 配置正确性,Bash 一律拒绝(受控执行走 run_python)。 */
+/** 未接线工具的机制兜底:不依赖 skill 配置正确性,Bash 一律拒绝。 */
 export function createUnwiredToolHook(): Hook {
   const blocked = new Set(["Bash"]);
   return {
@@ -73,7 +74,7 @@ export function createUnwiredToolHook(): Hook {
       if (!blocked.has(ctx.toolName)) return { action: "allow" };
       return {
         action: "deny",
-        reason: `${ctx.toolName} 未接入本产品。需要执行代码请使用 run_python(受控环境,60s 超时)。`,
+        reason: `${ctx.toolName} 未接入本产品。需要执行 Python 请使用 run_python（每次需要用户确认，60s 超时）。`,
       };
     },
   };

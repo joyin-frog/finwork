@@ -36,6 +36,11 @@ export const agentConfirmFlowTestPromise = (async () => {
   const noResolver = await runBeforeHooks(chain, ctxFor(CONFIRM_TOOL, undefined));
   assert.equal(noResolver.behavior, "deny", "AC1 FAIL: 无确认通道必须拒绝");
 
+  for (const answer of ["拒绝", "不要执行", "稍后", "先别执行", "确认一下风险"]) {
+    const rejected = await runBeforeHooks(chain, ctxFor(CONFIRM_TOOL, async () => answer));
+    assert.equal(rejected.behavior, "deny", `AC1 FAIL: 非明确肯定回答「${answer}」必须拒绝`);
+  }
+
   // ── AC1b: 确认门改纯工具级 —— 高风险财务动作必确认,安全/豁免工具放行 ──
   // 高风险工具:无 resolver → deny(证明确实走了确认门,不靠 skill 配置)
   for (const tool of [
@@ -52,8 +57,24 @@ export const agentConfirmFlowTestPromise = (async () => {
     "deny",
     "AC1b FAIL: remember_convention 应始终需确认"
   );
-  // 放行类:无 resolver 也 allow(证明不需确认)。run_python(medium)/Read(safe)/Skill(未登记→默认medium)
-  for (const tool of ["mcp__finance_worker__run_python", "Read", "Skill", "mcp__finance_worker__search_knowledge"]) {
+  // run_python 是 high-risk，每次必须确认；子 Agent 无确认通道时 fail-closed。
+  const runPython = "mcp__finance_worker__run_python";
+  assert.equal(
+    (await runBeforeHooks(chain, ctxFor(runPython, undefined))).behavior,
+    "deny",
+    "AC1b FAIL: run_python 无确认通道必须拒绝"
+  );
+  let runPythonPrompt = "";
+  const confirmedPython = await runBeforeHooks(chain, ctxFor(runPython, async (q) => {
+    runPythonPrompt = q.question;
+    return "确认";
+  }));
+  assert.equal(confirmedPython.behavior, "allow", "AC1b FAIL: run_python 明确确认后应放行");
+  assert.match(runPythonPrompt, /读取.*修改.*本机文件.*执行代码/s, "AC1b FAIL: run_python 文案应明确本机文件与代码执行风险");
+  assert.ok(!runPythonPrompt.includes("mcp__"), "AC1b FAIL: run_python 文案不应暴露内部 MCP 名称");
+
+  // 放行类:无 resolver 也 allow(证明不需确认)。Read(safe)/Skill(未登记→默认medium)
+  for (const tool of ["Read", "Skill", "mcp__finance_worker__search_knowledge"]) {
     const r = await runBeforeHooks(chain, ctxFor(tool, undefined));
     assert.equal(r.behavior, "allow", `AC1b FAIL: ${tool} 应直接放行,不需确认`);
   }

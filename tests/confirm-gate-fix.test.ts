@@ -1,13 +1,13 @@
 /**
  * 确认门修复验证（confirm-gate-fix）
  *
- * 守卫：高风险财务工具 + always-confirm 工具 不在 ALLOWED_TOOLS 中，
- * 使 SDK 无法自动放行，确保 canUseTool → risk-confirm hook 真正触发。
+ * 守卫：所有内置工具 + 高风险财务工具 + always-confirm 工具不在
+ * ALLOWED_TOOLS 中，使 SDK 无法自动放行，确保安全 hook 真正触发。
  *
  * 对应 spec: docs/spec/spec-confirm-gate-fix.md §1 成功标准
  */
 import assert from "node:assert/strict";
-import { ALLOWED_TOOLS, TOOL_REGISTRY } from "../lib/agent/tools/registry.ts";
+import { ALLOWED_TOOLS, BUILTIN_TOOLS, TOOL_REGISTRY } from "../lib/agent/tools/registry.ts";
 import { ALWAYS_CONFIRM_TOOLS } from "../lib/agent/hooks/built-in.ts";
 import { resolveRoleAllowedTools } from "../lib/agent/roles/registry.ts";
 
@@ -29,11 +29,15 @@ export const confirmGateFixTestPromise = (async () => {
     );
   }
 
+  for (const name of BUILTIN_TOOLS) {
+    assert.ok(
+      !allowedSet.has(name),
+      `CGF-1b FAIL: 内置工具 "${name}" 不应在 ALLOWED_TOOLS 中（必须经过原生 PreToolUse 机制闸）`
+    );
+  }
+
   // ── CGF-2: 非确认工具仍在 ALLOWED_TOOLS 中（保证正常功能不退化）────────
   const mustInclude = [
-    "Bash",
-    "Write",
-    "mcp__finance_worker__run_python",
     "mcp__finance_worker__query_payroll_status",
     "mcp__finance_worker__diff_payroll_period",
   ];
@@ -43,6 +47,11 @@ export const confirmGateFixTestPromise = (async () => {
       `CGF-2 FAIL: "${name}" 应在 ALLOWED_TOOLS 中（非确认工具不应被误排除）`
     );
   }
+
+  assert.ok(
+    !allowedSet.has("mcp__finance_worker__run_python"),
+    "CGF-2b FAIL: run_python 每次都必须确认，不应在 ALLOWED_TOOLS 中"
+  );
 
   // ── CGF-3: 无漂移守卫（交叉一致性校验）──────────────────────────────────
   // 3a: TOOL_REGISTRY 中所有 high-finance 工具均不在 ALLOWED_TOOLS
@@ -77,7 +86,7 @@ export const confirmGateFixTestPromise = (async () => {
   );
 
   console.log(
-    "confirm-gate-fix: 5 tools excluded / 5 non-confirm tools intact / " +
+    "confirm-gate-fix: builtin + high-risk tools excluded / safe finance tools intact / " +
     `${highFinanceTools.length} high-finance drift guard / ` +
     `${ALWAYS_CONFIRM_TOOLS.size} always-confirm drift guard / subagent path ✓`
   );
