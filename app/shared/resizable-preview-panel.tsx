@@ -12,7 +12,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
  *
  * 布局：
  *   flex flex-1 overflow-hidden (ref=mainRef)
- *     左列 (flex-1, listMinWidthClass, maximized→hidden)  ← list 插槽
+ *     左列 (flex-1, listMinWidthClass, maximized→hidden但保持挂载)  ← list 插槽
  *     分隔条 (w-1 cursor-col-resize)                      ← 只在 !collapsed && preview 时渲染
  *     右面板 (shrink-0, 宽=previewW / maximized→flex-1)   ← preview 插槽
  */
@@ -22,7 +22,7 @@ type ResizablePreviewPanelProps = {
   mainRef: RefObject<HTMLDivElement | null>;
   /** 右侧预览面板当前宽度（px），来自 usePreviewResize */
   previewW: number;
-  /** 放大模式：左列 hidden，右面板 flex-1 */
+  /** 放大模式：左列 hidden 但保持挂载，右面板 flex-1 */
   maximized: boolean;
   /** 折叠状态：分隔条和右面板均不渲染 */
   collapsed: boolean;
@@ -96,22 +96,18 @@ export function ResizablePreviewPanel({
         }
       }}
     >
-      {/* 左列 —— 放大时整列隐藏:预览宽=容器宽-4 已假定兄弟列消失(对齐 chat 隐藏主内容区),
-          否则 min-w 列不收缩会把预览撑出容器、右侧「还原」按钮被 overflow-hidden 裁掉(看不见取消全屏) */}
-      <AnimatePresence initial={false} mode="popLayout" onExitComplete={restoreRemovedFocus}>
-        {!maximized && (
-          <motion.div
-            key="preview-list"
-            className={cn("flex flex-col flex-1 overflow-hidden", listMinWidthClass)}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateX(-2%)" }}
-            animate={{ opacity: 1, transform: "translateX(0%)" }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateX(-2%)" }}
-            transition={transition}
-          >
-            {list}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* 左列 —— 放大时从布局中隐藏但保持挂载，保留列表滚动位置和非受控 DOM 状态。 */}
+      <motion.div
+        key="preview-list"
+        className={cn("flex flex-col flex-1 overflow-hidden", listMinWidthClass, maximized && "hidden")}
+        initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateX(-2%)" }}
+        animate={{ opacity: 1, transform: "translateX(0%)" }}
+        transition={transition}
+        aria-hidden={maximized}
+        inert={maximized ? true : undefined}
+      >
+        {list}
+      </motion.div>
 
       {/* 分隔拖拽条 */}
       {showRight && (

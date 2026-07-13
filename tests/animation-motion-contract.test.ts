@@ -48,6 +48,11 @@ export const animationMotionContractTestPromise = (async () => {
     assert.ok(!source.includes("transition-all"));
   }
   assert.match(progress, /Math\.min\(100, Math\.max\(0/);
+  const { clampProgressValue } = await import("../components/ui/progress.tsx");
+  assert.equal(clampProgressValue(undefined), undefined, "missing progress must stay indeterminate");
+  assert.equal(clampProgressValue(null), null, "null progress must stay indeterminate");
+  assert.equal(clampProgressValue(-10), 0);
+  assert.equal(clampProgressValue(120), 100);
 
   const nav = src("app/shared/app-nav.tsx");
   assert.ok(!nav.includes("transition-[width]"));
@@ -68,8 +73,8 @@ export const animationMotionContractTestPromise = (async () => {
   assert.match(preview, /mode="popLayout"/, "exiting preview columns must not keep participating in flex layout");
   assert.match(preview, /translateX\(2%\)/);
   assert.match(preview, /dragging \? 0/);
-  assert.match(preview, /!maximized &&/);
-  assert.ok(!preview.includes('maximized && "hidden"'));
+  assert.match(preview, /maximized && "hidden"/, "maximizing must hide the list without unmounting it");
+  assert.ok(!preview.includes("{!maximized &&"), "maximizing must not unmount the list slot");
 
   const { restorePreviewFocus } = await import("../app/shared/resizable-preview-panel.tsx");
   let focusCount = 0;

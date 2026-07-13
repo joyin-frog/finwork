@@ -165,16 +165,15 @@ export const agentBoardTestPromise = (async () => {
   }
   console.log("C2: listMinW >= 400 ✓");
 
-  // C3: maximized 时左侧列不参与布局。共享壳用 presence 退出替代 CSS hidden，
-  //     既保持放大布局契约，也允许退出动效。
+  // C3: maximized 时左侧列不参与布局，但列表 DOM 必须保持挂载以保留滚动/非受控状态。
   {
     const shellSrc = src("app/shared/resizable-preview-panel.tsx");
     assert.ok(
-      shellSrc.includes("!maximized &&") && shellSrc.includes("AnimatePresence"),
-      "C3 FAIL: 共享预览壳 maximized 时左列应通过 presence 退出布局"
+      shellSrc.includes('maximized && "hidden"') && !shellSrc.includes("{!maximized &&"),
+      "C3 FAIL: 共享预览壳 maximized 时左列应隐藏但不能卸载"
     );
   }
-  console.log("C3: maximized → presence 退出布局（壳）✓");
+  console.log("C3: maximized → hidden 保持挂载（壳）✓");
 
   // C4: 文件产物用 FilePreviewPage
   {
