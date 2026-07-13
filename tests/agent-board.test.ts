@@ -165,16 +165,15 @@ export const agentBoardTestPromise = (async () => {
   }
   console.log("C2: listMinW >= 400 ✓");
 
-  // C3: maximized 时左侧列 hidden（评审铁律）。装配已收进共享壳 ResizablePreviewPanel，
-  //     故此语义现在落在壳源码里，而非各页 page.tsx。
+  // C3: maximized 时左侧列不参与布局，但列表 DOM 必须保持挂载以保留滚动/非受控状态。
   {
     const shellSrc = src("app/shared/resizable-preview-panel.tsx");
     assert.ok(
-      shellSrc.includes('maximized && "hidden"') || shellSrc.includes("maximized && 'hidden'"),
-      "C3 FAIL: 共享预览壳 maximized 时左列应有 hidden 语义"
+      shellSrc.includes('maximized && "hidden"') && !shellSrc.includes("{!maximized &&"),
+      "C3 FAIL: 共享预览壳 maximized 时左列应隐藏但不能卸载"
     );
   }
-  console.log("C3: maximized → hidden（壳）✓");
+  console.log("C3: maximized → hidden 保持挂载（壳）✓");
 
   // C4: 文件产物用 FilePreviewPage
   {

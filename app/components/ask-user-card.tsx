@@ -4,9 +4,9 @@ import { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowRight01Icon, ChevronRightIcon } from "@hugeicons/core-free-icons";
 import { SuccessIcon, HelpIcon } from "@/lib/icons";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
-import { SPRING_DEFAULT } from "@/app/shared/motion-presets";
+import { EASE_OUT_QUICK, SPRING_DEFAULT } from "@/app/shared/motion-presets";
 import type { AskUserQuestionPayload } from "@/app/chat/chat-types";
 import { cn } from "@/lib/utils";
 import { surfaceVariants } from "@/components/ui/surface";
@@ -32,6 +32,7 @@ export function AskUserCard({
 }) {
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const reduce = useReducedMotion();
   const finalAnswer = answer !== undefined ? answer : submitted;
   const answered = finalAnswer !== null && finalAnswer !== undefined;
   const expired = !active && !answered;
@@ -61,9 +62,9 @@ export function AskUserCard({
   return (
     <motion.div
       className={cn(surfaceVariants({ level: "card", edge: "none", shape: "card" }), "border border-primary/30 bg-primary/5 px-3 py-2.5 text-body flex flex-col gap-2")}
-      initial={{ opacity: 0, y: 6, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={SPRING_DEFAULT}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, transform: "translateY(6px) scale(0.98)" }}
+      animate={{ opacity: 1, transform: "translateY(0px) scale(1)" }}
+      transition={reduce ? EASE_OUT_QUICK : SPRING_DEFAULT}
     >
       <div className="flex items-start gap-2">
         <HugeiconsIcon icon={HelpIcon} size={15} className="text-primary shrink-0 mt-0.5" aria-hidden="true" />

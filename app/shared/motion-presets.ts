@@ -11,15 +11,15 @@ export const fadeIn: Variants = {
 };
 
 export const popIn: Variants = {
-  hidden: { opacity: 0, scale: 0.96, y: 4 },
-  visible: { opacity: 1, scale: 1, y: 0, transition: SPRING_DEFAULT },
-  exit: { opacity: 0, scale: 0.98, y: 2, transition: EASE_OUT_QUICK_EXIT },
+  hidden: { opacity: 0, transform: "translateY(4px) scale(0.96)" },
+  visible: { opacity: 1, transform: "translateY(0px) scale(1)", transition: SPRING_DEFAULT },
+  exit: { opacity: 0, transform: "translateY(2px) scale(0.98)", transition: EASE_OUT_QUICK_EXIT },
 };
 
 export const slideUpIn: Variants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: SPRING_DEFAULT },
-  exit: { opacity: 0, y: -4, transition: EASE_OUT_QUICK_EXIT },
+  hidden: { opacity: 0, transform: "translateY(8px)" },
+  visible: { opacity: 1, transform: "translateY(0px)", transition: SPRING_DEFAULT },
+  exit: { opacity: 0, transform: "translateY(-4px)", transition: EASE_OUT_QUICK_EXIT },
 };
 
 export const listContainer: Variants = {
