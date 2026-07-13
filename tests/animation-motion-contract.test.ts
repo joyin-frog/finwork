@@ -17,6 +17,23 @@ export const animationMotionContractTestPromise = (async () => {
   assert.match(search, /instant\?: boolean/);
   assert.match(search, /!instant/);
 
+  const { scheduleDialogMotionReset } = await import("../app/shared/global-shortcuts.tsx");
+  let scheduled: FrameRequestCallback | undefined;
+  let resetCount = 0;
+  const cancelHandles: number[] = [];
+  const cleanup = scheduleDialogMotionReset(
+    false,
+    () => { resetCount += 1; },
+    (callback) => { scheduled = callback; return 17; },
+    (handle) => { cancelHandles.push(handle); },
+  );
+  assert.equal(resetCount, 0, "instant state must survive the closed render");
+  scheduled?.(0);
+  assert.equal(resetCount, 1, "instant state resets after the closed render lifecycle");
+  cleanup?.();
+  assert.deepEqual(cancelHandles, [17]);
+  assert.equal(scheduleDialogMotionReset(true, () => { resetCount += 1; }), undefined);
+
   const toolSteps = src("app/components/tool-call-step.tsx");
   assert.match(toolSteps, /useReducedMotion/);
   assert.ok(!toolSteps.includes('height: "auto"'), "tool detail must not tween auto height");
@@ -53,6 +70,18 @@ export const animationMotionContractTestPromise = (async () => {
   assert.match(preview, /dragging \? 0/);
   assert.match(preview, /!maximized &&/);
   assert.ok(!preview.includes('maximized && "hidden"'));
+
+  const { restorePreviewFocus } = await import("../app/shared/resizable-preview-panel.tsx");
+  let focusCount = 0;
+  const connectedElement = {} as Element;
+  const focusRoot = {
+    contains: (element: Node | null) => element === connectedElement,
+    focus: () => { focusCount += 1; },
+  };
+  assert.equal(restorePreviewFocus(focusRoot, connectedElement, true), false, "focus still inside must be preserved");
+  assert.equal(restorePreviewFocus(focusRoot, null, true), true, "removed focused content must fall back to the panel root");
+  assert.equal(focusCount, 1);
+  assert.equal(restorePreviewFocus(focusRoot, null, false), false, "unfocused panel changes must not steal focus");
 
   console.log("animation-motion-contract: all assertions passed ✓");
 })();

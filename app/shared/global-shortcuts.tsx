@@ -15,6 +15,19 @@ import { cn } from "@/lib/utils";
 
 const SHORTCUT_EVENT = "app-shortcut";
 
+export function scheduleDialogMotionReset(
+  open: boolean,
+  reset: () => void,
+  schedule?: (callback: FrameRequestCallback) => number,
+  cancel?: (handle: number) => void,
+) {
+  if (open) return undefined;
+  const scheduleFrame = schedule ?? requestAnimationFrame;
+  const cancelFrame = cancel ?? cancelAnimationFrame;
+  const handle = scheduleFrame(() => reset());
+  return () => cancelFrame(handle);
+}
+
 /** chat 等局部作用域的快捷键经语义化事件到达组件内 state,不提升 state。 */
 export function useShortcutEvent(id: string, handler: () => void) {
   const handlerRef = useRef(handler);
@@ -37,6 +50,17 @@ export function GlobalShortcuts() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [searchInstant, setSearchInstant] = useState(false);
   const [helpInstant, setHelpInstant] = useState(false);
+
+  // Keep the trigger source through the closed render. Resetting in onOpenChange
+  // would re-enable data-closed animation classes in the same React batch.
+  useEffect(
+    () => scheduleDialogMotionReset(searchOpen, () => setSearchInstant(false)),
+    [searchOpen],
+  );
+  useEffect(
+    () => scheduleDialogMotionReset(helpOpen, () => setHelpInstant(false)),
+    [helpOpen],
+  );
 
   const stateRef = useRef({ collapsed, pathname, isMac, setSearchOpen });
   stateRef.current = { collapsed, pathname, isMac, setSearchOpen };
@@ -96,8 +120,8 @@ export function GlobalShortcuts() {
 
   return (
     <>
-      <ShortcutsHelpDialog open={helpOpen} onOpenChange={(open) => { setHelpOpen(open); if (!open) setHelpInstant(false); }} isMac={isMac} instant={helpInstant} />
-      <GlobalSearchDialog open={searchOpen} onOpenChange={(open) => { setSearchOpen(open); if (!open) setSearchInstant(false); }} instant={searchInstant} />
+      <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} isMac={isMac} instant={helpInstant} />
+      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} instant={searchInstant} />
     </>
   );
 }

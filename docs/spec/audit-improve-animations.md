@@ -44,6 +44,12 @@ Files changed
 - `FINANCE_AGENT_MOCK_AGENT=1 FINANCE_AGENT_MOCK_AGENT_DELAY=0 SKIP_LLM=true npm test` — passed after updating the stale maximize source contract to the new presence-based layout contract.
 - `npm run build` — passed. Existing CSS optimizer and lint warnings remain non-blocking.
 
+## Reviewer follow-up
+
+- Keyboard-opened search and shortcut-help dialogs now defer clearing their instant trigger source until the frame after the closed render, so dismissal cannot regain `data-closed` animation classes in the same state batch.
+- The shared preview shell tracks focus within its subtree. If close or maximize removes the focused node, focus falls back to the still-mounted shell; unrelated panel updates do not steal focus.
+- The focused contract test executes both lifecycle helpers: reset is proven asynchronous, connected focus is preserved, removed focus is restored, and an unfocused panel does not capture focus.
+
 ## Boundaries
 
 - No dependency changes.

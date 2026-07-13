@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode, RefObject } from "react";
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
@@ -47,6 +47,16 @@ type ResizablePreviewPanelProps = {
   preview: ReactNode;
 };
 
+export function restorePreviewFocus(
+  root: Pick<HTMLElement, "contains" | "focus"> | null,
+  activeElement: Element | null,
+  hadFocusInside: boolean,
+) {
+  if (!root || !hadFocusInside || (activeElement && root.contains(activeElement))) return false;
+  root.focus();
+  return true;
+}
+
 export function ResizablePreviewPanel({
   mainRef,
   previewW,
@@ -62,12 +72,33 @@ export function ResizablePreviewPanel({
   const showRight = !collapsed && preview != null;
   const reduce = useReducedMotion();
   const transition = { duration: reduce || dragging ? 0 : 0.22, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] };
+  const hadFocusInside = useRef(false);
+  const restoreRemovedFocus = () => {
+    restorePreviewFocus(mainRef.current, document.activeElement, hadFocusInside.current);
+  };
+
+  useLayoutEffect(() => {
+    restoreRemovedFocus();
+  });
 
   return (
-    <div className="flex flex-1 overflow-hidden" ref={mainRef}>
+    <div
+      className="flex flex-1 overflow-hidden"
+      ref={mainRef}
+      tabIndex={-1}
+      onFocusCapture={() => { hadFocusInside.current = true; }}
+      onBlurCapture={(event) => {
+        // Removal can dispatch blur without a related target. Keep the marker
+        // until the presence exit completes so focus can fall back safely.
+        const targetWasRemoved = !(event.target as Element).isConnected;
+        if (!targetWasRemoved && !event.currentTarget.contains(event.relatedTarget)) {
+          hadFocusInside.current = false;
+        }
+      }}
+    >
       {/* 左列 —— 放大时整列隐藏:预览宽=容器宽-4 已假定兄弟列消失(对齐 chat 隐藏主内容区),
           否则 min-w 列不收缩会把预览撑出容器、右侧「还原」按钮被 overflow-hidden 裁掉(看不见取消全屏) */}
-      <AnimatePresence initial={false} mode="popLayout">
+      <AnimatePresence initial={false} mode="popLayout" onExitComplete={restoreRemovedFocus}>
         {!maximized && (
           <motion.div
             key="preview-list"
@@ -98,7 +129,7 @@ export function ResizablePreviewPanel({
       )}
 
       {/* 右侧预览面板 */}
-      <AnimatePresence initial={false} mode="popLayout">
+      <AnimatePresence initial={false} mode="popLayout" onExitComplete={restoreRemovedFocus}>
       {showRight && (
         <motion.div
           key="preview-panel"
