@@ -86,7 +86,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(true);
-  const [recentOpen, setRecentOpen] = useState(true);
+  const [recentOpen, setRecentOpen] = useState(false);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);

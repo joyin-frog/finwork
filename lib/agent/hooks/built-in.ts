@@ -2,6 +2,7 @@ import path from "node:path";
 import type { Hook, BeforeToolResult } from "./types";
 import { getToolRiskLevel } from "@/lib/agent/tools/registry";
 import { getToolSummary } from "@/lib/agent/tools/renderers";
+import { isToolTrustedForConversation } from "./session-trust";
 
 // 高风险工具确认时,除了"做什么"还要点明"会有什么后果"(尤其不可逆/锁定类),
 // 让非技术财务在按"确认"前看清影响,而不是面对一句裸工具名。
@@ -181,9 +182,16 @@ export function createRiskConfirmHook(): Hook {
       if (CONFIRM_EXEMPT_TOOLS.has(ctx.toolName)) return { action: "allow" };
       const riskLevel = getToolRiskLevel(ctx.toolName);
       if (riskLevel !== "high") return { action: "allow" };
+      // run_python 会话级信任：有交互通道且同对话已被信任时直接放行，省去每次确认。
+      const isPython = ctx.toolName.includes("run_python");
+      if (isPython && ctx.resolveUserQuestion && isToolTrustedForConversation(ctx.conversationId, ctx.toolName)) {
+        return { action: "allow" };
+      }
       return {
         action: "confirm",
         prompt: buildRiskConfirmPrompt(ctx.toolName, ctx.input),
+        // 仅 run_python 携带 trustable，让前端渲染「本次对话不再询问」勾选项。
+        ...(isPython ? { trustable: true } : {}),
       };
     },
   };

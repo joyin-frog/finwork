@@ -20,6 +20,8 @@ type AskUserQuestionPayload = {
   options?: Array<{ label: string; description?: string; preview?: string }>;
   questions?: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>;
   kind?: "confirm" | "question";
+  // run_python 专属:true 时前端在确认卡里渲染「本次对话不再询问」勾选项。
+  trustable?: boolean;
 };
 
 type ConversationPayload = {

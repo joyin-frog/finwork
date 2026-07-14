@@ -158,6 +158,9 @@ process.on("unhandledRejection", (err) => {
   const { agentConfirmFlowTestPromise } = await import("./agent-confirm-flow.test.ts");
   await agentConfirmFlowTestPromise;
 
+  const { sessionTrustTestPromise } = await import("./session-trust.test.ts");
+  await sessionTrustTestPromise;
+
   const { sdkPreToolUseTestPromise } = await import("./sdk-pre-tool-use.test.ts");
   await sdkPreToolUseTestPromise;
 
@@ -610,6 +613,9 @@ process.on("unhandledRejection", (err) => {
 
   const { agentAttachmentsJsonTestPromise } = await import("./agent-attachments-json.test.ts");
   await agentAttachmentsJsonTestPromise;
+
+  const { chatMessageEditRetractTestPromise } = await import("./chat-message-edit-retract.test.ts");
+  await chatMessageEditRetractTestPromise;
 
   const { attentionPrecheckTestPromise } = await import("./attention-precheck.test.ts");
   await attentionPrecheckTestPromise;
