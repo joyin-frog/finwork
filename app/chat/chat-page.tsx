@@ -53,7 +53,6 @@ import {
 import {
   getDefaultSidebarWidth,
   getMaxSidebarWidth,
-  getPanelRightOffset,
   shouldAutoOpenOutputPanel,
   shouldDefaultOpenFilePanel
 } from "@/app/chat/file-workspace-state";
@@ -734,12 +733,14 @@ export default function ChatPage({
 
   async function sendMessage(text: string) {
     const value = text.trim();
-    const hasContent = value || attachments.length || referencedAttachments.length;
-    if (!hasContent || loading) return;
-
     const outgoingAttachments = attachments;
     const outgoingRefAttachments = referencedAttachments;
     const outgoingSkills = referencedSkills;
+    const baseMessages = messages;
+
+    const hasContent = value || outgoingAttachments.length || outgoingRefAttachments.length;
+    if (!hasContent || loading) return;
+
     const userContent = buildUserContent(value, outgoingAttachments, outgoingRefAttachments);
     const imageDataUrls = outgoingAttachments.filter((a) => a.mimeType.startsWith("image/")).map((a) => a.dataUrl);
     const displayFiles: DisplayFile[] = [
@@ -759,7 +760,7 @@ export default function ChatPage({
       }))
     ];
     const userMsg: Message = { role: "user", content: userContent, imageDataUrls, displayFiles };
-    const nextMessages: Message[] = [...messages, userMsg];
+    const nextMessages: Message[] = [...baseMessages, userMsg];
 
     // 把发送 + 流式读取交给跨页存活的 store:流式态由它按会话 key 持有,
     // 切到别的页面再切回来,本回合仍在渲染(不再随组件卸载丢失)。
@@ -777,7 +778,7 @@ export default function ChatPage({
       key,
       conversationId,
       userMessage: userMsg,
-      baseMessages: messages,
+      baseMessages,
       requestMessages: nextMessages,
       attachments: outgoingAttachments,
       referencedAttachments: outgoingRefAttachments,
@@ -786,13 +787,40 @@ export default function ChatPage({
     });
   }
 
+  /** 将 DisplayFile 列表中有 storagePath 的项映射为 ReferencedFile（零磁盘读）。 */
+  function filesToReferenced(files: DisplayFile[]): ReferencedFile[] {
+    return files
+      .filter((f) => f.storagePath)
+      .map((f) => ({
+        name: f.name,
+        mimeType: f.mimeType,
+        sizeBytes: f.sizeBytes,
+        storagePath: f.storagePath!,
+      }));
+  }
+
+  /**
+   * 撤回：把这条 user 消息的文字+附件放回输入框，供重新编辑后再发送。
+   * 非破坏性——不删除、不改动任何历史消息，只填充 composer。
+   */
+  function retractMessage(message: Message) {
+    // 文本退回 draft（纯文件消息的占位串「请分析这些文件。」替换为空）
+    const content = message.content === "请分析这些文件。" ? "" : message.content;
+    setDraft(content);
+    // 用该消息的附件「完整替换」composer，并清掉其它已暂存的本地上传/技能引用——
+    // 否则撤回时残留的无关上传会在下次发送时被一起带上，让 agent 处理错文件。
+    setReferencedAttachments(filesToReferenced(getMessageFiles(message, conversationFiles)));
+    setAttachments([]);
+    setReferencedSkills([]);
+    textareaRef.current?.focus();
+  }
+
   function stopGeneration() {
     if (turnKey) stream.stopTurn(turnKey);
   }
 
   const filteredMentionFiles = getFilteredMentionFiles();
   const latestAssistantIndex = displayMessages.map((msg, index) => ({ msg, index })).reverse().find((item) => item.msg.role === "assistant")?.index;
-  const panelRightOffset = getPanelRightOffset(sidebarCollapsed, sidebarWidth);
 
   return (
     <RoleModeProvider value={roleMode}>
@@ -819,7 +847,6 @@ export default function ChatPage({
                 openMenuKey={openMenuKey}
                 setOpenMenuKey={setOpenMenuKey}
                 sidebarCollapsed={sidebarCollapsed}
-                panelRightOffset={panelRightOffset}
                 onToggleSidebar={toggleSidebar}
                 onPreviewFile={previewConversationFile}
               />
@@ -848,7 +875,8 @@ export default function ChatPage({
                  <MessageScroller className="flex-1">
                   <MessageScrollerViewport ref={threadRef}>
                    <MessageScrollerContent className="w-full max-w-[800px] mx-auto gap-0 px-6 pt-10 pb-4">
-                  {displayMessages.map((message, index) => (
+                  {displayMessages.map((message, index) => {
+                    return (
                     <MessageScrollerItem
                       // 用户气泡短而等高:保留 content-visibility 轻虚拟化。
                       // 助手回合含可展开的过程块(高度大、且展开/折叠会突变),固定 10rem 占位会导致
@@ -869,6 +897,7 @@ export default function ChatPage({
                           conversationId={conversationId}
                           onPreviewDisplayFile={previewDisplayFile}
                           onPreviewFile={previewConversationFile}
+                          onRetract={() => retractMessage(message)}
                         />
                       ) : (
                         <AssistantTurn
@@ -888,7 +917,8 @@ export default function ChatPage({
                         />
                       )}
                     </MessageScrollerItem>
-                  ))}
+                  );
+                  })}
                    </MessageScrollerContent>
                   </MessageScrollerViewport>
                   <MessageScrollerButton aria-label="滚动到最新消息" />

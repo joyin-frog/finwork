@@ -730,6 +730,9 @@ html button.composer-send-button.stop {
   --sidebar: transparent;                       /* 侧栏融入背板 */
   --radius: 0.625rem;                           /* 派生 md=8px(按钮)/xl=14px,贴近 Linear 8/12 谱 */
   --border: oklch(0.90 0.004 260);              /* 发丝线略实,浮起卡靠描边而非阴影 */
+  /* hover 色与背板同色相:纯中性灰在蓝灰背板上因对比产生暖感,加极小 chroma 与背板对齐消除错觉 */
+  --accent: oklch(0.950 0.010 264.5);          /* ≈ rgb(235,239,245) — 侧栏行/图标按钮 hover */
+  --muted:  oklch(0.960 0.010 264.5);          /* ≈ rgb(238,242,249) — ghost 按钮 hover */
   /* 密度收紧(间距与明暗无关,直接挂在 data-style 上) */
   --surface-pad: 0.75rem;
   --surface-pad-sm: 0.5rem;
@@ -770,6 +773,9 @@ html.dark[data-style='linear'] {
   --border: oklch(0.26 0.003 260);              /* hairline */
   --input: oklch(0.26 0.003 260);
   --sidebar: transparent;
+  /* 暗色还原:亮色 linear 块覆盖了 --accent/--muted,此处用高特异性 (0,2,0) 压回正确暗色值 */
+  --accent: oklch(0.35 0.003 260 / 50%);        /* 暗色 hover,与 .dark 基值近似,微加冷调 */
+  --muted:  oklch(0.40 0.003 260);              /* 暗色 ghost-btn hover */
   /* 暗色深度弃投影、靠描边:elevation 大幅减弱 */
   --elevation-1: 0 0 0 1px oklch(1 0 0 / 4%);
   --elevation-2: 0 4px 12px -4px oklch(0 0 0 / 50%);
@@ -786,6 +792,7 @@ html.dark[data-style='linear'] .app-main {
    故 lead 之后的标签落在 --nav-width = 主卡左缘——对齐随 --nav-width(实时侧栏宽)自动跟随。 */
 [data-style='linear'] .app-tabbar {
   display: flex;
+  align-items: center;
   height: 2.5rem;
   padding-right: 0.5rem;
   background: var(--shell-canvas);

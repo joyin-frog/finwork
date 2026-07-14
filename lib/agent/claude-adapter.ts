@@ -58,6 +58,8 @@ export type AgentQuestion = {
   questions?: AgentQuestion[];
   // 高风险工具确认门:confirm 时渲染为确认卡(两按钮,无文本框);缺省为普通提问。
   kind?: "confirm";
+  // run_python 专属:true 时前端在确认卡里渲染「本次对话不再询问」勾选项。
+  trustable?: boolean;
 };
 
 export type ClaudeAgentRunOptions = {
@@ -251,6 +253,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       input,
       outputDir,
       resolveUserQuestion: runOptions.resolveUserQuestion,
+      conversationId: runOptions.conversationId,
     });
   };
 

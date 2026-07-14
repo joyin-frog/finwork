@@ -138,7 +138,7 @@ export function DeepThinkToggle({
         onClick={() => onToggle(false)}
         className={cn(
           "rounded-full px-2.5 py-1 transition-colors",
-          !active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+          !active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
         )}
       >
         快速
@@ -149,7 +149,7 @@ export function DeepThinkToggle({
         onClick={() => onToggle(true)}
         className={cn(
           "rounded-full px-2.5 py-1 transition-colors",
-          active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+          active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
         )}
       >
         推理

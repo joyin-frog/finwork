@@ -137,10 +137,6 @@ function main() {
     "file-workspace-state.ts should expose the default 1:1 sidebar width rule"
   );
   assert.ok(
-    chatContent.includes("panelRightOffset"),
-    "chat-page.tsx should pass the panel alignment offset into ChatFilePanel"
-  );
-  assert.ok(
     previewSelectionContent.includes("previewSelectionFromDraftAttachment"),
     "chat-preview-selection.ts should expose the draft preview mapping helper"
   );

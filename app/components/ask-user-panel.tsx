@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { Surface } from "@/components/ui/surface";
 import type { AskUserQuestionPayload } from "@/app/chat/chat-types";
 import { getSubQuestions, formatSelection, buildAnswer, allAnswered } from "@/app/components/ask-user-multi-state";
+import { SESSION_TRUST_CONFIRM_ANSWER } from "@/lib/agent/hooks/session-trust";
 
 /**
  * 待答的 ask_user 提问面板:覆盖输入框(待答时用户在此应答,不走主输入框)。
@@ -37,6 +38,8 @@ export function AskUserPanel({
   const [selectedPerQ, setSelectedPerQ] = useState<string[][]>(() => subs.map(() => []));
   const [customPerQ, setCustomPerQ] = useState<string[]>(() => subs.map(() => ""));
   const [submitting, setSubmitting] = useState(false);
+  // 「本次对话不再询问」勾选状态（仅在 trustable 确认卡中使用）。
+  const [trustSession, setTrustSession] = useState(false);
   const submittedRef = useRef(false);
 
   const sub = subs[curIdx];
@@ -163,6 +166,20 @@ export function AskUserPanel({
           </>
         )}
 
+        {/* 「本次对话不再询问」勾选（仅 run_python 的 trustable 确认卡出现） */}
+        {question.trustable && (
+          <label className="flex items-center gap-2 text-body text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={trustSession}
+              onChange={(e) => setTrustSession(e.target.checked)}
+              disabled={submitting}
+              className="accent-primary h-3.5 w-3.5"
+            />
+            本次对话不再询问
+          </label>
+        )}
+
         {/* 两按钮:确认执行 / 取消 */}
         <div className="flex items-center justify-end gap-2">
           <Button
@@ -176,7 +193,7 @@ export function AskUserPanel({
           </Button>
           <Button
             size="sm"
-            onClick={() => void submit("确认")}
+            onClick={() => void submit(trustSession ? SESSION_TRUST_CONFIRM_ANSWER : "确认")}
             disabled={submitting}
           >
             确认执行
