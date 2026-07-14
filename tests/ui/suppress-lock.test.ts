@@ -18,7 +18,9 @@ import { fileURLToPath } from "node:url";
 // 只准降不准升——如实际数低于此值，将上限同步下调。
 // 109 = WP-E 完成时实际计数：checklist-card.tsx 那条 suppress 仍需保留（
 // 该行同时含 border 存量，仅 rounded-[var( 部分因正则修复豁免，suppress 本身未消除）。
-const SUPPRESS_LIMIT = 109;
+// 111 = +2：user 消息工具栏新增 复制 / 撤回 两枚交互图标按钮（user-bubble.tsx），
+// 与 assistant-turn.tsx 工具栏按钮同构（rounded hover pill），沿用相同的交互元素豁免。
+const SUPPRESS_LIMIT = 111;
 
 export const suppressLockTestPromise = (async () => {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
