@@ -807,8 +807,11 @@ export default function ChatPage({
     // 文本退回 draft（纯文件消息的占位串「请分析这些文件。」替换为空）
     const content = message.content === "请分析这些文件。" ? "" : message.content;
     setDraft(content);
-    // 附件以 referencedAttachments 形式恢复（storagePath 直传，无磁盘读）
+    // 用该消息的附件「完整替换」composer，并清掉其它已暂存的本地上传/技能引用——
+    // 否则撤回时残留的无关上传会在下次发送时被一起带上，让 agent 处理错文件。
     setReferencedAttachments(filesToReferenced(getMessageFiles(message, conversationFiles)));
+    setAttachments([]);
+    setReferencedSkills([]);
     textareaRef.current?.focus();
   }
 
