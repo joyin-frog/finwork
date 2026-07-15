@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 
-const appDirectoryName = "finance-agent";
+const APP_DIRECTORY_NAME = "Finwork";
 
 export function getProjectRoot() {
   return process.env.FINANCE_AGENT_PROJECT_ROOT ?? process.cwd();
@@ -12,7 +12,7 @@ export function getAppDataDir() {
   return (
     process.env.FINANCE_AGENT_APP_DATA_DIR ??
     process.env.FINANCE_AGENT_DATA_DIR ??
-    path.join(getDefaultAppDataRoot(), appDirectoryName)
+    getDefaultAppDataDir()
   );
 }
 
@@ -173,12 +173,18 @@ export function getClaudeConfigDir() {
   return process.env.FINANCE_AGENT_CLAUDE_CONFIG_DIR ?? path.join(getAppDataDir(), "claude-config");
 }
 
-function getDefaultAppDataRoot() {
-  if (process.platform === "win32") {
-    return process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+export function getDefaultAppDataDir(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir()
+) {
+  let root: string;
+  if (platform === "win32") {
+    root = env.LOCALAPPDATA || path.join(homeDir, "AppData", "Local");
+  } else if (platform === "darwin") {
+    root = path.join(homeDir, "Library", "Application Support");
+  } else {
+    root = env.XDG_DATA_HOME || path.join(homeDir, ".local", "share");
   }
-  if (process.platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Application Support");
-  }
-  return process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share");
+  return path.join(root, APP_DIRECTORY_NAME);
 }

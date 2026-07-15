@@ -100,6 +100,9 @@ process.on("unhandledRejection", (err) => {
   const { pythonEnvTestPromise } = await import("./python-env.test.ts");
   await pythonEnvTestPromise;
 
+  const { runtimePathsTestPromise } = await import("./runtime-paths.test.ts");
+  await runtimePathsTestPromise;
+
   const { pythonWorkerTestPromise } = await import("./python-worker.test.ts");
   await pythonWorkerTestPromise;
 

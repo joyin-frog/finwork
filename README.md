@@ -4,76 +4,47 @@
 [![Release](https://img.shields.io/github/v/release/joyin-frog/finwork?sort=semver)](https://github.com/joyin-frog/finwork/releases)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
 
-> 面向 1–4 人小型财务团队的单机 AI 工作台。Next.js 15 + Claude Agent SDK + 本地 SQLite + Python worker,跑在 Tauri 2 桌面壳里。
-> A local-first AI workstation for small finance teams (1–4 people). Built with Next.js 15, the Claude Agent SDK, local SQLite and a Python worker, packaged in a Tauri 2 desktop shell.
+面向 1–4 人财务团队的本地优先 AI 工作台，让日常财务资料和处理流程留在自己的电脑上。
 
-**中文** · [English](#english)
+[下载桌面版](https://github.com/joyin-frog/finwork/releases/latest) · [English](README.en.md)
 
-> ⚠️ **免责声明**：本工具的输出（含报销 / 薪税 / 对账 / 申报口径等）**不构成专业财税或法律意见**。所有数值与口径须经人工复核后使用，使用风险自负。
-> ⚠️ **Disclaimer**: Outputs (including reimbursement, payroll, reconciliation, and filing guidance) are **not professional financial, tax, or legal advice**. Verify all figures before use; use at your own risk.
+## 能做什么
 
-## 环境要求
+- 读取、整理和生成 Excel、Word、PDF 等财务文件
+- 辅助报销审核、薪税计算、财务分析、申报复核等工作
+- 从合同、发票和制度文件中提取信息，沉淀到本地知识库
+- 关键结果先生成草稿，由财务人员确认后再使用
 
-- **Node 22+**（代码用 `node:sqlite`，Node 20 起不来）
-- **Python 3.10+**（Excel / PDF worker 依赖）
-- 桌面打包还需 **Rust** toolchain + 平台 C 工具链（macOS 装 Xcode Command Line Tools，Windows 装 MSVC）
+数据默认保存在本机的独立数据目录，不写入项目目录；各平台位置见下文。桌面版已包含运行所需组件，无需另行安装 Node.js、Python 或 Rust。
 
-## 启动
+> [!WARNING]
+> Finwork 的输出不构成专业财税或法律意见。所有数值与业务口径均须人工复核后使用。
+
+## 从源码运行
+
+需要 Node.js 22+；开发桌面版还需要 Rust 及对应平台的 C 工具链。
 
 ```bash
 npm install
-pip install -r requirements.txt        # Python worker 依赖
-npm run dev                            # 浏览器版 → http://localhost:3000
+npm run dev
 ```
 
-首次进 `/config` → 模型，填 **API Key** 和 **模型 ID**（默认 `https://api.anthropic.com`，也可填任意 Anthropic 兼容网关）。不填则回落本地 mock，界面仍可用。
+浏览器打开 [http://localhost:3000](http://localhost:3000)。首次启动向导会安装所需的 Python 组件，并引导配置 API Key 和模型；未配置 API Key 时，界面仍可通过本地模拟模式运行。
 
-桌面版：
+桌面开发与打包：
 
 ```bash
-npm run tauri:dev          # 桌面开发
-npm run tauri:build        # 打包，产物在 src-tauri/target/release/bundle/
+npm run tauri:dev
+npm run tauri:build
 ```
 
-数据写入系统应用数据目录（不写项目目录）：macOS `~/Library/Application Support/finance-agent/`、Windows `%APPDATA%\finance-agent\`、Linux `~/.local/share/finance-agent/`。
+## 数据位置
+
+- macOS：`~/Library/Application Support/Finwork/`
+- Windows 桌面发行版：安装目录的同级 `Finwork Data`（例如程序位于 `D:\Finwork\Finwork.exe`，数据位于 `D:\Finwork Data\`）；若安装在受保护的 `Program Files` 下，则使用 `%LOCALAPPDATA%\Finwork\`
+- Windows 源码开发：`%LOCALAPPDATA%\Finwork\`
+- Linux：`~/.local/share/Finwork/`
 
 ## 许可证
-
-[AGPL-3.0](LICENSE)
-
----
-
-<a name="english"></a>
-
-# Finwork (English)
-
-[中文](#finwork) · **English**
-
-## Requirements
-
-- **Node 22+** (uses `node:sqlite`; Node 20 won't start)
-- **Python 3.10+** (for the Excel / PDF worker)
-- For desktop builds: **Rust** toolchain + a platform C toolchain (Xcode Command Line Tools on macOS, MSVC on Windows)
-
-## Run
-
-```bash
-npm install
-pip install -r requirements.txt        # Python worker dependencies
-npm run dev                            # web → http://localhost:3000
-```
-
-On first run, open `/config` → Model and set your **API Key** and **Model ID** (defaults to `https://api.anthropic.com`; any Anthropic-compatible gateway works). Without a key it falls back to a local mock, so the UI still runs.
-
-Desktop:
-
-```bash
-npm run tauri:dev          # desktop dev
-npm run tauri:build        # build → src-tauri/target/release/bundle/
-```
-
-Data is stored in the OS app-data directory (never in the project folder): `~/Library/Application Support/finance-agent/` (macOS), `%APPDATA%\finance-agent\` (Windows), `~/.local/share/finance-agent/` (Linux).
-
-## License
 
 [AGPL-3.0](LICENSE)

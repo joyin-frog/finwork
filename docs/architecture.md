@@ -61,13 +61,18 @@ flowchart TD
 - 单人财务工作台第一阶段并发压力很低，SQLite 足够支撑任务、审计和配置数据。
 - 后续如果需要多人协作或服务端部署，可通过 repository 层再迁移到 PostgreSQL。
 
-默认数据库文件位于系统应用数据目录：
+默认数据库文件位置如下：
 
 ```text
-macOS: ~/Library/Application Support/finance-agent/finance-agent.db
-Windows: %APPDATA%\finance-agent\finance-agent.db
-Linux: ${XDG_DATA_HOME:-~/.local/share}/finance-agent/finance-agent.db
+macOS: ~/Library/Application Support/Finwork/finance-agent.db
+Windows desktop release: <install-directory-parent>\Finwork Data\finance-agent.db
+  Example: D:\Finwork\Finwork.exe -> D:\Finwork Data\finance-agent.db
+  Program Files fallback: %LOCALAPPDATA%\Finwork\finance-agent.db
+Windows source development: %LOCALAPPDATA%\Finwork\finance-agent.db
+Linux: ${XDG_DATA_HOME:-~/.local/share}/Finwork/finance-agent.db
 ```
+
+Windows 桌面发行版由 Tauri 宿主从可执行文件位置计算数据目录，并通过 `FINANCE_AGENT_APP_DATA_DIR` 传给内置 Node 服务，确保数据库、文件、知识库、Python 运行时和宿主日志落在同一目录。一般情况下，数据目录与安装目录同盘但不在 `$INSTDIR` 内，因此卸载程序不会随安装文件一起删除它；若安装目录位于 `PROGRAMFILES`、`PROGRAMFILES(X86)` 或 `ProgramW6432` 指向的受保护目录下，则回退到 `%LOCALAPPDATA%\Finwork`，避免普通用户无写权限。
 
 可通过 `FINANCE_AGENT_APP_DATA_DIR` 或 `FINANCE_AGENT_DB_PATH` 覆盖。该文件属于本地运行数据，不应写入安装目录或项目目录。
 
