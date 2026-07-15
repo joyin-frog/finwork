@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getAppDataDir, getKnowledgeTextDir } from "@/lib/runtime/paths";
 
@@ -91,7 +91,14 @@ export function writeTextMirror(hash: string, text: string): string {
   const dir = getKnowledgeTextDir();
   mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `${hash}.txt`);
-  writeFileSync(filePath, text, "utf-8");
+  const tmpPath = path.join(dir, `.${hash}.txt.write-${randomUUID()}`);
+  writeFileSync(tmpPath, text, { encoding: "utf-8", flag: "wx" });
+  try {
+    renameSync(tmpPath, filePath);
+  } catch (error) {
+    rmSync(tmpPath, { force: true });
+    throw error;
+  }
   return filePath;
 }
 
