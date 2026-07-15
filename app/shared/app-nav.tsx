@@ -111,7 +111,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     navWidth, setNavWidth,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    conversations, hasMore, loaded, fetchConversations,
+    conversations, hasMore, loaded, loadError, fetchConversations,
     deleteTarget,
     renamingId, renameDraft, setRenameDraft,
     doPin, startRename, cancelRename, commitRename,
@@ -355,7 +355,17 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               </button>
               <CollapsibleSectionMotion open={recentOpen} reduce={reduce}>
                   {recentConversations.length === 0 && loaded ? (
-                    <span className="px-3 py-2 text-meta text-muted-foreground">暂无对话</span>
+                    loadError ? (
+                      <button
+                        type="button"
+                        onClick={() => void fetchConversations(0)}
+                        className="px-3 py-2 text-meta text-muted-foreground hover:bg-muted rounded text-left"
+                      >
+                        加载失败，点此重试
+                      </button>
+                    ) : (
+                      <span className="px-3 py-2 text-meta text-muted-foreground">暂无对话</span>
+                    )
                   ) : (
                     <AnimatePresence initial={false}>
                       {recentConversations.map(renderConversationRow)}
