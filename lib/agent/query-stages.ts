@@ -18,6 +18,7 @@ import {
   createChatConversation,
   getChatConversation,
   getDb,
+  getMessageAttachments,
   insertChatAttachment,
   insertChatMessage,
   setChatConversationClaudeSessionId,
@@ -153,6 +154,7 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
   let conversation = conversationId ? getChatConversation(conversationId) : null;
   if (lastUserContent) {
     let skipInsert = false;
+    let dedupMessageId: number | undefined;
     if (!conversationId) {
       const shortTitle = generateShortTitle(lastUserContent);
       conversationId = createChatConversation(shortTitle);
@@ -161,11 +163,12 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
     } else {
       // 去重：若会话最后一条是同内容的 user 消息，跳过 insert（重试场景防双写）
       const lastMsg = getDb()
-        .prepare("SELECT role, content FROM chat_messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 1")
-        .get(conversationId) as { role: string; content: string } | undefined;
+        .prepare("SELECT id, role, content FROM chat_messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 1")
+        .get(conversationId) as { id: number; role: string; content: string } | undefined;
       if (lastMsg && lastMsg.role === "user" && lastMsg.content === lastUserContent) {
         log.info("user message dedup skipped", { traceId, conversationId });
         skipInsert = true;
+        dedupMessageId = lastMsg.id;
       }
     }
     if (!skipInsert) {
@@ -186,6 +189,36 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
       } catch (error) {
         try { db.exec("ROLLBACK"); } catch { /* preserve original error */ }
         throw error;
+      }
+    }
+    if (skipInsert && dedupMessageId !== undefined) {
+      // 去重命中但新附件仍需落库：防止附件成为 DB 孤儿文件（Plan 045）
+      const existing = getMessageAttachments(dedupMessageId);
+      const toInsert = attachments.filter(
+        (att) =>
+          att.storagePath &&
+          conversationId &&
+          !existing.some((e) => e.fileName === att.name && e.sizeBytes === att.size)
+      );
+      if (toInsert.length > 0) {
+        const db = getDb();
+        db.exec("BEGIN");
+        try {
+          for (const att of toInsert) {
+            if (att.storagePath && conversationId) {
+              insertChatAttachment({
+                id: randomUUID(), messageId: dedupMessageId,
+                fileName: att.name, mimeType: att.mimeType, sizeBytes: att.size,
+                storagePath: path.relative(getConversationFilesDir(conversationId), att.storagePath), role: "user"
+              });
+            }
+          }
+          db.exec("COMMIT");
+        } catch (error) {
+          try { db.exec("ROLLBACK"); } catch { /* preserve original error */ }
+          throw error;
+        }
+        log.info("dedup hit, attached new files to existing message", { traceId, conversationId, count: toInsert.length });
       }
     }
   }
