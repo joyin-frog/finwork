@@ -804,6 +804,7 @@ export default function ChatPage({
    * 非破坏性——不删除、不改动任何历史消息，只填充 composer。
    */
   function retractMessage(message: Message) {
+    if (turnKey) return; // 流式进行中禁止撤回
     // 文本退回 draft（纯文件消息的占位串「请分析这些文件。」替换为空）
     const content = message.content === "请分析这些文件。" ? "" : message.content;
     setDraft(content);
@@ -898,6 +899,7 @@ export default function ChatPage({
                           onPreviewDisplayFile={previewDisplayFile}
                           onPreviewFile={previewConversationFile}
                           onRetract={() => retractMessage(message)}
+                          retractDisabled={!!turnKey}
                         />
                       ) : (
                         <AssistantTurn
