@@ -25,7 +25,12 @@ export function withIdempotency<H extends ToolHandler<any>>(
         .get(key, toolName) as { result_json: string; is_error: number } | undefined;
       if (existing) {
         const cached = JSON.parse(existing.result_json);
-        if (existing.is_error) throw cached;
+        if (existing.is_error) {
+          const message = cached && typeof cached === "object" && typeof cached.message === "string"
+            ? cached.message
+            : String(cached);
+          throw new Error(message);
+        }
         return cached;
       }
     }
