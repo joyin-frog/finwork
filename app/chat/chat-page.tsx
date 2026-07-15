@@ -190,6 +190,8 @@ export default function ChatPage({
   const [filePanelOpen, setFilePanelOpen] = useState(false);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [feedbackMap, setFeedbackMap] = useState<Record<number, { rating: "up" | "down"; reason: string | null }>>({});
+  // 会话级信任工具列表(供 header chip 展示/撤销)
+  const [trustedTools, setTrustedTools] = useState<string[]>([]);
   const draggingRef = useRef(false);
   const sidebarTouchedRef = useRef(false);
   const startXRef = useRef(0);
@@ -314,6 +316,7 @@ export default function ChatPage({
     setFilePanelOpen(false);
     setSidebarMaximized(false);
     setSidebarCollapsed(true);
+    setTrustedTools([]);
   }, [conversationId]);
 
   // 切到某会话(或挂载)时,若 store 里该会话已有进行中回合,则接管继续渲染;
@@ -432,6 +435,16 @@ export default function ChatPage({
     return () => { cancelled = true; };
   }, [conversationId, mode]);
 
+  // ask-user 面板消失后刷新信任列表（用户可能刚勾了「本次对话不再询问」）。
+  const prevPendingAskRef = useRef<typeof pendingAsk>(null);
+  useEffect(() => {
+    const prev = prevPendingAskRef.current;
+    prevPendingAskRef.current = pendingAsk;
+    if (prev !== null && pendingAsk === null && conversationId) {
+      void fetchTrustedTools(conversationId);
+    }
+  }, [pendingAsk, conversationId]);
+
   const placeholder = useMemo(
     () => "随心输入",
     []
@@ -456,6 +469,7 @@ export default function ChatPage({
     await Promise.all([
       fetchConversationFiles(conversation.id),
       fetchFeedback(conversation.id),
+      fetchTrustedTools(conversation.id),
     ]);
   }
 
@@ -471,6 +485,27 @@ export default function ChatPage({
         for (const [k, v] of Object.entries(payload.data.feedback)) mapped[Number(k)] = v;
         setFeedbackMap(mapped);
       }
+    } catch { /* best-effort */ }
+  }
+
+  async function fetchTrustedTools(id: number) {
+    try {
+      const res = await fetch(`/api/agent/trust?conversationId=${id}`);
+      const payload = (await res.json()) as { ok: boolean; data?: { tools: string[] } };
+      if (payload.ok && payload.data) setTrustedTools(payload.data.tools);
+    } catch { /* best-effort */ }
+  }
+
+  async function revokeToolTrustUI(toolName: string) {
+    if (!conversationId) return;
+    try {
+      await fetch("/api/agent/trust", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId, toolName }),
+      });
+      setTrustedTools((prev) => prev.filter((t) => t !== toolName));
+      toast("已恢复每次确认", { description: `代码执行将重新弹出确认卡` });
     } catch { /* best-effort */ }
   }
 
@@ -840,6 +875,19 @@ export default function ChatPage({
               <DragHandle />
               <SidebarToggle />
               <h1 data-tauri-drag-region className="flex-1 min-w-0 text-title truncate">{displayTitle}</h1>
+              {trustedTools.length > 0 && (
+                <div className="flex items-center gap-2 shrink-0 text-meta text-muted-foreground">
+                  <span>已信任代码执行</span>
+                  <span>·</span>
+                  <button
+                    type="button"
+                    className="hover:bg-muted rounded-[var(--radius-chip)] px-1 py-0.5 transition-colors"
+                    onClick={() => void Promise.all(trustedTools.map((t) => revokeToolTrustUI(t)))}
+                  >
+                    撤销
+                  </button>
+                </div>
+              )}
               <ChatFilePanel
                 conversationId={conversationId}
                 files={conversationFiles}
