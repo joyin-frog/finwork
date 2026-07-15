@@ -36,11 +36,25 @@ export async function GET(
       if (app && !isAllowedAppPath(app)) {
         return NextResponse.json({ error: "app not allowed" }, { status: 400 });
       }
-      await openWithSystemApp(resolved, app);
+      try {
+        await openWithSystemApp(resolved, app);
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "打开失败：未找到可用的应用。可换「在文件夹中显示」后手动打开。" },
+          { status: 500 }
+        );
+      }
       return NextResponse.json({ ok: true });
     }
     if (url.searchParams.get("action") === "reveal") {
-      await revealInFileManager(resolved);
+      try {
+        await revealInFileManager(resolved);
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "显示失败：无法打开文件管理器。请确认文件管理器可正常使用。" },
+          { status: 500 }
+        );
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -96,9 +110,8 @@ function openWithSystemApp(filePath: string, appPath?: string) {
 function spawnDetached(command: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, { detached: true, stdio: "ignore" });
-    child.on("error", reject);
-    child.unref();
-    resolve();
+    child.once("spawn", () => { child.unref(); resolve(); });
+    child.once("error", reject);
   });
 }
 
