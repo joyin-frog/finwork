@@ -186,3 +186,38 @@ drift 发现:backlog 的「无 CI」已过时——`.github/workflows/ci.yml` �
 | 044 | 预览面板开合与最大化连续性 | P3 | 043 | DONE |
 
 推荐执行顺序已完成：**038 → 043 → 040 → 041 → 039 → 042 → 044**。实现同时通过动效源码契约、typecheck、lint、全量单测与 production build；详见 `docs/spec/audit-improve-animations.md`。
+
+## 第八轮 · bug/UX/UIUX 审计（045–058，基准 `a3e6777`，2026-07-15）
+
+standard 强度，聚焦正确性 bug + UX 流程 + UI 约定（安全/性能/依赖不在本轮范围，前七轮已覆盖）。4 个只读子代理扫描后由主循环逐条开源码核实。用户选择「全部」落计划。
+
+| Plan | Title | Priority | Effort | Depends on | Status |
+|------|-------|----------|--------|------------|--------|
+| 045 | 用户消息去重命中时新附件仍落库（修附件静默丢失） | P1 | M | — | TODO |
+| 046 | conversationId 穿透到 ExpandedDetail（激活缩略图死代码） | P2 | S | — | TODO |
+| 047 | spawnDetached 等 spawn 事件再 resolve（打开文件失败可见） | P2 | S | — | TODO |
+| 048 | withIdempotency 回放失败抛真 Error（消灭 [object Object]） | P2 | S | — | TODO |
+| 049 | writeTextMirror 原子写（tmp+rename） | P2 | S | — | TODO |
+| 050 | fetchConversationFiles 陈旧响应守卫（切会话不串台） | P2 | S | — | TODO |
+| 051 | 流式进行中禁用「撤回」（防错误恢复覆盖） | P3 | S | — | TODO |
+| 052 | run_python 会话信任可撤销（revoke API + 对话内入口） | P2 | M | — | TODO |
+| 053 | 侧栏会话操作失败可见/可回滚/可重试 | P1 | S | — | TODO |
+| 054 | 原生 window.confirm/prompt 替换为应用内对话框（Tauri 兼容） | P1 | S | — | TODO |
+| 055 | 失败态≠空态（知识库/总览/派发/搜索） | P2 | S | — | TODO |
+| 056 | 流式进行中关窗先确认（Tauri，需桌面实测） | P2 | M | — | TODO |
+| 057 | composer 草稿按会话持久化（sessionStorage） | P2 | M | — | TODO |
+| 058 | UI 约定清扫（文案/焦点环/disabled/间距/高亮/空态/标签） | P2 | M | 053,054,055 | TODO |
+
+### 依赖与编排（第八轮）
+
+- **推荐顺序**：045 → 053 → 054 → 055 → 047 → 048 → 049 → 046 → 050 → 051 → 052 → 057 → 056 → 058。
+- **058 必须最后**：与 053（app-nav.tsx）、054（agent-detail-drawer.tsx）、055（knowledge/page.tsx）同文件，先合前三个再清扫。
+- **051 与 057** 都动 chat-page.tsx 的 draft 相关代码（不同函数），按序执行可自动合。
+- **056** 需本机 Rust 工具链桌面实测；无则完成前端部分后标 BLOCKED 交人工跑 `tauri:dev`。
+- 其余互不重叠，可并行。
+
+### 第八轮已核实但降级/不落计划的发现
+
+- **analyze_csv `round(float*100)` 半分边界**：两位小数金额下数学精确，仅 ≥3 位小数出错；发票场景基本不出现，属 Plan 027 既定取舍。不做。
+- **sessionStorage pendingChatAttachments 反序列化无形状校验**（use-attachments.ts:45）：纯防御项，当前被 try/catch 与使用场景兜住。记录不修。
+- **find-in-chat Esc 陈旧闭包**（find-in-chat.tsx:149-159）与 **ask-user-panel Esc 空依赖闭包**（ask-user-panel.tsx:117-127）：当前分别被 setter 稳定性与调用点 `key={questionId}` 重挂载兜住，纯潜在项。记录不修；若未来移除 key 或改 onClose 语义须回看。
