@@ -276,7 +276,7 @@ function DetailMotion({ open, className, children }: { open: boolean; className?
   ) : null}</AnimatePresence>;
 }
 
-function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: ToolPair; degraded?: boolean; threaded?: boolean }) {
+function ToolCallStep({ pair, degraded = false, threaded = false, conversationId }: { pair: ToolPair; degraded?: boolean; threaded?: boolean; conversationId?: number | null }) {
   const [expanded, setExpanded] = useState(false);
   const reduce = useReducedMotion();
   // 日常:每步只一行人话、不可展开;技术模式:可点开看原始输入/输出(调试用)。
@@ -347,7 +347,7 @@ function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: Tool
       <ToolResultCard name={pair.name} structured={pair.structured} />
 
       <DetailMotion open={expanded && hasDetail} className="px-2 pb-1">
-        <ExpandedDetail pair={pair} />
+        <ExpandedDetail pair={pair} conversationId={conversationId != null ? String(conversationId) : undefined} />
       </DetailMotion>
     </div>
   );
@@ -359,9 +359,11 @@ function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: Tool
 function RetryGroupRow({
   group,
   threaded = false,
+  conversationId,
 }: {
   group: Extract<AggregatedStep, { kind: "retry-group" }>;
   threaded?: boolean;
+  conversationId?: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const reduce = useReducedMotion();
@@ -416,7 +418,7 @@ function RetryGroupRow({
             {/* fa-thread 必须挂在逐行的直接父级(节点线按 .fa-node 画);嵌套子步骤恒为 threaded */}
             <div className="fa-thread flex flex-col gap-0.5">
               {subPairs.map((p) => (
-                <ToolCallStep key={p.id} pair={p} degraded={recovered} threaded />
+                <ToolCallStep key={p.id} pair={p} degraded={recovered} threaded conversationId={conversationId} />
               ))}
             </div>
       </DetailMotion>
@@ -513,11 +515,13 @@ export function ToolStepList({
   timeline,
   isActive,
   laterTimeline,
+  conversationId,
 }: {
   timeline: TimelineItem[];
   isActive: boolean;
   /** 本回合中位于该段之后的事件:跨段判定失败是否已被后续成功覆盖(已恢复→灰显) */
   laterTimeline?: TimelineItem[];
+  conversationId?: number | null;
 }) {
   const toolItems = timeline.filter(
     (t) => t.event.type === "tool_use" || t.event.type === "tool_result"
@@ -541,13 +545,13 @@ export function ToolStepList({
   const threaded = !isActive && aggregated.length >= 2;
   const rows = aggregated.map((agg, idx) => {
     if (agg.kind === "retry-group") {
-      return <RetryGroupRow key={`group-${idx}`} group={agg} threaded={threaded} />;
+      return <RetryGroupRow key={`group-${idx}`} group={agg} threaded={threaded} conversationId={conversationId} />;
     }
     // kind:"step"
     // 从 pairs 找对应的 ToolPair（按 item.id 匹配）
     const pair = pairs.find((p) => p.id === agg.item.id);
     if (!pair) return null;
-    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} threaded={threaded} />;
+    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} threaded={threaded} conversationId={conversationId} />;
   });
 
   // 已完成的多步段默认收成一行摘要(带对象与统计),点开才见逐步明细——密度对齐 Claude 的

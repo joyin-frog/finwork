@@ -371,7 +371,7 @@ export function AssistantTurn({
                 .flatMap((s) => s.items as TimelineItem[]);
               return (
                 <div key={`tools-${segIdx}`}>
-                  <ToolStepList timeline={seg.items as TimelineItem[]} isActive={segActive} laterTimeline={laterToolItems} />
+                  <ToolStepList timeline={seg.items as TimelineItem[]} isActive={segActive} laterTimeline={laterToolItems} conversationId={conversationId} />
                   {(seg.items as TimelineItem[]).filter((t) => t.event.type === "system").map((item) => (
                     <TimelineRow key={item.id} item={item} />
                   ))}
