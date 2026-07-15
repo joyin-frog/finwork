@@ -10,6 +10,7 @@ import { UserIdentityProvider } from "./shared/user-identity";
 import { ChatStreamProvider } from "./shared/chat-stream";
 import { AppThemeProvider } from "./shared/theme-provider";
 import { AppShell } from "./shared/app-shell";
+import { CloseGuard } from "./shared/close-guard";
 import { ScrollbarFade } from "./shared/scrollbar-fade";
 import { cn } from "@/lib/utils";
 import "./globals.css";
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <NavStateProvider>
             <UserIdentityProvider>
               <ChatStreamProvider>
+                <CloseGuard />
                 <AppShell>{children}</AppShell>
               </ChatStreamProvider>
             </UserIdentityProvider>
