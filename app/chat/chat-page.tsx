@@ -499,14 +499,20 @@ export default function ChatPage({
   async function revokeToolTrustUI(toolName: string) {
     if (!conversationId) return;
     try {
-      await fetch("/api/agent/trust", {
+      const res = await fetch("/api/agent/trust", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId, toolName }),
       });
-      setTrustedTools((prev) => prev.filter((t) => t !== toolName));
-      toast("已恢复每次确认", { description: `代码执行将重新弹出确认卡` });
-    } catch { /* best-effort */ }
+      if (res.ok) {
+        setTrustedTools((prev) => prev.filter((t) => t !== toolName));
+        toast("已恢复每次确认", { description: "代码执行将重新弹出确认卡" });
+      } else {
+        toast.error("撤销失败，代码执行仍处于已信任状态。请重试");
+      }
+    } catch {
+      toast.error("撤销失败，代码执行仍处于已信任状态。请重试");
+    }
   }
 
   async function submitFeedback(messageId: number, rating: "up" | "down", reason?: string) {
