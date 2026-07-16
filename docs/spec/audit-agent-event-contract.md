@@ -4,6 +4,24 @@ Spec: `docs/spec/spec-agent-event-contract.md` v1.2 (已批准)
 
 ---
 
+## 实现现状校准（相对 spec 计划的落地真相）
+
+> 本节修正「读旧 spec / ROADMAP 字面意思」时容易产生的误解。以当前代码为准
+> （校准 2026-07-16）。ROADMAP 铁律 1 旁有同内容摘要。
+
+| 问题 | 答案 |
+|---|---|
+| UI 完成态从哪来？ | **旧 SSE 帧** `done` / `incomplete` / `error` → `chat-stream` 的 `onDone` / `onIncomplete`。**不是** `run_settled`。 |
+| `run_settled` 谁发？ | `route.ts` 的 `settleRun()`：三路径各恰好一次；顺序恒为 `run_ended` → `run_settled`（再发旧兼容帧）。 |
+| 前端怎么处理 `run_settled`？ | `dispatchSSEEvent` **consumed 后 return**（与 `turn_started` / `message_started` / `message_completed` / `queue_updated` 同类）；主对话 `run_ended`（`instanceId == null`）同样静默消耗。 |
+| 会进 `chat_agent_events` 吗？ | 不会。`contractToLegacyEvents` 对 `run_settled` 映射为 `[]`。 |
+| spec 写「chat-stream 完成态派生自 run_settled」还算数吗？ | **计划未按字面落地**。实际是双轨：合同帧走 envelope；完成态仍靠旧帧。子代理里程碑靠 `instanceId != null` 的 `run_ended` 经 `contractToLegacyEvents` → `subagent(phase=done)`。 |
+| abort 时前端能收到 settled 吗？ | 不能（fetch 已 AbortError 关流）。settled(aborted) 是服务端 canonical record，前端 stopped 仍来自 AbortError 分支——与 spec §3.4 一致。 |
+
+入口索引：`lib/agent/runtime-events.ts`（类型）· `app/api/agent/query/route.ts`（`settleRun`）· `app/chat/chat-request.ts`（分发）· `tests/runtime-events.test.ts`（S1–S5）。
+
+---
+
 ## Files changed
 
 | 文件 | 动作 |
