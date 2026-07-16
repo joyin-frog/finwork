@@ -16,6 +16,19 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import {
+  appTabsReducer,
+  appTabKeyFromRoute,
+  pageTabFromRoute,
+  resolveSelectedAppTabKey,
+  type AppTabsState,
+  conversationTabsReducer,
+  syncCompletedConversationTitle,
+  conversationDeleteResultForState,
+  conversationDeleteDestination,
+  conversationIdFromRoute,
+  type ConversationTabsState,
+} from "../app/shared/nav-state.tsx";
 
 const ROOT = process.cwd();
 
@@ -28,6 +41,188 @@ function exists(rel: string): boolean {
 }
 
 export const navV3TestPromise = (async () => {
+  // ── JOY-10 v2: 全应用标签 reducer + 路由映射 ─────────────────────────
+  {
+    const empty: AppTabsState = { tabs: [], activeKey: null, latestTitlesById: {} };
+    const files = pageTabFromRoute("/files", "?view=grid");
+    assert.deepEqual(files, {
+      kind: "page",
+      key: "page:files",
+      pageKind: "files",
+      title: "文件",
+      href: "/files?view=grid",
+    }, "JOY-10 v2 FAIL: 页面路由应映射为带最新 href 的单例标签");
+    assert.equal(pageTabFromRoute("/chat/recent", "?id=7"), null, "JOY-10 v2 FAIL: recent 必须等 DB 标题后由 ChatPage 注册");
+    assert.equal(appTabKeyFromRoute("/chat/recent", "?id=7"), "conversation:7", "JOY-10 v2 FAIL: 视觉激活态应以 recent 路由为事实源");
+    assert.equal(appTabKeyFromRoute("/files", "?view=grid"), "page:files", "JOY-10 v2 FAIL: 视觉激活态应以页面路由为事实源");
+
+    const selectionTabs = [
+      files!,
+      { kind: "conversation" as const, key: "conversation:9" as const, conversationId: 9, title: "真实标题", href: "/chat/recent?id=9" },
+    ];
+    assert.equal(
+      resolveSelectedAppTabKey("page:chat-new", "conversation:9", selectionTabs),
+      "conversation:9",
+      "JOY-10 v2.1 FAIL: chat-new 原位升级后、路由 replace 提交前应保持真实会话标签选中"
+    );
+    assert.equal(
+      resolveSelectedAppTabKey("page:files", "conversation:9", selectionTabs),
+      "page:files",
+      "JOY-10 v2.1 FAIL: 已存在的 routeKey 必须优先于 reducer activeKey"
+    );
+    assert.equal(
+      resolveSelectedAppTabKey("page:knowledge", "page:files", selectionTabs),
+      null,
+      "JOY-10 v2.1 FAIL: 普通页面路由尚未建签时不得错误高亮旧标签"
+    );
+
+    const filesOpened = appTabsReducer(empty, { type: "openPage", tab: files! });
+    const filesUpdated = appTabsReducer(filesOpened, {
+      type: "openPage",
+      tab: { ...files!, href: "/files?view=list" },
+    });
+    assert.equal(filesUpdated.tabs.length, 1, "JOY-10 v2 FAIL: 同类页面只能有一个标签");
+    assert.equal(filesUpdated.tabs[0].href, "/files?view=list", "JOY-10 v2 FAIL: 页面单例应保留最新 href");
+
+    const newChat = appTabsReducer(filesUpdated, {
+      type: "openPage",
+      tab: { kind: "page", key: "page:chat-new", pageKind: "chat-new", title: "新对话", href: "/chat/new" },
+    });
+    const upgraded = appTabsReducer(newChat, {
+      type: "upgradeChatNew",
+      tab: { kind: "conversation", key: "conversation:9", conversationId: 9, title: "新对话", href: "/chat/recent?id=9" },
+    });
+    assert.deepEqual(upgraded.tabs.map((tab) => tab.key), ["page:files", "conversation:9"], "JOY-10 v2 FAIL: chat:new 应原位升级为真实会话");
+    assert.equal(upgraded.activeKey, "conversation:9", "JOY-10 v2 FAIL: 升级后应激活真实会话");
+
+    const existingConversation = appTabsReducer(upgraded, {
+      type: "openConversation",
+      tab: { kind: "conversation", key: "conversation:10", conversationId: 10, title: "已有", href: "/chat/recent?id=10" },
+    });
+    const withAnotherNew = appTabsReducer(existingConversation, {
+      type: "openPage",
+      tab: { kind: "page", key: "page:chat-new", pageKind: "chat-new", title: "新对话", href: "/chat/new" },
+    });
+    const dedupedUpgrade = appTabsReducer(withAnotherNew, {
+      type: "upgradeChatNew",
+      tab: { kind: "conversation", key: "conversation:10", conversationId: 10, title: "权威标题", href: "/chat/recent?id=10" },
+    });
+    assert.deepEqual(dedupedUpgrade.tabs.map((tab) => tab.key), ["page:files", "conversation:9", "conversation:10"], "JOY-10 v2 FAIL: 升级到已有会话时应去重");
+    assert.equal(dedupedUpgrade.tabs[2].title, "权威标题", "JOY-10 v2 FAIL: 去重升级应刷新权威标题");
+
+    const activatedMiddle = appTabsReducer(dedupedUpgrade, { type: "activate", key: "conversation:9" });
+    const closedMiddle = appTabsReducer(activatedMiddle, { type: "close", key: "conversation:9" });
+    assert.equal(closedMiddle.activeKey, "conversation:10", "JOY-10 v2 FAIL: 混合标签关闭当前项应优先右邻");
+    const closedAll = appTabsReducer(closedMiddle, { type: "closeAll" });
+    assert.deepEqual(closedAll.tabs.map((tab) => tab.key), ["page:cockpit"], "JOY-10 v2 FAIL: 关闭全部应创建 cockpit 兜底标签");
+  }
+
+  // ── F1 reviewer round 1: 完成态真实标题接线行为 ───────────────────────────
+  {
+    const localTitles: string[] = [];
+    const navTitles: Array<{ id: number; title: string }> = [];
+    const sinks = {
+      setLocalTitle: (title: string) => localTitles.push(title),
+      updateNavTitle: (id: number, title: string) => navTitles.push({ id, title }),
+    };
+    assert.equal(
+      syncCompletedConversationTitle({ status: "done", conversationId: 17, finalTitle: "完成标题" }, sinks),
+      true,
+      "F1 FAIL: done 应执行标题同步"
+    );
+    assert.equal(
+      syncCompletedConversationTitle({ status: "incomplete", conversationId: 18, finalTitle: "部分完成标题" }, sinks),
+      true,
+      "F1 FAIL: incomplete 应执行标题同步"
+    );
+    assert.deepEqual(localTitles, ["完成标题", "部分完成标题"], "F1 FAIL: 完成态应把真实最终标题传给本地 H1 sink");
+    assert.deepEqual(
+      navTitles,
+      [{ id: 17, title: "完成标题" }, { id: 18, title: "部分完成标题" }],
+      "F1 FAIL: 完成态应把真实 conversation ID + final title 传给 Nav sink"
+    );
+    assert.equal(
+      syncCompletedConversationTitle({ status: "error", conversationId: 19, finalTitle: "不应同步" }, sinks),
+      false,
+      "F1 FAIL: 非完成态不得同步最终标题"
+    );
+    assert.equal(navTitles.length, 2, "F1 FAIL: error 不得调用 Nav sink");
+  }
+
+  // ── JOY-10: 会话标签纯 reducer ────────────────────────────────────────────
+  {
+    const empty: ConversationTabsState = { tabs: [], activeId: null, latestTitlesById: {} };
+    const titleBeforeOpen = conversationTabsReducer(empty, { type: "updateTitle", id: 4, title: "权威标题" });
+    const openedAfterTitle = conversationTabsReducer(titleBeforeOpen, { type: "open", tab: { id: 4, title: "旧标题" } });
+    assert.equal(openedAfterTitle.tabs[0].title, "权威标题", "JOY-10 FAIL: 标题先到、标签后开时不得被旧标题覆盖");
+
+    const one = conversationTabsReducer(empty, { type: "open", tab: { id: 1, title: "一" } });
+    const two = conversationTabsReducer(one, { type: "open", tab: { id: 2, title: "二" } });
+    const three = conversationTabsReducer(two, { type: "open", tab: { id: 3, title: "三" } });
+
+    const deduped = conversationTabsReducer(three, { type: "open", tab: { id: 2, title: "二（新）" } });
+    assert.deepEqual(deduped.tabs.map((tab) => tab.id), [1, 2, 3], "JOY-10 FAIL: 重复打开同一会话不应新增标签");
+    assert.equal(deduped.activeId, 2, "JOY-10 FAIL: 重复打开应激活原标签");
+    assert.equal(deduped.tabs[1].title, "二（新）", "JOY-10 FAIL: DB 权威标题应刷新原标签");
+
+    const closeMiddle = conversationTabsReducer(deduped, { type: "close", id: 2 });
+    assert.deepEqual(closeMiddle.tabs.map((tab) => tab.id), [1, 3], "JOY-10 FAIL: 应删除指定标签");
+    assert.equal(closeMiddle.activeId, 3, "JOY-10 FAIL: 关闭当前标签应优先激活右邻");
+
+    const closeRight = conversationTabsReducer(closeMiddle, { type: "close", id: 3 });
+    assert.equal(closeRight.activeId, 1, "JOY-10 FAIL: 没有右邻时应激活左邻");
+
+    const reopened = conversationTabsReducer(closeRight, { type: "open", tab: { id: 2, title: "二" } });
+    const activated = conversationTabsReducer(reopened, { type: "activate", id: 1 });
+    const closeInactive = conversationTabsReducer(activated, { type: "close", id: 2 });
+    assert.equal(closeInactive.activeId, 1, "JOY-10 FAIL: 关闭非当前标签不应改变 activeId");
+
+    const removedCurrent = conversationTabsReducer(three, { type: "removeDeleted", id: 2 });
+    assert.equal(removedCurrent.activeId, 3, "JOY-10 FAIL: 删除当前对话也应优先激活右邻");
+    const removedInactive = conversationTabsReducer(
+      conversationTabsReducer(three, { type: "activate", id: 1 }),
+      { type: "removeDeleted", id: 3 }
+    );
+    assert.equal(removedInactive.activeId, 1, "JOY-10 FAIL: 删除非当前对话不应改变 activeId");
+
+    const titled = conversationTabsReducer(three, { type: "updateTitle", id: 2, title: "新标题" });
+    assert.equal(titled.tabs[1].title, "新标题", "JOY-10 FAIL: 标题更新应同步到已打开标签");
+
+    const metaOpened = conversationTabsReducer(empty, { type: "open", tab: { id: 5, title: "新对话" } });
+    const doneTitled = conversationTabsReducer(metaOpened, { type: "updateTitle", id: 5, title: "生成后的真实标题" });
+    assert.equal(doneTitled.tabs[0].title, "生成后的真实标题", "F1 FAIL: meta 打开的新会话标签应接受 done 最终标题");
+
+    const closedAll = conversationTabsReducer(three, { type: "closeAll" });
+    assert.deepEqual(closedAll.tabs, [], "JOY-10 FAIL: 关闭全部应清空标签");
+    assert.equal(closedAll.activeId, null, "JOY-10 FAIL: 关闭全部应清空 activeId");
+
+    const deleted = conversationTabsReducer(openedAfterTitle, { type: "removeDeleted", id: 4 });
+    assert.equal(deleted.latestTitlesById[4], undefined, "JOY-10 FAIL: 删除对话应清理运行期标题缓存");
+  }
+
+  // ── JOY-10: DELETE 返回后的实时路由决策 ──────────────────────────────────
+  {
+    const result = { deletedId: 2, activeId: 3 };
+    assert.equal(conversationIdFromRoute("/chat/recent", "?id=2"), 2, "JOY-10 FAIL: 应解析当前历史对话 ID");
+    assert.equal(conversationIdFromRoute("/cockpit", "?id=2"), null, "JOY-10 FAIL: 非对话页面不得误认当前会话");
+    assert.equal(conversationDeleteDestination(result, 2), "/chat/recent?id=3", "JOY-10 FAIL: 仍停留在被删会话时应跳相邻标签");
+    assert.equal(conversationDeleteDestination({ deletedId: 2, activeId: null }, 2), "/cockpit", "JOY-10 FAIL: 无相邻标签时应回总览");
+    assert.equal(conversationDeleteDestination(result, 3), null, "JOY-10 FAIL: DELETE 等待期间切到其他会话后不得拉回");
+    assert.equal(conversationDeleteDestination(result, null), null, "JOY-10 FAIL: DELETE 等待期间切到其他页面后不得拉回");
+
+    const waitingStart: ConversationTabsState = {
+      tabs: [{ id: 1, title: "左" }, { id: 2, title: "删除目标" }, { id: 3, title: "右" }],
+      activeId: 2,
+      latestTitlesById: { 1: "左", 2: "删除目标", 3: "右" },
+    };
+    const afterDeleteStarted = conversationTabsReducer(waitingStart, { type: "removeDeleted", id: 2 });
+    assert.equal(afterDeleteStarted.activeId, 3, "JOY-10 FAIL: 删除开始时右邻应成为候选");
+    const afterNeighborClosed = conversationTabsReducer(afterDeleteStarted, { type: "close", id: 3 });
+    const liveResult = conversationDeleteResultForState(2, afterNeighborClosed);
+    assert.equal(liveResult.activeId, 1, "JOY-10 FAIL: 等待期间右邻关闭后应基于实时状态改用左邻");
+    assert.equal(conversationDeleteDestination(liveResult, 2), "/chat/recent?id=1", "JOY-10 FAIL: DELETE 完成不得跳到已关闭邻居");
+  }
+
   // ── 契约 5a: app-nav.tsx 含「智能体」项 href="/agents" ─────────────────────
   {
     const navSrc = src("app/shared/app-nav.tsx");
@@ -39,6 +234,49 @@ export const navV3TestPromise = (async () => {
       navSrc.includes("智能体"),
       "C5a FAIL: app-nav.tsx 应含「智能体」文案"
     );
+  }
+
+  // ── JOY-10: 关键接线契约 ──────────────────────────────────────────────────
+  {
+    const navStateSrc = src("app/shared/nav-state.tsx");
+    const chatPageSrc = src("app/chat/chat-page.tsx");
+    const tabBarSrc = src("app/shared/app-tab-bar.tsx");
+    const shellSrc = src("app/shared/app-shell.tsx");
+    const globalCss = src("app/globals.css");
+    const titleUpdateBody = navStateSrc.slice(
+      navStateSrc.indexOf("const updateConversationTitle"),
+      navStateSrc.indexOf("useEffect", navStateSrc.indexOf("const updateConversationTitle"))
+    );
+    const commitRenameBody = navStateSrc.slice(
+      navStateSrc.indexOf("const commitRename"),
+      navStateSrc.indexOf("const startDelete")
+    );
+    const completionEffectBody = chatPageSrc.slice(
+      chatPageSrc.indexOf("if (!turn || !turnKey) return;"),
+      chatPageSrc.indexOf("const finishedKey = turnKey;")
+    );
+    assert.ok(navStateSrc.includes("appTabsReducer"), "JOY-10 v2 FAIL: NavState 应使用统一 AppTab reducer");
+    assert.ok(navStateSrc.includes("openConversationTab"), "JOY-10 FAIL: NavState 应暴露打开会话标签动作");
+    assert.ok(chatPageSrc.includes("openConversationTab"), "JOY-10 FAIL: ChatPage 应在 DB/meta 权威入口注册标签");
+    assert.ok(titleUpdateBody.includes('type: "updateTitle"'), "JOY-10 FAIL: SSE/DB 标题入口应同步标签标题");
+    assert.ok(commitRenameBody.includes('type: "updateTitle"'), "JOY-10 FAIL: 侧栏手工重命名应同步标签标题");
+    assert.ok(
+      completionEffectBody.includes("syncCompletedConversationTitle"),
+      "F1 FAIL: 新会话 done/incomplete 应复用已行为测试的完成态标题同步逻辑"
+    );
+    assert.ok(tabBarSrc.includes("closeAppTab"), "JOY-10 v2 FAIL: 标签栏应通过统一 NavState 关闭标签");
+    assert.ok(tabBarSrc.includes("resolveSelectedAppTabKey"), "JOY-10 v2.1 FAIL: 标签栏应复用选中态竞态 helper");
+    assert.ok(!tabBarSrc.includes("关闭全部标签"), "JOY-10 v2.1 FAIL: 顶部不应再提供关闭全部入口");
+    assert.ok(shellSrc.includes("RouteTabSync") && shellSrc.includes("<Suspense fallback={null}>"), "JOY-10 v2 FAIL: AppShell 应在显式 Suspense 中挂载 RouteTabSync");
+    assert.ok(chatPageSrc.includes("upgradeNewConversationTab"), "JOY-10 v2 FAIL: meta 应将 chat:new 原位升级为真实会话");
+    assert.ok(chatPageSrc.includes("router.replace(`/chat/recent?id=${cid}`)"), "JOY-10 v2 FAIL: meta 后应通过 App Router replace 进入 recent");
+    assert.ok(globalCss.includes("flex: 0 1 auto") && globalCss.includes("min-width: 5rem") && globalCss.includes("max-width: 13rem"), "JOY-10 v2.2 FAIL: 非活动标签应按标题自适应在 80–208px 之间");
+    assert.ok(globalCss.includes("min-width: 5.75rem") && globalCss.includes("max-width: 14rem"), "JOY-10 v2.2 FAIL: 活动标签应使用更大的 92–224px 宽度契约");
+    assert.ok(tabBarSrc.includes('className="truncate"'), "JOY-10 v2.2 FAIL: 超过最大宽度的标签标题应显示省略号");
+    assert.ok(globalCss.includes("--window-controls-inset: 6.75rem"), "JOY-10 v2.1 FAIL: Windows 标签栏应保留窗口三键净空");
+    assert.ok(globalCss.includes("border-radius: 999px"), "JOY-10 v2.1 FAIL: 关闭按钮 hover 应使用门禁允许的圆形命中区");
+    assert.ok(!tabBarSrc.includes("stopTurn"), "JOY-10 FAIL: 关闭标签不得停止后台生成");
+    assert.ok(!navStateSrc.includes('localStorage.setItem("conversation'), "JOY-10 FAIL: v1 不应持久化会话标签");
   }
 
   // ── 契约 5b: 「智能体」项位于总览之后（indexOf 顺序断言）───────────────────
@@ -134,5 +372,5 @@ export const navV3TestPromise = (async () => {
     );
   }
 
-  console.log("nav-v3: all C5–C7 checks passed ✓");
+  console.log("nav-v3: JOY-10 + C5–C7 checks passed ✓");
 })();

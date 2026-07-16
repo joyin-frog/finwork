@@ -146,11 +146,14 @@ export function activeAssistantContent(turn: StreamTurn): string {
   return turn.streamedContent || "...";
 }
 
-type ChatStreamApi = {
+export type StreamTurnOperations = {
   getTurn: (key: string | null | undefined) => StreamTurn | undefined;
-  startTurn: (params: StartTurnParams) => void;
   stopTurn: (key: string) => void;
   consumeTurn: (key: string) => void;
+};
+
+type ChatStreamApi = StreamTurnOperations & {
+  startTurn: (params: StartTurnParams) => void;
   /** 按 conversationId 索引的进行中/刚结束回合状态,供侧栏渲染状态点(streaming=蓝/done=绿/error=红)。 */
   statusByConversationId: Record<number, TurnStatus>;
 };
@@ -167,8 +170,91 @@ export function isFinished(status: TurnStatus) {
   return status === "done" || status === "error" || status === "stopped" || status === "incomplete";
 }
 
+export function resolveTurnKey(
+  turns: Record<string, StreamTurn>,
+  requestedKey: string
+): string | undefined {
+  if (turns[requestedKey]) return requestedKey;
+  if (!requestedKey.startsWith("c:")) return undefined;
+  const conversationId = Number(requestedKey.slice(2));
+  if (!Number.isFinite(conversationId)) return undefined;
+
+  let latest: StreamTurn | undefined;
+  for (const turn of Object.values(turns)) {
+    if (turn.conversationId !== conversationId) continue;
+    if (!latest || turn.startedAt >= latest.startedAt) latest = turn;
+  }
+  return latest?.key;
+}
+
+export type StreamTurnOperation = "get" | "stop" | "consume";
+
+export type StreamTurnOperationPlan = {
+  resolvedKey: string | undefined;
+  turn: StreamTurn | undefined;
+  abortKey: string | undefined;
+  deleteControllerKey: string | undefined;
+  nextTurns: Record<string, StreamTurn>;
+};
+
+export function planStreamTurnOperation(
+  turns: Record<string, StreamTurn>,
+  requestedKey: string,
+  operation: StreamTurnOperation
+): StreamTurnOperationPlan {
+  const resolvedKey = resolveTurnKey(turns, requestedKey);
+  const turn = resolvedKey ? turns[resolvedKey] : undefined;
+  if (!resolvedKey) {
+    return { resolvedKey, turn, abortKey: undefined, deleteControllerKey: undefined, nextTurns: turns };
+  }
+  if (operation === "stop") {
+    return { resolvedKey, turn, abortKey: resolvedKey, deleteControllerKey: undefined, nextTurns: turns };
+  }
+  if (operation === "consume") {
+    const nextTurns = { ...turns };
+    delete nextTurns[resolvedKey];
+    return { resolvedKey, turn, abortKey: undefined, deleteControllerKey: resolvedKey, nextTurns };
+  }
+  return { resolvedKey, turn, abortKey: undefined, deleteControllerKey: undefined, nextTurns: turns };
+}
+
+type StreamTurnController = { abort: () => void };
+
+export type StreamTurnOperationsDeps = {
+  getTurns: () => Record<string, StreamTurn>;
+  updateTurns: (update: (turns: Record<string, StreamTurn>) => Record<string, StreamTurn>) => void;
+  getControllers: () => Record<string, StreamTurnController>;
+};
+
+export function createStreamTurnOperations(deps: StreamTurnOperationsDeps): StreamTurnOperations {
+  return {
+    getTurn(key) {
+      if (!key) return undefined;
+      return planStreamTurnOperation(deps.getTurns(), key, "get").turn;
+    },
+    stopTurn(key) {
+      const plan = planStreamTurnOperation(deps.getTurns(), key, "stop");
+      if (plan.abortKey) deps.getControllers()[plan.abortKey]?.abort();
+    },
+    consumeTurn(key) {
+      const plan = planStreamTurnOperation(deps.getTurns(), key, "consume");
+      if (!plan.resolvedKey) return;
+      if (plan.deleteControllerKey) delete deps.getControllers()[plan.deleteControllerKey];
+      const resolvedKey = plan.resolvedKey;
+      deps.updateTurns((turns) => {
+        if (!turns[resolvedKey]) return turns;
+        const nextTurns = { ...turns };
+        delete nextTurns[resolvedKey];
+        return nextTurns;
+      });
+    },
+  };
+}
+
 export function ChatStreamProvider({ children }: { children: React.ReactNode }) {
   const [turns, setTurns] = useState<Record<string, StreamTurn>>({});
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
   const controllersRef = useRef<Record<string, AbortController>>({});
 
   // 标题单一源:agent 提炼标题经 SSE title 事件推来时,更新 nav-state(侧栏 + header 共读)。
@@ -181,24 +267,11 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
     setTurns((prev) => (prev[key] ? { ...prev, [key]: fn(prev[key]) } : prev));
   }, []);
 
-  const getTurn = useCallback(
-    (key: string | null | undefined) => (key ? turns[key] : undefined),
-    [turns]
-  );
-
-  const consumeTurn = useCallback((key: string) => {
-    delete controllersRef.current[key];
-    setTurns((prev) => {
-      if (!prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }, []);
-
-  const stopTurn = useCallback((key: string) => {
-    controllersRef.current[key]?.abort();
-  }, []);
+  const { getTurn, stopTurn, consumeTurn } = useMemo(() => createStreamTurnOperations({
+    getTurns: () => turnsRef.current,
+    updateTurns: (updateTurns) => setTurns(updateTurns),
+    getControllers: () => controllersRef.current,
+  }), []);
 
   const startTurn = useCallback(
     (params: StartTurnParams) => {

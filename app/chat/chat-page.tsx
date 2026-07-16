@@ -21,7 +21,7 @@ import { SkillPopup, ComposerHighlightOverlay, DeepThinkToggle, isValidSkillName
 import { insertSkillToken } from "@/app/chat/skill-token";
 import { FindInChat } from "@/app/chat/find-in-chat";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
-import { useNavState } from "@/app/shared/nav-state";
+import { syncCompletedConversationTitle, useNavState } from "@/app/shared/nav-state";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import {
   buildUserContent,
@@ -109,7 +109,13 @@ export default function ChatPage({
   quickPrompts?: ChatQuickPrompt[];
   roleMode?: RoleMode;
 }) {
-  const { refreshConversations, conversations: navConversations, updateConversationTitle } = useNavState();
+  const {
+    refreshConversations,
+    conversations: navConversations,
+    updateConversationTitle,
+    openConversationTab,
+    upgradeNewConversationTab,
+  } = useNavState();
   const router = useRouter();
   const [conversationId, setConversationId] = useState<number | null>(initialConversationId);
   const urlUpdatedRef = useRef(false);
@@ -332,10 +338,13 @@ export default function ChatPage({
   useEffect(() => {
     const cid = turn?.conversationId;
     if (!cid || cid === conversationId) return;
+    const provisionalTitle = turn?.finalConversation?.title ?? conversationTitle;
+    if (mode === "new") upgradeNewConversationTab(cid, provisionalTitle);
+    else openConversationTab(cid, provisionalTitle);
     setConversationId(cid);
     if (mode === "new" && !urlUpdatedRef.current) {
       urlUpdatedRef.current = true;
-      window.history.replaceState(null, "", `/chat/recent?id=${cid}`);
+      router.replace(`/chat/recent?id=${cid}`);
     }
     void refreshConversations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -345,16 +354,19 @@ export default function ChatPage({
   useEffect(() => {
     if (!turn || !turnKey) return;
     if (turn.status === "streaming") return;
+    const realId = turn.conversationId ?? conversationId;
+    syncCompletedConversationTitle(
+      { status: turn.status, conversationId: realId, finalTitle: turn.finalConversation?.title },
+      { setLocalTitle: setConversationTitle, updateNavTitle: updateConversationTitle }
+    );
 
     if (turn.status === "done" || turn.status === "incomplete") {
       // incomplete(出错但已保留已完成部分)也走这里:把落库的最终消息/文件写回本地,中间叙述与产物不丢。
-      const realId = turn.conversationId ?? conversationId;
       if (realId && realId !== conversationId) setConversationId(realId);
       if (mode === "new" && turn.conversationId && !urlUpdatedRef.current) {
         urlUpdatedRef.current = true;
-        window.history.replaceState(null, "", `/chat/recent?id=${turn.conversationId}`);
+        router.replace(`/chat/recent?id=${turn.conversationId}`);
       }
-      if (turn.finalConversation?.title) setConversationTitle(turn.finalConversation.title);
       const finalMessages = mergeFinalMessages(turn);
       setMessages(finalMessages);
       if (turn.generatedAttachments?.length) {
@@ -450,6 +462,7 @@ export default function ChatPage({
     if (isCancelled()) return;
     const conversation = payload.data.conversation;
     setConversationTitle(conversation.title);
+    openConversationTab(conversation.id, conversation.title);
     // 喂回 nav-state(标题单一源):打开会话时用 DB 权威标题校正侧栏,避免旧摘要标题反盖 header。
     updateConversationTitle(conversation.id, conversation.title);
     setMessages(conversation.messages);

@@ -10,5 +10,6 @@ export default async function RecentChatPage({
   const initialConversationId = params?.id ? Number(params.id) : null;
   const settings = await readPublicClaudeSettings().catch(() => null);
 
-  return <ChatPage mode="recent" initialConversationId={Number.isFinite(initialConversationId) ? initialConversationId : null} roleMode={settings?.roleMode ?? "daily"} />;
+  const conversationId = Number.isFinite(initialConversationId) ? initialConversationId : null;
+  return <ChatPage key={`chat:recent:${conversationId ?? "missing"}`} mode="recent" initialConversationId={conversationId} roleMode={settings?.roleMode ?? "daily"} />;
 }

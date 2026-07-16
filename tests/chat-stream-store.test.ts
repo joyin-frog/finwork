@@ -5,8 +5,11 @@ import {
   mergeFinalMessages,
   overlayMessages,
   activeAssistantContent,
+  createStreamTurnOperations,
+  resolveTurnKey,
   type StreamTurn
 } from "../app/shared/chat-stream.tsx";
+import { appTabsReducer, type AppTabsState } from "../app/shared/nav-state.tsx";
 import { humanizeAgentError } from "../lib/agent/agent-error.ts";
 import type { Message } from "../app/chat/chat-types.ts";
 
@@ -26,6 +29,75 @@ function baseTurn(overrides: Partial<StreamTurn> = {}): StreamTurn {
 }
 
 export const chatStreamStoreTestPromise = (async () => {
+  // ── JOY-10: 新会话取得真实 ID 后仍解析到原始运行 key ──
+  {
+    const turns: Record<string, StreamTurn> = {
+      "new:old": baseTurn({ key: "new:old", conversationId: 8, startedAt: 1000 }),
+      "new:latest": baseTurn({ key: "new:latest", conversationId: 8, startedAt: 2000 }),
+      "c:9": baseTurn({ key: "c:9", conversationId: 9, startedAt: 3000 }),
+    };
+    assert.equal(resolveTurnKey(turns, "c:9"), "c:9", "JOY-10 FAIL: 精确 key 应优先");
+    assert.equal(resolveTurnKey(turns, "c:8"), "new:latest", "JOY-10 FAIL: 真实 ID 应解析到最新临时 turn key");
+    assert.equal(resolveTurnKey(turns, "c:7"), undefined, "JOY-10 FAIL: 不存在的会话不应误命中");
+    assert.equal(resolveTurnKey(turns, "new:old"), "new:old", "JOY-10 FAIL: 临时 key 精确查询保持不变");
+
+    const controller = new AbortController();
+    let liveTurns: Record<string, StreamTurn> = {
+      "new:latest": turns["new:latest"],
+      "c:9": turns["c:9"],
+    };
+    const controllers: Record<string, AbortController> = { "new:latest": controller };
+    const operations = createStreamTurnOperations({
+      getTurns: () => liveTurns,
+      updateTurns: (update) => { liveTurns = update(liveTurns); },
+      getControllers: () => controllers,
+    });
+    assert.equal(operations.getTurn("c:8"), turns["new:latest"], "JOY-10 FAIL: 公共 getTurn 应返回真实运行 turn");
+
+    const tabState: AppTabsState = {
+      tabs: [{ kind: "conversation", key: "conversation:8", conversationId: 8, title: "后台任务", href: "/chat/recent?id=8" }],
+      activeKey: "conversation:8",
+      latestTitlesById: { 8: "后台任务" },
+    };
+    const closedTabs = appTabsReducer(tabState, { type: "close", key: "conversation:8" });
+    assert.deepEqual(closedTabs.tabs.map((tab) => tab.key), ["page:cockpit"], "JOY-10 FAIL: 关闭最后一个标签应只兜底到 cockpit");
+    const reopenedTurn = operations.getTurn("c:8");
+    assert.equal(reopenedTurn, turns["new:latest"], "JOY-10 FAIL: 关闭标签后按真实 ID 重开仍应看到运行 turn");
+
+    operations.stopTurn("c:8");
+    assert.equal(controller.signal.aborted, true, "JOY-10 FAIL: 公共 stopTurn 应真正终止同一 new:uuid controller");
+    operations.consumeTurn("c:8");
+    assert.equal(liveTurns["new:latest"], undefined, "JOY-10 FAIL: 公共 consumeTurn 应删除同一 new:uuid turn");
+    assert.equal(controllers["new:latest"], undefined, "JOY-10 FAIL: 公共 consumeTurn 应删除同一 new:uuid controller");
+    assert.equal(operations.getTurn("c:8"), undefined, "JOY-10 FAIL: consume 后公共 getTurn 不应再返回 turn");
+
+    // D1: consume 首次解析到旧临时 key 后，即使 React updater 执行前出现同会话新精确 key，
+    // 也只能删除首次锁定的旧 turn/controller，不能二次解析误删新 turn。
+    const oldTurn = baseTurn({ key: "new:d1-old", conversationId: 10, startedAt: 1000 });
+    const newTurn = baseTurn({ key: "c:10", conversationId: 10, startedAt: 2000 });
+    let d1Turns: Record<string, StreamTurn> = { [oldTurn.key]: oldTurn };
+    const oldController = new AbortController();
+    const newController = new AbortController();
+    const d1Controllers: Record<string, AbortController> = {
+      [oldTurn.key]: oldController,
+      [newTurn.key]: newController,
+    };
+    let delayedUpdate: ((turns: Record<string, StreamTurn>) => Record<string, StreamTurn>) | null = null;
+    const d1Operations = createStreamTurnOperations({
+      getTurns: () => d1Turns,
+      updateTurns: (update) => { delayedUpdate = update; },
+      getControllers: () => d1Controllers,
+    });
+    d1Operations.consumeTurn("c:10");
+    assert.equal(d1Controllers[oldTurn.key], undefined, "D1 FAIL: consume 应先删除首次解析的旧 controller");
+    assert.equal(d1Controllers[newTurn.key], newController, "D1 FAIL: 新 controller 不得被删除");
+    d1Turns = { ...d1Turns, [newTurn.key]: newTurn };
+    assert.ok(delayedUpdate, "D1 FAIL: consume 应安排 turn updater");
+    d1Turns = delayedUpdate!(d1Turns);
+    assert.equal(d1Turns[oldTurn.key], undefined, "D1 FAIL: 延迟 updater 应删除首次解析的旧 turn");
+    assert.equal(d1Turns[newTurn.key], newTurn, "D1 FAIL: 延迟 updater 不得二次解析并误删新精确 turn");
+  }
+
   // ── 跨页流式 store 的纯 reducer:与原 chat-page 内联回调行为一致 ──
 
   // reduceChunk:首个 chunk 记 processedEndedAt;文本事件合并而非堆叠;正文累加
@@ -124,5 +196,5 @@ export const chatStreamStoreTestPromise = (async () => {
   assert.equal(humanizeAgentError("Claude Code returned an error result: API Error: unexpected EOF").action, "retry", "AC6 FAIL: EOF/连接断开应归为重试类");
   assert.ok(humanizeAgentError("API Error: unexpected EOF").message.includes("连接"), "AC6 FAIL: EOF 应命中「连接中断」具体文案,而非通用兜底");
 
-  console.log("chat-stream-store: all 37 checks passed ✓");
+  console.log("chat-stream-store: JOY-10 + existing checks passed ✓");
 })();
