@@ -225,7 +225,7 @@ export default function AgentsPage() {
               )}
             </header>
 
-            <div className="content-fade-top flex-1 overflow-auto p-page flex flex-col gap-5">
+            <div className="content-fade-top flex-1 overflow-auto p-page flex flex-col gap-6">
             {error ? (
               <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
                 <p>{error}</p>

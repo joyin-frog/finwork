@@ -72,7 +72,7 @@ export function highlightLine(line: string, ranges: Array<[number, number]>): Re
   ranges.forEach(([start, end], i) => {
     if (start > last) parts.push(createElement("span", { key: `t${i}` }, line.slice(last, start)));
     parts.push(
-      createElement("mark", { key: `m${i}`, className: "bg-yellow-200/70 dark:bg-yellow-500/30 text-inherit rounded-sm" }, line.slice(start, end))
+      createElement("mark", { key: `m${i}`, className: "bg-[color:var(--tone-notice)]/25 text-inherit rounded-sm" }, line.slice(start, end))
     );
     last = end;
   });

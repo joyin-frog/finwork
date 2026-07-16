@@ -78,7 +78,7 @@ export function AgentDetailDrawer({
     <Surface level="card" edge="none" shape="none" className="flex flex-col overflow-hidden h-full">
         {/* 头部：单行，与列表列 h-11 标题栏对齐——padding 同 .preview-head-card（中线 22px、分隔线 44px）。
             avatar / icon-btn 均 32px 高，名称+简介同一行（简介 truncate），不再撑成两行。 */}
-        <div className="flex items-center gap-3 px-[14px] pt-px pb-1.5 border-b border-border shrink-0">
+        <div className="flex items-center gap-3 px-4 pt-px pb-1.5 border-b border-border shrink-0">
           {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
           <span
             className="fa-toned shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-body font-semibold select-none"
@@ -135,7 +135,7 @@ export function AgentDetailDrawer({
             />
           </div>
         ) : (
-          <div className="flex-1 overflow-auto p-4 flex flex-col gap-5">
+          <div className="flex-1 overflow-auto p-4 flex flex-col gap-4">
             {/* 当前状态 */}
             {(isRunning || isBlocked) && (
               <section>
