@@ -42,6 +42,17 @@ function isImagePath(p: string): boolean {
   return Boolean(p && IMAGE_EXT.test(p));
 }
 
+/** filePath 多为绝对路径（read_document 约定）；路由只认相对会话目录的尾段。
+ *  定位 /conversations/<id>/ 之后的相对段；绝对路径里找不到标记则返回 null（降级 chip，不把本机路径塞进 URL）。 */
+function conversationRelativePath(filePath: string, conversationId: string): string | null {
+  const normalized = filePath.replace(/\\/g, "/");
+  const marker = `/conversations/${conversationId}/`;
+  const idx = normalized.indexOf(marker);
+  if (idx >= 0) return normalized.slice(idx + marker.length);
+  if (!normalized.startsWith("/") && !/^[A-Za-z]:/.test(normalized)) return normalized; // 已是相对路径
+  return null;
+}
+
 // 工具类型 → 可剥的中文动词前缀(行图标已移除,组头/renderer 文案承担类型语义)。
 // strip:剥掉类型动词前缀;relabel:剥空后用此固定文案兜底。
 const TOOL_VISUAL: Record<string, { strip?: RegExp; relabel?: string }> = {
@@ -187,9 +198,10 @@ function ExpandedDetail({
     "";
   const showThumbnail = isImagePath(filePath);
   // 路由：/api/files/[conversationId]/[...filename]
-  // 依赖现有路由；若无 conversationId 则降级为路径 chip
-  const imgSrc = showThumbnail && conversationId
-    ? `/api/files/${encodeURIComponent(conversationId)}/${filePath.replace(/^\//, "")}`
+  // filePath 为绝对路径时用 conversationRelativePath 提取相对段；找不到则降级 chip
+  const relPath = showThumbnail && conversationId ? conversationRelativePath(filePath, conversationId) : null;
+  const imgSrc = relPath
+    ? `/api/files/${encodeURIComponent(conversationId!)}/${relPath.split("/").map(encodeURIComponent).join("/")}`
     : null;
 
   return (
@@ -276,7 +288,7 @@ function DetailMotion({ open, className, children }: { open: boolean; className?
   ) : null}</AnimatePresence>;
 }
 
-function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: ToolPair; degraded?: boolean; threaded?: boolean }) {
+function ToolCallStep({ pair, degraded = false, threaded = false, conversationId }: { pair: ToolPair; degraded?: boolean; threaded?: boolean; conversationId?: number | null }) {
   const [expanded, setExpanded] = useState(false);
   const reduce = useReducedMotion();
   // 日常:每步只一行人话、不可展开;技术模式:可点开看原始输入/输出(调试用)。
@@ -347,7 +359,7 @@ function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: Tool
       <ToolResultCard name={pair.name} structured={pair.structured} />
 
       <DetailMotion open={expanded && hasDetail} className="px-2 pb-1">
-        <ExpandedDetail pair={pair} />
+        <ExpandedDetail pair={pair} conversationId={conversationId != null ? String(conversationId) : undefined} />
       </DetailMotion>
     </div>
   );
@@ -359,9 +371,11 @@ function ToolCallStep({ pair, degraded = false, threaded = false }: { pair: Tool
 function RetryGroupRow({
   group,
   threaded = false,
+  conversationId,
 }: {
   group: Extract<AggregatedStep, { kind: "retry-group" }>;
   threaded?: boolean;
+  conversationId?: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const reduce = useReducedMotion();
@@ -416,7 +430,7 @@ function RetryGroupRow({
             {/* fa-thread 必须挂在逐行的直接父级(节点线按 .fa-node 画);嵌套子步骤恒为 threaded */}
             <div className="fa-thread flex flex-col gap-0.5">
               {subPairs.map((p) => (
-                <ToolCallStep key={p.id} pair={p} degraded={recovered} threaded />
+                <ToolCallStep key={p.id} pair={p} degraded={recovered} threaded conversationId={conversationId} />
               ))}
             </div>
       </DetailMotion>
@@ -513,11 +527,13 @@ export function ToolStepList({
   timeline,
   isActive,
   laterTimeline,
+  conversationId,
 }: {
   timeline: TimelineItem[];
   isActive: boolean;
   /** 本回合中位于该段之后的事件:跨段判定失败是否已被后续成功覆盖(已恢复→灰显) */
   laterTimeline?: TimelineItem[];
+  conversationId?: number | null;
 }) {
   const toolItems = timeline.filter(
     (t) => t.event.type === "tool_use" || t.event.type === "tool_result"
@@ -541,13 +557,13 @@ export function ToolStepList({
   const threaded = !isActive && aggregated.length >= 2;
   const rows = aggregated.map((agg, idx) => {
     if (agg.kind === "retry-group") {
-      return <RetryGroupRow key={`group-${idx}`} group={agg} threaded={threaded} />;
+      return <RetryGroupRow key={`group-${idx}`} group={agg} threaded={threaded} conversationId={conversationId} />;
     }
     // kind:"step"
     // 从 pairs 找对应的 ToolPair（按 item.id 匹配）
     const pair = pairs.find((p) => p.id === agg.item.id);
     if (!pair) return null;
-    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} threaded={threaded} />;
+    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} threaded={threaded} conversationId={conversationId} />;
   });
 
   // 已完成的多步段默认收成一行摘要(带对象与统计),点开才见逐步明细——密度对齐 Claude 的

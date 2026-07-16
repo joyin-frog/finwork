@@ -22,6 +22,8 @@ import {
   SESSION_TRUST_CONFIRM_ANSWER,
   trustToolForConversation,
   isToolTrustedForConversation,
+  revokeToolTrust,
+  listTrustedTools,
 } from "../lib/agent/hooks/session-trust.ts";
 import { createRiskConfirmHook, createUnwiredToolHook } from "../lib/agent/hooks/built-in.ts";
 import { runBeforeHooks } from "../lib/agent/hooks/chain.ts";
@@ -197,6 +199,80 @@ export const sessionTrustTestPromise = (async () => {
   assert.match(panelSource, /SESSION_TRUST_CONFIRM_ANSWER/, "ST-e2: 面板应使用 SESSION_TRUST_CONFIRM_ANSWER 常量");
   assert.match(panelSource, /trustable/, "ST-e3: 面板应读取 trustable prop");
   assert.match(panelSource, /checkbox|Checkbox/i, "ST-e4: 面板应有 checkbox 元素");
+
+  // ── (f) revokeToolTrust + listTrustedTools ──────────────────────────────────
+  {
+    clearTrustStore();
+    const convId = 40;
+
+    // trust → isTrusted true
+    trustToolForConversation(convId, RUN_PYTHON);
+    assert.equal(isToolTrustedForConversation(convId, RUN_PYTHON), true, "ST-f1: 信任后应返回 true");
+
+    // listTrustedTools 只回本会话条目
+    trustToolForConversation(convId + 1, RUN_PYTHON); // 另一会话
+    const tools = listTrustedTools(convId);
+    assert.deepEqual(tools, [RUN_PYTHON], "ST-f2: listTrustedTools 只回本会话条目");
+    assert.equal(listTrustedTools(convId + 1).length, 1, "ST-f3: 另一会话条目隔离");
+
+    // revoke → isTrusted false
+    revokeToolTrust(convId, RUN_PYTHON);
+    assert.equal(isToolTrustedForConversation(convId, RUN_PYTHON), false, "ST-f4: revoke 后应返回 false");
+    assert.deepEqual(listTrustedTools(convId), [], "ST-f5: revoke 后 listTrustedTools 应为空");
+
+    // 另一会话不受影响
+    assert.equal(isToolTrustedForConversation(convId + 1, RUN_PYTHON), true, "ST-f6: revoke 只影响指定会话");
+
+    // revokeToolTrust 不存在的 key 是 no-op（不抛）
+    revokeToolTrust(convId, RUN_PYTHON); // 重复 revoke
+    assert.equal(isToolTrustedForConversation(convId, RUN_PYTHON), false, "ST-f7: 重复 revoke 无操作");
+
+    // undefined conversationId → no-op
+    revokeToolTrust(undefined, RUN_PYTHON);
+    assert.equal(listTrustedTools(undefined).length, 0, "ST-f8: undefined conversationId 无操作");
+
+    clearTrustStore();
+  }
+
+  // ── (g) trust route 契约 ─────────────────────────────────────────────────────
+  {
+    const { GET, DELETE } = await import("../app/api/agent/trust/route.ts");
+
+    // GET 缺少合法 conversationId → 400
+    const bad = await GET(new Request("http://localhost/api/agent/trust?conversationId=abc"));
+    assert.equal(bad.status, 400, "ST-g1: 非整数 conversationId 应返回 400");
+
+    // GET conversationId=0 → 400（非正整数）
+    const zero = await GET(new Request("http://localhost/api/agent/trust?conversationId=0"));
+    assert.equal(zero.status, 400, "ST-g2: conversationId=0 应返回 400");
+
+    // GET 合法 conversationId → 200 + tools 数组（空）
+    const ok = await GET(new Request("http://localhost/api/agent/trust?conversationId=99"));
+    assert.equal(ok.status, 200, "ST-g3: 合法 conversationId 应返回 200");
+    const okBody = (await ok.json()) as { ok: boolean; data: { tools: string[] } };
+    assert.equal(okBody.ok, true, "ST-g4: 合法请求体 ok 应为 true");
+    assert.ok(Array.isArray(okBody.data.tools), "ST-g5: data.tools 应为数组");
+
+    // DELETE 缺少 toolName → 400
+    const delBad = await DELETE(new Request("http://localhost/api/agent/trust", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: 1 }),
+    }));
+    assert.equal(delBad.status, 400, "ST-g6: 缺少 toolName 应返回 400");
+
+    // DELETE 合法请求 → 200
+    trustToolForConversation(99, RUN_PYTHON);
+    const delOk = await DELETE(new Request("http://localhost/api/agent/trust", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: 99, toolName: RUN_PYTHON }),
+    }));
+    assert.equal(delOk.status, 200, "ST-g7: 合法 DELETE 应返回 200");
+    assert.equal(isToolTrustedForConversation(99, RUN_PYTHON), false, "ST-g8: DELETE 后信任应已撤销");
+
+    clearTrustStore();
+  }
 
   console.log("session-trust: all checks passed ✓");
 })();

@@ -12,18 +12,23 @@ import {
   hasActiveKnowledgeHashLease,
   hasActiveKnowledgePathLease,
   knowledgeStoragePath,
+  readTextMirror,
+  writeTextMirror,
   writeUploadedFile,
 } from "../lib/knowledge/storage";
 
 const testDir = path.join(tmpdir(), `finance-agent-storage-test-${process.pid}`);
 const externalDir = path.join(tmpdir(), `finance-agent-storage-external-${process.pid}`);
+const textMirrorDir = path.join(tmpdir(), `finance-agent-text-mirror-test-${process.pid}`);
 mkdirSync(testDir, { recursive: true });
 mkdirSync(externalDir, { recursive: true });
 process.env.FINANCE_AGENT_KNOWLEDGE_DIR = testDir;
+process.env.FINANCE_AGENT_KNOWLEDGE_TEXT_DIR = textMirrorDir;
 
 function cleanup() {
   try { rmSync(testDir, { recursive: true, force: true }); } catch {}
   try { rmSync(externalDir, { recursive: true, force: true }); } catch {}
+  try { rmSync(textMirrorDir, { recursive: true, force: true }); } catch {}
 }
 
 async function main() {
@@ -132,6 +137,26 @@ async function main() {
     try { rmSync(freshDir, { recursive: true, force: true }); } catch {}
     process.env.FINANCE_AGENT_KNOWLEDGE_DIR = testDir;
   }
+
+  // writeTextMirror: normal write — readTextMirror returns full text, no tmp files remain
+  const textHash = "abc123def456";
+  const textContent = "全文检索内容示例\n第二行文字";
+  const textFilePath = writeTextMirror(textHash, textContent);
+  assert.ok(existsSync(textFilePath), "text mirror file should exist after write");
+  assert.equal(readTextMirror(textHash), textContent, "readTextMirror should return the written text");
+  assert.ok(
+    readdirSync(textMirrorDir).every((name) => !name.includes(".write-")),
+    "no .write- tmp files should remain after successful writeTextMirror"
+  );
+
+  // writeTextMirror: overwrite (same hash, different content) — second content wins
+  const updatedContent = "更新后的内容";
+  writeTextMirror(textHash, updatedContent);
+  assert.equal(readTextMirror(textHash), updatedContent, "readTextMirror should return the overwritten text");
+  assert.ok(
+    readdirSync(textMirrorDir).every((name) => !name.includes(".write-")),
+    "no .write- tmp files should remain after overwrite"
+  );
 
   cleanup();
   console.log("knowledge-storage tests passed");

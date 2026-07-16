@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { toast } from "sonner";
 
 export const MIN_NAV_WIDTH = 180;
 export const MAX_NAV_WIDTH = 360;
@@ -309,6 +310,7 @@ type NavState = {
   closeAllAppTabs: () => void;
   hasMore: boolean;
   loaded: boolean;
+  loadError: boolean;
   fetchConversations: (offset: number) => Promise<void>;
   refreshConversations: () => Promise<void>;
   /** 就地更新某条对话标题(标题单一源):agent 提炼标题经 SSE title 事件推来时调,侧栏与 header 同步。 */
@@ -321,7 +323,7 @@ type NavState = {
   doPin: (c: ConversationSummary) => Promise<void>;
   startRename: (c: ConversationSummary) => void;
   cancelRename: () => void;
-  commitRename: (c: ConversationSummary) => void;
+  commitRename: (c: ConversationSummary) => Promise<void>;
   setRenameDraft: (v: string) => void;
   startDelete: (c: ConversationSummary) => void;
   confirmDelete: () => Promise<ConversationDeleteResult | null>;
@@ -385,6 +387,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [menuId, setMenuId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(null);
   const [renamingId, setRenamingIdState] = useState<number | null>(null);
@@ -401,8 +404,10 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
       };
       setConversations((prev) => (offset === 0 ? payload.data.summaries : [...prev, ...payload.data.summaries]));
       setHasMore(payload.data.hasMore);
+      setLoadError(false);
       setLoaded(true);
     } catch {
+      setLoadError(true);
       setLoaded(true);
     } finally {
       loadingRef.current = false;
@@ -461,11 +466,21 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
         .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
     );
     setMenuId(null);
-    await fetch("/api/chat/recent", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: c.id, action: "pin", pinned })
-    });
+    try {
+      const res = await fetch("/api/chat/recent", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: c.id, action: "pin", pinned })
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      setConversations((prev) =>
+        prev
+          .map((item) => (item.id === c.id ? { ...item, pinned: !pinned } : item))
+          .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+      );
+      toast.error(pinned ? "置顶失败，已还原。检查网络后重试" : "取消置顶失败，已还原。检查网络后重试");
+    }
   }, []);
 
   const startRename = useCallback((c: ConversationSummary) => {
@@ -479,18 +494,26 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     setRenameDraft("");
   }, []);
 
-  const commitRename = useCallback((c: ConversationSummary) => {
+  const commitRename = useCallback(async (c: ConversationSummary) => {
+    const latest = renameDraft.trim();
     setRenamingIdState(null);
     setRenameDraft("");
-    const latest = renameDraft.trim();
     if (!latest || latest === c.title) return;
-    void fetch("/api/chat/recent", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: c.id, action: "rename", title: latest })
-    });
-    applyAppTabsAction({ type: "updateTitle", id: c.id, title: latest });
+    const prevTitle = c.title;
     setConversations((prev) => prev.map((item) => (item.id === c.id ? { ...item, title: latest } : item)));
+    applyAppTabsAction({ type: "updateTitle", id: c.id, title: latest });
+    try {
+      const res = await fetch("/api/chat/recent", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: c.id, action: "rename", title: latest })
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      setConversations((prev) => prev.map((item) => (item.id === c.id ? { ...item, title: prevTitle } : item)));
+      applyAppTabsAction({ type: "updateTitle", id: c.id, title: prevTitle });
+      toast.error(`重命名失败，已还原为「${prevTitle}」`);
+    }
   }, [renameDraft, applyAppTabsAction]);
 
   const startDelete = useCallback((c: ConversationSummary) => {
@@ -505,10 +528,17 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     const id = deleteTarget.id;
     setDeleteTarget(null);
     setConversations((prev) => prev.filter((c) => c.id !== id));
+    try {
+      const res = await fetch(`/api/chat/recent?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      await fetchConversations(0);
+      toast.error("删除失败：对话已还原。检查网络后重试");
+      return null;
+    }
     applyAppTabsAction({ type: "removeDeleted", id });
-    await fetch(`/api/chat/recent?id=${id}`, { method: "DELETE" });
     return conversationDeleteResultForState(id, appTabsStateRef.current);
-  }, [deleteTarget, applyAppTabsAction]);
+  }, [deleteTarget, fetchConversations, applyAppTabsAction]);
 
   const contextValue = useMemo(() => ({
     collapsed, setCollapsed,
@@ -520,7 +550,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     appTabs: appTabsState.tabs,
     activeAppTabKey: appTabsState.activeKey,
     openPageTab, openConversationTab, upgradeNewConversationTab, activateAppTab, closeAppTab, closeAllAppTabs,
-    hasMore, loaded, fetchConversations, refreshConversations, updateConversationTitle,
+    hasMore, loaded, loadError, fetchConversations, refreshConversations, updateConversationTitle,
     menuId, setMenuId,
     deleteTarget,
     renamingId, renameDraft,
@@ -534,7 +564,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     recentOpen, setRecentOpen,
     conversations, appTabsState,
     openPageTab, openConversationTab, upgradeNewConversationTab, activateAppTab, closeAppTab, closeAllAppTabs,
-    hasMore, loaded, fetchConversations, refreshConversations, updateConversationTitle,
+    hasMore, loaded, loadError, fetchConversations, refreshConversations, updateConversationTitle,
     menuId, setMenuId,
     deleteTarget,
     renamingId, renameDraft,

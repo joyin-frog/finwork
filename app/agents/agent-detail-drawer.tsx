@@ -15,9 +15,11 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowExpand01Icon, ArrowShrink01Icon, PanelRightIcon } from "@hugeicons/core-free-icons";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { FilePreviewPage, type LocalPreviewFile } from "@/app/shared/file-preview-page";
+import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { ROLE_UI } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
 import type { RoleCard } from "@/lib/domain/agent-board";
@@ -26,6 +28,8 @@ import type { DispatchRow } from "@/lib/db/dispatch-store";
 type AgentDetailDrawerProps = {
   card: RoleCard;
   dispatches: DispatchRow[] | null;
+  dispatchError?: boolean;
+  onRetryDispatches?: () => void;
   maximized: boolean;
   onMaximize: () => void;
   /** 收起预览（保留选中，顶栏可再展开）——对齐 files/knowledge 的「收起右侧栏」 */
@@ -35,6 +39,8 @@ type AgentDetailDrawerProps = {
 export function AgentDetailDrawer({
   card,
   dispatches,
+  dispatchError,
+  onRetryDispatches,
   maximized,
   onMaximize,
   onCollapse,
@@ -42,16 +48,18 @@ export function AgentDetailDrawer({
   const [filePreview, setFilePreview] = useState<LocalPreviewFile | null>(null);
   // 本地复核状态覆盖表（点击锁定后行内立即更新，无需重取全量数据）
   const [lockedIds, setLockedIds] = useState<Set<number>>(new Set());
+  const [lockTarget, setLockTarget] = useState<number | null>(null);
 
   const handleLock = useCallback(async (dispatchId: number) => {
-    if (!confirm("确认锁定该任务的复核状态？锁定后不可撤销。")) return;
     try {
       const res = await fetch(`/api/agents/dispatches/${dispatchId}/lock`, { method: "POST" });
       if (res.ok) {
         setLockedIds((prev) => new Set(prev).add(dispatchId));
+      } else {
+        toast.error("锁定失败，请检查网络后重试");
       }
     } catch {
-      // 网络错误：静默忽略（用户可刷新重试）
+      toast.error("锁定失败，请检查网络后重试");
     }
   }, []);
 
@@ -70,7 +78,7 @@ export function AgentDetailDrawer({
     <Surface level="card" edge="none" shape="none" className="flex flex-col overflow-hidden h-full">
         {/* 头部：单行，与列表列 h-11 标题栏对齐——padding 同 .preview-head-card（中线 22px、分隔线 44px）。
             avatar / icon-btn 均 32px 高，名称+简介同一行（简介 truncate），不再撑成两行。 */}
-        <div className="flex items-center gap-3 px-[14px] pt-px pb-1.5 border-b border-border shrink-0">
+        <div className="flex items-center gap-3 px-4 pt-px pb-1.5 border-b border-border shrink-0">
           {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
           <span
             className="fa-toned shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-body font-semibold select-none"
@@ -127,7 +135,7 @@ export function AgentDetailDrawer({
             />
           </div>
         ) : (
-          <div className="flex-1 overflow-auto p-4 flex flex-col gap-5">
+          <div className="flex-1 overflow-auto p-4 flex flex-col gap-4">
             {/* 当前状态 */}
             {(isRunning || isBlocked) && (
               <section>
@@ -169,7 +177,14 @@ export function AgentDetailDrawer({
             {/* 最近任务 */}
             <section>
               <p className="text-meta font-medium text-muted-foreground mb-2">最近任务</p>
-              {dispatches == null ? (
+              {dispatchError ? (
+                <div className="flex flex-col items-center gap-3 py-4 text-body text-muted-foreground">
+                  <p>派发记录加载失败。</p>
+                  {onRetryDispatches && (
+                    <Button variant="outline" size="sm" onClick={onRetryDispatches}>重试</Button>
+                  )}
+                </div>
+              ) : dispatches == null ? (
                 <p className="text-meta text-muted-foreground">加载中…</p>
               ) : dispatches.length === 0 ? (
                 <p className="text-meta text-muted-foreground">暂无工作记录</p>
@@ -251,7 +266,7 @@ export function AgentDetailDrawer({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          void handleLock(row.id);
+                          setLockTarget(row.id);
                         }}
                       >
                         锁定
@@ -349,6 +364,15 @@ export function AgentDetailDrawer({
             )}
           </div>
         )}
+
+      <ConfirmDialog
+        open={lockTarget !== null}
+        onOpenChange={(open) => { if (!open) setLockTarget(null); }}
+        title="锁定该任务的复核状态？"
+        description="锁定后不可撤销。"
+        confirmLabel="锁定任务"
+        onConfirm={() => { if (lockTarget !== null) void handleLock(lockTarget); }}
+      />
       </Surface>
   );
 }

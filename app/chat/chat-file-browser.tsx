@@ -201,7 +201,7 @@ export function OpenableFileRow({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             {loadingApps ? (
-              <div className="px-2 py-1.5 text-meta text-muted-foreground">正在查找可打开的应用...</div>
+              <div className="px-2 py-1.5 text-meta text-muted-foreground">正在查找可打开的应用…</div>
             ) : null}
             {!loadingApps && !apps?.length ? (
               <div className="px-2 py-1.5 text-meta text-muted-foreground">未找到匹配应用，可用默认应用打开</div>

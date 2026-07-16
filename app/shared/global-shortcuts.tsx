@@ -165,7 +165,7 @@ function ShortcutsHelpDialog({
             </DialogPrimitive.Close>
           </div>
 
-          <div className="max-h-[60vh] overflow-y-auto px-4 py-3 flex flex-col gap-5">
+          <div className="max-h-[60vh] overflow-y-auto px-4 py-3 flex flex-col gap-4">
             {GROUPS.map((group) => (
               <div key={group.title} className="flex flex-col gap-1.5">
                 <p className="text-meta text-muted-foreground tracking-wider">{group.title}</p>

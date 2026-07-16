@@ -147,5 +147,87 @@ export const queryStagesTestPromise = (async () => {
     console.log("query-stages S5 pass ✓");
   }
 
-  console.log("query-stages: S1-S5 全部通过 ✓");
+  // --- S6: 去重命中时新附件应落库（Plan 045 本 bug）---
+  {
+    const { openFinanceDatabase: openDb6, getMessageAttachments: getAtts6 } = await import("../lib/db/sqlite.ts");
+
+    // 第一次请求：建会话，不带附件
+    const ctx1 = makeCtx({ lastUserContent: "附件测试", messages: [{ role: "user" as const, content: "附件测试" }] });
+    const r1 = await sessionStage(ctx1);
+    assert.ok(!(r1 instanceof Response), "S6 setup FAIL");
+    const convId = r1.conversationId!;
+
+    // 取第一条 user 消息 id
+    const db6 = openDb6(process.env.FINANCE_AGENT_DB_PATH!);
+    const msgRow = db6.prepare(
+      "SELECT id FROM chat_messages WHERE conversation_id = ? AND role = 'user' ORDER BY id ASC LIMIT 1"
+    ).get(convId) as { id: number };
+    db6.close();
+    const msgId = msgRow.id;
+
+    // 第二次请求：同 content（触发去重）+ 一个新附件
+    const fakeStoragePath = path.join(baseDir, "conversations", String(convId), "upload", "report.csv");
+    const newAtt = { name: "report.csv", mimeType: "text/csv", size: 1024, dataUrl: "", storagePath: fakeStoragePath };
+    const ctx2 = makeCtx({
+      conversationId: convId,
+      lastUserContent: "附件测试",
+      messages: [{ role: "user" as const, content: "附件测试" }],
+      attachments: [newAtt],
+    });
+    const r2 = await sessionStage(ctx2);
+    assert.ok(!(r2 instanceof Response), "S6 FAIL: sessionStage 不应短路");
+
+    // 断言 chat_attachments 有该附件记录
+    const atts = getAtts6(msgId);
+    assert.equal(atts.length, 1, `S6 FAIL: 去重命中后新附件应落库，期望 1 条，实际 ${atts.length} 条`);
+    assert.equal(atts[0].fileName, "report.csv", "S6 FAIL: 附件文件名不符");
+    assert.equal(atts[0].sizeBytes, 1024, "S6 FAIL: 附件大小不符");
+    console.log("query-stages S6 pass ✓");
+  }
+
+  // --- S7: 同附件重复提交不产生重复行（防双插）---
+  {
+    const { openFinanceDatabase: openDb7, getMessageAttachments: getAtts7 } = await import("../lib/db/sqlite.ts");
+
+    // 建会话
+    const ctx1 = makeCtx({ lastUserContent: "防双插测试", messages: [{ role: "user" as const, content: "防双插测试" }] });
+    const r1 = await sessionStage(ctx1);
+    assert.ok(!(r1 instanceof Response), "S7 setup FAIL");
+    const convId = r1.conversationId!;
+
+    // 取消息 id
+    const db7 = openDb7(process.env.FINANCE_AGENT_DB_PATH!);
+    const msgRow7 = db7.prepare(
+      "SELECT id FROM chat_messages WHERE conversation_id = ? AND role = 'user' ORDER BY id ASC LIMIT 1"
+    ).get(convId) as { id: number };
+    db7.close();
+    const msgId7 = msgRow7.id;
+
+    // 第二次请求：去重命中 + 同一附件（同名同大小）
+    const fakeStoragePath7 = path.join(baseDir, "conversations", String(convId), "upload", "invoice.pdf");
+    const dupAtt = { name: "invoice.pdf", mimeType: "application/pdf", size: 2048, dataUrl: "", storagePath: fakeStoragePath7 };
+    const ctx2 = makeCtx({
+      conversationId: convId,
+      lastUserContent: "防双插测试",
+      messages: [{ role: "user" as const, content: "防双插测试" }],
+      attachments: [dupAtt],
+    });
+    await sessionStage(ctx2);
+
+    // 第三次请求：同附件再来一次（模拟真重试）
+    const ctx3 = makeCtx({
+      conversationId: convId,
+      lastUserContent: "防双插测试",
+      messages: [{ role: "user" as const, content: "防双插测试" }],
+      attachments: [dupAtt],
+    });
+    await sessionStage(ctx3);
+
+    // 断言只有 1 条附件记录
+    const atts7 = getAtts7(msgId7);
+    assert.equal(atts7.length, 1, `S7 FAIL: 同附件重复提交不应产生重复行，期望 1 条，实际 ${atts7.length} 条`);
+    console.log("query-stages S7 pass ✓");
+  }
+
+  console.log("query-stages: S1-S7 全部通过 ✓");
 })();

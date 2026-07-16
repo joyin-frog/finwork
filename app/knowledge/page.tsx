@@ -110,11 +110,12 @@ function MetadataPanel({
           { label: "业务状态", key: "status" as keyof DocMetadata },
         ].map(({ label, key }) => (
           <div key={key} className="flex flex-col gap-0.5">
-            <span className="text-caption text-muted-foreground uppercase tracking-wide">{label}</span>
+            <label htmlFor={`meta-${key}`} className="text-caption text-muted-foreground uppercase tracking-wide">{label}</label>
             {editing ? (
               /* eslint-disable-next-line no-restricted-syntax */
               <input
-                className="h-7 px-2 text-meta border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                id={`meta-${key}`}
+                className="h-7 px-2 text-meta border border-input rounded-md bg-background"
                 value={String(form[key] ?? "")}
                 onChange={e => {
                   const v = e.target.value;
@@ -203,6 +204,7 @@ function KnowledgePageContent() {
 
   // docs
   const [docs, setDocs] = useState<DocRow[]>([]);
+  const [docsError, setDocsError] = useState(false);
   const [filterCat, setFilterCat] = useState("all");
   const [deleteTarget, setDeleteTarget] = useState<DocRow | null>(null);
 
@@ -257,11 +259,21 @@ function KnowledgePageContent() {
   }, [docs, filterCat, showArchived]);
 
   const fetchDocs = useCallback(async () => {
-    const res = await fetch("/api/knowledge/documents"); const json = await res.json();
-    if (json.ok) setDocs(json.data.documents);
+    try {
+      const res = await fetch("/api/knowledge/documents");
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setDocsError(true);
+      } else {
+        setDocsError(false);
+        setDocs(json.data.documents);
+      }
+    } catch {
+      setDocsError(true);
+    }
   }, []);
 
-  useEffect(() => { fetchDocs(); }, [fetchDocs]);
+  useEffect(() => { void fetchDocs(); }, [fetchDocs]);
 
   // ?doc=<id> 来自全局搜索:文档加载后自动打开预览,然后清掉 URL 参数
   useEffect(() => {
@@ -283,7 +295,7 @@ function KnowledgePageContent() {
     await fetch(`/api/knowledge/documents/${deleteTarget.id}`, { method: "DELETE" });
     if (previewDocId === deleteTarget.id && previewMode === "file") { setPreviewDocId(null); setHitLines([]); setHitIndex(-1); }
     setDeleteTarget(null);
-    fetchDocs();
+    void fetchDocs();
   }
 
   const catCounts = useMemo(() => {
@@ -709,7 +721,7 @@ function KnowledgePageContent() {
           <button type="button" className="preview-empty-collapse-btn p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" onClick={toggleSidebar} aria-label="收起预览">
             <HugeiconsIcon icon={PanelRightIcon} size={16} />
           </button>
-          加载中...
+          加载中…
         </div>
       ) : preview ? (
         <div className="flex flex-col h-full overflow-hidden">
@@ -916,6 +928,12 @@ function KnowledgePageContent() {
               />
             ) : (
               <>
+              {docsError && docs.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
+                  <p>文档加载失败。</p>
+                  <Button variant="outline" size="sm" onClick={() => void fetchDocs()}>重试</Button>
+                </div>
+              ) : null}
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-3.5">
                 {/* 上传卡:常驻网格首位,点击直接弹系统文件选择器 */}
                 <input
@@ -948,7 +966,7 @@ function KnowledgePageContent() {
                   title="上传文档"
                   onClick={() => { if (!uploading) fileInputRef.current?.click(); }}
                   disabled={uploading}
-                  className="flex flex-col items-center justify-center gap-1.5 min-h-[120px] border-2 border-dashed border-border rounded-xl text-muted-foreground cursor-pointer transition-colors hover:border-primary/50 hover:text-primary hover:bg-accent/50 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground disabled:hover:bg-transparent"
+                  className="flex flex-col items-center justify-center gap-1.5 min-h-[120px] border-2 border-dashed border-border rounded-xl text-muted-foreground cursor-pointer transition-colors hover:border-primary/50 hover:text-primary hover:bg-accent/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground disabled:hover:bg-transparent"
                 >
                   <HugeiconsIcon icon={Add01Icon} size={24} />
                   <span className="text-body">{uploading || progress ? (progress || "上传中…") : "上传文档"}</span>

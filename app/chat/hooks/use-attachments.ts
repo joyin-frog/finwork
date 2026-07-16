@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { readAttachment } from "@/app/chat/chat-request";
 import type { ChatAttachment, ReferencedFile, GeneratedAttachment } from "@/app/chat/chat-types";
@@ -24,16 +24,20 @@ export function useAttachments({
   const [conversationFiles, setConversationFiles] = useState<StoredChatAttachment[]>([]);
   const [conversationFilesLoaded, setConversationFilesLoaded] = useState(false);
   const [generatedFiles, setGeneratedFiles] = useState<Record<number, GeneratedAttachment[]>>({});
+  const currentIdRef = useRef<number | null>(conversationId);
 
   async function fetchConversationFiles(id: number) {
     try {
       const res = await fetch(`/api/chat/attachments?conversationId=${id}`);
       const payload = (await res.json()) as { ok: boolean; data: { attachments: StoredChatAttachment[] } };
+      if (currentIdRef.current !== null && currentIdRef.current !== id) return; // 陈旧响应：会话已切走
       if (payload.ok) setConversationFiles(payload.data.attachments);
     } catch {
       // File panel is helpful, not critical for chatting.
     } finally {
-      setConversationFilesLoaded(true);
+      if (currentIdRef.current === null || currentIdRef.current === id) {
+        setConversationFilesLoaded(true);
+      }
     }
   }
 
@@ -51,6 +55,7 @@ export function useAttachments({
   }, []);
 
   useEffect(() => {
+    currentIdRef.current = conversationId;
     if (conversationId) void fetchConversationFiles(conversationId);
   }, [conversationId]); // fetchConversationFiles is stable (defined inside hook, stable identity)
 

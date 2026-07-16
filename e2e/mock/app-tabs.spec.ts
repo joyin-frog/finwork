@@ -4,13 +4,26 @@ import { assertNoCrash } from "./helpers";
 
 const ATTACHMENT_FIXTURE = path.join(process.cwd(), "tests", "fixtures", "excel-preview-enhance.xlsx");
 
-test.beforeAll(async ({ request }) => {
+test.beforeAll(async ({ request, browser }) => {
   // Next dev 首次访问会按路由编译；先串行 warm 本 spec 涉及的页面，
   // 让 UI 用例只测客户端导航，不与首编译的 frame replacement 竞态。
-  for (const route of ["/cockpit", "/agents", "/knowledge", "/skills", "/config", "/chat/new"]) {
+  const routes = ["/cockpit", "/agents", "/knowledge", "/skills", "/config", "/chat/new"];
+  let origin = "";
+  for (const route of routes) {
     const response = await request.get(route);
     expect(response.ok(), `warm route ${route}`).toBe(true);
+    origin ||= new URL(response.url()).origin;
   }
+  const warmContext = await browser.newContext();
+  const warmPage = await warmContext.newPage();
+  await warmPage.addInitScript(() => {
+    sessionStorage.setItem("fa-firstrun-ready", "1");
+    sessionStorage.setItem("fa-firstrun-key-prompted", "1");
+  });
+  for (const route of routes) {
+    await warmPage.goto(`${origin}${route}`, { waitUntil: "networkidle" });
+  }
+  await warmContext.close();
 });
 
 async function fillChat(page: import("@playwright/test").Page, prompt: string) {
@@ -31,6 +44,7 @@ async function openNavPage(page: import("@playwright/test").Page, name: string, 
     await page.getByRole("complementary").getByRole("link", { name, exact: true }).click();
     await expect.poll(() => new URL(page.url()).pathname, { timeout: 2_000 }).toBe(pathname);
   }).toPass({ timeout: 20_000 });
+  await page.waitForLoadState("networkidle");
 }
 
 test("app tabs: 一级页面建签、切换和关闭回退", async ({ page }) => {

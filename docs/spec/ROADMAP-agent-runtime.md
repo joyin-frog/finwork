@@ -109,6 +109,20 @@ run_settled
    再有新事件；携带 `outcome: completed | aborted | error`。`run_ended` 与 `run_settled`
    之间允许出现 `compaction_completed` / `queue_updated` / 落库收尾——"done ≠ settled"
    正是本事件存在的理由。传递语义是 at-least-once，客户端按 eventId 去重（R7）。
+
+   **实现现状校准（AR2a 已 ship 后，以代码为准；2026-07-16）**：
+   - **谁发射**：`app/api/agent/query/route.ts` 内 `settleRun(outcome)` 单一收口——先
+     `run_ended`，再 `run_settled`；成功 / abort / error 三路径共用（见
+     `tests/runtime-events.test.ts` S1–S5）。`settleRun` 之后仍发旧帧 `done` /
+     `incomplete` / `error`；`title_updated` 在 settled **之后**异步发送（runId=null）。
+   - **前端不把它当完成态开关**：`app/chat/chat-request.ts` 的 `dispatchSSEEvent` 对
+     `run_settled`（及主对话 `run_ended`）**静默消耗**，不调 `onDone`/`onIncomplete`。
+     UI 终态仍由**旧帧**驱动。`contractToLegacyEvents` 对 `run_settled` 返回 `[]`
+     （不落库、不进时间线）。
+   - **定位**：协议层 / 服务端 canonical 终态（为 AR2b 重放/观测预留）；**不是**当前
+     聊天 UI 的 TurnStatus 来源。`spec-agent-event-contract.md` 里「chat-stream 完成态
+     派生自 run_settled」是计划表述、**未按字面落地**——细节见
+     `audit-agent-event-contract.md`「实现现状校准」。
 2. **实时/持久分账（R6，AR2a spec 修正）**：delta 事件只带增量**不带 partial 快照**——
    SSE 场景下逐 delta 携带全量累积是 O(n²) 网络字节（pi 是进程内传递才无成本），且前端
    reducer 本就增量累积。快照挂在 `message_completed`/`tool_completed` 终态事件；重放

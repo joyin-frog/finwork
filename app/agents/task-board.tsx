@@ -265,7 +265,7 @@ export function TaskBoardView({ board }: TaskBoardProps) {
   const filingBatchPrompt = `把 ${board.period} 申报前复核批量跑一遍（增值税及附加、个税各出一张复核卡）`;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {/* 全局汇总行 + 批量复核申报前主按钮 */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-title font-semibold">{board.period}</span>

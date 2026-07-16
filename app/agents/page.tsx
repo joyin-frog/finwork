@@ -52,6 +52,7 @@ export default function AgentsPage() {
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [dispatches, setDispatches] = useState<DispatchRow[] | null>(null);
   const [dispatchLoading, setDispatchLoading] = useState(false);
+  const [dispatchError, setDispatchError] = useState(false);
   // 派发详情请求令牌：快速切换角色时，防止慢的旧请求覆盖新角色的数据
   const dispatchReqRef = useRef(0);
 
@@ -98,6 +99,27 @@ export default function AgentsPage() {
     return () => clearInterval(timer);
   }, [roster, fetchRoster]);
 
+  // 派发详情拉取（供 handleSelectRole 首次加载和重试共用）
+  const fetchDispatchesForRole = useCallback(async (roleId: string) => {
+    setDispatchError(false);
+    setDispatches(null);
+    setDispatchLoading(true);
+    const reqId = ++dispatchReqRef.current;
+    try {
+      const res = await fetch(`/api/agents/dispatches?roleId=${encodeURIComponent(roleId)}&limit=8`);
+      const json = await res.json();
+      // 已被更晚的选择抢占 → 丢弃这次(旧)响应，别覆盖新角色的数据/加载态
+      if (reqId !== dispatchReqRef.current) return;
+      if (json.ok) setDispatches(json.data.rows);
+      else { setDispatchError(true); setDispatches([]); }
+    } catch {
+      if (reqId !== dispatchReqRef.current) return;
+      setDispatchError(true); setDispatches([]);
+    } finally {
+      if (reqId === dispatchReqRef.current) setDispatchLoading(false);
+    }
+  }, []);
+
   // 选中角色时加载派发详情
   const handleSelectRole = useCallback(
     async (roleId: string) => {
@@ -112,24 +134,9 @@ export default function AgentsPage() {
       }
       setSelectedRoleId(roleId);
       open();
-      setDispatches(null);
-      setDispatchLoading(true);
-      const reqId = ++dispatchReqRef.current;
-      try {
-        const res = await fetch(`/api/agents/dispatches?roleId=${encodeURIComponent(roleId)}&limit=8`);
-        const json = await res.json();
-        // 已被更晚的选择抢占 → 丢弃这次(旧)响应，别覆盖新角色的数据/加载态
-        if (reqId !== dispatchReqRef.current) return;
-        if (json.ok) setDispatches(json.data.rows);
-        else setDispatches([]);
-      } catch {
-        if (reqId !== dispatchReqRef.current) return;
-        setDispatches([]);
-      } finally {
-        if (reqId === dispatchReqRef.current) setDispatchLoading(false);
-      }
+      await fetchDispatchesForRole(roleId);
     },
-    [selectedRoleId, collapsed, open, toggle]
+    [selectedRoleId, collapsed, open, toggle, fetchDispatchesForRole]
   );
 
   // 收起预览（保留选中角色，可从顶栏「展开预览」再打开）。
@@ -218,7 +225,7 @@ export default function AgentsPage() {
               )}
             </header>
 
-            <div className="content-fade-top flex-1 overflow-auto p-page flex flex-col gap-5">
+            <div className="content-fade-top flex-1 overflow-auto p-page flex flex-col gap-6">
             {error ? (
               <div className="flex flex-col items-center gap-3 py-16 text-body text-muted-foreground">
                 <p>{error}</p>
@@ -274,6 +281,8 @@ export default function AgentsPage() {
             <AgentDetailDrawer
               card={selectedCard}
               dispatches={dispatchLoading ? null : dispatches}
+              dispatchError={dispatchError}
+              onRetryDispatches={selectedRoleId ? () => void fetchDispatchesForRole(selectedRoleId!) : undefined}
               maximized={maximized}
               onMaximize={maximize}
               onCollapse={handleCollapseDrawer}

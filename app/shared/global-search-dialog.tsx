@@ -26,16 +26,17 @@ export function GlobalSearchDialog({
   const router = useRouter();
   const [q, setQ] = useState("");
   const [data, setData] = useState<SearchData>({ files: [], conversations: [] });
+  const [failed, setFailed] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 空查询也请求:服务端返回最近对话(打开即见)
   const fetchResults = useCallback((query: string) => {
     fetch("/api/search?q=" + encodeURIComponent(query))
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
       .then((json: { ok: boolean; data?: SearchData }) => {
-        if (json.ok && json.data) setData(json.data);
+        if (json.ok && json.data) { setFailed(false); setData(json.data); }
       })
-      .catch(() => {});
+      .catch(() => { setFailed(true); });
   }, []);
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export function GlobalSearchDialog({
 
   // 关闭时清空查询与结果
   useEffect(() => {
-    if (!open) { setQ(""); setData({ files: [], conversations: [] }); }
+    if (!open) { setQ(""); setData({ files: [], conversations: [] }); setFailed(false); }
   }, [open]);
 
   const searching = q.trim().length > 0;
@@ -91,6 +92,9 @@ export function GlobalSearchDialog({
               data-slot="command-list"
               className="max-h-[50vh] overflow-x-hidden overflow-y-auto scroll-py-1 p-1"
             >
+              {failed && (
+                <div className="py-3 text-center text-meta text-muted-foreground">搜索暂时不可用，稍后重试</div>
+              )}
               {searching && !hasResults && (
                 <div className="py-6 text-center text-small text-muted-foreground">无匹配</div>
               )}

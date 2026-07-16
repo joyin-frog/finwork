@@ -166,7 +166,7 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
       {children}
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim-blocking">
         {/* bg-background 覆盖 overlay 默认的 bg-popover：暗色下两 token 值不同，保持改造前视觉 */}
-        <Surface level="overlay" edge="hairline" shape="panel" className="w-[540px] max-w-[92vw] max-h-[90vh] overflow-y-auto bg-background p-6 flex flex-col gap-5">
+        <Surface level="overlay" edge="hairline" shape="panel" className="w-[540px] max-w-[92vw] max-h-[90vh] overflow-y-auto bg-background p-6 flex flex-col gap-6">
           <h2 className="text-title">欢迎用小财</h2>
 
           {/* ① 装组件 */}

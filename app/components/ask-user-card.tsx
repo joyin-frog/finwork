@@ -50,10 +50,10 @@ export function AskUserCard({
       if (res.ok) {
         setSubmitted(label);
       } else {
-        toast.error("确认提交失败，请重试");
+        toast.error("确认没有提交成功。检查网络后再点一次");
       }
     } catch {
-      toast.error("确认提交失败，请重试");
+      toast.error("确认没有提交成功。检查网络后再点一次");
     } finally {
       setSubmitting(false);
     }

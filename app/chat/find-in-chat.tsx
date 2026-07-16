@@ -218,7 +218,7 @@ export function FindInChat({ open, initialQuery = "", threadRef, onClose, conten
       <button
         onClick={goPrev}
         aria-label="上一个"
-        className="rounded p-0.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40"
+        className="rounded p-0.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
         disabled={totalCount === 0}
       >
         <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
@@ -226,7 +226,7 @@ export function FindInChat({ open, initialQuery = "", threadRef, onClose, conten
       <button
         onClick={goNext}
         aria-label="下一个"
-        className="rounded p-0.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40"
+        className="rounded p-0.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
         disabled={totalCount === 0}
       >
         <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
