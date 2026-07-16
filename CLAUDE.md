@@ -126,3 +126,14 @@
 一旦发现自己落入其中任何一种模式，正确做法都是停下来，而不是硬着头皮继续推进。
 
 ---
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Prefer AST edges (`imports` / `calls` / `contains` with line numbers). Treat long docs↔code paths and doc-only "ghost" symbols as hypotheses — verify in source before asserting. For AR2a/`run_settled`, prefer `docs/spec/audit-agent-event-contract.md`「实现现状校准」over outdated plan wording.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
