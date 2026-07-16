@@ -21,7 +21,7 @@ import { SkillPopup, ComposerHighlightOverlay, DeepThinkToggle, isValidSkillName
 import { insertSkillToken } from "@/app/chat/skill-token";
 import { FindInChat } from "@/app/chat/find-in-chat";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
-import { useNavState } from "@/app/shared/nav-state";
+import { syncCompletedConversationTitle, useNavState } from "@/app/shared/nav-state";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import {
   buildUserContent,
@@ -109,7 +109,13 @@ export default function ChatPage({
   quickPrompts?: ChatQuickPrompt[];
   roleMode?: RoleMode;
 }) {
-  const { refreshConversations, conversations: navConversations, updateConversationTitle } = useNavState();
+  const {
+    refreshConversations,
+    conversations: navConversations,
+    updateConversationTitle,
+    openConversationTab,
+    upgradeNewConversationTab,
+  } = useNavState();
   const router = useRouter();
   const [conversationId, setConversationId] = useState<number | null>(initialConversationId);
   const urlUpdatedRef = useRef(false);
@@ -145,8 +151,6 @@ export default function ChatPage({
     }
     return null;
   }, [loading, activeTimeline]);
-  const lastOutgoingRef = useRef<{ attachments: ChatAttachment[]; referencedAttachments: ReferencedFile[]; referencedSkills: SkillRef[]; text: string } | null>(null);
-
   // 渲染用消息 = 已落库/已加载的历史;若本会话有进行中(或刚结束待收尾)的回合,
   // 在其上叠加"用户消息 + 助手流式气泡"(收尾 effect 会把最终消息写回本地 messages 后清掉回合)。
   const displayMessages: Message[] = useMemo(() => {
@@ -397,10 +401,13 @@ export default function ChatPage({
   useEffect(() => {
     const cid = turn?.conversationId;
     if (!cid || cid === conversationId) return;
+    const provisionalTitle = turn?.finalConversation?.title ?? conversationTitle;
+    if (mode === "new") upgradeNewConversationTab(cid, provisionalTitle);
+    else openConversationTab(cid, provisionalTitle);
     setConversationId(cid);
     if (mode === "new" && !urlUpdatedRef.current) {
       urlUpdatedRef.current = true;
-      window.history.replaceState(null, "", `/chat/recent?id=${cid}`);
+      router.replace(`/chat/recent?id=${cid}`);
     }
     void refreshConversations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -410,16 +417,19 @@ export default function ChatPage({
   useEffect(() => {
     if (!turn || !turnKey) return;
     if (turn.status === "streaming") return;
+    const realId = turn.conversationId ?? conversationId;
+    syncCompletedConversationTitle(
+      { status: turn.status, conversationId: realId, finalTitle: turn.finalConversation?.title },
+      { setLocalTitle: setConversationTitle, updateNavTitle: updateConversationTitle }
+    );
 
     if (turn.status === "done" || turn.status === "incomplete") {
       // incomplete(出错但已保留已完成部分)也走这里:把落库的最终消息/文件写回本地,中间叙述与产物不丢。
-      const realId = turn.conversationId ?? conversationId;
       if (realId && realId !== conversationId) setConversationId(realId);
       if (mode === "new" && turn.conversationId && !urlUpdatedRef.current) {
         urlUpdatedRef.current = true;
-        window.history.replaceState(null, "", `/chat/recent?id=${turn.conversationId}`);
+        router.replace(`/chat/recent?id=${turn.conversationId}`);
       }
-      if (turn.finalConversation?.title) setConversationTitle(turn.finalConversation.title);
       const finalMessages = mergeFinalMessages(turn);
       setMessages(finalMessages);
       if (turn.generatedAttachments?.length) {
@@ -435,7 +445,7 @@ export default function ChatPage({
     } else {
       // error / stopped:把已流式内容定格进本地消息,并把草稿文本+附件还回输入框便于一键重试
       setMessages(overlayMessages(turn));
-      const out = lastOutgoingRef.current;
+      const out = turn.retryPayload;
       if (out) {
         setAttachments(out.attachments);
         setReferencedAttachments(out.referencedAttachments);
@@ -525,6 +535,7 @@ export default function ChatPage({
     if (isCancelled()) return;
     const conversation = payload.data.conversation;
     setConversationTitle(conversation.title);
+    openConversationTab(conversation.id, conversation.title);
     // 喂回 nav-state(标题单一源):打开会话时用 DB 权威标题校正侧栏,避免旧摘要标题反盖 header。
     updateConversationTitle(conversation.id, conversation.title);
     setMessages(conversation.messages);
@@ -872,7 +883,6 @@ export default function ChatPage({
     // 把发送 + 流式读取交给跨页存活的 store:流式态由它按会话 key 持有,
     // 切到别的页面再切回来,本回合仍在渲染(不再随组件卸载丢失)。
     const key = conversationId != null ? `c:${conversationId}` : `new:${crypto.randomUUID()}`;
-    lastOutgoingRef.current = { attachments: outgoingAttachments, referencedAttachments: outgoingRefAttachments, referencedSkills: outgoingSkills, text: value };
     setTurnKey(key);
     // 取消待触发的防抖写，并立即清除 storage（防止重启后误恢复已发送内容）。
     if (draftPersistTimerRef.current !== null) { clearTimeout(draftPersistTimerRef.current); draftPersistTimerRef.current = null; }
@@ -893,7 +903,13 @@ export default function ChatPage({
       attachments: outgoingAttachments,
       referencedAttachments: outgoingRefAttachments,
       referencedSkills: outgoingSkills,
-      modelTier
+      modelTier,
+      retryPayload: {
+        text: value,
+        attachments: outgoingAttachments,
+        referencedAttachments: outgoingRefAttachments,
+        referencedSkills: outgoingSkills,
+      },
     });
   }
 

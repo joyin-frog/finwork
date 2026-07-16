@@ -9,5 +9,5 @@ export default async function NewChatPage({ searchParams }: { searchParams: Prom
   const initialSkill = params.skill && isValidSkillName(params.skill) ? await getSkill(params.skill) : null;
   const initialDraft = params.prompt || (initialSkill ? `/${initialSkill.name}${initialSkill.starter ? ` ${initialSkill.starter}` : ""}` : undefined);
   const settings = await readPublicClaudeSettings().catch(() => null);
-  return <ChatPage mode="new" quickPrompts={getChatQuickPrompts(new Date())} initialDraft={initialDraft} initialSkill={initialSkill ? { name: initialSkill.name, description: initialSkill.description } : undefined} roleMode={settings?.roleMode ?? "daily"} />;
+  return <ChatPage key="chat:new" mode="new" quickPrompts={getChatQuickPrompts(new Date())} initialDraft={initialDraft} initialSkill={initialSkill ? { name: initialSkill.name, description: initialSkill.description } : undefined} roleMode={settings?.roleMode ?? "daily"} />;
 }

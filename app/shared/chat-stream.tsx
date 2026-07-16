@@ -33,6 +33,13 @@ export type StreamTimelineItem = { id: string; event: AgentEvent; createdAt: num
 
 export type TurnStatus = "streaming" | "done" | "error" | "stopped" | "incomplete";
 
+export type StreamRetryPayload = {
+  text: string;
+  attachments: ChatAttachment[];
+  referencedAttachments: ReferencedFile[];
+  referencedSkills: SkillRef[];
+};
+
 export type StreamTurn = {
   /** 会话维度的 key:已有会话用 `c:${id}`,新会话用 `new:${uuid}`(落库拿到真实 id 后由 chat-page 收尾)。 */
   key: string;
@@ -54,6 +61,8 @@ export type StreamTurn = {
   errorMessage?: string;
   /** 失败时的恢复动作类型,供 chat-page 决定弹"去配置"还是"重试"。 */
   errorAction?: AgentErrorAction;
+  /** 跨 ChatPage 重挂载存活的发送数据,供 error/stopped 恢复输入框。 */
+  retryPayload?: StreamRetryPayload;
 };
 
 export type StartTurnParams = {
@@ -68,7 +77,24 @@ export type StartTurnParams = {
   referencedSkills?: SkillRef[];
   /** 本条消息的推理强度档位(可选,默认 auto)。 */
   modelTier?: ModelTier;
+  /** ChatPage 终态恢复所需的原始发送数据；浮窗等无需恢复的调用方可不传。 */
+  retryPayload?: StreamRetryPayload;
 };
+
+export function createStreamTurn(params: StartTurnParams, startedAt: number): StreamTurn {
+  return {
+    key: params.key,
+    conversationId: params.conversationId,
+    status: "streaming",
+    userMessage: params.userMessage,
+    baseMessages: params.baseMessages,
+    streamedContent: "",
+    timeline: [],
+    startedAt,
+    processedEndedAt: null,
+    retryPayload: params.retryPayload,
+  };
+}
 
 // ——— 纯 reducer:把单个流式事件并入回合态(便于单测,逻辑与原 chat-page 内联回调一致) ———
 
@@ -146,11 +172,14 @@ export function activeAssistantContent(turn: StreamTurn): string {
   return turn.streamedContent || "...";
 }
 
-type ChatStreamApi = {
+export type StreamTurnOperations = {
   getTurn: (key: string | null | undefined) => StreamTurn | undefined;
-  startTurn: (params: StartTurnParams) => void;
   stopTurn: (key: string) => void;
   consumeTurn: (key: string) => void;
+};
+
+type ChatStreamApi = StreamTurnOperations & {
+  startTurn: (params: StartTurnParams) => void;
   /** 按 conversationId 索引的进行中/刚结束回合状态,供侧栏渲染状态点(streaming=蓝/done=绿/error=红)。 */
   statusByConversationId: Record<number, TurnStatus>;
   /** 当前是否存在未结束的回合;供 CloseGuard 判断是否弹关窗确认。 */
@@ -169,8 +198,91 @@ export function isFinished(status: TurnStatus) {
   return status === "done" || status === "error" || status === "stopped" || status === "incomplete";
 }
 
+export function resolveTurnKey(
+  turns: Record<string, StreamTurn>,
+  requestedKey: string
+): string | undefined {
+  if (turns[requestedKey]) return requestedKey;
+  if (!requestedKey.startsWith("c:")) return undefined;
+  const conversationId = Number(requestedKey.slice(2));
+  if (!Number.isFinite(conversationId)) return undefined;
+
+  let latest: StreamTurn | undefined;
+  for (const turn of Object.values(turns)) {
+    if (turn.conversationId !== conversationId) continue;
+    if (!latest || turn.startedAt >= latest.startedAt) latest = turn;
+  }
+  return latest?.key;
+}
+
+export type StreamTurnOperation = "get" | "stop" | "consume";
+
+export type StreamTurnOperationPlan = {
+  resolvedKey: string | undefined;
+  turn: StreamTurn | undefined;
+  abortKey: string | undefined;
+  deleteControllerKey: string | undefined;
+  nextTurns: Record<string, StreamTurn>;
+};
+
+export function planStreamTurnOperation(
+  turns: Record<string, StreamTurn>,
+  requestedKey: string,
+  operation: StreamTurnOperation
+): StreamTurnOperationPlan {
+  const resolvedKey = resolveTurnKey(turns, requestedKey);
+  const turn = resolvedKey ? turns[resolvedKey] : undefined;
+  if (!resolvedKey) {
+    return { resolvedKey, turn, abortKey: undefined, deleteControllerKey: undefined, nextTurns: turns };
+  }
+  if (operation === "stop") {
+    return { resolvedKey, turn, abortKey: resolvedKey, deleteControllerKey: undefined, nextTurns: turns };
+  }
+  if (operation === "consume") {
+    const nextTurns = { ...turns };
+    delete nextTurns[resolvedKey];
+    return { resolvedKey, turn, abortKey: undefined, deleteControllerKey: resolvedKey, nextTurns };
+  }
+  return { resolvedKey, turn, abortKey: undefined, deleteControllerKey: undefined, nextTurns: turns };
+}
+
+type StreamTurnController = { abort: () => void };
+
+export type StreamTurnOperationsDeps = {
+  getTurns: () => Record<string, StreamTurn>;
+  updateTurns: (update: (turns: Record<string, StreamTurn>) => Record<string, StreamTurn>) => void;
+  getControllers: () => Record<string, StreamTurnController>;
+};
+
+export function createStreamTurnOperations(deps: StreamTurnOperationsDeps): StreamTurnOperations {
+  return {
+    getTurn(key) {
+      if (!key) return undefined;
+      return planStreamTurnOperation(deps.getTurns(), key, "get").turn;
+    },
+    stopTurn(key) {
+      const plan = planStreamTurnOperation(deps.getTurns(), key, "stop");
+      if (plan.abortKey) deps.getControllers()[plan.abortKey]?.abort();
+    },
+    consumeTurn(key) {
+      const plan = planStreamTurnOperation(deps.getTurns(), key, "consume");
+      if (!plan.resolvedKey) return;
+      if (plan.deleteControllerKey) delete deps.getControllers()[plan.deleteControllerKey];
+      const resolvedKey = plan.resolvedKey;
+      deps.updateTurns((turns) => {
+        if (!turns[resolvedKey]) return turns;
+        const nextTurns = { ...turns };
+        delete nextTurns[resolvedKey];
+        return nextTurns;
+      });
+    },
+  };
+}
+
 export function ChatStreamProvider({ children }: { children: React.ReactNode }) {
   const [turns, setTurns] = useState<Record<string, StreamTurn>>({});
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
   const controllersRef = useRef<Record<string, AbortController>>({});
 
   // 标题单一源:agent 提炼标题经 SSE title 事件推来时,更新 nav-state(侧栏 + header 共读)。
@@ -183,24 +295,11 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
     setTurns((prev) => (prev[key] ? { ...prev, [key]: fn(prev[key]) } : prev));
   }, []);
 
-  const getTurn = useCallback(
-    (key: string | null | undefined) => (key ? turns[key] : undefined),
-    [turns]
-  );
-
-  const consumeTurn = useCallback((key: string) => {
-    delete controllersRef.current[key];
-    setTurns((prev) => {
-      if (!prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }, []);
-
-  const stopTurn = useCallback((key: string) => {
-    controllersRef.current[key]?.abort();
-  }, []);
+  const { getTurn, stopTurn, consumeTurn } = useMemo(() => createStreamTurnOperations({
+    getTurns: () => turnsRef.current,
+    updateTurns: (updateTurns) => setTurns(updateTurns),
+    getControllers: () => controllersRef.current,
+  }), []);
 
   const startTurn = useCallback(
     (params: StartTurnParams) => {
@@ -215,17 +314,7 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
         for (const [k, t] of Object.entries(prev)) {
           if (!isFinished(t.status)) next[k] = t;
         }
-        next[key] = {
-          key,
-          conversationId: params.conversationId,
-          status: "streaming",
-          userMessage: params.userMessage,
-          baseMessages: params.baseMessages,
-          streamedContent: "",
-          timeline: [],
-          startedAt,
-          processedEndedAt: null
-        };
+        next[key] = createStreamTurn(params, startedAt);
         return next;
       });
 

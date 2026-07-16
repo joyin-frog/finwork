@@ -2,10 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trackFeature } from "@/lib/telemetry/track";
-import { useNavState, DEFAULT_NAV_WIDTH, MIN_NAV_WIDTH, MAX_NAV_WIDTH } from "@/app/shared/nav-state";
+import {
+  useNavState,
+  conversationDeleteDestination,
+  conversationIdFromRoute,
+  DEFAULT_NAV_WIDTH,
+  MIN_NAV_WIDTH,
+  MAX_NAV_WIDTH,
+} from "@/app/shared/nav-state";
 import { useChatStream } from "@/app/shared/chat-stream";
 import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { DragHandle } from "@/app/shared/window-controls";
@@ -105,6 +112,7 @@ function NavShortcut({ combo }: { combo: string }) {
 }
 
 export function AppNav({ active, chatActive }: { active: NavActive; chatActive?: ChatActive }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const {
     collapsed,
@@ -152,6 +160,14 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   const pinnedConversations = conversations.filter((c) => c.pinned);
   const recentConversations = conversations.filter((c) => !c.pinned);
+
+  async function handleConfirmDelete() {
+    const result = await confirmDelete();
+    if (!result) return;
+    const currentConversationId = conversationIdFromRoute(window.location.pathname, window.location.search);
+    const destination = conversationDeleteDestination(result, currentConversationId);
+    if (destination) router.push(destination);
+  }
 
   const navLinkClass = (isActive: boolean) =>
     cn(
@@ -410,7 +426,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         description={deleteTarget ? <>确定要删除「{deleteTarget.title}」吗？对话和文件都会被永久删除</> : undefined}
         confirmLabel="确认"
         destructive
-        onConfirm={confirmDelete}
+        onConfirm={handleConfirmDelete}
       />
 
       {/* 右边缘拖拽条:仅展开时渲染;绝对定位于 aside 右侧整高 */}

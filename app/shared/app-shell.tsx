@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast, Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,7 +12,32 @@ import { ChatFloat } from "@/app/shared/chat-float";
 import { IsMacProvider } from "@/app/shared/use-is-mac";
 import { useDetectPlatform, WindowTitleBar } from "@/app/shared/window-controls";
 import { FirstRunGate } from "@/app/shared/first-run-gate";
-import { useNavState } from "@/app/shared/nav-state";
+import { pageTabFromRoute, useNavState } from "@/app/shared/nav-state";
+
+function RouteTabSync() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { openPageTab, activateAppTab } = useNavState();
+  const search = searchParams.toString();
+  const conversationId = conversationIdFromSearch(pathname, searchParams.get("id"));
+
+  useEffect(() => {
+    const pageTab = pageTabFromRoute(pathname, search);
+    if (pageTab) {
+      openPageTab(pageTab);
+      return;
+    }
+    if (conversationId) activateAppTab(`conversation:${conversationId}`);
+  }, [activateAppTab, conversationId, openPageTab, pathname, search]);
+
+  return null;
+}
+
+function conversationIdFromSearch(pathname: string, rawId: string | null) {
+  if (pathname !== "/chat/recent") return null;
+  const id = Number(rawId);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -120,7 +145,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           最外层竖排:Windows 自绘标题栏在最上(非 Windows 渲染 null、不占高),下方一行为侧栏 + 主区。 */}
       <div className="flex h-screen flex-col overflow-hidden bg-[var(--shell-canvas)]">
         <WindowTitleBar />
-        <AppTabBar active={active} />
+        <Suspense fallback={null}>
+          <RouteTabSync />
+        </Suspense>
+        <AppTabBar />
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <a
             href="#main-content"
