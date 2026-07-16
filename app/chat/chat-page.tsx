@@ -438,7 +438,7 @@ export default function ChatPage({
             description: "已完成的部分已保留,发「继续」我就接着把剩下的做完。",
           });
         } else {
-          toast.error(turn.errorMessage ?? "处理出错,请重试", {
+          toast.error(turn.errorMessage ?? "这次回复没有完成", {
             description: "已为你还原刚才的输入,按回车即可重试。",
           });
         }

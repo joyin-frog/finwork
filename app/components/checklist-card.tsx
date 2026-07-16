@@ -145,11 +145,11 @@ export function ChecklistCard({ data }: ChecklistCardProps) {
       if (!res.ok) {
         // 失败恢复
         setItemStates(prev);
-        toast.error("更新失败，请重试");
+        toast.error("清单项没有更新成功。检查网络后重试");
       }
     } catch {
       setItemStates(prev);
-      toast.error("更新失败，请重试");
+      toast.error("清单项没有更新成功。检查网络后重试");
     } finally {
       setSubmitting(null);
     }
