@@ -28,6 +28,8 @@ import type { DispatchRow } from "@/lib/db/dispatch-store";
 type AgentDetailDrawerProps = {
   card: RoleCard;
   dispatches: DispatchRow[] | null;
+  dispatchError?: boolean;
+  onRetryDispatches?: () => void;
   maximized: boolean;
   onMaximize: () => void;
   /** 收起预览（保留选中，顶栏可再展开）——对齐 files/knowledge 的「收起右侧栏」 */
@@ -37,6 +39,8 @@ type AgentDetailDrawerProps = {
 export function AgentDetailDrawer({
   card,
   dispatches,
+  dispatchError,
+  onRetryDispatches,
   maximized,
   onMaximize,
   onCollapse,
@@ -173,7 +177,14 @@ export function AgentDetailDrawer({
             {/* 最近任务 */}
             <section>
               <p className="text-meta font-medium text-muted-foreground mb-2">最近任务</p>
-              {dispatches == null ? (
+              {dispatchError ? (
+                <div className="flex flex-col items-center gap-3 py-4 text-body text-muted-foreground">
+                  <p>派发记录加载失败。</p>
+                  {onRetryDispatches && (
+                    <Button variant="outline" size="sm" onClick={onRetryDispatches}>重试</Button>
+                  )}
+                </div>
+              ) : dispatches == null ? (
                 <p className="text-meta text-muted-foreground">加载中…</p>
               ) : dispatches.length === 0 ? (
                 <p className="text-meta text-muted-foreground">暂无工作记录</p>

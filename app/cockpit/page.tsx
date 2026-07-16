@@ -76,6 +76,8 @@ export default function CockpitPage() {
             <p>{error}</p>
             <Button variant="outline" size="sm" onClick={fetchSummary}>重试</Button>
           </div>
+        ) : loading && !summary ? (
+          <div className="flex items-center justify-center py-16 text-body text-muted-foreground">加载中…</div>
         ) : (
           <motion.div
             className="flex flex-col gap-section"
