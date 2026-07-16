@@ -551,7 +551,7 @@ export function AssistantTurn({
               <input
                 type="text"
                 // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                className="w-full rounded border border-border bg-background px-2 py-1 text-meta outline-none placeholder:text-muted-foreground"
+                className="w-full rounded border border-border bg-background px-2 py-1 text-meta placeholder:text-muted-foreground"
                 placeholder="补充说明（可跳过）"
                 value={customReason}
                 onChange={(e) => setCustomReason(e.target.value)}
