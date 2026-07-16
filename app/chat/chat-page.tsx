@@ -211,6 +211,9 @@ export default function ChatPage({
   const draftCurValRef = useRef(draft);
   draftConvIdRef.current = conversationId;
   draftCurValRef.current = draft;
+  // 防止 fetchTrustedTools 陈旧响应覆盖已切换会话的状态
+  const latestConversationIdRef = useRef(conversationId);
+  latestConversationIdRef.current = conversationId;
 
   // ── 附件状态（use-attachments hook）──
   const {
@@ -356,12 +359,25 @@ export default function ChatPage({
     setTrustedTools([]);
   }, [conversationId]);
 
-  // 会话切换时若当前草稿为空，尝试从 sessionStorage 恢复该会话的草稿。
+  // 会话切换：先把旧会话未落盘的草稿冲刷到旧 key，再载入新会话的草稿（含空串=清空）。
+  // 特例：新会话首次拿到真实 id（null→N）时草稿归属不变——迁移 key、不动 composer。
+  const draftKeyIdRef = useRef<number | null | undefined>(undefined);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const prevId = draftKeyIdRef.current;
+    draftKeyIdRef.current = conversationId;
+    if (prevId === undefined || prevId === conversationId) return; // 首次挂载：惰性初始化已载入
+    if (draftPersistTimerRef.current !== null) { clearTimeout(draftPersistTimerRef.current); draftPersistTimerRef.current = null; }
     try {
-      const stored = sessionStorage.getItem(`chat-draft:${conversationId ?? "new"}`);
-      if (stored) setDraft((prev) => prev || stored);
+      const val = draftCurValRef.current;
+      if (prevId === null) {
+        // null→N：迁移 key，不改 composer 内容
+        sessionStorage.removeItem("chat-draft:new");
+        if (val) sessionStorage.setItem(`chat-draft:${conversationId}`, val);
+      } else {
+        const prevKey = `chat-draft:${prevId}`;
+        if (val) sessionStorage.setItem(prevKey, val); else sessionStorage.removeItem(prevKey);
+        setDraft(sessionStorage.getItem(`chat-draft:${conversationId ?? "new"}`) ?? "");
+      }
     } catch { /* ignore */ }
   }, [conversationId]);
 
@@ -538,6 +554,7 @@ export default function ChatPage({
     try {
       const res = await fetch(`/api/agent/trust?conversationId=${id}`);
       const payload = (await res.json()) as { ok: boolean; data?: { tools: string[] } };
+      if (latestConversationIdRef.current !== id) return; // 陈旧响应：会话已切走
       if (payload.ok && payload.data) setTrustedTools(payload.data.tools);
     } catch { /* best-effort */ }
   }

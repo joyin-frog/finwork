@@ -42,6 +42,17 @@ function isImagePath(p: string): boolean {
   return Boolean(p && IMAGE_EXT.test(p));
 }
 
+/** filePath 多为绝对路径（read_document 约定）；路由只认相对会话目录的尾段。
+ *  定位 /conversations/<id>/ 之后的相对段；绝对路径里找不到标记则返回 null（降级 chip，不把本机路径塞进 URL）。 */
+function conversationRelativePath(filePath: string, conversationId: string): string | null {
+  const normalized = filePath.replace(/\\/g, "/");
+  const marker = `/conversations/${conversationId}/`;
+  const idx = normalized.indexOf(marker);
+  if (idx >= 0) return normalized.slice(idx + marker.length);
+  if (!normalized.startsWith("/") && !/^[A-Za-z]:/.test(normalized)) return normalized; // 已是相对路径
+  return null;
+}
+
 // 工具类型 → 可剥的中文动词前缀(行图标已移除,组头/renderer 文案承担类型语义)。
 // strip:剥掉类型动词前缀;relabel:剥空后用此固定文案兜底。
 const TOOL_VISUAL: Record<string, { strip?: RegExp; relabel?: string }> = {
@@ -187,9 +198,10 @@ function ExpandedDetail({
     "";
   const showThumbnail = isImagePath(filePath);
   // 路由：/api/files/[conversationId]/[...filename]
-  // 依赖现有路由；若无 conversationId 则降级为路径 chip
-  const imgSrc = showThumbnail && conversationId
-    ? `/api/files/${encodeURIComponent(conversationId)}/${filePath.replace(/^\//, "")}`
+  // filePath 为绝对路径时用 conversationRelativePath 提取相对段；找不到则降级 chip
+  const relPath = showThumbnail && conversationId ? conversationRelativePath(filePath, conversationId) : null;
+  const imgSrc = relPath
+    ? `/api/files/${encodeURIComponent(conversationId!)}/${relPath.split("/").map(encodeURIComponent).join("/")}`
     : null;
 
   return (
