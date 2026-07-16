@@ -193,20 +193,20 @@ standard 强度，聚焦正确性 bug + UX 流程 + UI 约定（安全/性能/�
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 045 | 用户消息去重命中时新附件仍落库（修附件静默丢失） | P1 | M | — | TODO |
-| 046 | conversationId 穿透到 ExpandedDetail（激活缩略图死代码） | P2 | S | — | TODO |
-| 047 | spawnDetached 等 spawn 事件再 resolve（打开文件失败可见） | P2 | S | — | TODO |
-| 048 | withIdempotency 回放失败抛真 Error（消灭 [object Object]） | P2 | S | — | TODO |
-| 049 | writeTextMirror 原子写（tmp+rename） | P2 | S | — | TODO |
-| 050 | fetchConversationFiles 陈旧响应守卫（切会话不串台） | P2 | S | — | TODO |
-| 051 | 流式进行中禁用「撤回」（防错误恢复覆盖） | P3 | S | — | TODO |
-| 052 | run_python 会话信任可撤销（revoke API + 对话内入口） | P2 | M | — | TODO |
-| 053 | 侧栏会话操作失败可见/可回滚/可重试 | P1 | S | — | TODO |
-| 054 | 原生 window.confirm/prompt 替换为应用内对话框（Tauri 兼容） | P1 | S | — | TODO |
-| 055 | 失败态≠空态（知识库/总览/派发/搜索） | P2 | S | — | TODO |
-| 056 | 流式进行中关窗先确认（Tauri，需桌面实测） | P2 | M | — | TODO |
-| 057 | composer 草稿按会话持久化（sessionStorage） | P2 | M | — | TODO |
-| 058 | UI 约定清扫（文案/焦点环/disabled/间距/高亮/空态/标签） | P2 | M | 053,054,055 | TODO |
+| 045 | 用户消息去重命中时新附件仍落库（修附件静默丢失） | P1 | M | — | DONE — 已审核（S6/S7 新测试，typecheck/直测全绿，合入 bcd024b） |
+| 046 | conversationId 穿透到 ExpandedDetail（激活缩略图死代码） | P2 | S | — | DONE — 已审核（三层穿透含 RetryGroupRow，UI 测试 10 断言过，合入 39bce2f） |
+| 047 | spawnDetached 等 spawn 事件再 resolve（打开文件失败可见） | P2 | S | — | DONE — 已审核（GET ?action= 纠偏合理，合入 cb3d56e） |
+| 048 | withIdempotency 回放失败抛真 Error（消灭 [object Object]） | P2 | S | — | DONE — 已审核（7 项断言全过，合入 65ef1bd） |
+| 049 | writeTextMirror 原子写（tmp+rename） | P2 | S | — | DONE — 已审核（tmp+rename+防残留断言，合入 ef91b9f） |
+| 050 | fetchConversationFiles 陈旧响应守卫（切会话不串台） | P2 | S | — | DONE — 已审核（id 比对守卫 + null 放行，合入 5a7558d） |
+| 051 | 流式进行中禁用「撤回」（防错误恢复覆盖） | P3 | S | — | DONE — 已审核（turnKey 守卫 + disabled 呈现，suppress 111 未变，合入 d928ca2） |
+| 052 | run_python 会话信任可撤销（revoke API + 对话内入口） | P2 | M | — | DONE — 已审核+1轮返工（revoke 加 res.ok 门控；ST-f/ST-g 16 断言，合入 f44b142+07f0c08） |
+| 053 | 侧栏会话操作失败可见/可回滚/可重试 | P1 | S | — | DONE — 已审核（四步齐 + 回滚正确，nav-v3 全过，合入 28a47a4） |
+| 054 | 原生 window.confirm/prompt 替换为应用内对话框（Tauri 兼容） | P1 | S | — | DONE — 已审核（四流程全替换，残留 grep 0，合入 575e736） |
+| 055 | 失败态≠空态（知识库/总览/派发/搜索） | P2 | S | — | DONE — 已审核（五文件四步齐，与 054 抽屉自动合并复验绿，合入 3ccaa81） |
+| 056 | 流式进行中关窗先确认（Tauri，需桌面实测） | P2 | M | — | DONE(代码) — 已审核（bypass+close 保 Rust kill 路径；桌面实测待人工 tauri:dev，合入 86a5729） |
+| 057 | composer 草稿按会话持久化（sessionStorage） | P2 | M | — | DONE — 已审核（惰性初始化+防抖+卸载 flush+发送清除；与 051/052 合并复验绿，合入 c0ad723） |
+| 058 | UI 约定清扫（文案/焦点环/disabled/间距/高亮/空态/标签） | P2 | M | 053,054,055 | DONE — 已审核（22 点位全落+4 道 grep 门过；lint 0 error(+2 warn 为 053 重试按钮等 warn 级)，合入 f40e304..a27f5b6） |
 
 ### 依赖与编排（第八轮）
 
