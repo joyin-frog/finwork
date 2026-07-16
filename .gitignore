@@ -43,3 +43,18 @@ docs/SDK_*/
 **/conf.ini
 # 内部规划文档不进公开仓库(本地另有备份)
 plans/
+
+# graphify：官方建议提交图谱；仅忽略本机/中间产物
+# 见 https://github.com/safishamsi/graphify Team setup
+graphify-out/cost.json
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_labels.json.sig
+graphify-out/graph-app-lib.json
+graphify-out/GRAPH_REPORT-app-lib.md
+graphify-out/.labels-app-lib.json
+graphify-out/2026-07-16/
+# 子目录抽取/合并用的中间 graphify-out（只保留仓库根 graphify-out/）
+*/graphify-out/
+.codex/

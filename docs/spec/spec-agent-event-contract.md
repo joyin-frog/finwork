@@ -97,7 +97,7 @@ outcome）与事件 envelope（含 per-run 单调 eventId、instanceId 预留）
 | `app/chat/chat-types.ts` | 修改 | 删本地 `AgentEvent` union，改为 `export type AgentEvent = AgentRuntimeEvent` **再导出别名**——下游 `provenance.ts`/`components/assistant-turn.tsx` 只用通用 `AgentEvent`，别名使其零改动（故不列入本表）；TurnStatus 保留 |
 | `app/chat/subagent-track.tsx` | 修改 | :33 的 `Extract<AgentEvent,{type:"subagent"}>` 过滤在新 union 下为 `never`（子代理里程碑会静默消失，行为破坏非编译错）。改写为按 envelope `instanceId !== null` 过滤 + 消费新事件（run_started/tool_completed/run_blocked/run_ended+run_settled 映射出原 phase/summary/toolName/durationMs/isError/success 展示语义）。前提：reducer 在 timeline 条目上保留 envelope 的 instanceId（§4 步骤 6 一并实现） |
 | `app/chat/chat-request.ts` | 修改 | `dispatchSSEEvent`/`reduceChunk`/`reduceAgentEvent` 改消费 envelope + 合同事件 |
-| `app/shared/chat-stream.tsx` | 修改 | 完成态派生自 run_settled（outcome→TurnStatus 映射） |
+| `app/shared/chat-stream.tsx` | 修改 | ~~完成态派生自 run_settled（outcome→TurnStatus 映射）~~ **落地校准**：完成态仍由旧帧 `done`/`incomplete`/`error` 驱动；`run_settled` 在 `chat-request.dispatchSSEEvent` 静默消耗。本文件实际改动是 timeline 保留 `instanceId` 供子代理轨道过滤（见 audit「实现现状校准」） |
 | `tests/runtime-events.test.ts` | 新增 | envelope 不变量、settled 恰好一次、落库映射词表快照、reducer 等价 |
 | `tests/all.test.ts` | 修改 | 接入新测试文件 |
 
@@ -173,10 +173,15 @@ abort 路径：requestSignal 触发 → persistIncompleteTurn（不变）→ run
 
 **abort 送达竞态（明确语义，防实现者误解）**：用户点停止时前端 fetch 立刻抛 AbortError、
 读流退出（chat-stream.tsx:297-299 置 stopped），此时服务端流已关，`run_settled(aborted)`
-**送达不了前端**。因此：前端 abort 路径**保留 AbortError→stopped 分支不变**，settled 只在
-正常/错误收尾路径驱动前端状态；`run_settled(aborted)` 的价值是服务端 canonical record
-（AR2b 持久化后供重放/看板消费），不是前端状态来源。成功标准第 2 条对 abort 路径的断言
-以**服务端发射侧**（收口函数被调用且帧已尝试写入）为准，不断言前端收到。
+**送达不了前端**。因此：前端 abort 路径**保留 AbortError→stopped 分支不变**；
+`run_settled(aborted)` 的价值是服务端 canonical record（AR2b 持久化后供重放/看板消费），
+不是前端状态来源。成功标准第 2 条对 abort 路径的断言以**服务端发射侧**（收口函数被调用
+且帧已尝试写入）为准，不断言前端收到。
+
+> **Ship 后校准**：不仅 abort——**成功/错误路径上前端也不用 `run_settled` 驱动
+> TurnStatus**；`dispatchSSEEvent` 吞掉 settled，完成态靠随后的旧 `done`/`incomplete`/
+> `error` 帧。上句原「settled 只在正常/错误收尾路径驱动前端状态」已过时，勿再引用。
+> 详见 audit「实现现状校准」与 ROADMAP `run_settled` 铁律下的实现现状校准。
 
 ## 4. 实施步骤
 
@@ -195,10 +200,10 @@ abort 路径：requestSignal 触发 → persistIncompleteTurn（不变）→ run
    `contractToLegacyEvents`。
 6. 前端：chat-types 删本地 union 改 import；chat-request 的 dispatch/reducers 按合同
    switch，**reducer 在 timeline 条目上保留 envelope 的 instanceId**（subagent-track 的
-   过滤依据）；subagent-track 改写（见 Files touched 行）；chat-stream 完成态从
-   run_settled 派生（completed→done、aborted→stopped、error→error；
-   run_ended(kind=incomplete) 后 settled(aborted|error)→incomplete，与现状 TurnStatus
-   语义对齐）。
+   过滤依据）；subagent-track 改写（见 Files touched 行）。~~chat-stream 完成态从
+   run_settled 派生……~~ **计划未落地**：实际为双模兼容——新 envelope 传输合同事件，
+   TurnStatus / onDone 仍听旧帧；`run_settled` 与主对话 `run_ended` 在
+   `dispatchSSEEvent` 中消耗不转发（见 `audit-agent-event-contract.md`「实现现状校准」）。
 7. 跑全量测试 + 手动 mock 对话冒烟（含 spawn_subagent 场景、中途 abort 场景）。
 
 ## 5. 测试与验证方式
