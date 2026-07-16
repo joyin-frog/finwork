@@ -58,3 +58,4 @@ graphify-out/2026-07-16/
 # 子目录抽取/合并用的中间 graphify-out（只保留仓库根 graphify-out/）
 */graphify-out/
 .codex/
+.cursor/
