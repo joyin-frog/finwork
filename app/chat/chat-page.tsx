@@ -115,7 +115,12 @@ export default function ChatPage({
   const urlUpdatedRef = useRef(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [draft, setDraft] = useState(initialDraft ?? "");
+  const [draft, setDraft] = useState(() => {
+    if (initialDraft) return initialDraft;
+    if (typeof window === "undefined") return "";
+    try { return sessionStorage.getItem(`chat-draft:${initialConversationId ?? "new"}`) ?? ""; }
+    catch { return ""; }
+  });
   const [conversationTitle, setConversationTitle] = useState(emptyConversationTitle);
   // 进行中回合的流式态全部托管在跨页存活的 chat-stream store 里(切走切回可继续渲染)。
   // chat-page 只持有"当前正在消费的回合 key",其余字段都从 store 派生。
@@ -200,6 +205,12 @@ export default function ChatPage({
   const panelDefaultResolvedRef = useRef(false);
   const userClosedPanelRef = useRef(false);
   const mainRef = useRef<HTMLDivElement>(null);
+  // Draft persistence — timer for debounced writes; refs allow unmount cleanup to see current values.
+  const draftPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftConvIdRef = useRef(conversationId);
+  const draftCurValRef = useRef(draft);
+  draftConvIdRef.current = conversationId;
+  draftCurValRef.current = draft;
 
   // ── 附件状态（use-attachments hook）──
   const {
@@ -225,9 +236,35 @@ export default function ChatPage({
     setFilePanelOpen,
   });
 
+  // 按会话 key 把草稿写入 sessionStorage（空串=移除）。
+  function persistDraft(value: string) {
+    const key = `chat-draft:${draftConvIdRef.current ?? "new"}`;
+    try {
+      if (value) sessionStorage.setItem(key, value);
+      else sessionStorage.removeItem(key);
+    } catch { /* ignore */ }
+  }
+
   // 从能力目录进入时已预填技能引用/开场白，直接把操作焦点交给输入框。
   useEffect(() => {
     if (initialDraft || initialSkill) textareaRef.current?.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 卸载时把草稿同步写入 sessionStorage（flush 防抖中未触发的写入）。
+  useEffect(() => {
+    return () => {
+      if (draftPersistTimerRef.current !== null) {
+        clearTimeout(draftPersistTimerRef.current);
+        draftPersistTimerRef.current = null;
+      }
+      const key = `chat-draft:${draftConvIdRef.current ?? "new"}`;
+      try {
+        const val = draftCurValRef.current;
+        if (val) sessionStorage.setItem(key, val);
+        else sessionStorage.removeItem(key);
+      } catch { /* ignore */ }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -319,6 +356,15 @@ export default function ChatPage({
     setTrustedTools([]);
   }, [conversationId]);
 
+  // 会话切换时若当前草稿为空，尝试从 sessionStorage 恢复该会话的草稿。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = sessionStorage.getItem(`chat-draft:${conversationId ?? "new"}`);
+      if (stored) setDraft((prev) => prev || stored);
+    } catch { /* ignore */ }
+  }, [conversationId]);
+
   // 切到某会话(或挂载)时,若 store 里该会话已有进行中回合,则接管继续渲染;
   // 否则清掉可能残留的、属于其他会话的 turnKey(避免叠加渲染串台)。
   useEffect(() => {
@@ -378,7 +424,7 @@ export default function ChatPage({
         setAttachments(out.attachments);
         setReferencedAttachments(out.referencedAttachments);
         setReferencedSkills(out.referencedSkills);
-        if (turn.status === "error" && out.text) setDraft(out.text);
+        if (turn.status === "error" && out.text) { setDraft(out.text); persistDraft(out.text); }
       }
       // 失败时给一个明确的恢复动作:配置类→去配置;瞬时类→已还原输入,提示重试
       if (turn.status === "error") {
@@ -662,6 +708,9 @@ export default function ChatPage({
     const value = event.target.value;
     const cursorPos = event.target.selectionStart ?? value.length;
     setDraft(value);
+    // 防抖写 sessionStorage，300ms 无新输入则落盘。
+    if (draftPersistTimerRef.current !== null) clearTimeout(draftPersistTimerRef.current);
+    draftPersistTimerRef.current = setTimeout(() => { persistDraft(value); draftPersistTimerRef.current = null; }, 300);
 
     const textBeforeCursor = value.slice(0, cursorPos);
     const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
@@ -808,6 +857,9 @@ export default function ChatPage({
     const key = conversationId != null ? `c:${conversationId}` : `new:${crypto.randomUUID()}`;
     lastOutgoingRef.current = { attachments: outgoingAttachments, referencedAttachments: outgoingRefAttachments, referencedSkills: outgoingSkills, text: value };
     setTurnKey(key);
+    // 取消待触发的防抖写，并立即清除 storage（防止重启后误恢复已发送内容）。
+    if (draftPersistTimerRef.current !== null) { clearTimeout(draftPersistTimerRef.current); draftPersistTimerRef.current = null; }
+    persistDraft("");
     setDraft("");
     setAttachments([]);
     setReferencedAttachments([]);
@@ -849,6 +901,7 @@ export default function ChatPage({
     // 文本退回 draft（纯文件消息的占位串「请分析这些文件。」替换为空）
     const content = message.content === "请分析这些文件。" ? "" : message.content;
     setDraft(content);
+    persistDraft(content);
     // 用该消息的附件「完整替换」composer，并清掉其它已暂存的本地上传/技能引用——
     // 否则撤回时残留的无关上传会在下次发送时被一起带上，让 agent 处理错文件。
     setReferencedAttachments(filesToReferenced(getMessageFiles(message, conversationFiles)));
