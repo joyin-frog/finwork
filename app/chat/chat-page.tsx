@@ -151,8 +151,6 @@ export default function ChatPage({
     }
     return null;
   }, [loading, activeTimeline]);
-  const lastOutgoingRef = useRef<{ attachments: ChatAttachment[]; referencedAttachments: ReferencedFile[]; referencedSkills: SkillRef[]; text: string } | null>(null);
-
   // 渲染用消息 = 已落库/已加载的历史;若本会话有进行中(或刚结束待收尾)的回合,
   // 在其上叠加"用户消息 + 助手流式气泡"(收尾 effect 会把最终消息写回本地 messages 后清掉回合)。
   const displayMessages: Message[] = useMemo(() => {
@@ -447,7 +445,7 @@ export default function ChatPage({
     } else {
       // error / stopped:把已流式内容定格进本地消息,并把草稿文本+附件还回输入框便于一键重试
       setMessages(overlayMessages(turn));
-      const out = lastOutgoingRef.current;
+      const out = turn.retryPayload;
       if (out) {
         setAttachments(out.attachments);
         setReferencedAttachments(out.referencedAttachments);
@@ -885,7 +883,6 @@ export default function ChatPage({
     // 把发送 + 流式读取交给跨页存活的 store:流式态由它按会话 key 持有,
     // 切到别的页面再切回来,本回合仍在渲染(不再随组件卸载丢失)。
     const key = conversationId != null ? `c:${conversationId}` : `new:${crypto.randomUUID()}`;
-    lastOutgoingRef.current = { attachments: outgoingAttachments, referencedAttachments: outgoingRefAttachments, referencedSkills: outgoingSkills, text: value };
     setTurnKey(key);
     // 取消待触发的防抖写，并立即清除 storage（防止重启后误恢复已发送内容）。
     if (draftPersistTimerRef.current !== null) { clearTimeout(draftPersistTimerRef.current); draftPersistTimerRef.current = null; }
@@ -906,7 +903,13 @@ export default function ChatPage({
       attachments: outgoingAttachments,
       referencedAttachments: outgoingRefAttachments,
       referencedSkills: outgoingSkills,
-      modelTier
+      modelTier,
+      retryPayload: {
+        text: value,
+        attachments: outgoingAttachments,
+        referencedAttachments: outgoingRefAttachments,
+        referencedSkills: outgoingSkills,
+      },
     });
   }
 

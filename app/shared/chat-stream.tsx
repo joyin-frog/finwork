@@ -33,6 +33,13 @@ export type StreamTimelineItem = { id: string; event: AgentEvent; createdAt: num
 
 export type TurnStatus = "streaming" | "done" | "error" | "stopped" | "incomplete";
 
+export type StreamRetryPayload = {
+  text: string;
+  attachments: ChatAttachment[];
+  referencedAttachments: ReferencedFile[];
+  referencedSkills: SkillRef[];
+};
+
 export type StreamTurn = {
   /** 会话维度的 key:已有会话用 `c:${id}`,新会话用 `new:${uuid}`(落库拿到真实 id 后由 chat-page 收尾)。 */
   key: string;
@@ -54,6 +61,8 @@ export type StreamTurn = {
   errorMessage?: string;
   /** 失败时的恢复动作类型,供 chat-page 决定弹"去配置"还是"重试"。 */
   errorAction?: AgentErrorAction;
+  /** 跨 ChatPage 重挂载存活的发送数据,供 error/stopped 恢复输入框。 */
+  retryPayload?: StreamRetryPayload;
 };
 
 export type StartTurnParams = {
@@ -68,7 +77,24 @@ export type StartTurnParams = {
   referencedSkills?: SkillRef[];
   /** 本条消息的推理强度档位(可选,默认 auto)。 */
   modelTier?: ModelTier;
+  /** ChatPage 终态恢复所需的原始发送数据；浮窗等无需恢复的调用方可不传。 */
+  retryPayload?: StreamRetryPayload;
 };
+
+export function createStreamTurn(params: StartTurnParams, startedAt: number): StreamTurn {
+  return {
+    key: params.key,
+    conversationId: params.conversationId,
+    status: "streaming",
+    userMessage: params.userMessage,
+    baseMessages: params.baseMessages,
+    streamedContent: "",
+    timeline: [],
+    startedAt,
+    processedEndedAt: null,
+    retryPayload: params.retryPayload,
+  };
+}
 
 // ——— 纯 reducer:把单个流式事件并入回合态(便于单测,逻辑与原 chat-page 内联回调一致) ———
 
@@ -288,17 +314,7 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
         for (const [k, t] of Object.entries(prev)) {
           if (!isFinished(t.status)) next[k] = t;
         }
-        next[key] = {
-          key,
-          conversationId: params.conversationId,
-          status: "streaming",
-          userMessage: params.userMessage,
-          baseMessages: params.baseMessages,
-          streamedContent: "",
-          timeline: [],
-          startedAt,
-          processedEndedAt: null
-        };
+        next[key] = createStreamTurn(params, startedAt);
         return next;
       });
 

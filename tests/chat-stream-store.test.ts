@@ -5,6 +5,7 @@ import {
   mergeFinalMessages,
   overlayMessages,
   activeAssistantContent,
+  createStreamTurn,
   createStreamTurnOperations,
   resolveTurnKey,
   type StreamTurn
@@ -29,6 +30,41 @@ function baseTurn(overrides: Partial<StreamTurn> = {}): StreamTurn {
 }
 
 export const chatStreamStoreTestPromise = (async () => {
+  // 新会话收到 meta 后 ChatPage 会因 router.replace 重挂载；重试数据必须跟 turn 跨页存活。
+  {
+    const attachments = [{ id: "a1", name: "invoice.png", mimeType: "image/png", size: 3, dataUrl: "data:image/png;base64,abc" }];
+    const referencedAttachments = [{ name: "ledger.xlsx", mimeType: "application/vnd.ms-excel", sizeBytes: 4, storagePath: "/tmp/ledger.xlsx" }];
+    const referencedSkills = [{ name: "reconcile", description: "对账" }];
+    const retryPayload = { text: "核对这些材料", attachments, referencedAttachments, referencedSkills };
+    const created = createStreamTurn({
+      key: "new:retry",
+      conversationId: null,
+      userMessage: { role: "user", content: "核对这些材料" },
+      baseMessages: [],
+      requestMessages: [],
+      attachments,
+      referencedAttachments,
+      referencedSkills,
+      retryPayload,
+    }, 1234);
+
+    const metaTurn = { ...created, conversationId: 77, status: "error" as const };
+    let liveTurns: Record<string, StreamTurn> = { "new:retry": metaTurn };
+    const operations = createStreamTurnOperations({
+      getTurns: () => liveTurns,
+      updateTurns: (update) => { liveTurns = update(liveTurns); },
+      getControllers: () => ({}),
+    });
+
+    assert.deepEqual(
+      operations.getTurn("c:77")?.retryPayload,
+      retryPayload,
+      "meta 后 ChatPage 用真实会话 key 重挂载时应仍能读取完整重试数据"
+    );
+    operations.consumeTurn("c:77");
+    assert.equal(operations.getTurn("c:77"), undefined, "重挂载收尾后应通过真实会话 key 消费临时 turn");
+  }
+
   // ── JOY-10: 新会话取得真实 ID 后仍解析到原始运行 key ──
   {
     const turns: Record<string, StreamTurn> = {
