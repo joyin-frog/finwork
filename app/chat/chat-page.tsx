@@ -115,7 +115,12 @@ export default function ChatPage({
   const urlUpdatedRef = useRef(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [draft, setDraft] = useState(initialDraft ?? "");
+  const [draft, setDraft] = useState(() => {
+    if (initialDraft) return initialDraft;
+    if (typeof window === "undefined") return "";
+    try { return sessionStorage.getItem(`chat-draft:${initialConversationId ?? "new"}`) ?? ""; }
+    catch { return ""; }
+  });
   const [conversationTitle, setConversationTitle] = useState(emptyConversationTitle);
   // 进行中回合的流式态全部托管在跨页存活的 chat-stream store 里(切走切回可继续渲染)。
   // chat-page 只持有"当前正在消费的回合 key",其余字段都从 store 派生。
@@ -190,6 +195,8 @@ export default function ChatPage({
   const [filePanelOpen, setFilePanelOpen] = useState(false);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [feedbackMap, setFeedbackMap] = useState<Record<number, { rating: "up" | "down"; reason: string | null }>>({});
+  // 会话级信任工具列表(供 header chip 展示/撤销)
+  const [trustedTools, setTrustedTools] = useState<string[]>([]);
   const draggingRef = useRef(false);
   const sidebarTouchedRef = useRef(false);
   const startXRef = useRef(0);
@@ -198,6 +205,15 @@ export default function ChatPage({
   const panelDefaultResolvedRef = useRef(false);
   const userClosedPanelRef = useRef(false);
   const mainRef = useRef<HTMLDivElement>(null);
+  // Draft persistence — timer for debounced writes; refs allow unmount cleanup to see current values.
+  const draftPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftConvIdRef = useRef(conversationId);
+  const draftCurValRef = useRef(draft);
+  draftConvIdRef.current = conversationId;
+  draftCurValRef.current = draft;
+  // 防止 fetchTrustedTools 陈旧响应覆盖已切换会话的状态
+  const latestConversationIdRef = useRef(conversationId);
+  latestConversationIdRef.current = conversationId;
 
   // ── 附件状态（use-attachments hook）──
   const {
@@ -223,9 +239,35 @@ export default function ChatPage({
     setFilePanelOpen,
   });
 
+  // 按会话 key 把草稿写入 sessionStorage（空串=移除）。
+  function persistDraft(value: string) {
+    const key = `chat-draft:${draftConvIdRef.current ?? "new"}`;
+    try {
+      if (value) sessionStorage.setItem(key, value);
+      else sessionStorage.removeItem(key);
+    } catch { /* ignore */ }
+  }
+
   // 从能力目录进入时已预填技能引用/开场白，直接把操作焦点交给输入框。
   useEffect(() => {
     if (initialDraft || initialSkill) textareaRef.current?.focus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 卸载时把草稿同步写入 sessionStorage（flush 防抖中未触发的写入）。
+  useEffect(() => {
+    return () => {
+      if (draftPersistTimerRef.current !== null) {
+        clearTimeout(draftPersistTimerRef.current);
+        draftPersistTimerRef.current = null;
+      }
+      const key = `chat-draft:${draftConvIdRef.current ?? "new"}`;
+      try {
+        const val = draftCurValRef.current;
+        if (val) sessionStorage.setItem(key, val);
+        else sessionStorage.removeItem(key);
+      } catch { /* ignore */ }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -314,6 +356,29 @@ export default function ChatPage({
     setFilePanelOpen(false);
     setSidebarMaximized(false);
     setSidebarCollapsed(true);
+    setTrustedTools([]);
+  }, [conversationId]);
+
+  // 会话切换：先把旧会话未落盘的草稿冲刷到旧 key，再载入新会话的草稿（含空串=清空）。
+  // 特例：新会话首次拿到真实 id（null→N）时草稿归属不变——迁移 key、不动 composer。
+  const draftKeyIdRef = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    const prevId = draftKeyIdRef.current;
+    draftKeyIdRef.current = conversationId;
+    if (prevId === undefined || prevId === conversationId) return; // 首次挂载：惰性初始化已载入
+    if (draftPersistTimerRef.current !== null) { clearTimeout(draftPersistTimerRef.current); draftPersistTimerRef.current = null; }
+    try {
+      const val = draftCurValRef.current;
+      if (prevId === null) {
+        // null→N：迁移 key，不改 composer 内容
+        sessionStorage.removeItem("chat-draft:new");
+        if (val) sessionStorage.setItem(`chat-draft:${conversationId}`, val);
+      } else {
+        const prevKey = `chat-draft:${prevId}`;
+        if (val) sessionStorage.setItem(prevKey, val); else sessionStorage.removeItem(prevKey);
+        setDraft(sessionStorage.getItem(`chat-draft:${conversationId ?? "new"}`) ?? "");
+      }
+    } catch { /* ignore */ }
   }, [conversationId]);
 
   // 切到某会话(或挂载)时,若 store 里该会话已有进行中回合,则接管继续渲染;
@@ -375,7 +440,7 @@ export default function ChatPage({
         setAttachments(out.attachments);
         setReferencedAttachments(out.referencedAttachments);
         setReferencedSkills(out.referencedSkills);
-        if (turn.status === "error" && out.text) setDraft(out.text);
+        if (turn.status === "error" && out.text) { setDraft(out.text); persistDraft(out.text); }
       }
       // 失败时给一个明确的恢复动作:配置类→去配置;瞬时类→已还原输入,提示重试
       if (turn.status === "error") {
@@ -389,7 +454,7 @@ export default function ChatPage({
             description: "已完成的部分已保留,发「继续」我就接着把剩下的做完。",
           });
         } else {
-          toast.error(turn.errorMessage ?? "处理出错,请重试", {
+          toast.error(turn.errorMessage ?? "这次回复没有完成", {
             description: "已为你还原刚才的输入,按回车即可重试。",
           });
         }
@@ -432,6 +497,16 @@ export default function ChatPage({
     return () => { cancelled = true; };
   }, [conversationId, mode]);
 
+  // ask-user 面板消失后刷新信任列表（用户可能刚勾了「本次对话不再询问」）。
+  const prevPendingAskRef = useRef<typeof pendingAsk>(null);
+  useEffect(() => {
+    const prev = prevPendingAskRef.current;
+    prevPendingAskRef.current = pendingAsk;
+    if (prev !== null && pendingAsk === null && conversationId) {
+      void fetchTrustedTools(conversationId);
+    }
+  }, [pendingAsk, conversationId]);
+
   const placeholder = useMemo(
     () => "随心输入",
     []
@@ -456,6 +531,7 @@ export default function ChatPage({
     await Promise.all([
       fetchConversationFiles(conversation.id),
       fetchFeedback(conversation.id),
+      fetchTrustedTools(conversation.id),
     ]);
   }
 
@@ -472,6 +548,34 @@ export default function ChatPage({
         setFeedbackMap(mapped);
       }
     } catch { /* best-effort */ }
+  }
+
+  async function fetchTrustedTools(id: number) {
+    try {
+      const res = await fetch(`/api/agent/trust?conversationId=${id}`);
+      const payload = (await res.json()) as { ok: boolean; data?: { tools: string[] } };
+      if (latestConversationIdRef.current !== id) return; // 陈旧响应：会话已切走
+      if (payload.ok && payload.data) setTrustedTools(payload.data.tools);
+    } catch { /* best-effort */ }
+  }
+
+  async function revokeToolTrustUI(toolName: string) {
+    if (!conversationId) return;
+    try {
+      const res = await fetch("/api/agent/trust", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId, toolName }),
+      });
+      if (res.ok) {
+        setTrustedTools((prev) => prev.filter((t) => t !== toolName));
+        toast("已恢复每次确认", { description: "代码执行将重新弹出确认卡" });
+      } else {
+        toast.error("撤销失败，代码执行仍处于已信任状态。请重试");
+      }
+    } catch {
+      toast.error("撤销失败，代码执行仍处于已信任状态。请重试");
+    }
   }
 
   async function submitFeedback(messageId: number, rating: "up" | "down", reason?: string) {
@@ -621,6 +725,9 @@ export default function ChatPage({
     const value = event.target.value;
     const cursorPos = event.target.selectionStart ?? value.length;
     setDraft(value);
+    // 防抖写 sessionStorage，300ms 无新输入则落盘。
+    if (draftPersistTimerRef.current !== null) clearTimeout(draftPersistTimerRef.current);
+    draftPersistTimerRef.current = setTimeout(() => { persistDraft(value); draftPersistTimerRef.current = null; }, 300);
 
     const textBeforeCursor = value.slice(0, cursorPos);
     const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
@@ -767,6 +874,9 @@ export default function ChatPage({
     const key = conversationId != null ? `c:${conversationId}` : `new:${crypto.randomUUID()}`;
     lastOutgoingRef.current = { attachments: outgoingAttachments, referencedAttachments: outgoingRefAttachments, referencedSkills: outgoingSkills, text: value };
     setTurnKey(key);
+    // 取消待触发的防抖写，并立即清除 storage（防止重启后误恢复已发送内容）。
+    if (draftPersistTimerRef.current !== null) { clearTimeout(draftPersistTimerRef.current); draftPersistTimerRef.current = null; }
+    persistDraft("");
     setDraft("");
     setAttachments([]);
     setReferencedAttachments([]);
@@ -804,9 +914,11 @@ export default function ChatPage({
    * 非破坏性——不删除、不改动任何历史消息，只填充 composer。
    */
   function retractMessage(message: Message) {
+    if (turnKey) return; // 流式进行中禁止撤回
     // 文本退回 draft（纯文件消息的占位串「请分析这些文件。」替换为空）
     const content = message.content === "请分析这些文件。" ? "" : message.content;
     setDraft(content);
+    persistDraft(content);
     // 用该消息的附件「完整替换」composer，并清掉其它已暂存的本地上传/技能引用——
     // 否则撤回时残留的无关上传会在下次发送时被一起带上，让 agent 处理错文件。
     setReferencedAttachments(filesToReferenced(getMessageFiles(message, conversationFiles)));
@@ -839,6 +951,19 @@ export default function ChatPage({
               <DragHandle />
               <SidebarToggle />
               <h1 data-tauri-drag-region className="flex-1 min-w-0 text-title truncate">{displayTitle}</h1>
+              {trustedTools.length > 0 && (
+                <div className="flex items-center gap-2 shrink-0 text-meta text-muted-foreground">
+                  <span>已信任代码执行</span>
+                  <span>·</span>
+                  <button
+                    type="button"
+                    className="hover:bg-muted rounded-[var(--radius-chip)] px-1 py-0.5 transition-colors"
+                    onClick={() => void Promise.all(trustedTools.map((t) => revokeToolTrustUI(t)))}
+                  >
+                    撤销
+                  </button>
+                </div>
+              )}
               <ChatFilePanel
                 conversationId={conversationId}
                 files={conversationFiles}
@@ -898,6 +1023,7 @@ export default function ChatPage({
                           onPreviewDisplayFile={previewDisplayFile}
                           onPreviewFile={previewConversationFile}
                           onRetract={() => retractMessage(message)}
+                          retractDisabled={!!turnKey}
                         />
                       ) : (
                         <AssistantTurn

@@ -111,7 +111,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     navWidth, setNavWidth,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    conversations, hasMore, loaded, fetchConversations,
+    conversations, hasMore, loaded, loadError, fetchConversations,
     deleteTarget,
     renamingId, renameDraft, setRenameDraft,
     doPin, startRename, cancelRename, commitRename,
@@ -207,7 +207,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           <input
             ref={renameInputRef}
             // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            className="flex-1 mx-2 px-2 py-1 text-body bg-background border border-border rounded-md outline-none focus:ring-1 focus:ring-ring"
+            className="flex-1 mx-2 px-2 py-1 text-body bg-background border border-border rounded-md"
             value={renameDraft}
             onChange={(e) => setRenameDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -355,7 +355,17 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               </button>
               <CollapsibleSectionMotion open={recentOpen} reduce={reduce}>
                   {recentConversations.length === 0 && loaded ? (
-                    <span className="px-3 py-2 text-meta text-muted-foreground">暂无对话</span>
+                    loadError ? (
+                      <button
+                        type="button"
+                        onClick={() => void fetchConversations(0)}
+                        className="px-3 py-2 text-meta text-muted-foreground hover:bg-muted rounded text-left"
+                      >
+                        加载失败，点此重试
+                      </button>
+                    ) : (
+                      <span className="px-3 py-2 text-meta text-muted-foreground">还没有对话。点上方「新对话」开始</span>
+                    )
                   ) : (
                     <AnimatePresence initial={false}>
                       {recentConversations.map(renderConversationRow)}

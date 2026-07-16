@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 export const MIN_NAV_WIDTH = 180;
 export const MAX_NAV_WIDTH = 360;
@@ -27,6 +28,7 @@ type NavState = {
   conversations: ConversationSummary[];
   hasMore: boolean;
   loaded: boolean;
+  loadError: boolean;
   fetchConversations: (offset: number) => Promise<void>;
   refreshConversations: () => Promise<void>;
   /** 就地更新某条对话标题(标题单一源):agent 提炼标题经 SSE title 事件推来时调,侧栏与 header 同步。 */
@@ -39,7 +41,7 @@ type NavState = {
   doPin: (c: ConversationSummary) => Promise<void>;
   startRename: (c: ConversationSummary) => void;
   cancelRename: () => void;
-  commitRename: (c: ConversationSummary) => void;
+  commitRename: (c: ConversationSummary) => Promise<void>;
   setRenameDraft: (v: string) => void;
   startDelete: (c: ConversationSummary) => void;
   confirmDelete: () => Promise<void>;
@@ -90,6 +92,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [menuId, setMenuId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(null);
   const [renamingId, setRenamingIdState] = useState<number | null>(null);
@@ -106,8 +109,10 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
       };
       setConversations((prev) => (offset === 0 ? payload.data.summaries : [...prev, ...payload.data.summaries]));
       setHasMore(payload.data.hasMore);
+      setLoadError(false);
       setLoaded(true);
     } catch {
+      setLoadError(true);
       setLoaded(true);
     } finally {
       loadingRef.current = false;
@@ -134,11 +139,21 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
         .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
     );
     setMenuId(null);
-    await fetch("/api/chat/recent", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: c.id, action: "pin", pinned })
-    });
+    try {
+      const res = await fetch("/api/chat/recent", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: c.id, action: "pin", pinned })
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      setConversations((prev) =>
+        prev
+          .map((item) => (item.id === c.id ? { ...item, pinned: !pinned } : item))
+          .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+      );
+      toast.error(pinned ? "置顶失败，已还原。检查网络后重试" : "取消置顶失败，已还原。检查网络后重试");
+    }
   }, []);
 
   const startRename = useCallback((c: ConversationSummary) => {
@@ -152,19 +167,24 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     setRenameDraft("");
   }, []);
 
-  const commitRename = useCallback((c: ConversationSummary) => {
+  const commitRename = useCallback(async (c: ConversationSummary) => {
+    const latest = renameDraft.trim();
     setRenamingIdState(null);
     setRenameDraft("");
-    setConversations((prev) => {
-      const latest = renameDraft.trim();
-      if (!latest || latest === c.title) return prev;
-      fetch("/api/chat/recent", {
+    if (!latest || latest === c.title) return;
+    const prevTitle = c.title;
+    setConversations((prev) => prev.map((item) => (item.id === c.id ? { ...item, title: latest } : item)));
+    try {
+      const res = await fetch("/api/chat/recent", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: c.id, action: "rename", title: latest })
       });
-      return prev.map((item) => (item.id === c.id ? { ...item, title: latest } : item));
-    });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      setConversations((prev) => prev.map((item) => (item.id === c.id ? { ...item, title: prevTitle } : item)));
+      toast.error(`重命名失败，已还原为「${prevTitle}」`);
+    }
   }, [renameDraft]);
 
   const startDelete = useCallback((c: ConversationSummary) => {
@@ -179,8 +199,14 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     const id = deleteTarget.id;
     setDeleteTarget(null);
     setConversations((prev) => prev.filter((c) => c.id !== id));
-    await fetch(`/api/chat/recent?id=${id}`, { method: "DELETE" });
-  }, [deleteTarget]);
+    try {
+      const res = await fetch(`/api/chat/recent?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      await fetchConversations(0);
+      toast.error("删除失败：对话已还原。检查网络后重试");
+    }
+  }, [deleteTarget, fetchConversations]);
 
   const contextValue = useMemo(() => ({
     collapsed, setCollapsed,
@@ -188,7 +214,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     searchOpen, setSearchOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    conversations, hasMore, loaded, fetchConversations, refreshConversations, updateConversationTitle,
+    conversations, hasMore, loaded, loadError, fetchConversations, refreshConversations, updateConversationTitle,
     menuId, setMenuId,
     deleteTarget,
     renamingId, renameDraft,
@@ -200,7 +226,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     searchOpen, setSearchOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    conversations, hasMore, loaded, fetchConversations, refreshConversations, updateConversationTitle,
+    conversations, hasMore, loaded, loadError, fetchConversations, refreshConversations, updateConversationTitle,
     menuId, setMenuId,
     deleteTarget,
     renamingId, renameDraft,

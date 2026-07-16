@@ -37,3 +37,16 @@ export function isToolTrustedForConversation(conversationId: number | undefined,
   if (conversationId == null) return false;
   return getTrustStore().has(trustKey(conversationId, toolName));
 }
+
+/** 撤销 (conversationId, toolName) 的信任。不存在时无操作。 */
+export function revokeToolTrust(conversationId: number | undefined, toolName: string): void {
+  if (conversationId == null) return;
+  getTrustStore().delete(trustKey(conversationId, toolName));
+}
+
+/** 列出某会话当前被信任的工具名（供 UI 展示）。 */
+export function listTrustedTools(conversationId: number | undefined): string[] {
+  if (conversationId == null) return [];
+  const prefix = `${conversationId}:`;
+  return [...getTrustStore()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+}

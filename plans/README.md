@@ -186,3 +186,38 @@ drift 发现:backlog 的「无 CI」已过时——`.github/workflows/ci.yml` �
 | 044 | 预览面板开合与最大化连续性 | P3 | 043 | DONE |
 
 推荐执行顺序已完成：**038 → 043 → 040 → 041 → 039 → 042 → 044**。实现同时通过动效源码契约、typecheck、lint、全量单测与 production build；详见 `docs/spec/audit-improve-animations.md`。
+
+## 第八轮 · bug/UX/UIUX 审计（045–058，基准 `a3e6777`，2026-07-15）
+
+standard 强度，聚焦正确性 bug + UX 流程 + UI 约定（安全/性能/依赖不在本轮范围，前七轮已覆盖）。4 个只读子代理扫描后由主循环逐条开源码核实。用户选择「全部」落计划。
+
+| Plan | Title | Priority | Effort | Depends on | Status |
+|------|-------|----------|--------|------------|--------|
+| 045 | 用户消息去重命中时新附件仍落库（修附件静默丢失） | P1 | M | — | DONE — 已审核（S6/S7 新测试，typecheck/直测全绿，合入 bcd024b） |
+| 046 | conversationId 穿透到 ExpandedDetail（激活缩略图死代码） | P2 | S | — | DONE — 已审核（三层穿透含 RetryGroupRow，UI 测试 10 断言过，合入 39bce2f） |
+| 047 | spawnDetached 等 spawn 事件再 resolve（打开文件失败可见） | P2 | S | — | DONE — 已审核（GET ?action= 纠偏合理，合入 cb3d56e） |
+| 048 | withIdempotency 回放失败抛真 Error（消灭 [object Object]） | P2 | S | — | DONE — 已审核（7 项断言全过，合入 65ef1bd） |
+| 049 | writeTextMirror 原子写（tmp+rename） | P2 | S | — | DONE — 已审核（tmp+rename+防残留断言，合入 ef91b9f） |
+| 050 | fetchConversationFiles 陈旧响应守卫（切会话不串台） | P2 | S | — | DONE — 已审核（id 比对守卫 + null 放行，合入 5a7558d） |
+| 051 | 流式进行中禁用「撤回」（防错误恢复覆盖） | P3 | S | — | DONE — 已审核（turnKey 守卫 + disabled 呈现，suppress 111 未变，合入 d928ca2） |
+| 052 | run_python 会话信任可撤销（revoke API + 对话内入口） | P2 | M | — | DONE — 已审核+1轮返工（revoke 加 res.ok 门控；ST-f/ST-g 16 断言，合入 f44b142+07f0c08） |
+| 053 | 侧栏会话操作失败可见/可回滚/可重试 | P1 | S | — | DONE — 已审核（四步齐 + 回滚正确，nav-v3 全过，合入 28a47a4） |
+| 054 | 原生 window.confirm/prompt 替换为应用内对话框（Tauri 兼容） | P1 | S | — | DONE — 已审核（四流程全替换，残留 grep 0，合入 575e736） |
+| 055 | 失败态≠空态（知识库/总览/派发/搜索） | P2 | S | — | DONE — 已审核（五文件四步齐，与 054 抽屉自动合并复验绿，合入 3ccaa81） |
+| 056 | 流式进行中关窗先确认（Tauri，需桌面实测） | P2 | M | — | DONE(代码) — 已审核（bypass+close 保 Rust kill 路径；桌面实测待人工 tauri:dev，合入 86a5729） |
+| 057 | composer 草稿按会话持久化（sessionStorage） | P2 | M | — | DONE — 已审核（惰性初始化+防抖+卸载 flush+发送清除；与 051/052 合并复验绿，合入 c0ad723） |
+| 058 | UI 约定清扫（文案/焦点环/disabled/间距/高亮/空态/标签） | P2 | M | 053,054,055 | DONE — 已审核（22 点位全落+4 道 grep 门过；lint 0 error(+2 warn 为 053 重试按钮等 warn 级)，合入 f40e304..a27f5b6） |
+
+### 依赖与编排（第八轮）
+
+- **推荐顺序**：045 → 053 → 054 → 055 → 047 → 048 → 049 → 046 → 050 → 051 → 052 → 057 → 056 → 058。
+- **058 必须最后**：与 053（app-nav.tsx）、054（agent-detail-drawer.tsx）、055（knowledge/page.tsx）同文件，先合前三个再清扫。
+- **051 与 057** 都动 chat-page.tsx 的 draft 相关代码（不同函数），按序执行可自动合。
+- **056** 需本机 Rust 工具链桌面实测；无则完成前端部分后标 BLOCKED 交人工跑 `tauri:dev`。
+- 其余互不重叠，可并行。
+
+### 第八轮已核实但降级/不落计划的发现
+
+- **analyze_csv `round(float*100)` 半分边界**：两位小数金额下数学精确，仅 ≥3 位小数出错；发票场景基本不出现，属 Plan 027 既定取舍。不做。
+- **sessionStorage pendingChatAttachments 反序列化无形状校验**（use-attachments.ts:45）：纯防御项，当前被 try/catch 与使用场景兜住。记录不修。
+- **find-in-chat Esc 陈旧闭包**（find-in-chat.tsx:149-159）与 **ask-user-panel Esc 空依赖闭包**（ask-user-panel.tsx:117-127）：当前分别被 setter 稳定性与调用点 `key={questionId}` 重挂载兜住，纯潜在项。记录不修；若未来移除 key 或改 onClose 语义须回看。

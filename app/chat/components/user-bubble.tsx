@@ -25,6 +25,7 @@ export function UserBubble({
   onPreviewDisplayFile,
   onPreviewFile,
   onRetract,
+  retractDisabled,
 }: {
   message: Message;
   files: DisplayFile[];
@@ -32,6 +33,7 @@ export function UserBubble({
   onPreviewDisplayFile: (file: DisplayFile) => void;
   onPreviewFile: (file: PreviewableConversationFile) => void;
   onRetract?: () => void;
+  retractDisabled?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -112,9 +114,10 @@ export function UserBubble({
           <button
             type="button"
             // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            className="msg-toolbar-btn-fade flex items-center gap-1 px-2 py-1 rounded text-meta text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-colors transition-opacity hover:text-foreground hover:bg-muted"
+            className="msg-toolbar-btn-fade flex items-center gap-1 px-2 py-1 rounded text-meta text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-colors transition-opacity hover:text-foreground hover:bg-muted disabled:opacity-50 disabled:pointer-events-none"
             aria-label="撤回到输入框"
             onClick={onRetract}
+            disabled={retractDisabled}
           >
             <HugeiconsIcon icon={Undo03Icon} size={13} />
           </button>

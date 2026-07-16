@@ -104,6 +104,26 @@ export const idempotencyTestPromise = (async () => {
       assert.equal(countAudit(), before + 3, "high 风险应写审计");
     }
 
+    // ── 7. 回放失败时抛出真正的 Error 实例，而非纯对象 ──────────────────
+    {
+      let calls = 0;
+      const wrapped = withIdempotency("replay_error_type_tool", async () => {
+        calls++;
+        throw new Error("boom");
+      });
+      const key = "idem-key-err-2";
+      await assert.rejects(() => wrapped({ idempotency_key: key }), /boom/, "首次应抛出原始错误");
+      let replayed: unknown;
+      await assert.rejects(
+        () => wrapped({ idempotency_key: key }),
+        (e: unknown) => { replayed = e; return true; },
+        "二次应抛出缓存的错误"
+      );
+      assert.ok(replayed instanceof Error, "回放的异常必须是 Error 实例（不能是纯对象）");
+      assert.equal((replayed as Error).message, "boom", "回放的 Error.message 应与原始错误一致");
+      assert.equal(calls, 1, "失败的 handler 不应在回放时重跑");
+    }
+
     // 注意:不关闭 getDb() 单例——它是整个测试套件共享的进程级资源,
     // 显式关闭会与延迟启动备份(setImmediate)竞争并污染后续测试(database is not open)。
     // 进程退出时自动回收,与其余测试保持一致。
@@ -113,5 +133,5 @@ export const idempotencyTestPromise = (async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 
-  console.log("idempotency: all 6 checks passed ✓");
+  console.log("idempotency: all 7 checks passed ✓");
 })();

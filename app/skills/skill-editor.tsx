@@ -9,10 +9,13 @@ import { Add01Icon, Delete02Icon, ArrowRight01Icon, ArrowDown01Icon, FolderFileS
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { buildFileTree, fileLang, type FileTreeNode } from "@/app/skills/file-tree";
 import { IconButton, api, stripFrontmatter } from "@/app/skills/skills-shared";
 import type { SkillSummary, SkillFileEntry } from "@/app/skills/skills-shared";
+import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 export function SkillEditor({ skill }: { skill: SkillSummary }) {
@@ -22,6 +25,9 @@ export function SkillEditor({ skill }: { skill: SkillSummary }) {
   const [savedContent, setSavedContent] = useState("");
   const [view, setView] = useState<"source" | "render">("source");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [deleteFileTarget, setDeleteFileTarget] = useState<string | null>(null);
+  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [newFilePath, setNewFilePath] = useState("");
   const editable = skill.editable;
   const dirty = content !== savedContent;
   const lang = activeFile ? fileLang(activeFile) : null;
@@ -78,8 +84,7 @@ export function SkillEditor({ skill }: { skill: SkillSummary }) {
     else toast.error(r.error ?? "保存失败");
   }
 
-  async function newFile() {
-    const rel = window.prompt("新文件相对路径(如 scripts/run.py):");
+  async function newFile(rel: string) {
     if (!rel) return;
     const r = await api(`/api/skills/${encodeURIComponent(skill.name)}/files/${rel.split("/").map(encodeURIComponent).join("/")}`, {
       method: "PUT",
@@ -90,8 +95,14 @@ export function SkillEditor({ skill }: { skill: SkillSummary }) {
     else toast.error(r.error ?? "新建失败");
   }
 
+  async function handleNewFileSubmit() {
+    const rel = newFilePath.trim();
+    setNewFileOpen(false);
+    setNewFilePath("");
+    await newFile(rel);
+  }
+
   async function deleteFile(rel: string) {
-    if (!window.confirm(`删除文件 ${rel}?`)) return;
     const r = await api(`/api/skills/${encodeURIComponent(skill.name)}/files/${rel.split("/").map(encodeURIComponent).join("/")}`, { method: "DELETE" });
     if (r.ok) { await loadFiles(); toast.success("已删除"); }
     else toast.error(r.error ?? "删除失败");
@@ -103,7 +114,7 @@ export function SkillEditor({ skill }: { skill: SkillSummary }) {
       <div className="w-56 shrink-0 border-r border-border flex flex-col">
         <div className="flex items-center justify-between px-3 h-9 shrink-0 border-b border-border">
           <span className="text-meta text-muted-foreground">文件</span>
-          {editable && <IconButton icon={Add01Icon} label="新建文件" size={15} onClick={() => void newFile()} />}
+          {editable && <IconButton icon={Add01Icon} label="新建文件" size={15} onClick={() => setNewFileOpen(true)} />}
         </div>
         <ScrollArea className="flex-1">
           <div className="p-1.5 flex flex-col gap-0.5">
@@ -115,7 +126,7 @@ export function SkillEditor({ skill }: { skill: SkillSummary }) {
               editable={editable}
               toggleDir={toggleDir}
               openFile={(rel) => void openFile(rel)}
-              deleteFile={(rel) => void deleteFile(rel)}
+              deleteFile={(rel) => setDeleteFileTarget(rel)}
             />
           </div>
         </ScrollArea>
@@ -171,6 +182,38 @@ export function SkillEditor({ skill }: { skill: SkillSummary }) {
           </div>
         )}
       </div>
+
+      {/* 删除文件确认 */}
+      <ConfirmDialog
+        open={deleteFileTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteFileTarget(null); }}
+        title={`删除文件 ${deleteFileTarget}？`}
+        confirmLabel="删除文件"
+        destructive
+        onConfirm={() => { if (deleteFileTarget) void deleteFile(deleteFileTarget); }}
+      />
+
+      {/* 新建文件对话框 */}
+      <Dialog open={newFileOpen} onOpenChange={(open) => { setNewFileOpen(open); if (!open) setNewFilePath(""); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>新建文件</DialogTitle>
+          </DialogHeader>
+          <Input
+            placeholder="scripts/run.py"
+            value={newFilePath}
+            onChange={(e) => setNewFilePath(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newFilePath.trim()) void handleNewFileSubmit();
+            }}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setNewFileOpen(false); setNewFilePath(""); }}>取消</Button>
+            <Button disabled={!newFilePath.trim()} onClick={() => void handleNewFileSubmit()}>创建文件</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

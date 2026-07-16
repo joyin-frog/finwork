@@ -34,7 +34,7 @@ export function SkillCard({ skill }: { skill: SkillSummary }) {
           disabled={!skill.enabled}
           onClick={(e) => { e.preventDefault(); if (skill.enabled) router.push(`/chat/new?skill=${encodeURIComponent(skill.name)}`); }}
           // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-          className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-accent transition-colors disabled:pointer-events-none disabled:opacity-40"
+          className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-accent transition-colors disabled:pointer-events-none disabled:opacity-50"
         >
           <HugeiconsIcon icon={BubbleChatAddIcon} size={14} />
         </button>

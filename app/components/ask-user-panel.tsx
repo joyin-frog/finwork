@@ -64,7 +64,7 @@ export function AskUserPanel({
     } catch {
       submittedRef.current = false;
       setSubmitting(false);
-      toast.error("提交失败,请重试");
+      toast.error("回答没有提交成功。检查网络后重新选择");
     }
   }
 

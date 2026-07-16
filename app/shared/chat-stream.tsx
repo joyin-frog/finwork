@@ -153,6 +153,8 @@ type ChatStreamApi = {
   consumeTurn: (key: string) => void;
   /** 按 conversationId 索引的进行中/刚结束回合状态,供侧栏渲染状态点(streaming=蓝/done=绿/error=红)。 */
   statusByConversationId: Record<number, TurnStatus>;
+  /** 当前是否存在未结束的回合;供 CloseGuard 判断是否弹关窗确认。 */
+  hasActiveTurns: boolean;
 };
 
 const ChatStreamContext = createContext<ChatStreamApi | null>(null);
@@ -319,9 +321,14 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
     return map;
   }, [turns]);
 
+  const hasActiveTurns = useMemo(
+    () => Object.values(turns).some((t) => !isFinished(t.status)),
+    [turns]
+  );
+
   const api = useMemo<ChatStreamApi>(
-    () => ({ getTurn, startTurn, stopTurn, consumeTurn, statusByConversationId }),
-    [getTurn, startTurn, stopTurn, consumeTurn, statusByConversationId]
+    () => ({ getTurn, startTurn, stopTurn, consumeTurn, statusByConversationId, hasActiveTurns }),
+    [getTurn, startTurn, stopTurn, consumeTurn, statusByConversationId, hasActiveTurns]
   );
 
   return <ChatStreamContext.Provider value={api}>{children}</ChatStreamContext.Provider>;

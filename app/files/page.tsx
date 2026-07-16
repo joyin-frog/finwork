@@ -615,7 +615,7 @@ function FilesPageContent() {
             <div className="content-fade-top flex-1 overflow-y-auto">
               {loading && (
                 <div className="flex items-center justify-center h-24 text-body text-muted-foreground">
-                  正在加载...
+                  正在加载…
                 </div>
               )}
               {!loading && error && (

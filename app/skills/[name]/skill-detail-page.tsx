@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { SkillEditor } from "@/app/skills/skill-editor";
 import { api, SourceTag, IconButton } from "@/app/skills/skills-shared";
 import type { SkillSummary } from "@/app/skills/skills-shared";
+import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 
 type SkillDetail = SkillSummary & { body?: string };
 
@@ -19,6 +20,7 @@ export function SkillDetailPage({ name }: { name: string }) {
   const [skill, setSkill] = useState<SkillDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -51,7 +53,6 @@ export function SkillDetailPage({ name }: { name: string }) {
 
   async function deleteSkill() {
     if (!skill) return;
-    if (!window.confirm(`删除技能「${skill.name}」?此操作不可撤销。`)) return;
     const r = await api(`/api/skills/${encodeURIComponent(skill.name)}`, { method: "DELETE" });
     if (r.ok) {
       toast.success("已删除技能");
@@ -115,7 +116,7 @@ export function SkillDetailPage({ name }: { name: string }) {
             icon={Delete02Icon}
             label="删除技能"
             tone="destructive"
-            onClick={() => void deleteSkill()}
+            onClick={() => setDeleteOpen(true)}
           />
         )}
       </div>
@@ -124,6 +125,16 @@ export function SkillDetailPage({ name }: { name: string }) {
       <div className="flex-1 min-h-0 flex">
         <SkillEditor key={skill.name} skill={skill} />
       </div>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`删除技能「${skill.name}」？`}
+        description="此操作不可撤销。"
+        confirmLabel="删除技能"
+        destructive
+        onConfirm={() => void deleteSkill()}
+      />
     </div>
   );
 }
