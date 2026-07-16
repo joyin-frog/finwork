@@ -12,6 +12,8 @@ struct ServerProcess(Mutex<Option<Child>>);
 
 const NEXT_SERVER_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const HOST_LOG_MAX_BYTES: u128 = 2 * 1024 * 1024;
+const APP_DIRECTORY_NAME: &str = "Finwork";
+const WINDOWS_RELEASE_DATA_DIRECTORY_NAME: &str = "Finwork Data";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,9 +29,10 @@ pub fn run() {
     .setup(|app| {
       let is_release = !cfg!(debug_assertions);
       let boot_id = generate_boot_id();
-      let host_log_target = match app_data_root(app) {
-        Some(root) => Target::new(TargetKind::Folder {
-          path: root.join("finance-agent").join("logs"),
+      let app_data_dir = resolve_app_data_dir(app, is_release);
+      let host_log_target = match app_data_dir.as_ref() {
+        Some(dir) => Target::new(TargetKind::Folder {
+          path: dir.join("logs"),
           file_name: Some("tauri-host".into()),
         }),
         None => Target::new(TargetKind::LogDir {
@@ -57,7 +60,7 @@ pub fn run() {
       // 新实例不再 listen EADDRINUSE 起不来(此前表现为整体"网络错误")。
       let server_port = if is_release { resolve_server_port() } else { 3000 };
       let url = if is_release {
-        start_next_server(app, server_port, &boot_id).map_err(|error| {
+        start_next_server(app, server_port, &boot_id, app_data_dir.as_deref()).map_err(|error| {
           log::error!("next_server_start_failed bootId={} error={error}", boot_id);
           error
         })?;
@@ -130,6 +133,7 @@ fn start_next_server(
   app: &mut tauri::App,
   port: u16,
   boot_id: &str,
+  app_data_dir: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
   let resource_dir = app.path().resource_dir()?;
   let server_dir = resource_dir.join("next-server");
@@ -142,10 +146,10 @@ fn start_next_server(
   } else {
     "node".into()
   };
-  // 子进程 stdout/stderr 重定向到 <appData>/finance-agent/logs/next-server.log,与 JS 端
+  // 子进程 stdout/stderr 重定向到 <resolvedDataDir>/logs/next-server.log,与 JS 端
   // server-<date>.log 同目录。以 append 保留跨启动历史,超过上限时滚动为单个 .1 归档,
   // 避免历史丢失与无限增长。打不开文件则回退 null(best-effort,绝不阻塞启动)。
-  let (stdout_cfg, stderr_cfg) = match open_next_server_log(app, boot_id) {
+  let (stdout_cfg, stderr_cfg) = match open_next_server_log(app_data_dir, boot_id) {
     Some(file) => match file.try_clone() {
       Ok(clone) => (Stdio::from(file), Stdio::from(clone)),
       Err(_) => (Stdio::from(file), Stdio::null()),
@@ -163,6 +167,9 @@ fn start_next_server(
     .env("FINANCE_AGENT_BUNDLED_PLUGIN_DIR", bundled_plugin_dir)
     .stdout(stdout_cfg)
     .stderr(stderr_cfg);
+  if let Some(dir) = app_data_dir {
+    command.env("FINANCE_AGENT_APP_DATA_DIR", dir);
+  }
 
   // Windows:node 是控制台程序,GUI 应用(windows_subsystem="windows")里直接 spawn 会给它弹一个
   // 独立控制台黑窗(Windows Terminal 标签标题取 node 的 process.title = "next-server (vX.Y.Z)"),
@@ -249,11 +256,11 @@ fn confine_child_to_job(child: &Child) {
   }
 }
 
-/// next-server 子进程日志文件(<appData>/finance-agent/logs/next-server.log)。
+/// next-server 子进程日志文件(<resolvedDataDir>/logs/next-server.log)。
 /// 每次宿主启动时检查大小:跨启动追加,达到 8 MiB 时保留一个 `.1` 归档。
 /// 单次长运行可暂时超过阈值,下次启动时收敛;打开失败返回 None → 调用方回退 Stdio::null()。
-fn open_next_server_log(app: &tauri::App, boot_id: &str) -> Option<File> {
-  let dir = app_data_root(app)?.join("finance-agent").join("logs");
+fn open_next_server_log(app_data_dir: Option<&Path>, boot_id: &str) -> Option<File> {
+  let dir = app_data_dir?.join("logs");
   std::fs::create_dir_all(&dir).ok()?;
   open_next_server_log_path(&dir.join("next-server.log"), boot_id).ok()
 }
@@ -317,18 +324,97 @@ fn generate_boot_id() -> String {
   format!("{timestamp_nanos:032x}-{:08x}", std::process::id())
 }
 
-/// 复刻 JS 端 paths.ts::getDefaultAppDataRoot 的平台默认根,确保原生日志与 JS 日志落同一目录。
-/// 故意不走 Tauri app_data_dir()(那会带 bundle identifier 子目录,与 JS 的 finance-agent 不一致)。
+/// 解析宿主和内置 Node 共用的数据目录。Windows release 默认跟随安装盘但位于安装目录外，
+/// 以免卸载程序删除用户数据；开发态及其它平台继续使用标准系统应用数据目录。
+fn resolve_app_data_dir(app: &tauri::App, is_release: bool) -> Option<PathBuf> {
+  for key in ["FINANCE_AGENT_APP_DATA_DIR", "FINANCE_AGENT_DATA_DIR"] {
+    if let Ok(value) = std::env::var(key) {
+      if !value.is_empty() {
+        return Some(PathBuf::from(value));
+      }
+    }
+  }
+  let standard_dir = app_data_root(app).map(|root| root.join(APP_DIRECTORY_NAME));
+  #[cfg(windows)]
+  if is_release {
+    if let Ok(executable) = std::env::current_exe() {
+      let protected_roots = windows_program_files_roots();
+      if let Some(dir) = release_windows_app_data_dir(
+        &executable,
+        &protected_roots,
+        standard_dir.as_deref(),
+      ) {
+        return Some(dir);
+      }
+    }
+  }
+  let _ = is_release;
+  standard_dir
+}
+
+#[cfg(windows)]
+fn windows_program_files_roots() -> Vec<PathBuf> {
+  ["PROGRAMFILES", "PROGRAMFILES(X86)", "ProgramW6432"]
+    .iter()
+    .filter_map(|key| std::env::var(key).ok())
+    .filter(|value| !value.is_empty())
+    .map(PathBuf::from)
+    .collect()
+}
+
+/// `D:\\Finwork\\Finwork.exe` -> `D:\\Finwork Data`；若安装目录位于 Program Files，
+/// 则回落到可写的标准用户数据目录。
+fn release_windows_app_data_dir(
+  executable: &Path,
+  protected_roots: &[PathBuf],
+  protected_fallback: Option<&Path>,
+) -> Option<PathBuf> {
+  let install_dir = executable.parent()?;
+  if protected_roots
+    .iter()
+    .any(|root| windows_path_is_within(install_dir, root))
+  {
+    return protected_fallback.map(Path::to_path_buf);
+  }
+  install_dir
+    .parent()
+    .map(|root| root.join(WINDOWS_RELEASE_DATA_DIRECTORY_NAME))
+}
+
+fn windows_path_is_within(candidate: &Path, root: &Path) -> bool {
+  let candidate = normalized_windows_path(candidate);
+  let root = normalized_windows_path(root);
+  !root.is_empty()
+    && (candidate == root
+    || candidate
+      .strip_prefix(&root)
+      .is_some_and(|suffix| suffix.starts_with('\\')))
+}
+
+fn normalized_windows_path(path: &Path) -> String {
+  let normalized = path
+    .to_string_lossy()
+    .replace('/', "\\")
+    .trim_end_matches('\\')
+    .to_lowercase();
+  normalized
+    .strip_prefix("\\\\?\\")
+    .unwrap_or(&normalized)
+    .to_string()
+}
+
+/// 复刻 JS 端 paths.ts::getDefaultAppDataDir 所用的平台默认根。
+/// 故意不走 Tauri app_data_dir()(它会额外带 bundle identifier 子目录)。
 fn app_data_root(app: &tauri::App) -> Option<PathBuf> {
   let home = app.path().home_dir().ok();
   #[cfg(windows)]
   {
-    if let Ok(appdata) = std::env::var("APPDATA") {
+    if let Ok(appdata) = std::env::var("LOCALAPPDATA") {
       if !appdata.is_empty() {
         return Some(PathBuf::from(appdata));
       }
     }
-    return home.map(|h| h.join("AppData").join("Roaming"));
+    return home.map(|h| h.join("AppData").join("Local"));
   }
   #[cfg(target_os = "macos")]
   {
@@ -416,6 +502,34 @@ mod tests {
 
   fn test_log_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("finance-agent-{name}-{}", generate_boot_id()))
+  }
+
+  #[test]
+  fn release_windows_data_directory_is_a_sibling_of_the_install_directory() {
+    let executable = Path::new("/Volumes/D/Finwork/Finwork.exe");
+    assert_eq!(
+      release_windows_app_data_dir(executable, &[], None),
+      Some(PathBuf::from("/Volumes/D/Finwork Data"))
+    );
+    assert_eq!(
+      release_windows_app_data_dir(Path::new("Finwork.exe"), &[], None),
+      None
+    );
+  }
+
+  #[test]
+  fn release_windows_data_directory_falls_back_for_program_files_install() {
+    let executable = Path::new("/System/Program Files/Finwork/Finwork.exe");
+    let protected_roots = [PathBuf::from("/SYSTEM/PROGRAM FILES")];
+    let fallback = Path::new("/Users/test/AppData/Local/Finwork");
+    assert_eq!(
+      release_windows_app_data_dir(executable, &protected_roots, Some(fallback)),
+      Some(fallback.to_path_buf())
+    );
+    assert!(!windows_path_is_within(
+      Path::new("/System/Program Files Portable/Finwork"),
+      &protected_roots[0]
+    ));
   }
 
   #[test]
