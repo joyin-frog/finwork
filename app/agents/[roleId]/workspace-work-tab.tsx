@@ -7,9 +7,12 @@
  *   - 左列 = 任务流水（等你拍板 → 进行中 → 已交付，疑点在前），行可选中。
  *   - 右列 = ResizablePreviewPanel 三态：待拍板→疑点/去处理；进行中→动态+查看会话；
  *     已交付→文件产物内嵌 FilePreviewPage。均标注来源会话可跳回。
- *   - usePreviewResize(460)、列表 min-w-[420px]、?task=<id> 深链、默认选中首条并展开、
- *     收起后顶栏「展开预览」图标按钮。
+ *   - ?task=<id> 深链、默认选中首条并展开、收起后顶栏「展开预览」图标按钮。
  *   - 操作一律 hugeicon + hover 提示（TipButton）。
+ *
+ * 预览壳对齐知识库（design-agents-ia F3 抛光）：ResizablePreviewPanel 由页面级持有
+ * （page.tsx 持 usePreviewResize + header/tabs 进 list 槽，预览顶与页面顶同齐），
+ * 本文件只留任务态数据与两块渲染内容，通过 useWorkspaceWorkTab 暴露给页面组装。
  */
 
 import type { CSSProperties, ReactNode } from "react";
@@ -30,11 +33,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
-import { usePreviewResize } from "@/app/shared/use-preview-resize";
+import type { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { FilePreviewPage, type LocalPreviewFile } from "@/app/shared/file-preview-page";
 import { relativeTime } from "@/lib/utils/relative-time";
 import type { DispatchRow } from "@/lib/db/dispatch-store";
+
+/** page.tsx 持有的 usePreviewResize 状态子集——本 hook 只消费展开/收起/放大，不管宽度与拖拽。 */
+type WorkTabResize = Pick<ReturnType<typeof usePreviewResize>, "collapsed" | "maximized" | "open" | "toggle" | "maximize">;
 
 type TaskGroupKey = "pending" | "running" | "failed" | "done";
 const TASK_GROUPS: { key: TaskGroupKey; label: string }[] = [
@@ -86,7 +91,11 @@ function TipButton({
   );
 }
 
-export function WorkspaceWorkTab({ roleId }: { roleId: string }) {
+export function useWorkspaceWorkTab(
+  roleId: string,
+  resize: WorkTabResize
+): { list: ReactNode; preview: ReactNode } {
+  const { collapsed, maximized, open, toggle, maximize } = resize;
   const router = useRouter();
   const searchParams = useSearchParams();
   const taskParam = searchParams.get("task");
@@ -98,10 +107,9 @@ export function WorkspaceWorkTab({ roleId }: { roleId: string }) {
   // 请求令牌：切角色时递增，过期响应到达时丢弃——避免快速切角色时旧请求覆盖新角色的数据。
   const requestTokenRef = useRef(0);
 
-  const { collapsed, previewW, dragging, maximized, mainRef, beginResize, open, toggle, maximize, resetWidth } =
-    usePreviewResize(460);
-
   const fetchDispatches = useCallback(async () => {
+    // roleId 为空说明角色详情尚未加载完成（page.tsx 传入占位空串）：跳过请求，留空态等下一次真实 roleId 到来。
+    if (!roleId) { setDispatches([]); return; }
     const token = ++requestTokenRef.current;
     setError(false);
     setDispatches(null);
@@ -207,20 +215,7 @@ export function WorkspaceWorkTab({ roleId }: { roleId: string }) {
     />
   ) : null;
 
-  return (
-    <ResizablePreviewPanel
-      mainRef={mainRef}
-      previewW={previewW}
-      maximized={maximized}
-      collapsed={collapsed}
-      dragging={dragging}
-      onBeginResize={beginResize}
-      onResetWidth={resetWidth}
-      listMinWidthClass="min-w-[420px]"
-      list={list}
-      preview={preview}
-    />
-  );
+  return { list, preview };
 }
 
 function TaskRow({ row, selected, onSelect }: { row: DispatchRow; selected: boolean; onSelect: () => void }) {

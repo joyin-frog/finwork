@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ROLE_LABELS } from "@/lib/domain/role-ui";
 
 export const MIN_NAV_WIDTH = 180;
 export const MAX_NAV_WIDTH = 360;
@@ -30,7 +31,8 @@ export type PageKind = "cockpit" | "chat-new" | "agents" | "knowledge" | "files"
 
 export type PageTab = {
   kind: "page";
-  key: `page:${PageKind}`;
+  // 智能体工作台按角色分标签（F3）：`page:agents:<roleId>`，与其它页面的单例 `page:${PageKind}` 并存。
+  key: `page:${PageKind}` | `page:agents:${string}`;
   pageKind: PageKind;
   title: string;
   href: string;
@@ -82,9 +84,23 @@ const PAGE_ROUTE_META: Array<{ prefix: string; pageKind: PageKind; title: string
 
 export function pageTabFromRoute(pathname: string, search: string): PageTab | null {
   if (pathname === "/chat/recent" || pathname.startsWith("/chat/recent/")) return null;
+  const suffix = search ? (search.startsWith("?") ? search : `?${search}`) : "";
+
+  // /agents/<roleId> 各开独立标签，标题用角色中文名（F3）；裸 /agents（旧花名册）走下面的通用映射。
+  const roleMatch = pathname.match(/^\/agents\/([^/]+)/);
+  if (roleMatch) {
+    const roleId = roleMatch[1];
+    return {
+      kind: "page",
+      key: `page:agents:${roleId}`,
+      pageKind: "agents",
+      title: ROLE_LABELS[roleId] ?? roleId,
+      href: `${pathname}${suffix}`,
+    };
+  }
+
   const match = PAGE_ROUTE_META.find(({ prefix }) => pathname === prefix || pathname.startsWith(`${prefix}/`));
   if (!match) return null;
-  const suffix = search ? (search.startsWith("?") ? search : `?${search}`) : "";
   return {
     kind: "page",
     key: `page:${match.pageKind}`,

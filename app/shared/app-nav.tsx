@@ -190,8 +190,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     const isBlocked = (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending;
     const disabled = !r.available || r.userDisabled;
     // 状态点走状态语义(非角色色):在忙=主色呼吸、待拍板=notice、空闲=空心。
+    // 状态只用圆点表达，不再跟文字(用户反馈 4)；圆点自带 title/aria-label 承载可读状态。
     const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;
-    const tag = isRunning ? "在忙" : isBlocked ? "待拍板" : null;
+    const dotLabel = isRunning ? "在忙" : isBlocked ? "待拍板" : "空闲";
     return (
       <Link
         key={r.roleId}
@@ -210,13 +211,21 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           <span
             className={cn("fa-tone-dot shrink-0", isRunning && "fa-dot-pulse")}
             style={{ "--tone": dotTone } as CSSProperties}
+            title={dotLabel}
+            aria-label={dotLabel}
+            role="status"
           />
         ) : (
           // 空闲=中性色圆点弱化(走 fa-tone-dot 系统,不用裸 rounded/border 类)
-          <span className="fa-tone-dot shrink-0 opacity-30" style={{ "--tone": "var(--tone-neutral)" } as CSSProperties} />
+          <span
+            className="fa-tone-dot shrink-0 opacity-30"
+            style={{ "--tone": "var(--tone-neutral)" } as CSSProperties}
+            title={dotLabel}
+            aria-label={dotLabel}
+            role="status"
+          />
         )}
         <span className="flex-1 min-w-0 truncate">{r.name}</span>
-        {tag && <span className="shrink-0 text-meta text-muted-foreground">{tag}</span>}
       </Link>
     );
   }

@@ -50,8 +50,8 @@
     "semantic_hash": "5f19dcd70ca7c9d6031adb1952d633ea"
   },
   "app/api/agents/route.ts": {
-    "mtime": 1784274676.657526,
-    "ast_hash": "f21e68689523d71d4acbbe2abf5f8592",
+    "mtime": 1784277254.7583103,
+    "ast_hash": "51f2acd77ce039a4fd5be4586798c56d",
     "semantic_hash": ""
   },
   "app/api/agents/toggle/route.ts": {
@@ -775,13 +775,13 @@
     "semantic_hash": "59b18460e5a9a992b67e9ac749d48d0f"
   },
   "app/shared/app-nav.tsx": {
-    "mtime": 1784274720.1108315,
-    "ast_hash": "f197c4ba3c8337b5263b142bca8bf795",
+    "mtime": 1784277316.3570108,
+    "ast_hash": "5c7d974137adb6b75b72113618231b59",
     "semantic_hash": ""
   },
   "app/shared/app-shell.tsx": {
-    "mtime": 1784195174.7303345,
-    "ast_hash": "ffdb5488f0b43927b9c166026f863217",
+    "mtime": 1784277298.0201268,
+    "ast_hash": "e21c9e587911aefa04b1334c82945359",
     "semantic_hash": ""
   },
   "app/shared/app-tab-bar.tsx": {
@@ -840,8 +840,8 @@
     "semantic_hash": "9682e7bc44508372e9bccb1653a0f235"
   },
   "app/shared/nav-state.tsx": {
-    "mtime": 1784274709.6679986,
-    "ast_hash": "1b8a4980c1f2183f4763652cfed5c5e2",
+    "mtime": 1784277283.5368254,
+    "ast_hash": "68c95d65b7a9aecc0bc6c1fc91806fd3",
     "semantic_hash": ""
   },
   "app/shared/nav-top-controls.tsx": {
@@ -1245,9 +1245,9 @@
     "semantic_hash": "1e65f1a6aa31a334b9f12cf50766bea7"
   },
   "lib/agent/tools/renderers.ts": {
-    "mtime": 1783655832.8308039,
-    "ast_hash": "cd80603088f154973bb577b479346868",
-    "semantic_hash": "cd80603088f154973bb577b479346868"
+    "mtime": 1784277238.9151864,
+    "ast_hash": "cf9b4b0a0b0a03de644f262df7594bfa",
+    "semantic_hash": ""
   },
   "lib/agent/usage-accumulate.ts": {
     "mtime": 1783316210.3987231,
@@ -1390,9 +1390,9 @@
     "semantic_hash": "b34de70611775eb33b15b23fd54df9f8"
   },
   "lib/domain/role-ui.ts": {
-    "mtime": 1783316210.4060733,
-    "ast_hash": "f9882e183966cc89f9a5d7e5d1521e4c",
-    "semantic_hash": "f9882e183966cc89f9a5d7e5d1521e4c"
+    "mtime": 1784277228.9837708,
+    "ast_hash": "76758d069b43c8f920bef484af8ee34c",
+    "semantic_hash": ""
   },
   "lib/domain/slip-grouping.ts": {
     "mtime": 1783316210.4062912,
@@ -2400,8 +2400,8 @@
     "semantic_hash": "66d3965015ea2fbf7f269c06fe481ece"
   },
   "tests/nav-v3.test.ts": {
-    "mtime": 1784265882.2742405,
-    "ast_hash": "b08f0647b01baaa68d007eb94c47ac2d",
+    "mtime": 1784277525.9728136,
+    "ast_hash": "9ee0db1d810c595ac4c85599c98ce13c",
     "semantic_hash": ""
   },
   "tests/normalize-file-links.test.ts": {
@@ -4380,8 +4380,8 @@
     "semantic_hash": "2d6358974ba7f98839ac056bacf2c038"
   },
   "app/agents/[roleId]/page.tsx": {
-    "mtime": 1784274762.9896023,
-    "ast_hash": "041fd87d835525e2ffe3c2c7b0f9dcbb",
+    "mtime": 1784277434.151731,
+    "ast_hash": "13355786f0963e18355ad243dcd5aa02",
     "semantic_hash": ""
   },
   "app/api/agent/trust/route.ts": {
@@ -5000,8 +5000,8 @@
     "semantic_hash": ""
   },
   "docs/spec/design-agents-ia.md": {
-    "mtime": 1784273174.1751,
-    "ast_hash": "fbce66af963e1a59d2c77a0d5d6e85c0",
+    "mtime": 1784276786.5920577,
+    "ast_hash": "18a3f032e8732b17d265a8ca77ff039b",
     "semantic_hash": ""
   },
   "docs/spec/spec-JOY-10-conversation-tabs.md": {
@@ -5090,8 +5090,8 @@
     "semantic_hash": ""
   },
   "app/agents/[roleId]/workspace-work-tab.tsx": {
-    "mtime": 1784274629.3402185,
-    "ast_hash": "066ce371095ce032c52ecf376b3083fd",
+    "mtime": 1784277376.646125,
+    "ast_hash": "e8af8b2a321be4c763eac18687c38715",
     "semantic_hash": ""
   },
   "app/api/agents/[roleId]/conversations/route.ts": {
@@ -5107,6 +5107,56 @@
   "lib/db/role-memory-store.ts": {
     "mtime": 1784272387.6977835,
     "ast_hash": "550ae7b2f6fad8a81dfb1ad004d4dcb8",
+    "semantic_hash": ""
+  },
+  ".agents/skills/kill-ai-slop/scripts/scan.mjs": {
+    "mtime": 1784276852.3128836,
+    "ast_hash": "d099c546151d021fbc45eb607d4a54f7",
+    "semantic_hash": ""
+  },
+  ".agents/skills/kill-ai-slop/scripts/scan.test.mjs": {
+    "mtime": 1784276852.31306,
+    "ast_hash": "3e9b6e21a2613515ed39fd3bd7f2a4e4",
+    "semantic_hash": ""
+  },
+  "skills-lock.json": {
+    "mtime": 1784276852.323333,
+    "ast_hash": "593fac6b51212c12e8b1ff084ec8dc16",
+    "semantic_hash": ""
+  },
+  ".agents/skills/kill-ai-slop/README.md": {
+    "mtime": 1784276852.3125699,
+    "ast_hash": "0b6bae3634843d6622a9971285869fbd",
+    "semantic_hash": ""
+  },
+  ".agents/skills/kill-ai-slop/SKILL.md": {
+    "mtime": 1784276852.312595,
+    "ast_hash": "793037891fd7168984e249693759002a",
+    "semantic_hash": ""
+  },
+  ".agents/skills/kill-ai-slop/references/detection.md": {
+    "mtime": 1784276852.3129175,
+    "ast_hash": "25bace24350049e0aa20f5dfe262f497",
+    "semantic_hash": ""
+  },
+  ".agents/skills/kill-ai-slop/references/fixes.md": {
+    "mtime": 1784276852.312837,
+    "ast_hash": "a92bb103f32e8cd75f68a3fdc3aeeb64",
+    "semantic_hash": ""
+  },
+  ".agents/skills/kill-ai-slop/references/taxonomy.md": {
+    "mtime": 1784276852.3128572,
+    "ast_hash": "da40aa2266e8fb004b42007f914d06f7",
+    "semantic_hash": ""
+  },
+  "docs/spec/audit-agents-ia-review-fixes.md": {
+    "mtime": 1784274940.566474,
+    "ast_hash": "63a0607acc12d7840779c01915f444d6",
+    "semantic_hash": ""
+  },
+  "docs/spec/spec-agents-ia-ui-polish.md": {
+    "mtime": 1784276765.7962062,
+    "ast_hash": "3adc9df6760443db5b5e2c556ac6dab7",
     "semantic_hash": ""
   }
 }

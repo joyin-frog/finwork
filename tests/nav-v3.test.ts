@@ -223,6 +223,53 @@ export const navV3TestPromise = (async () => {
     assert.equal(conversationDeleteDestination(liveResult, 2), "/chat/recent?id=1", "JOY-10 FAIL: DELETE 完成不得跳到已关闭邻居");
   }
 
+  // ── F3: /agents/<roleId> 各开独立应用标签，标题用角色中文名 ──────────────
+  {
+    const analyst = pageTabFromRoute("/agents/analyst", "");
+    assert.ok(analyst, "F3 FAIL: /agents/<roleId> 应产出标签");
+    assert.equal(analyst!.key, "page:agents:analyst", "F3 FAIL: 角色标签 key 应按 roleId 分开（page:agents:<roleId>）");
+    assert.equal(analyst!.pageKind, "agents", "F3 FAIL: pageKind 仍应为 agents（图标映射复用）");
+    assert.equal(analyst!.title, "经营分析师", "F3 FAIL: 标题应为角色中文名（ROLE_LABELS 兜底），不是统一「智能体」");
+    assert.equal(analyst!.href, "/agents/analyst", "F3 FAIL: href 应保留完整路径");
+
+    const bookkeeper = pageTabFromRoute("/agents/bookkeeper", "?task=7");
+    assert.equal(bookkeeper!.key, "page:agents:bookkeeper", "F3 FAIL: 不同角色应产出不同 key");
+    assert.equal(bookkeeper!.title, "记账专员", "F3 FAIL: 记账专员标题应正确映射");
+    assert.equal(bookkeeper!.href, "/agents/bookkeeper?task=7", "F3 FAIL: search 应拼进 href");
+
+    // 未知 roleId：降级用 roleId 本身兜底，不崩不返回 null
+    const unknown = pageTabFromRoute("/agents/does-not-exist", "");
+    assert.equal(unknown!.title, "does-not-exist", "F3 FAIL: 未知 roleId 应降级为 roleId 本身，不得抛错或空标题");
+
+    // 裸 /agents（旧花名册）保持原「智能体」单例标签，不受角色分标签影响
+    const roster = pageTabFromRoute("/agents", "");
+    assert.equal(roster!.key, "page:agents", "F3 FAIL: 裸 /agents 仍应是单例 page:agents");
+    assert.equal(roster!.title, "智能体", "F3 FAIL: 裸 /agents 标题应保持「智能体」");
+
+    // reducer 层：两个角色标签应并存，不互相覆盖（复制对话标签的分 key 模式）
+    const empty: AppTabsState = { tabs: [], activeKey: null, latestTitlesById: {} };
+    const opened1 = appTabsReducer(empty, { type: "openPage", tab: analyst! });
+    const opened2 = appTabsReducer(opened1, { type: "openPage", tab: bookkeeper! });
+    assert.deepEqual(
+      opened2.tabs.map((t) => t.key),
+      ["page:agents:analyst", "page:agents:bookkeeper"],
+      "F3 FAIL: 切换角色不应覆盖另一角色的标签，应各自独立"
+    );
+    assert.equal(opened2.activeKey, "page:agents:bookkeeper", "F3 FAIL: 新开标签应激活自己");
+  }
+
+  // ── 抛光: 侧栏角色行状态只用圆点表达，不再跟「在忙/待拍板」文字（圆点保留 a11y） ──
+  {
+    const navSrc = src("app/shared/app-nav.tsx");
+    assert.ok(
+      !navSrc.includes('{tag && <span className="shrink-0 text-meta text-muted-foreground">{tag}</span>}'),
+      "抛光 FAIL: 角色行不应再渲染跟随圆点的文字 tag"
+    );
+    const roleRowBody = navSrc.slice(navSrc.indexOf("function renderRoleRow"), navSrc.indexOf("function renderConversationRow"));
+    assert.ok(roleRowBody.includes("aria-label={dotLabel}"), "抛光 FAIL: 状态圆点应带 aria-label 承载可读状态");
+    assert.ok(roleRowBody.includes("title={dotLabel}"), "抛光 FAIL: 状态圆点应带 title 承载可读状态（hover 提示）");
+  }
+
   // ── 契约 5a: app-nav.tsx「智能体」为可展开分组，子项直达角色工作台 ──────────
   // IA 重构（docs/spec/design-agents-ia.md）：父项不再导航到 /agents 落地页，
   // 而是纯展开/收起开关；子列表为角色，直达 /agents/<roleId> 工作台。

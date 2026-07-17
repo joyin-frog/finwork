@@ -7,6 +7,10 @@
  *   - 头部（头像+名称+状态+派任务）+ 四页签（工作/记忆/相关对话/概况）。
  *   - 工作页签 = 任务流水 + 右侧三态预览（见 workspace-work-tab.tsx）。
  *   - 记忆 / 相关对话 / 和它对话 / 启停开关为后续刀。
+ *
+ * 预览壳对齐知识库（docs/spec/spec-agents-ia-ui-polish.md §4.3）：本页持有唯一的
+ * ResizablePreviewPanel + usePreviewResize，header/tabs 进 list 槽（与 app/knowledge/page.tsx
+ * 同构），预览顶边与页面顶对齐；只有工作页签且有选中任务时才带 preview。
  */
 
 import type { CSSProperties } from "react";
@@ -21,12 +25,14 @@ import { Input } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
+import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { useNavState } from "@/app/shared/nav-state";
 import { ROLE_UI, ROLE_LABELS } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
-import { WorkspaceWorkTab } from "./workspace-work-tab";
+import { useWorkspaceWorkTab } from "./workspace-work-tab";
 
 type SkillEntry = { name: string; description: string };
 
@@ -95,9 +101,14 @@ export default function AgentWorkspacePage() {
   const isRunning = role?.status === "running";
   const isBlocked = (role?.blockedReason != null && role.blockedReason !== "") || (role?.reviewPending ?? false);
 
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* 顶栏：拖拽 + 侧栏开关 + 角色身份 + 派任务 */}
+  // 预览壳与知识库同构：本页唯一持有 usePreviewResize + ResizablePreviewPanel；
+  // 工作页签的任务数据/选中态仍封在 workspace-work-tab.tsx，这里只拿渲染好的两块内容。
+  const resize = usePreviewResize(460);
+  const { list: workList, preview: workPreview } = useWorkspaceWorkTab(role?.roleId ?? "", resize);
+
+  const listContent = (
+    <div className="flex flex-col h-full min-h-0">
+      {/* 顶栏：拖拽 + 侧栏开关 + 角色身份 + 派任务——只跨列表列，不横跨预览（同知识库） */}
       <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
         <DragHandle />
         <SidebarToggle />
@@ -122,7 +133,6 @@ export default function AgentWorkspacePage() {
                   待拍板
                 </span>
               )}
-              <span className="text-meta text-muted-foreground truncate">{role.domain}</span>
             </div>
             <div className="ml-auto shrink-0">
               <Tooltip>
@@ -140,6 +150,27 @@ export default function AgentWorkspacePage() {
         )}
       </header>
 
+      {/* 页签：只留选中态下划线，不再加容器 border-b（header 的 ::after 已画一条线，避免双线） */}
+      {role && (
+        <div className="flex items-center gap-1 px-page shrink-0">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={
+                "text-body px-3 py-2 border-b-2 -mb-px transition-colors " +
+                (tab === t.key
+                  ? "border-primary text-foreground font-medium"
+                  : "border-transparent text-muted-foreground hover:text-foreground")
+              }
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16 text-body text-muted-foreground">加载中…</div>
       ) : loadError ? (
@@ -152,42 +183,33 @@ export default function AgentWorkspacePage() {
           <p>找不到这个角色</p>
           <Link href="/cockpit"><Button variant="outline" size="sm">回总览</Button></Link>
         </div>
+      ) : tab === "work" ? (
+        workList
       ) : (
-        <>
-          {/* 页签 */}
-          <div className="flex items-center gap-1 px-page border-b border-border shrink-0">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
-                className={
-                  "text-body px-3 py-2 border-b-2 -mb-px transition-colors " +
-                  (tab === t.key
-                    ? "border-primary text-foreground font-medium"
-                    : "border-transparent text-muted-foreground hover:text-foreground")
-                }
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* 工作页签自管布局（含右侧预览面板，需填满高度）；其余页签走普通滚动容器 */}
-          {tab === "work" ? (
-            <WorkspaceWorkTab roleId={role.roleId} />
-          ) : (
-            <div className="flex-1 overflow-auto p-page">
-              {tab === "memory" && <MemoryTabView roleId={role.roleId} roleName={role.name} />}
-              {tab === "conversations" && <ConversationsTabView roleId={role.roleId} />}
-              {tab === "profile" && (
-                <ProfileTabView key={role.roleId} role={role} onToggled={fetchAgentRoster} />
-              )}
-            </div>
+        <div className="flex-1 overflow-auto p-page">
+          {tab === "memory" && <MemoryTabView roleId={role.roleId} roleName={role.name} />}
+          {tab === "conversations" && <ConversationsTabView roleId={role.roleId} />}
+          {tab === "profile" && (
+            <ProfileTabView key={role.roleId} role={role} onToggled={fetchAgentRoster} />
           )}
-        </>
+        </div>
       )}
     </div>
+  );
+
+  return (
+    <ResizablePreviewPanel
+      mainRef={resize.mainRef}
+      previewW={resize.previewW}
+      maximized={resize.maximized}
+      collapsed={resize.collapsed}
+      dragging={resize.dragging}
+      onBeginResize={resize.beginResize}
+      onResetWidth={resize.resetWidth}
+      listMinWidthClass="min-w-[420px]"
+      list={listContent}
+      preview={tab === "work" && role ? workPreview : null}
+    />
   );
 }
 
