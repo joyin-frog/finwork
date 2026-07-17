@@ -13,6 +13,7 @@ import { Semaphore } from "@/lib/utils/semaphore";
 import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
 import { BUILTIN_TOOLS, getToolRiskLevel } from "./tools/registry";
 import * as _dispatchStore from "@/lib/db/dispatch-store";
+import { getRoleMemoryForPrompt } from "@/lib/db/role-memory-store";
 import type { AgentRuntimeEvent } from "./runtime-events";
 import { getToolSummary } from "./tools/renderers";
 
@@ -60,8 +61,16 @@ const SUBAGENT_BASE_PROMPT = `你是财务工作台的角色子代理，由主 A
 - 异常与疑点按风险从高到低排列，每条给出定位与建议动作。
 - 产出文件用 finalize_deliverable 声明。`;
 
-export function buildSubagentSystemPrompt(role: RoleDefinition): string {
-  return `${SUBAGENT_BASE_PROMPT}\n\n${role.rolePrompt}`;
+export function buildSubagentSystemPrompt(role: RoleDefinition, memories: string[] = []): string {
+  let prompt = `${SUBAGENT_BASE_PROMPT}\n\n${role.rolePrompt}`;
+  if (memories.length > 0) {
+    // 每角色独立记忆（IA · C 刀）：把该角色沉淀的口径/约定拼进系统提示，遵守它们。
+    // 注：content 为用户手动输入（单用户单机产品，自输入可信）；若将来演进多租户，
+    // 此处需对记忆内容做提示注入防护（分隔/转义）。
+    const lines = memories.map((m) => `- ${m}`).join("\n");
+    prompt += `\n\n【你的记忆（该角色专属口径与约定，执行时遵守）】\n${lines}`;
+  }
+  return prompt;
 }
 
 export async function runSubagent(
@@ -221,7 +230,14 @@ export async function runSubagent(
       return hookResult;
     };
 
-    const systemPrompt = buildSubagentSystemPrompt(role);
+    // 记忆加载失败（DB 锁/表缺失等）不应拖垮派发——降级为无记忆继续。
+    let roleMemories: string[] = [];
+    try {
+      roleMemories = getRoleMemoryForPrompt(task.roleId);
+    } catch (err) {
+      console.warn("[subagent] 角色记忆加载失败，跳过注入：", err);
+    }
+    const systemPrompt = buildSubagentSystemPrompt(role, roleMemories);
 
     let prompt = task.instructions;
     if (task.files && task.files.length > 0) {

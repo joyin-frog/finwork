@@ -1,8 +1,9 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { trackFeature } from "@/lib/telemetry/track";
 import {
@@ -119,6 +120,8 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     navWidth, setNavWidth,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
+    agentsOpen, setAgentsOpen,
+    agentRoster, agentPendingCount,
     conversations, hasMore, loaded, loadError, fetchConversations,
     deleteTarget,
     renamingId, renameDraft, setRenameDraft,
@@ -127,6 +130,10 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   } = useNavState();
   const [dragging, setDragging] = useState(false);
   const reduce = useReducedMotion();
+  const pathname = usePathname();
+  const currentRoleId = pathname.startsWith("/agents/")
+    ? pathname.slice("/agents/".length).split("/")[0]
+    : null;
 
   // Keep --nav-width token in sync with runtime navWidth so the tabbar lead tracks it.
   useEffect(() => {
@@ -176,6 +183,43 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         ? "text-primary font-medium"
         : "text-foreground hover:bg-accent hover:text-accent-foreground"
     );
+
+  function renderRoleRow(r: { roleId: string; name: string; available: boolean; userDisabled: boolean; status: string | null; blockedReason: string | null }) {
+    const isActive = currentRoleId === r.roleId;
+    const isRunning = r.status === "running";
+    const isBlocked = r.blockedReason != null && r.blockedReason !== "";
+    const disabled = !r.available || r.userDisabled;
+    // 状态点走状态语义(非角色色):在忙=主色呼吸、待拍板=notice、空闲=空心。
+    const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;
+    const tag = isRunning ? "在忙" : isBlocked ? "待拍板" : null;
+    return (
+      <Link
+        key={r.roleId}
+        href={`/agents/${r.roleId}`}
+        title={r.name}
+        className={cn(
+          "group relative flex items-center gap-2 rounded-[var(--radius)] pl-8 pr-2 min-h-[32px] text-small transition-colors",
+          isActive
+            ? "bg-primary/10 text-primary font-medium"
+            : disabled
+              ? "text-muted-foreground/50 hover:bg-accent hover:text-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+        )}
+      >
+        {dotTone ? (
+          <span
+            className={cn("fa-tone-dot shrink-0", isRunning && "fa-dot-pulse")}
+            style={{ "--tone": dotTone } as CSSProperties}
+          />
+        ) : (
+          // 空闲=中性色圆点弱化(走 fa-tone-dot 系统,不用裸 rounded/border 类)
+          <span className="fa-tone-dot shrink-0 opacity-30" style={{ "--tone": "var(--tone-neutral)" } as CSSProperties} />
+        )}
+        <span className="flex-1 min-w-0 truncate">{r.name}</span>
+        {tag && <span className="shrink-0 text-meta text-muted-foreground">{tag}</span>}
+      </Link>
+    );
+  }
 
   function renderConversationRow(c: ConversationSummary) {
     const isActive = activeConversationId === c.id;
@@ -319,11 +363,42 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               <HugeiconsIcon icon={DashboardSquare02Icon} size={16} />
               <span>总览</span>
             </Link>
-            <Link href="/agents" onClick={() => trackFeature("nav.agents")} className={navLinkClass(active === "agents")}>
-              {active === "agents" && <NavActivePill reduce={reduce} />}
-              <HugeiconsIcon icon={UserGroupIcon} size={16} />
-              <span>智能体</span>
-            </Link>
+            {/* 智能体：父项为展开/收起开关(不导航、无落地页);子列表=角色,直达各自工作台。
+                徽标=待拍板专员数,收起时仍可见(唯一"有事"信号)。 */}
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => setAgentsOpen(!agentsOpen)}
+                aria-expanded={agentsOpen}
+                className={cn(navLinkClass(active === "agents"), "group w-full text-left")}
+              >
+                <HugeiconsIcon icon={UserGroupIcon} size={16} />
+                <span>智能体</span>
+                <span className="ml-auto flex items-center gap-1.5">
+                  {agentPendingCount > 0 && (
+                    <span
+                      className="fa-toned text-meta font-medium px-1.5 tabular-nums"
+                      style={{ "--tone": "var(--tone-notice)", borderRadius: "999px" } as CSSProperties}
+                      title={`${agentPendingCount} 位专员等你拍板`}
+                    >
+                      {agentPendingCount}
+                    </span>
+                  )}
+                  <HugeiconsIcon
+                    icon={ArrowDown01Icon}
+                    size={12}
+                    className={cn("transition-transform motion-reduce:transition-none text-muted-foreground", agentsOpen && "rotate-180")}
+                  />
+                </span>
+              </button>
+              <CollapsibleSectionMotion open={agentsOpen} reduce={reduce}>
+                {agentRoster.length === 0 ? (
+                  <span className="pl-8 pr-2 py-1 text-meta text-muted-foreground">加载中…</span>
+                ) : (
+                  agentRoster.map(renderRoleRow)
+                )}
+              </CollapsibleSectionMotion>
+            </div>
             <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
               {(active === "files" || active === "knowledge") && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={LibraryIcon} size={16} />

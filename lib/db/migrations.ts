@@ -914,6 +914,27 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 18,
+    name: "role_memory",
+    up: (db) => {
+      // 智能体 IA · C 刀：每角色独立记忆表（按 role_id 隔离，即隐私边界）。
+      // content = 一条口径/约定；source = 来源标注（手动添加为 NULL，自动沉淀刀再填任务来源）。
+      // CREATE TABLE/INDEX IF NOT EXISTS 幂等，连跑两次无副作用。
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS role_memory (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          role_id TEXT NOT NULL,
+          content TEXT NOT NULL,
+          source TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_role_memory_role ON role_memory(role_id, created_at DESC)"
+      );
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

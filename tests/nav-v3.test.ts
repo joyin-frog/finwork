@@ -5,7 +5,7 @@
  * 并保留设置内的 skill-catalog 能力目录;后续迭代按用户要求把「技能」升为一级导航项(独立卡片页,
  * /skills 渲染 SkillsManager 不再重定向)、删除 skill-catalog.tsx、并把「资料」改名「知识库」指向
  * /knowledge。本测试已同步到当前契约:
- * 契约 5 — app/shared/app-nav.tsx：「智能体」href="/agents"(总览之后)；「技能」href="/skills" 为一级项；
+ * 契约 5 — app/shared/app-nav.tsx：「智能体」为可展开分组(总览之后,子项直达/agents/<roleId>)；「技能」href="/skills" 为一级项；
  *           新对话/总览/知识库(/knowledge)/技能(/skills)/设置 保留
  * 契约 6 — app/skills/page.tsx 渲染 SkillsManager(卡片首页,不再重定向);skill-catalog.tsx 已删除
  * 契约 7 — app/shared/app-shell.tsx：active 映射含 "/agents"
@@ -223,16 +223,22 @@ export const navV3TestPromise = (async () => {
     assert.equal(conversationDeleteDestination(liveResult, 2), "/chat/recent?id=1", "JOY-10 FAIL: DELETE 完成不得跳到已关闭邻居");
   }
 
-  // ── 契约 5a: app-nav.tsx 含「智能体」项 href="/agents" ─────────────────────
+  // ── 契约 5a: app-nav.tsx「智能体」为可展开分组，子项直达角色工作台 ──────────
+  // IA 重构（docs/spec/design-agents-ia.md）：父项不再导航到 /agents 落地页，
+  // 而是纯展开/收起开关；子列表为角色，直达 /agents/<roleId> 工作台。
   {
     const navSrc = src("app/shared/app-nav.tsx");
     assert.ok(
-      navSrc.includes('href="/agents"'),
-      "C5a FAIL: app-nav.tsx 应含「智能体」导航项 href=\"/agents\""
-    );
-    assert.ok(
       navSrc.includes("智能体"),
       "C5a FAIL: app-nav.tsx 应含「智能体」文案"
+    );
+    assert.ok(
+      navSrc.includes("setAgentsOpen"),
+      "C5a FAIL: 「智能体」应为可展开/收起分组开关（setAgentsOpen），不再导航"
+    );
+    assert.ok(
+      navSrc.includes("/agents/${"),
+      "C5a FAIL: 角色子项应直达各自工作台 /agents/<roleId>"
     );
   }
 
@@ -279,23 +285,23 @@ export const navV3TestPromise = (async () => {
     assert.ok(!navStateSrc.includes('localStorage.setItem("conversation'), "JOY-10 FAIL: v1 不应持久化会话标签");
   }
 
-  // ── 契约 5b: 「智能体」项位于总览之后（indexOf 顺序断言）───────────────────
+  // ── 契约 5b: 「智能体」分组位于总览之后（indexOf 顺序断言）─────────────────
   {
     const navSrc = src("app/shared/app-nav.tsx");
-    // 用 href 锚点做顺序判断（比文案更稳定）
+    // 总览用 href 锚点；智能体父项已无 href，用文案锚点。
     const cockpitHrefIdx = navSrc.indexOf('href="/cockpit"');
-    const agentsHrefIdx = navSrc.indexOf('href="/agents"');
+    const agentsIdx = navSrc.indexOf("智能体");
     assert.ok(
       cockpitHrefIdx !== -1,
       "C5b FAIL: app-nav.tsx 应含 href=\"/cockpit\"（总览项）"
     );
     assert.ok(
-      agentsHrefIdx !== -1,
-      "C5b FAIL: app-nav.tsx 应含 href=\"/agents\"（智能体项）"
+      agentsIdx !== -1,
+      "C5b FAIL: app-nav.tsx 应含「智能体」分组"
     );
     assert.ok(
-      cockpitHrefIdx < agentsHrefIdx,
-      `C5b FAIL: 「总览」href（pos ${cockpitHrefIdx}）应先于「智能体」href（pos ${agentsHrefIdx}）——智能体应在总览之后`
+      cockpitHrefIdx < agentsIdx,
+      `C5b FAIL: 「总览」href（pos ${cockpitHrefIdx}）应先于「智能体」（pos ${agentsIdx}）——智能体应在总览之后`
     );
   }
 

@@ -17,30 +17,19 @@
 
 采用 single-context 布局：根级 `CONTEXT.md`（存在时）与 `docs/adr/`。详见 `docs/agents/domain.md`。
 
-## 复杂任务处理
+## 任务执行
 
-主循环只做协调（Orchestrator）：理解需求、编写计划、定成功标准、调度子代理、汇总结果。三个子代理定义在 `.claude/agents/`（scout / implementer / reviewer）。
+**默认路径（绝大多数任务）**：主循环直接做——读懂相关代码 → 回复里简述计划与成功标准 → 实施 → 跑测试/真机验证 → 汇报。不落盘 spec、不写 audit、不派子代理。
 
-**模型分层**：Orchestrator 用 Fable 5（high），可降级 Opus 4.8（xhigh）；scout 用 Sonnet 5（low）；implementer 用 Sonnet 5；reviewer 用 Opus（high）。
+**按需升级**（满足才用，不叠加仪式）：
+- **高风险 diff 加一道独立审查**：改动触及 数据迁移/删除、金额计算、计费、安全、公共契约（共享类型/API schema/DB schema/IPC）时，完成后派 reviewer（全新上下文、只读）审一轮 diff，ship / fix first；fix 至多两轮。写代码者不自审，这条不变。
+- **跨会话的大功能先落设计文档**：`docs/spec/design-<名>.md`（决策、功能点、验收），实施时按它拆任务；不再为每个任务写 spec/audit。
+- **并行或大批机械改动才派 implementer**：几句话说清目标、允许改动的文件、验证命令即可。
+- **大范围探索且不想污染上下文才派 scout**。
 
-**何时走完整流水线**：按风险判断，不按文件数。满足任一即算复杂任务——
-- 跨层改动（UI + API + 数据/主进程同时动）
-- 改公共契约（共享类型、API schema、数据库 schema、IPC 接口）
-- 引入新抽象、新依赖或新架构决策
-- 触及高风险面（数据删除/迁移、计费、安全、生产配置）
-- diff 一次审不完（预计 ≥5 文件或 300 行以上）
-
-不满足任何一条的都算简单任务——哪怕穿 props 要动 3 个文件。**简单任务走轻量路径**：主循环不落盘 spec、不派 reviewer，用几句话向 implementer 说清目标、允许改动的文件、改法要点、含环境变量的验证命令，直接派发实施；implementer 在回复中报告 Files changed 与测试结果，主循环自查 diff 后向用户汇报。代码始终由 implementer（Sonnet）来写；唯一例外是琐碎到派发不划算的改动（单文件一两行、文案/配置微调），主循环可直接动手。拿不准时按复杂处理。
-
-**流水线**：
-1. **探索**：规划期的所有广泛探索派给 scout（只读，回摘要不回原文）。主循环只精读将写入计划的关键文件。
-2. **计划**：主循环按 `docs/spec/TEMPLATE.md` 编写，落盘为 `docs/spec/spec-<任务名>.md`。计划必须自包含（子代理无会话记忆）：目标与非目标、成功标准、Files touched 列表、含完整环境变量的测试命令。
-3. **计划审查**（仅复杂任务）：派 reviewer 批判计划，阻塞问题解决后才算批准。
-4. **实施**：派 implementer 精确执行已批准计划。完成前它须写 `docs/spec/audit-<任务名>.md`，以 Files changed 列表开头。
-5. **实施审查**：派 reviewer（全新上下文）审阅计划 + audit + 范围内 diff，产出裁决（ship / fix first）。
-6. **裁决处理**：ship → 向用户汇报；fix first → 主循环把阻塞问题整理成修复计划，回到第 4 步，重审仅限修复范围。**fix first 至多两轮**：第二轮后仍不 ship，说明计划本身有问题——停止循环，向用户汇报现状与卡点。
-
-铁律：写代码的代理绝不自审；审查者必须是全新上下文。
+**不可省的硬规矩**（历史上真机才抓到迁移撞号、假绿灯、时区偏移）：
+- 测试门禁与环境变量见「测试套件跑法」记忆（`FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true` + venv）；改迁移前做三查（main 链尾 / 各 worktree 链尾 / 库实际版本）。
+- 可在界面观察到的改动必须真机/浏览器验证，不能只靠测试绿。
 
 ## 一、先读，再写
 
