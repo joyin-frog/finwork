@@ -12,7 +12,8 @@ const SKILL_LABELS: Record<string, string> = {
   "contract-extract": "合同要点",
   "tax-incentive": "税务优惠",
   "rnd-deduction-check": "研发加计",
-  xlsx: "表格处理", pdf: "PDF 处理", docx: "Word 处理", pptx: "PPT 处理",
+  "receivables-ledger": "往来台账",
+  xlsx: "表格处理", pdf: "PDF 处理", docx: "文稿处理", pptx: "演示文稿",
 };
 export function skillLabel(id: string): string {
   const bare = id.replace(/^finance-skills:/, "").replace(/^.*:/, "");

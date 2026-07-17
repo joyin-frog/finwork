@@ -1385,6 +1385,56 @@ export function listRecentWorkItems(limit = 8): RecentWorkItem[] {
   });
 }
 
+export type RoleConversationItem = {
+  conversationId: number;
+  title: string;
+  updatedAt: string;
+  /** 该会话涉及的全部角色（用于「涉及：薪税+税务」多角色标记）。 */
+  roleIds: string[];
+};
+
+/**
+ * 某角色相关的会话（角色工作台「相关对话」页签，spec design-agents-ia B5）。
+ *
+ * = 有过该 role_id 派发的会话，按更新时间倒序。会话本身归全局（侧栏「最近」），
+ * 这里只是按 roleIds 过滤的视图；一条会话可涉及多个角色，故一并带出全部 roleIds。
+ */
+export function listConversationsForRole(roleId: string, limit = 30): RoleConversationItem[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT DISTINCT c.id AS conversation_id, c.title, c.updated_at
+    FROM chat_conversations c
+    JOIN subagent_dispatches d ON CAST(d.conversation_id AS INTEGER) = c.id
+    WHERE d.role_id = ?
+    ORDER BY c.updated_at DESC
+    LIMIT ?
+  `).all(roleId, limit) as Array<{ conversation_id: number; title: string; updated_at: string }>;
+
+  if (rows.length === 0) return [];
+
+  const convIds = rows.map((r) => r.conversation_id);
+  const placeholders = convIds.map(() => "?").join(",");
+  const dispatchRows = db.prepare(`
+    SELECT CAST(conversation_id AS INTEGER) AS conv_id, role_id
+    FROM subagent_dispatches
+    WHERE CAST(conversation_id AS INTEGER) IN (${placeholders})
+  `).all(...convIds) as Array<{ conv_id: number; role_id: string }>;
+
+  const roleIdsByConv = new Map<number, Set<string>>();
+  for (const d of dispatchRows) {
+    const set = roleIdsByConv.get(d.conv_id) ?? new Set<string>();
+    set.add(d.role_id);
+    roleIdsByConv.set(d.conv_id, set);
+  }
+
+  return rows.map((row) => ({
+    conversationId: row.conversation_id,
+    title: row.title,
+    updatedAt: row.updated_at,
+    roleIds: [...(roleIdsByConv.get(row.conversation_id) ?? [])],
+  }));
+}
+
 export function readFeatureFlags(dbOverride?: import("node:sqlite").DatabaseSync): Record<string, boolean> {
   const db = dbOverride ?? getDb();
   const rows = db.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'flag:%'").all() as Array<{ key: string; value: string }>;

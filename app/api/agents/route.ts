@@ -4,6 +4,7 @@ import { listRoleDispatchSummary, listRoleLatestStatus, listBlockedDispatches, l
 import { getInvoiceLedgerStats, getPayrollPeriodSummary, hasMetricsForMonth, listCashObligations } from "@/lib/db/finance-store";
 import { listSkills } from "@/lib/agent/skills-store";
 import { skillLabel } from "@/lib/agent/tools/renderers";
+import { dataScopeLabel } from "@/lib/domain/role-ui";
 import { getAppSetting } from "@/lib/db/sqlite";
 import { getCalendarContext } from "@/lib/domain/tax-calendar";
 import { deriveAttentionItems, blockedDispatchToAttentionItem, sortAttentionItems } from "@/lib/domain/attention";
@@ -66,7 +67,8 @@ export async function GET() {
         name: role.name,
         domain: role.domain,
         charter: role.charter,
-        dataScope: role.dataScope,
+        // 数据权限：原样 token（含 fact_* 等）经 dataScopeLabel 转中文展示名再下发（不改机器语义）。
+        dataScope: role.dataScope.map(dataScopeLabel),
         skills,
         available: role.available,
         userDisabled,
@@ -77,6 +79,7 @@ export async function GET() {
         status: latestStatus?.isRunning ? "running" : null,
         blockedReason: latestStatus?.blockedReason ?? null,
         conversationId: latestStatus?.conversationId ?? null,
+        reviewPending: latestStatus?.hasReviewPending ?? false,
       };
 
       // bookkeeper 专项：附发票台账计数

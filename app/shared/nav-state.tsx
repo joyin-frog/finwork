@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ROLE_LABELS } from "@/lib/domain/role-ui";
 
 export const MIN_NAV_WIDTH = 180;
 export const MAX_NAV_WIDTH = 360;
@@ -14,11 +15,24 @@ type ConversationSummary = {
   pinned: boolean;
 };
 
+/** 侧栏「智能体」子列表用的精简角色项（来自 /api/agents 的 roster，只取导航所需字段）。 */
+export type AgentRosterLite = {
+  roleId: string;
+  name: string;
+  available: boolean;
+  userDisabled: boolean;
+  status: string | null;
+  blockedReason: string | null;
+  /** 该角色近 7 天内是否有 review_status='pending' 的派发——与 blockedReason 一样算「待拍板」 */
+  reviewPending: boolean;
+};
+
 export type PageKind = "cockpit" | "chat-new" | "agents" | "knowledge" | "files" | "skills" | "config";
 
 export type PageTab = {
   kind: "page";
-  key: `page:${PageKind}`;
+  // 智能体工作台按角色分标签（F3）：`page:agents:<roleId>`，与其它页面的单例 `page:${PageKind}` 并存。
+  key: `page:${PageKind}` | `page:agents:${string}`;
   pageKind: PageKind;
   title: string;
   href: string;
@@ -70,9 +84,23 @@ const PAGE_ROUTE_META: Array<{ prefix: string; pageKind: PageKind; title: string
 
 export function pageTabFromRoute(pathname: string, search: string): PageTab | null {
   if (pathname === "/chat/recent" || pathname.startsWith("/chat/recent/")) return null;
+  const suffix = search ? (search.startsWith("?") ? search : `?${search}`) : "";
+
+  // /agents/<roleId> 各开独立标签，标题用角色中文名（F3）；裸 /agents（旧花名册）走下面的通用映射。
+  const roleMatch = pathname.match(/^\/agents\/([^/]+)/);
+  if (roleMatch) {
+    const roleId = roleMatch[1];
+    return {
+      kind: "page",
+      key: `page:agents:${roleId}`,
+      pageKind: "agents",
+      title: ROLE_LABELS[roleId] ?? roleId,
+      href: `${pathname}${suffix}`,
+    };
+  }
+
   const match = PAGE_ROUTE_META.find(({ prefix }) => pathname === prefix || pathname.startsWith(`${prefix}/`));
   if (!match) return null;
-  const suffix = search ? (search.startsWith("?") ? search : `?${search}`) : "";
   return {
     kind: "page",
     key: `page:${match.pageKind}`,
@@ -299,6 +327,14 @@ type NavState = {
   setPinnedOpen: (v: boolean) => void;
   recentOpen: boolean;
   setRecentOpen: (v: boolean) => void;
+  /** 「智能体」子列表展开态（默认展开，同 pinnedOpen 语义）。 */
+  agentsOpen: boolean;
+  setAgentsOpen: (v: boolean) => void;
+  /** 角色花名册（导航子列表 + 状态点用）；挂载时取一次。 */
+  agentRoster: AgentRosterLite[];
+  /** 待拍板专员数（blockedReason 非空或 reviewPending 为真的角色数）——父项徽标用。 */
+  agentPendingCount: number;
+  fetchAgentRoster: () => Promise<void>;
   conversations: ConversationSummary[];
   appTabs: AppTab[];
   activeAppTabKey: string | null;
@@ -371,6 +407,8 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(true);
+  const [agentRoster, setAgentRoster] = useState<AgentRosterLite[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [appTabsState, dispatchAppTabs] = useReducer(appTabsReducer, {
     tabs: [],
@@ -415,6 +453,40 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshConversations = useCallback(() => fetchConversations(0), [fetchConversations]);
+
+  const fetchAgentRoster = useCallback(async () => {
+    try {
+      const res = await fetch("/api/agents", { cache: "no-store" });
+      const payload = (await res.json()) as {
+        ok: boolean;
+        data?: { roster: AgentRosterLite[] };
+      };
+      if (payload.ok && payload.data) {
+        setAgentRoster(
+          payload.data.roster.map((r) => ({
+            roleId: r.roleId,
+            name: r.name,
+            available: r.available,
+            userDisabled: r.userDisabled,
+            status: r.status ?? null,
+            blockedReason: r.blockedReason ?? null,
+            reviewPending: r.reviewPending ?? false,
+          }))
+        );
+      }
+    } catch {
+      // 侧栏花名册取不到不阻塞导航：保持空列表，父项仍可点开
+    }
+  }, []);
+
+  // 挂载取一次角色花名册（状态点 + 徽标）。轮询留待后续刀。
+  useEffect(() => {
+    void fetchAgentRoster();
+  }, [fetchAgentRoster]);
+
+  const agentPendingCount = agentRoster.filter(
+    (r) => (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending
+  ).length;
 
   const openPageTab = useCallback((tab: PageTab) => {
     applyAppTabsAction({ type: "openPage", tab });
@@ -546,6 +618,8 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     searchOpen, setSearchOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
+    agentsOpen, setAgentsOpen,
+    agentRoster, agentPendingCount, fetchAgentRoster,
     conversations,
     appTabs: appTabsState.tabs,
     activeAppTabKey: appTabsState.activeKey,
@@ -562,6 +636,8 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     searchOpen, setSearchOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
+    agentsOpen, setAgentsOpen,
+    agentRoster, agentPendingCount, fetchAgentRoster,
     conversations, appTabsState,
     openPageTab, openConversationTab, upgradeNewConversationTab, activateAppTab, closeAppTab, closeAllAppTabs,
     hasMore, loaded, loadError, fetchConversations, refreshConversations, updateConversationTitle,

@@ -17,18 +17,24 @@ import { pageTabFromRoute, useNavState } from "@/app/shared/nav-state";
 function RouteTabSync() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { openPageTab, activateAppTab } = useNavState();
+  const { openPageTab, activateAppTab, agentRoster } = useNavState();
   const search = searchParams.toString();
   const conversationId = conversationIdFromSearch(pathname, searchParams.get("id"));
 
   useEffect(() => {
     const pageTab = pageTabFromRoute(pathname, search);
     if (pageTab) {
+      // 角色标签：roster 到位后用其权威中文名覆盖 title（未到位时 pageTabFromRoute 已用 ROLE_LABELS 兜底）。
+      if (pageTab.pageKind === "agents" && pageTab.key.startsWith("page:agents:")) {
+        const roleId = pageTab.key.slice("page:agents:".length);
+        const rosterName = agentRoster.find((r) => r.roleId === roleId)?.name;
+        if (rosterName) pageTab.title = rosterName;
+      }
       openPageTab(pageTab);
       return;
     }
     if (conversationId) activateAppTab(`conversation:${conversationId}`);
-  }, [activateAppTab, conversationId, openPageTab, pathname, search]);
+  }, [activateAppTab, agentRoster, conversationId, openPageTab, pathname, search]);
 
   return null;
 }

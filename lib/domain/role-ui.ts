@@ -34,6 +34,45 @@ export const ROLE_LABELS: Record<string, string> = {
   "analyst":             "经营分析师",
 };
 
+/**
+ * 数据权限 token → 中文展示名 —— spec docs/spec/spec-agents-ia-ui-polish.md §4.4。
+ *
+ * 覆盖 ROLE_REGISTRY.dataScope 中出现的机器 token 基名（不改机器语义，只加展示层）。
+ * 带括注的长串（如 "fact_payroll（全产品唯一…）"）走 DATA_SCOPE_FULL_LABELS 整串覆盖，
+ * 优先于基名切分，避免拼接出生硬的中英混排。
+ */
+const DATA_SCOPE_BASE_LABELS: Record<string, string> = {
+  documents: "文档资料",
+  fact_invoices: "发票流水",
+  fact_payroll: "工资明细",
+  fact_metrics: "经营指标",
+  fact_obligations: "收付义务",
+  company_profile: "企业档案",
+};
+
+const DATA_SCOPE_FULL_LABELS: Record<string, string> = {
+  "fact_payroll（全产品唯一有工资明细权限的角色）": "工资明细（本角色独有）",
+  "fact_invoices（读）": "发票流水（只读）",
+  "fact_invoices（sales，direction=out）": "销项发票流水",
+  "company_profile（读）": "企业档案（只读）",
+  "fact_obligations（读，kind=receive）": "收付义务（应收，只读）",
+  "fact_metrics（只读）": "经营指标（只读）",
+  "documents 合同收付义务（读）": "合同收付义务（只读）",
+};
+
+/** dataScope 原始 token → 展示用中文；已是中文的原样返回，未命中的英文兜底为可读文案（不裸露 id）。 */
+export function dataScopeLabel(raw: string): string {
+  const trimmed = raw.trim();
+  if (DATA_SCOPE_FULL_LABELS[trimmed]) return DATA_SCOPE_FULL_LABELS[trimmed];
+  const match = trimmed.match(/^([a-zA-Z][a-zA-Z0-9_]*)(.*)$/);
+  if (match) {
+    const label = DATA_SCOPE_BASE_LABELS[match[1]];
+    if (label) return `${label}${match[2]}`;
+  }
+  if (!/[a-zA-Z]/.test(trimmed)) return trimmed;
+  return "数据权限（未分类）";
+}
+
 export const ROLE_UI: Record<RoleId, RoleUiSpec> = {
   "bookkeeper": {
     tone: "--tone-invoice",
