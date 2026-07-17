@@ -2,13 +2,55 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::{
+  atomic::{AtomicBool, Ordering},
+  Mutex,
+};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
-struct ServerProcess(Mutex<Option<Child>>);
+#[derive(Default)]
+struct ServerProcess {
+  child: Mutex<Option<Child>>,
+  shutting_down: AtomicBool,
+}
+
+#[derive(Clone)]
+struct NextServerConfig {
+  resource_dir: PathBuf,
+  port: u16,
+  boot_id: String,
+  app_data_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum NextServerExitAction {
+  Stop,
+  Restart,
+  ShowError,
+}
+
+fn next_server_exit_action(shutting_down: bool, restarted: bool) -> NextServerExitAction {
+  if shutting_down {
+    NextServerExitAction::Stop
+  } else if restarted {
+    NextServerExitAction::ShowError
+  } else {
+    NextServerExitAction::Restart
+  }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum WindowShutdownEvent {
+  CloseRequested,
+  Destroyed,
+}
+
+fn should_shutdown_for_window_event(event: WindowShutdownEvent) -> bool {
+  matches!(event, WindowShutdownEvent::Destroyed)
+}
 
 const NEXT_SERVER_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 const HOST_LOG_MAX_BYTES: u128 = 2 * 1024 * 1024;
@@ -18,7 +60,7 @@ const WINDOWS_RELEASE_DATA_DIRECTORY_NAME: &str = "Finwork Data";
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    .manage(ServerProcess(Mutex::new(None)))
+    .manage(ServerProcess::default())
     // single-instance 守卫必须在 Builder 链上、.setup() 之前注册，
     // 应用启动前挂钩；第二实例启动时聚焦已有主窗口。
     .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -59,15 +101,17 @@ pub fn run() {
       // resolve_server_port):上次 app 崩溃/异常退出残留的 next-server 子进程仍占着固定端口时,
       // 新实例不再 listen EADDRINUSE 起不来(此前表现为整体"网络错误")。
       let server_port = if is_release { resolve_server_port() } else { 3000 };
-      let url = if is_release {
-        start_next_server(app, server_port, &boot_id, app_data_dir.as_deref()).map_err(|error| {
-          log::error!("next_server_start_failed bootId={} error={error}", boot_id);
-          error
-        })?;
-        format!("http://127.0.0.1:{server_port}")
+      let server_config = if is_release {
+        Some(
+          start_next_server(app, server_port, &boot_id, app_data_dir.as_deref()).map_err(|error| {
+            log::error!("next_server_start_failed bootId={} error={error}", boot_id);
+            error
+          })?,
+        )
       } else {
-        "http://127.0.0.1:3000".to_string()
+        None
       };
+      let url = format!("http://127.0.0.1:{server_port}");
 
       app.handle().plugin(tauri_plugin_dialog::init())?;
       app.handle().plugin(tauri_plugin_fs::init())?;
@@ -98,29 +142,28 @@ pub fn run() {
 
       let window = builder.build()?;
 
-      if is_release {
-        let port = server_port;
-        let win = window.clone();
-        let real_url = url.clone();
-        let ready_boot_id = boot_id.clone();
-        std::thread::spawn(move || {
-          if wait_for_server_ready(port, Duration::from_secs(60)) {
-            log::info!("next_server_ready bootId={} port={}", ready_boot_id, port);
-          } else {
-            log::warn!("next_server_ready_timeout bootId={} port={}", ready_boot_id, port);
-          }
-          if let Err(error) = win.eval(&format!("window.location.replace('{real_url}')")) {
-            log::error!("next_server_navigation_failed bootId={} error={error}", ready_boot_id);
-          }
-        });
+      if let Some(config) = server_config {
+        start_next_server_supervisor(window, config, url);
       }
       Ok(())
     })
     .on_window_event(|window, event| {
-      if matches!(event, WindowEvent::CloseRequested { .. }) {
+      let shutdown_event = match event {
+        WindowEvent::CloseRequested { .. } => WindowShutdownEvent::CloseRequested,
+        WindowEvent::Destroyed => WindowShutdownEvent::Destroyed,
+        _ => return,
+      };
+      if should_shutdown_for_window_event(shutdown_event) {
         let state = window.app_handle().state::<ServerProcess>();
-        let child = state.0.lock().expect("server process lock poisoned").take();
+        state.shutting_down.store(true, Ordering::SeqCst);
+        log::info!("next_server_window_destroyed_shutdown");
+        let child = state
+          .child
+          .lock()
+          .expect("server process lock poisoned")
+          .take();
         if let Some(mut child) = child {
+          log::info!("next_server_window_destroyed_killing pid={}", child.id());
           let _ = child.kill();
         }
       }
@@ -134,11 +177,24 @@ fn start_next_server(
   port: u16,
   boot_id: &str,
   app_data_dir: Option<&Path>,
-) -> Result<(), Box<dyn std::error::Error>> {
-  let resource_dir = app.path().resource_dir()?;
-  let server_dir = resource_dir.join("next-server");
+) -> Result<NextServerConfig, Box<dyn std::error::Error>> {
+  let config = NextServerConfig {
+    resource_dir: app.path().resource_dir()?,
+    port,
+    boot_id: boot_id.to_string(),
+    app_data_dir: app_data_dir.map(Path::to_path_buf),
+  };
+  let child = spawn_next_server(&config)?;
+  let state = app.state::<ServerProcess>();
+  *state.child.lock().expect("server process lock poisoned") = Some(child);
+  Ok(config)
+}
+
+fn spawn_next_server(config: &NextServerConfig) -> Result<Child, Box<dyn std::error::Error>> {
+  let server_dir = config.resource_dir.join("next-server");
   let bundled_plugin_dir = server_dir.join("agent-skills");
-  let node_binary = resource_dir
+  let node_binary = config
+    .resource_dir
     .join("node")
     .join(if cfg!(windows) { "node.exe" } else { "node" });
   let node_command = if node_binary.exists() {
@@ -149,7 +205,7 @@ fn start_next_server(
   // 子进程 stdout/stderr 重定向到 <resolvedDataDir>/logs/next-server.log,与 JS 端
   // server-<date>.log 同目录。以 append 保留跨启动历史,超过上限时滚动为单个 .1 归档,
   // 避免历史丢失与无限增长。打不开文件则回退 null(best-effort,绝不阻塞启动)。
-  let (stdout_cfg, stderr_cfg) = match open_next_server_log(app_data_dir, boot_id) {
+  let (stdout_cfg, stderr_cfg) = match open_next_server_log(config.app_data_dir.as_deref(), &config.boot_id) {
     Some(file) => match file.try_clone() {
       Ok(clone) => (Stdio::from(file), Stdio::from(clone)),
       Err(_) => (Stdio::from(file), Stdio::null()),
@@ -161,13 +217,13 @@ fn start_next_server(
     .arg("server.js")
     .current_dir(&server_dir)
     .env("HOSTNAME", "127.0.0.1")
-    .env("PORT", port.to_string())
-    .env("FINANCE_AGENT_BOOT_ID", boot_id)
+    .env("PORT", config.port.to_string())
+    .env("FINANCE_AGENT_BOOT_ID", &config.boot_id)
     .env("FINANCE_AGENT_PROJECT_ROOT", &server_dir)
     .env("FINANCE_AGENT_BUNDLED_PLUGIN_DIR", bundled_plugin_dir)
     .stdout(stdout_cfg)
     .stderr(stderr_cfg);
-  if let Some(dir) = app_data_dir {
+  if let Some(dir) = &config.app_data_dir {
     command.env("FINANCE_AGENT_APP_DATA_DIR", dir);
   }
 
@@ -212,20 +268,185 @@ fn start_next_server(
   let child = command.spawn()?;
   log::info!(
     "next_server_started bootId={} pid={} port={}",
-    boot_id,
+    config.boot_id,
     child.id(),
-    port
+    config.port
   );
 
-  // Windows:把子进程绑进 KILL_ON_JOB_CLOSE 的 Job Object。CloseRequested 时已显式 kill(见 on_window_event),
+  // Windows:把子进程绑进 KILL_ON_JOB_CLOSE 的 Job Object。窗口 Destroyed 时已显式 kill(见 on_window_event),
   // 但崩溃/被强杀/异常退出兜不住 → 残留 node 占内存(端口已靠动态选避开)。Job Object 让父进程一旦消失(含崩溃),
   // OS 关闭 job 句柄即连带杀掉子进程,彻底回收。仅 Windows 需要。
   #[cfg(windows)]
   confine_child_to_job(&child);
 
-  let state = app.state::<ServerProcess>();
-  *state.0.lock().expect("server process lock poisoned") = Some(child);
-  Ok(())
+  Ok(child)
+}
+
+fn start_next_server_supervisor(
+  window: tauri::WebviewWindow,
+  config: NextServerConfig,
+  real_url: String,
+) {
+  std::thread::spawn(move || {
+    let state = window.app_handle().state::<ServerProcess>();
+    let mut restarted = false;
+    let mut ready = false;
+    let mut ready_deadline = Instant::now() + Duration::from_secs(60);
+
+    loop {
+      if state.shutting_down.load(Ordering::SeqCst) {
+        return;
+      }
+
+      let exited_child = {
+        let mut child = state.child.lock().expect("server process lock poisoned");
+        let status = match child.as_mut() {
+          Some(child) => {
+            let pid = child.id();
+            match child.try_wait() {
+              Ok(status) => status.map(|status| (pid, status)),
+              Err(error) => {
+                log::error!(
+                  "next_server_status_check_failed bootId={} error={error}",
+                  config.boot_id
+                );
+                None
+              }
+            }
+          },
+          None => return,
+        };
+        if status.is_some() {
+          child.take();
+        }
+        status
+      };
+
+      if let Some((pid, status)) = exited_child {
+        log::error!(
+          "next_server_exited bootId={} pid={} port={} {} restartAttempted={}",
+          config.boot_id,
+          pid,
+          config.port,
+          describe_exit_status(&status),
+          restarted
+        );
+        match next_server_exit_action(state.shutting_down.load(Ordering::SeqCst), restarted) {
+          NextServerExitAction::Stop => return,
+          NextServerExitAction::ShowError => {
+            log::error!(
+              "next_server_unrecoverable bootId={} reason=exited_after_restart",
+              config.boot_id
+            );
+            show_next_server_error(&window, &config.boot_id);
+            return;
+          }
+          NextServerExitAction::Restart => {}
+        }
+        log::warn!("next_server_restarting bootId={} attempt=1", config.boot_id);
+        match spawn_next_server(&config) {
+          Ok(mut child) => {
+            if state.shutting_down.load(Ordering::SeqCst) {
+              let _ = child.kill();
+              return;
+            }
+            *state.child.lock().expect("server process lock poisoned") = Some(child);
+            restarted = true;
+            ready = false;
+            ready_deadline = Instant::now() + Duration::from_secs(60);
+            continue;
+          }
+          Err(error) => {
+            log::error!(
+              "next_server_restart_failed bootId={} attempt=1 error={error}",
+              config.boot_id
+            );
+            show_next_server_error(&window, &config.boot_id);
+            return;
+          }
+        }
+      }
+
+      if !ready && http_health_ok(&format!("127.0.0.1:{}", config.port)) {
+        ready = true;
+        if restarted {
+          log::info!(
+            "next_server_recovered bootId={} port={} attempt=1",
+            config.boot_id,
+            config.port
+          );
+        } else {
+          log::info!(
+            "next_server_ready bootId={} port={}",
+            config.boot_id,
+            config.port
+          );
+        }
+        navigate_next_server(&window, &real_url, &config.boot_id);
+      } else if !ready && Instant::now() >= ready_deadline {
+        if restarted {
+          log::error!(
+            "next_server_restart_ready_timeout bootId={} port={} attempt=1",
+            config.boot_id,
+            config.port
+          );
+          show_next_server_error(&window, &config.boot_id);
+          return;
+        }
+        log::warn!(
+          "next_server_ready_timeout bootId={} port={}",
+          config.boot_id,
+          config.port
+        );
+        ready = true;
+        navigate_next_server(&window, &real_url, &config.boot_id);
+      }
+
+      std::thread::sleep(Duration::from_millis(150));
+    }
+  });
+}
+
+fn describe_exit_status(status: &ExitStatus) -> String {
+  if let Some(code) = status.code() {
+    return format!("exitCode={code}");
+  }
+  #[cfg(unix)]
+  {
+    use std::os::unix::process::ExitStatusExt;
+    if let Some(signal) = status.signal() {
+      return format!("signal={signal}");
+    }
+  }
+  format!("exitCode=unavailable status={status}")
+}
+
+fn navigate_next_server(window: &tauri::WebviewWindow, url: &str, boot_id: &str) {
+  if let Err(error) = window.eval(&format!("window.location.replace('{url}')")) {
+    log::error!(
+      "next_server_navigation_failed bootId={} error={error}",
+      boot_id
+    );
+  }
+}
+
+fn show_next_server_error(window: &tauri::WebviewWindow, boot_id: &str) {
+  let error_url = match SERVER_ERROR_URL.parse() {
+    Ok(url) => url,
+    Err(error) => {
+      log::error!(
+        "next_server_error_url_invalid bootId={} error={error}",
+        boot_id
+      );
+      return;
+    }
+  };
+  if let Err(error) = window.navigate(error_url) {
+    log::error!(
+      "next_server_error_page_failed bootId={} error={error}",
+      boot_id
+    );
+  }
 }
 
 /// 把子进程绑到一个 KILL_ON_JOB_CLOSE 的 Job Object:父进程(本 app)退出/崩溃时,OS 关闭最后一个 job 句柄,
@@ -457,21 +678,7 @@ fn resolve_server_port() -> u16 {
 // keyframes 用 from/to 而非百分比。
 const SPLASH_URL: &str = "data:text/html,<!doctype html><html><head><meta charset='utf-8'><style>html,body{margin:0;height:100%;background:rgb(250,250,250)}.wrap{height:100%;display:flex;align-items:center;justify-content:center}.spin{width:28px;height:28px;border:3px solid rgb(225,225,228);border-top-color:rgb(90,90,100);border-radius:999px;animation:r 0.8s linear infinite}@keyframes r{from{transform:rotate(0)}to{transform:rotate(360deg)}}</style></head><body><div class='wrap'><div class='spin'></div></div></body></html>";
 
-/// 轮询内置 Next 服务,直到 /api/health 返回 200 或超时。
-/// 超时也放行(navigate 过去让用户看到真实状态),避免无限转圈。
-fn wait_for_server_ready(port: u16, timeout: Duration) -> bool {
-  let addr = format!("127.0.0.1:{port}");
-  let deadline = Instant::now() + timeout;
-  loop {
-    if http_health_ok(&addr) {
-      return true;
-    }
-    if Instant::now() >= deadline {
-      return false;
-    }
-    std::thread::sleep(Duration::from_millis(150));
-  }
-}
+const SERVER_ERROR_URL: &str = "data:text/html,<!doctype html><html><head><meta charset='utf-8'><style>html,body{margin:0;height:100%;background:rgb(250,250,250);font-family:system-ui;color:rgb(45,45,50)}.wrap{height:100%;display:flex;align-items:center;justify-content:center}.card{text-align:center;max-width:460px;padding:32px}.title{font-size:20px;font-weight:600;margin-bottom:12px}.body{font-size:14px;line-height:1.7;color:rgb(95,95,105)}</style></head><body><div class='wrap'><div class='card'><div class='title'>Finwork 服务未能恢复</div><div class='body'>请完全退出 Finwork 后重新打开。诊断信息已写入应用日志。</div></div></div></body></html>";
 
 /// 裸 HTTP/1.0 `GET /api/health`,免引第三方 HTTP 依赖;状态行含 "200" 即视为就绪。
 fn http_health_ok(addr: &str) -> bool {
@@ -592,5 +799,65 @@ mod tests {
     assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
 
     std::fs::remove_dir_all(dir).unwrap();
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn next_server_exit_diagnostic_includes_the_exit_code() {
+    let status = Command::new("sh")
+      .arg("-c")
+      .arg("exit 23")
+      .status()
+      .unwrap();
+
+    assert_eq!(describe_exit_status(&status), "exitCode=23");
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn next_server_exit_diagnostic_includes_the_windows_exit_code() {
+    use std::os::windows::process::ExitStatusExt;
+
+    let status = ExitStatus::from_raw(23);
+
+    assert_eq!(describe_exit_status(&status), "exitCode=23");
+  }
+
+  #[test]
+  fn first_unexpected_next_server_exit_requests_one_restart() {
+    assert_eq!(
+      next_server_exit_action(false, false),
+      NextServerExitAction::Restart
+    );
+  }
+
+  #[test]
+  fn next_server_exit_after_restart_is_unrecoverable() {
+    assert_eq!(
+      next_server_exit_action(false, true),
+      NextServerExitAction::ShowError
+    );
+  }
+
+  #[test]
+  fn requested_shutdown_never_restarts_next_server() {
+    assert_eq!(
+      next_server_exit_action(true, false),
+      NextServerExitAction::Stop
+    );
+  }
+
+  #[test]
+  fn close_requested_does_not_shutdown_the_next_server() {
+    assert!(!should_shutdown_for_window_event(
+      WindowShutdownEvent::CloseRequested
+    ));
+  }
+
+  #[test]
+  fn destroyed_window_shuts_down_the_next_server() {
+    assert!(should_shutdown_for_window_event(
+      WindowShutdownEvent::Destroyed
+    ));
   }
 }
