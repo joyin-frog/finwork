@@ -421,13 +421,16 @@ export type RoleLatestStatus = {
   /** 该角色最新一条有 blocked_reason 的派发（若有） */
   blockedReason: string | null;
   conversationId: string | null;
+  /** 该角色近 7 天内是否有 review_status='pending' 的派发（成功结束但等复核确认）——侧栏徽标同「待拍板」口径 */
+  hasReviewPending: boolean;
 };
 
 /**
- * 按角色取最新派发状态（running + blocked），供 /api/agents 路由用于动态分组。
+ * 按角色取最新派发状态（running + blocked + reviewPending），供 /api/agents 路由用于动态分组。
  * - isRunning: 该角色是否有 status='running' 的行
  * - blockedReason: 最新一条 blocked_reason 非空的行的原因（可能已 ended）
  * - conversationId: 对应那条 blocked 行的会话 id
+ * - hasReviewPending: 该角色近 7 天内是否有 review_status='pending' 的行（与 blocked 同源窗口）
  */
 export function listRoleLatestStatus(): RoleLatestStatus[] {
   const db = getDb();
@@ -465,11 +468,21 @@ export function listRoleLatestStatus(): RoleLatestStatus[] {
       )
       .get(role_id) as { blocked_reason: string; conversation_id: string | null } | undefined;
 
+    // review_status='pending' 检查：成功结束但等复核确认的派发，与 blocked 同源窗口（近 7 天）。
+    const reviewPendingRow = db
+      .prepare(
+        `SELECT id FROM subagent_dispatches
+         WHERE role_id = ? AND review_status = 'pending' AND ended_at >= datetime('now', '-7 days')
+         LIMIT 1`
+      )
+      .get(role_id) as { id: number } | undefined;
+
     return {
       roleId: role_id,
       isRunning: runningRow != null,
       blockedReason: blockedRow?.blocked_reason ?? null,
       conversationId: blockedRow?.conversation_id ?? null,
+      hasReviewPending: reviewPendingRow != null,
     };
   });
 }

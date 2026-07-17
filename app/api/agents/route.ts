@@ -77,6 +77,7 @@ export async function GET() {
         status: latestStatus?.isRunning ? "running" : null,
         blockedReason: latestStatus?.blockedReason ?? null,
         conversationId: latestStatus?.conversationId ?? null,
+        reviewPending: latestStatus?.hasReviewPending ?? false,
       };
 
       // bookkeeper 专项：附发票台账计数

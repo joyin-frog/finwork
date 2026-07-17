@@ -36,10 +36,11 @@ import { FilePreviewPage, type LocalPreviewFile } from "@/app/shared/file-previe
 import { relativeTime } from "@/lib/utils/relative-time";
 import type { DispatchRow } from "@/lib/db/dispatch-store";
 
-type TaskGroupKey = "pending" | "running" | "done";
+type TaskGroupKey = "pending" | "running" | "failed" | "done";
 const TASK_GROUPS: { key: TaskGroupKey; label: string }[] = [
   { key: "pending", label: "等你拍板" },
   { key: "running", label: "进行中" },
+  { key: "failed", label: "失败" },
   { key: "done", label: "已交付" },
 ];
 
@@ -49,6 +50,7 @@ function isPending(row: DispatchRow) {
 function groupOf(row: DispatchRow): TaskGroupKey {
   if (isPending(row)) return "pending";
   if (row.status === "running") return "running";
+  if (row.status === "failed") return "failed";
   return "done";
 }
 function fileList(row: DispatchRow): string[] {
@@ -93,21 +95,32 @@ export function WorkspaceWorkTab({ roleId }: { roleId: string }) {
   const [error, setError] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const initializedRef = useRef(false);
+  // 请求令牌：切角色时递增，过期响应到达时丢弃——避免快速切角色时旧请求覆盖新角色的数据。
+  const requestTokenRef = useRef(0);
 
   const { collapsed, previewW, dragging, maximized, mainRef, beginResize, open, toggle, maximize, resetWidth } =
     usePreviewResize(460);
 
   const fetchDispatches = useCallback(async () => {
+    const token = ++requestTokenRef.current;
     setError(false);
     setDispatches(null);
     try {
       const res = await fetch(`/api/agents/dispatches?roleId=${encodeURIComponent(roleId)}&limit=30`);
       const json = await res.json();
+      if (token !== requestTokenRef.current) return;
       if (json.ok) setDispatches(json.data.rows);
       else { setError(true); setDispatches([]); }
     } catch {
+      if (token !== requestTokenRef.current) return;
       setError(true); setDispatches([]);
     }
+  }, [roleId]);
+
+  // roleId 变化：重置初始化态与选中项，避免切角色时残留上一角色的选中/展开态。
+  useEffect(() => {
+    initializedRef.current = false;
+    setSelectedId(null);
   }, [roleId]);
 
   useEffect(() => { void fetchDispatches(); }, [fetchDispatches]);
@@ -186,6 +199,7 @@ export function WorkspaceWorkTab({ roleId }: { roleId: string }) {
   // ── 右列：三态预览 ──────────────────────────────────────────────────────
   const preview: ReactNode = !collapsed && selected ? (
     <TaskPreview
+      key={selected.id}
       row={selected}
       maximized={maximized}
       onMaximize={maximize}
@@ -212,8 +226,9 @@ export function WorkspaceWorkTab({ roleId }: { roleId: string }) {
 function TaskRow({ row, selected, onSelect }: { row: DispatchRow; selected: boolean; onSelect: () => void }) {
   const pending = isPending(row);
   const running = row.status === "running" && !pending;
-  const tone = pending ? "var(--tone-notice)" : running ? "var(--tone-analysis)" : "var(--tone-ok)";
-  const tag = pending ? "等你拍板" : running ? "进行中" : "已交付";
+  const failed = row.status === "failed" && !pending;
+  const tone = pending ? "var(--tone-notice)" : running ? "var(--tone-analysis)" : failed ? "var(--tone-alarm)" : "var(--tone-ok)";
+  const tag = pending ? "等你拍板" : running ? "进行中" : failed ? "失败" : "已交付";
   return (
     <button type="button" onClick={onSelect} className="text-left w-full">
       <Surface
@@ -253,6 +268,7 @@ function TaskPreview({
 
   const pending = isPending(row);
   const running = row.status === "running" && !pending;
+  const failed = row.status === "failed" && !pending;
   const files = fileList(row);
   const convHref = row.conversationId ? `/chat/recent?id=${row.conversationId}` : undefined;
 
@@ -335,6 +351,22 @@ function TaskPreview({
             </section>
           )}
 
+          {/* 失败：摘要 + 查看会话（不写「已完成」） */}
+          {failed && (
+            <section
+              className="fa-toned rounded-[var(--radius)] px-3 py-2.5 flex flex-col gap-2"
+              style={{ "--tone": "var(--tone-alarm)", borderLeft: "2px solid var(--tone-alarm)" } as CSSProperties}
+            >
+              <p className="text-meta font-semibold" style={{ color: "var(--tone-alarm)" }}>任务失败</p>
+              <p className="text-body">{row.summary || "执行失败，未生成产物。"}</p>
+              {convHref && (
+                <div className="pt-1">
+                  <TipButton icon={BubbleChatIcon} label="查看会话" href={convHref} />
+                </div>
+              )}
+            </section>
+          )}
+
           {/* 文件产物（已交付常见；任何态有文件都展示） */}
           {files.length > 0 && (
             <section className="flex flex-col gap-1.5">
@@ -362,7 +394,7 @@ function TaskPreview({
           )}
 
           {/* 已交付且无文件：摘要 + 查看会话 */}
-          {!pending && !running && files.length === 0 && (
+          {!pending && !running && !failed && files.length === 0 && (
             <section className="flex flex-col gap-2">
               <p className="text-body">{row.summary || "已完成。"}</p>
               {convHref && <div><TipButton icon={BubbleChatIcon} label="查看会话" href={convHref} /></div>}

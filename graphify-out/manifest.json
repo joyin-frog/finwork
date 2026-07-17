@@ -50,9 +50,9 @@
     "semantic_hash": "5f19dcd70ca7c9d6031adb1952d633ea"
   },
   "app/api/agents/route.ts": {
-    "mtime": 1783655832.773412,
-    "ast_hash": "83bcae10adf61a79d1d7c9ab450d631b",
-    "semantic_hash": "83bcae10adf61a79d1d7c9ab450d631b"
+    "mtime": 1784274676.657526,
+    "ast_hash": "f21e68689523d71d4acbbe2abf5f8592",
+    "semantic_hash": ""
   },
   "app/api/agents/toggle/route.ts": {
     "mtime": 1783316210.2905698,
@@ -775,8 +775,8 @@
     "semantic_hash": "59b18460e5a9a992b67e9ac749d48d0f"
   },
   "app/shared/app-nav.tsx": {
-    "mtime": 1784267758.0958464,
-    "ast_hash": "1bc3a0b1d128d6528131472262ec067f",
+    "mtime": 1784274720.1108315,
+    "ast_hash": "f197c4ba3c8337b5263b142bca8bf795",
     "semantic_hash": ""
   },
   "app/shared/app-shell.tsx": {
@@ -840,8 +840,8 @@
     "semantic_hash": "9682e7bc44508372e9bccb1653a0f235"
   },
   "app/shared/nav-state.tsx": {
-    "mtime": 1784270174.1376173,
-    "ast_hash": "0eb3ff943a5335d150fdd45c5e16f60b",
+    "mtime": 1784274709.6679986,
+    "ast_hash": "1b8a4980c1f2183f4763652cfed5c5e2",
     "semantic_hash": ""
   },
   "app/shared/nav-top-controls.tsx": {
@@ -1280,9 +1280,9 @@
     "semantic_hash": "5c0703e39ca8cadbccbe7d4128c72303"
   },
   "lib/db/dispatch-store.ts": {
-    "mtime": 1783655832.831858,
-    "ast_hash": "ef38bc9f5659ad919613858879b767d4",
-    "semantic_hash": "ef38bc9f5659ad919613858879b767d4"
+    "mtime": 1784274665.400917,
+    "ast_hash": "88702da9272173c93fb5ab3b2d561ca8",
+    "semantic_hash": ""
   },
   "lib/db/finance-store.ts": {
     "mtime": 1783655832.8324761,
@@ -4380,8 +4380,8 @@
     "semantic_hash": "2d6358974ba7f98839ac056bacf2c038"
   },
   "app/agents/[roleId]/page.tsx": {
-    "mtime": 1784272507.0711818,
-    "ast_hash": "2c2f90a3dfdb07782249fc683ec6f957",
+    "mtime": 1784274762.9896023,
+    "ast_hash": "041fd87d835525e2ffe3c2c7b0f9dcbb",
     "semantic_hash": ""
   },
   "app/api/agent/trust/route.ts": {
@@ -4885,8 +4885,8 @@
     "semantic_hash": ""
   },
   "src-tauri/src/lib.rs": {
-    "mtime": 1784195174.764263,
-    "ast_hash": "77e9c283e3f2d62155b14bba428e651d",
+    "mtime": 1784273491.2472115,
+    "ast_hash": "6783aad97a753b6706350ad965aec70d",
     "semantic_hash": ""
   },
   "src-tauri/src/main.rs": {
@@ -5000,8 +5000,8 @@
     "semantic_hash": ""
   },
   "docs/spec/design-agents-ia.md": {
-    "mtime": 1784270627.4577239,
-    "ast_hash": "579e6778a623a7f694e272f1dd039d4d",
+    "mtime": 1784273174.1751,
+    "ast_hash": "fbce66af963e1a59d2c77a0d5d6e85c0",
     "semantic_hash": ""
   },
   "docs/spec/spec-JOY-10-conversation-tabs.md": {
@@ -5090,8 +5090,8 @@
     "semantic_hash": ""
   },
   "app/agents/[roleId]/workspace-work-tab.tsx": {
-    "mtime": 1784267623.6056426,
-    "ast_hash": "874fddb68fd73285818bca8c853cade3",
+    "mtime": 1784274629.3402185,
+    "ast_hash": "066ce371095ce032c52ecf376b3083fd",
     "semantic_hash": ""
   },
   "app/api/agents/[roleId]/conversations/route.ts": {

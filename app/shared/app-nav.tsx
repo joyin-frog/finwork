@@ -184,10 +184,10 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         : "text-foreground hover:bg-accent hover:text-accent-foreground"
     );
 
-  function renderRoleRow(r: { roleId: string; name: string; available: boolean; userDisabled: boolean; status: string | null; blockedReason: string | null }) {
+  function renderRoleRow(r: { roleId: string; name: string; available: boolean; userDisabled: boolean; status: string | null; blockedReason: string | null; reviewPending: boolean }) {
     const isActive = currentRoleId === r.roleId;
     const isRunning = r.status === "running";
-    const isBlocked = r.blockedReason != null && r.blockedReason !== "";
+    const isBlocked = (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending;
     const disabled = !r.available || r.userDisabled;
     // 状态点走状态语义(非角色色):在忙=主色呼吸、待拍板=notice、空闲=空心。
     const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;

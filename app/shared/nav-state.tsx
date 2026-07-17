@@ -22,6 +22,8 @@ export type AgentRosterLite = {
   userDisabled: boolean;
   status: string | null;
   blockedReason: string | null;
+  /** 该角色近 7 天内是否有 review_status='pending' 的派发——与 blockedReason 一样算「待拍板」 */
+  reviewPending: boolean;
 };
 
 export type PageKind = "cockpit" | "chat-new" | "agents" | "knowledge" | "files" | "skills" | "config";
@@ -314,7 +316,7 @@ type NavState = {
   setAgentsOpen: (v: boolean) => void;
   /** 角色花名册（导航子列表 + 状态点用）；挂载时取一次。 */
   agentRoster: AgentRosterLite[];
-  /** 待拍板专员数（有 blockedReason 的角色数）——父项徽标用。 */
+  /** 待拍板专员数（blockedReason 非空或 reviewPending 为真的角色数）——父项徽标用。 */
   agentPendingCount: number;
   fetchAgentRoster: () => Promise<void>;
   conversations: ConversationSummary[];
@@ -452,6 +454,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
             userDisabled: r.userDisabled,
             status: r.status ?? null,
             blockedReason: r.blockedReason ?? null,
+            reviewPending: r.reviewPending ?? false,
           }))
         );
       }
@@ -466,7 +469,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
   }, [fetchAgentRoster]);
 
   const agentPendingCount = agentRoster.filter(
-    (r) => r.blockedReason != null && r.blockedReason !== ""
+    (r) => (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending
   ).length;
 
   const openPageTab = useCallback((tab: PageTab) => {

@@ -10,7 +10,7 @@
  */
 
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -42,6 +42,7 @@ type RoleDetail = {
   status: string | null;
   blockedReason: string | null;
   conversationId: string | null;
+  reviewPending: boolean;
 };
 
 type WorkTab = "work" | "memory" | "conversations" | "profile";
@@ -63,21 +64,27 @@ export default function AgentWorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<WorkTab>("work");
 
+  // 请求令牌：切角色时递增，过期响应到达时丢弃——避免快速切角色时旧请求覆盖新角色的数据。
+  const requestTokenRef = useRef(0);
+
   const fetchRole = useCallback(async () => {
+    const token = ++requestTokenRef.current;
     setLoading(true);
     setLoadError(false);
     try {
-      const res = await fetch("/api/agents");
+      const res = await fetch("/api/agents", { cache: "no-store" });
       const json = await res.json();
+      if (token !== requestTokenRef.current) return;
       if (json.ok) {
         setRole((json.data.roster as RoleDetail[]).find((r) => r.roleId === roleId) ?? null);
       } else {
         setLoadError(true);
       }
     } catch {
+      if (token !== requestTokenRef.current) return;
       setLoadError(true);
     } finally {
-      setLoading(false);
+      if (token === requestTokenRef.current) setLoading(false);
     }
   }, [roleId]);
 
@@ -86,7 +93,7 @@ export default function AgentWorkspacePage() {
   const ui = role ? ROLE_UI[role.roleId as keyof typeof ROLE_UI] : undefined;
   const tone = ui?.tone ?? "--tone-neutral";
   const isRunning = role?.status === "running";
-  const isBlocked = role?.blockedReason != null && role.blockedReason !== "";
+  const isBlocked = (role?.blockedReason != null && role.blockedReason !== "") || (role?.reviewPending ?? false);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -174,7 +181,7 @@ export default function AgentWorkspacePage() {
               {tab === "memory" && <MemoryTabView roleId={role.roleId} roleName={role.name} />}
               {tab === "conversations" && <ConversationsTabView roleId={role.roleId} />}
               {tab === "profile" && (
-                <ProfileTabView role={role} onToggled={fetchAgentRoster} />
+                <ProfileTabView key={role.roleId} role={role} onToggled={fetchAgentRoster} />
               )}
             </div>
           )}
