@@ -991,7 +991,7 @@ export default function ChatPage({
               </h1>
               {sessionRole && (
                 <span className="fa-tone-pill text-meta shrink-0 text-muted-foreground" style={{ "--tone": "var(--tone-neutral)" } as CSSProperties}>
-                  工具与数据仅限本角色
+                  职责范围内的业务工具
                 </span>
               )}
               {trustedTools.length > 0 && (

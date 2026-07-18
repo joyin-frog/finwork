@@ -26,7 +26,7 @@ import {
 import { getConversationFilesDir } from "@/lib/runtime/paths";
 import { snapshotGeneratedFiles } from "@/lib/chat/generated-files";
 import { matchTrivialMessage, normalizeTier, resolveModelByTier, runRouter } from "@/lib/agent/router";
-import { getRoleDefinition } from "@/lib/agent/roles/registry";
+import { specialistRoleUsabilityIssue } from "@/lib/agent/roles/availability";
 import { injectSkillHint } from "@/lib/agent/skill-hint";
 import { getUsageStatus } from "@/lib/usage/store";
 import { buildBlockedNotice } from "@/lib/usage/quota";
@@ -161,13 +161,34 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
 
   let conversationId = ctxConversationId;
   let conversation = conversationId ? getChatConversation(conversationId) : null;
+
+  // 既有专员会话：每回合复检可用面——停用后禁止静默回落主管（与派发 fail-closed 一致）。
+  if (conversation?.roleId) {
+    const issue = specialistRoleUsabilityIssue(conversation.roleId);
+    if (issue) {
+      log.warn("specialist session blocked", { traceId, conversationId, roleId: conversation.roleId, issue });
+      const { NextResponse } = await import("next/server");
+      return NextResponse.json({ ok: false, error: issue }, { status: 403 });
+    }
+  }
+
   if (lastUserContent) {
     let skipInsert = false;
     let dedupMessageId: number | undefined;
     if (!conversationId) {
       const shortTitle = generateShortTitle(lastUserContent);
-      // 专员会话（E 刀）：role 参数只在创建新会话时生效；此后角色以 DB 行为准（服务端权威）。
-      conversationId = createChatConversation(shortTitle, (await validRoleId(ctx.roleParam)) ?? null);
+      // 专员会话（E 刀）：role 参数只在创建新会话时生效；非法 role 显式失败，禁止静默建主管会话。
+      let createRoleId: string | null = null;
+      if (ctx.roleParam) {
+        const issue = specialistRoleUsabilityIssue(ctx.roleParam);
+        if (issue) {
+          log.warn("reject invalid specialist role on create", { traceId, role: ctx.roleParam, issue });
+          const { NextResponse } = await import("next/server");
+          return NextResponse.json({ ok: false, error: issue }, { status: 400 });
+        }
+        createRoleId = ctx.roleParam;
+      }
+      conversationId = createChatConversation(shortTitle, createRoleId);
       conversation = getChatConversation(conversationId);
       log.info("conversation created", { traceId, conversationId, title: shortTitle, roleId: conversation?.roleId ?? null });
     } else {
@@ -378,23 +399,19 @@ function shouldUseStreaming(request: Request): boolean {
   return new URL(request.url).searchParams.get("stream") !== "false";
 }
 
-/** 角色 id 校验（E 刀）：未知/未启用/已停用的角色丢弃并告警（回落为主管会话），
- * 与派发的可派发性口径一致（subagent-runner 的 available + 停用检查）。 */
-async function validRoleId(raw: string | undefined | null): Promise<string | undefined> {
-  if (!raw) return undefined;
-  const role = getRoleDefinition(raw);
-  if (!role || !role.available) {
-    log.warn("忽略未知/未启用角色参数", { role: raw });
-    return undefined;
-  }
-  try {
-    const { getDisabledRoleIds } = await import("@/lib/agent/roles/availability");
-    if (getDisabledRoleIds().includes(raw)) {
-      log.warn("忽略已停用角色参数", { role: raw });
-      return undefined;
-    }
-  } catch { /* 停用表读不到时不拦 */ }
-  return raw;
+/** 解析客户端 role 参数：空 → undefined；非空原样保留，可用性由 sessionStage / requireUsableRoleId 显式校验（失败不回落主管）。 */
+function parseRoleParam(raw: string | undefined | null): string | undefined {
+  if (!raw || typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed || undefined;
+}
+
+/** 创建会话前的 role 校验：非法直接抛错（parseStage 会映射为 400），禁止写入无效 role_id。 */
+function requireUsableRoleId(roleParam: string | undefined): string | null {
+  if (!roleParam) return null;
+  const issue = specialistRoleUsabilityIssue(roleParam);
+  if (issue) throw new Error(issue);
+  return roleParam;
 }
 
 function generateShortTitle(text: string): string {
@@ -424,14 +441,14 @@ async function parseMultipartRequest(request: Request, traceId: string) {
   const formData = await request.formData();
   const messages: AgentMessage[] = formData.get("messages") ? (JSON.parse(formData.get("messages") as string) as AgentMessage[]) : [];
   let conversationId: number | undefined = (formData.get("conversationId") as string) ? Number(formData.get("conversationId")) : undefined;
-  const roleParam = await validRoleId(formData.get("role") as string | null);
+  const roleParam = parseRoleParam(formData.get("role") as string | null);
   const uploadedFiles = formData.getAll("files") as File[];
   const attachments: AgentAttachment[] = [];
 
   if (uploadedFiles.length > 0) {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!conversationId && lastUser?.content.trim()) {
-      conversationId = createConv(generateShortTitle(lastUser.content.trim()), roleParam ?? null);
+      conversationId = createConv(generateShortTitle(lastUser.content.trim()), requireUsableRoleId(roleParam));
       log.info("conversation created for files", { traceId, conversationId });
     }
     if (conversationId) {
@@ -459,7 +476,7 @@ async function parseJsonRequest(request: Request) {
   const { createChatConversation: createConv } = await import("@/lib/db/sqlite");
   const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[]; referencedSkills?: string[]; modelTier?: string; role?: string };
   let conversationId = body.conversationId;
-  const roleParam = await validRoleId(body.role);
+  const roleParam = parseRoleParam(body.role);
   const rawAttachments = body.attachments ?? [];
 
   // Persist any dataUrl-only attachments to disk so downstream (claude-adapter,
@@ -477,7 +494,7 @@ async function parseJsonRequest(request: Request) {
         if (!conversationId) {
           const lastUser = [...(body.messages ?? [])].reverse().find((m) => m.role === "user");
           const title = lastUser?.content?.trim() ? generateShortTitle(lastUser.content.trim()) : "新对话";
-          conversationId = createConv(title, roleParam ?? null);
+          conversationId = createConv(title, requireUsableRoleId(roleParam));
         }
         const filePath = saveAttachmentBuffer(conversationId, att.name, buffer);
         attachments.push({ ...att, storagePath: filePath, size: buffer.length });

@@ -22,8 +22,8 @@ import {
   createUnwiredToolHook,
 } from "./hooks/built-in";
 import { buildSystemPromptParts } from "./system-prompt";
-import { getRoleDefinition } from "./roles/registry";
 import { resolveRoleAllowedTools } from "./roles/registry";
+import { assertSpecialistRoleUsable } from "./roles/availability";
 import { buildSpecialistChatSystemPrompt } from "./subagent-runner";
 import { getRoleMemoryForPrompt } from "@/lib/db/role-memory-store";
 import { createRoleScopeHook } from "./hooks/built-in";
@@ -142,11 +142,9 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     resumeSession: Boolean(runOptions.resumeSession),
   });
 
-  // 专员会话（E 刀）：解析角色。未知 roleId 必须 fail-fast——静默回落主管等于扩权（角色边界失效）。
-  const specialistRole = runOptions.roleId ? getRoleDefinition(runOptions.roleId) : undefined;
-  if (runOptions.roleId && !specialistRole) {
-    throw new Error(`未知角色 "${runOptions.roleId}"，无法启动专员会话`);
-  }
+  // 专员会话（E 刀）：解析并校验角色（未知/未启用/已停用均 fail-closed）。
+  // 必须在 mock 短路之前——否则停用角色在 e2e/mock 路径会漏检。
+  const specialistRole = runOptions.roleId ? assertSpecialistRoleUsable(runOptions.roleId) : undefined;
 
   // 确定性模拟 Agent(e2e 用):置 FINANCE_AGENT_MOCK_AGENT=1 即接管,优先于真 key,
   // 让 agent 类 journey 不依赖网络/密钥也能在 CI 跑绿。见 lib/agent/mock-agent.ts。

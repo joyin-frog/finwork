@@ -86,8 +86,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
 // 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。
 // 成员与 built-in.ALWAYS_CONFIRM_TOOLS 同步（confirm-gate-fix.test 守无漂移）。
 // 注意：不 import built-in（会循环依赖，built-in 已依赖本模块的 getToolRiskLevel）。
-// remember_convention 已按刀6拍板改静默写入,不再挂确认门。
+// remember_role_convention（刀6）静默写入；remember_convention 仍挂确认门。
 const CONFIRM_REQUIRED_TOOL_NAMES = new Set<string>([
+  "mcp__finance_worker__remember_convention",
   "mcp__finance_worker__update_company_profile",
 ]);
 

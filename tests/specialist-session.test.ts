@@ -9,6 +9,9 @@
  * - SS-5 会话角色维度落库：createChatConversation(roleId) → getChatConversation 回读；
  *        listConversationsForRole 并出直聊会话（isDirect）与派发会话
  * - SS-6 源码契约：/chat/new 支持 role 参数；claude-adapter 按 roleId 分支装配；routerStage 跳过专员会话
+ * - SS-7 停用角色：specialistRoleUsabilityIssue / assertSpecialistRoleUsable fail-closed；
+ *   runClaudeAgent({ roleId }) 在 mock 短路前抛错；恢复启用后可走 mock
+ * - SS-8 sessionStage：非法 role 建会话 → 400；既有专员会话中途停用 → 403
  *
  * 运行：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true node --import tsx tests/specialist-session.test.ts
  */
@@ -144,7 +147,131 @@ export const specialistSessionTestPromise = (async () => {
   const stages = read("lib/agent/query-stages.ts");
   assert.ok(stages.includes("specialist session"), "SS-6 FAIL: routerStage 应跳过专员会话");
   const chatPage = read("app/chat/chat-page.tsx");
-  assert.ok(chatPage.includes("工具与数据仅限本角色") && chatPage.includes("专员会话"), "SS-6 FAIL: 会话头部应有专员身份标识");
+  assert.ok(chatPage.includes("职责范围内的业务工具") && chatPage.includes("专员会话"), "SS-6 FAIL: 会话头部应有专员身份标识");
+  const newPageSrc = read("app/chat/new/page.tsx");
+  assert.ok(newPageSrc.includes("getDisabledRoleIds"), "SS-6 FAIL: /chat/new 应检查用户停用角色");
 
-  console.log("specialist-session: SS-1..SS-6 all passed ✓");
+  // ── SS-7: 停用角色 fail-closed + adapter 在 mock 前校验 ─────────────────
+  {
+    const dir = mkdtempSync(path.join(tmpdir(), "fa-specialist-disabled-"));
+    const dbPath = path.join(dir, "test.db");
+    const savedDbPath = process.env.FINANCE_AGENT_DB_PATH;
+    const savedMock = process.env.FINANCE_AGENT_MOCK_AGENT;
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    process.env.FINANCE_AGENT_MOCK_AGENT = "1";
+    try {
+      const { getDb } = await import("../lib/db/sqlite.ts");
+      getDb();
+      const { setRoleDisabled, specialistRoleUsabilityIssue, assertSpecialistRoleUsable } = await import(
+        "../lib/agent/roles/availability.ts"
+      );
+      assert.equal(specialistRoleUsabilityIssue("no-such-role") != null, true, "SS-7 FAIL: 未知角色应有 issue");
+      assert.equal(specialistRoleUsabilityIssue("payroll-officer"), null, "SS-7 FAIL: 启用角色应可用");
+
+      setRoleDisabled("payroll-officer", true);
+      assert.match(
+        specialistRoleUsabilityIssue("payroll-officer") ?? "",
+        /已停用/,
+        "SS-7 FAIL: 停用后应返回已停用原因"
+      );
+      assert.throws(
+        () => assertSpecialistRoleUsable("payroll-officer"),
+        /已停用/,
+        "SS-7 FAIL: assertSpecialistRoleUsable 应对停用角色抛错"
+      );
+
+      const { runClaudeAgent } = await import("../lib/agent/claude-adapter.ts");
+      await assert.rejects(
+        () => runClaudeAgent([{ role: "user", content: "你好" }], { roleId: "payroll-officer" }),
+        /已停用/,
+        "SS-7 FAIL: runClaudeAgent 在 mock 短路前应对停用角色抛错"
+      );
+
+      setRoleDisabled("payroll-officer", false);
+      const ok = await runClaudeAgent([{ role: "user", content: "你好" }], { roleId: "payroll-officer" });
+      assert.equal(ok.mode, "mock", "SS-7 FAIL: 重新启用后 mock 路径应可跑通");
+    } finally {
+      if (savedDbPath === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
+      else process.env.FINANCE_AGENT_DB_PATH = savedDbPath;
+      if (savedMock === undefined) delete process.env.FINANCE_AGENT_MOCK_AGENT;
+      else process.env.FINANCE_AGENT_MOCK_AGENT = savedMock;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // ── SS-8: sessionStage 非法 role / 中途停用 ─────────────────────────────
+  {
+    const dir = mkdtempSync(path.join(tmpdir(), "fa-specialist-session-"));
+    const dbPath = path.join(dir, "test.db");
+    const savedDbPath = process.env.FINANCE_AGENT_DB_PATH;
+    process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    try {
+      const { getDb, createChatConversation } = await import("../lib/db/sqlite.ts");
+      getDb();
+      const { setRoleDisabled } = await import("../lib/agent/roles/availability.ts");
+      const { sessionStage } = await import("../lib/agent/query-stages.ts");
+      const { readClaudeSettings } = await import("../lib/settings/claude-settings.ts");
+      const settings = await readClaudeSettings().catch(() => ({ roleMode: "daily" as const }));
+
+      const baseCtx = {
+        request: new Request("http://localhost/api/agent/query"),
+        traceId: "ss8",
+        startedAt: Date.now(),
+        settings: settings as Awaited<ReturnType<typeof readClaudeSettings>>,
+        roleMode: "daily",
+        messages: [{ role: "user" as const, content: "测一下" }],
+        conversationId: undefined as number | undefined,
+        attachments: [],
+        referencedSkills: [] as string[],
+        modelTier: undefined as string | undefined,
+        lastUserContent: "测一下",
+        useStreaming: false,
+        requestSignal: undefined as AbortSignal | undefined,
+        roleParam: "payroll-officer" as string | undefined,
+      };
+
+      setRoleDisabled("payroll-officer", true);
+      const rejected = await sessionStage({ ...baseCtx, roleParam: "payroll-officer" });
+      assert.ok(rejected instanceof Response, "SS-8 FAIL: 停用角色建会话应返回 Response");
+      assert.equal((rejected as Response).status, 400, "SS-8 FAIL: 停用角色建会话应为 400");
+
+      setRoleDisabled("payroll-officer", false);
+      const created = await sessionStage({ ...baseCtx, roleParam: "payroll-officer" });
+      assert.ok(!(created instanceof Response), "SS-8 FAIL: 启用角色建会话应成功");
+      const session = created as { conversationId?: number; sessionRoleId: string | null };
+      assert.equal(session.sessionRoleId, "payroll-officer", "SS-8 FAIL: 新建会话应绑定角色");
+
+      setRoleDisabled("payroll-officer", true);
+      const mid = await sessionStage({
+        ...baseCtx,
+        conversationId: session.conversationId,
+        roleParam: undefined,
+      });
+      assert.ok(mid instanceof Response, "SS-8 FAIL: 中途停用应返回 Response");
+      assert.equal((mid as Response).status, 403, "SS-8 FAIL: 中途停用应为 403");
+
+      // 未知角色建会话
+      setRoleDisabled("payroll-officer", false);
+      const unknown = await sessionStage({ ...baseCtx, roleParam: "no-such-role" });
+      assert.ok(unknown instanceof Response && (unknown as Response).status === 400, "SS-8 FAIL: 未知角色应为 400");
+
+      // 对照：无 role 的主管会话不受停用影响
+      const orchId = createChatConversation("主管");
+      setRoleDisabled("payroll-officer", true);
+      const orch = await sessionStage({
+        ...baseCtx,
+        conversationId: orchId,
+        roleParam: undefined,
+        lastUserContent: "主管继续",
+        messages: [{ role: "user", content: "主管继续" }],
+      });
+      assert.ok(!(orch instanceof Response), "SS-8 FAIL: 主管会话不应因专员停用被拦");
+    } finally {
+      if (savedDbPath === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
+      else process.env.FINANCE_AGENT_DB_PATH = savedDbPath;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  console.log("specialist-session: SS-1..SS-8 all passed ✓");
 })();

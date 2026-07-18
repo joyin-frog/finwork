@@ -135,16 +135,18 @@ export default function AgentWorkspacePage() {
               )}
             </div>
             <div className="ml-auto shrink-0 flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link href={`/chat/new?role=${encodeURIComponent(role.roleId)}`} aria-label="和它对话">
-                    <Button size="icon" variant="ghost">
-                      <HugeiconsIcon icon={BubbleChatIcon} size={16} />
-                    </Button>
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent>和它对话（专员会话）</TooltipContent>
-              </Tooltip>
+              {role.available && !role.userDisabled && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link href={`/chat/new?role=${encodeURIComponent(role.roleId)}`} aria-label="和它对话">
+                      <Button size="icon" variant="ghost">
+                        <HugeiconsIcon icon={BubbleChatIcon} size={16} />
+                      </Button>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>和它对话（专员会话）</TooltipContent>
+                </Tooltip>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href={`/chat/new?prompt=${encodeURIComponent(`请${role.name}，`)}`} aria-label="派任务">

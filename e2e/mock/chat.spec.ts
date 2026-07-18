@@ -115,7 +115,8 @@ test("chat: ask_user 面板 → 选项 → 继续提交", async ({ page }) => {
   await expect(opt).toBeVisible({ timeout: 30_000 });
   await opt.click();
   await page.getByRole("button", { name: /提交/ }).click();
-  await expect(page.getByText("按「方案甲」口径处理")).toBeVisible({ timeout: 30_000 });
+  // 用正则匹配流式拼字后的完整句（避免整句被拆到多个 text node 时 exact 失败）
+  await expect(page.getByText(/按「方案甲」口径处理/)).toBeVisible({ timeout: 30_000 });
   await assertNoCrash(page);
   await page.screenshot({ path: "test-results/ask-summary.png" }).catch(() => {});
 });

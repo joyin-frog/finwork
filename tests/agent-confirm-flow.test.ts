@@ -51,15 +51,18 @@ export const agentConfirmFlowTestPromise = (async () => {
     const r = await runBeforeHooks(chain, ctxFor(tool, undefined));
     assert.equal(r.behavior, "deny", `AC1b FAIL: 高风险工具 ${tool} 无确认通道应拒绝(即需确认)`);
   }
-  // remember_convention / remember_role_convention:刀6拍板改静默写入(medium,不挂确认门),无 resolver 也放行
-  for (const tool of ["mcp__finance_worker__remember_convention", "mcp__finance_worker__remember_role_convention"]) {
-    assert.equal(
-      (await runBeforeHooks(chain, ctxFor(tool, undefined))).behavior,
-      "allow",
-      `AC1b FAIL: ${tool} 应静默放行(记忆写入不再挂确认门)`
-    );
-  }
-  // update_company_profile 是唯一保留的 ALWAYS_CONFIRM 工具:无 resolver 必须 fail-closed
+  // remember_role_convention:刀6 静默写入；remember_convention 仍挂确认门
+  assert.equal(
+    (await runBeforeHooks(chain, ctxFor("mcp__finance_worker__remember_role_convention", undefined))).behavior,
+    "allow",
+    "AC1b FAIL: remember_role_convention 应静默放行"
+  );
+  assert.equal(
+    (await runBeforeHooks(chain, ctxFor("mcp__finance_worker__remember_convention", undefined))).behavior,
+    "deny",
+    "AC1b FAIL: remember_convention 无确认通道应拒绝(ALWAYS_CONFIRM)"
+  );
+  // update_company_profile 仍为 ALWAYS_CONFIRM:无 resolver 必须 fail-closed
   assert.equal(
     (await runBeforeHooks(chain, ctxFor("mcp__finance_worker__update_company_profile", undefined))).behavior,
     "deny",

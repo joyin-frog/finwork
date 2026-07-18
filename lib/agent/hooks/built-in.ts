@@ -179,9 +179,10 @@ export function createRoleScopeHook(roleId: string): Hook {
 }
 
 // 无论如何都必须经用户确认的工具。
-// remember_convention / remember_role_convention 不在此列:记忆写入按刀6拍板走静默+对话内轻提示,
-// 安全靠可见可删(设置→记忆 / 工作台记忆页签),不靠事前确认。
+// remember_convention：全局约定影响所有对话，仍走事前确认。
+// remember_role_convention（刀6）：角色口径静默写入 + 对话内轻提示，安全靠可见可删。
 export const ALWAYS_CONFIRM_TOOLS = new Set([
+  "mcp__finance_worker__remember_convention",
   // P3: 公司画像写入需用户确认(事实数据,非口径)
   "mcp__finance_worker__update_company_profile",
 ]);
@@ -205,6 +206,15 @@ export function createRiskConfirmHook(): Hook {
           const prompt = keys.length
             ? `要我更新公司画像（字段：${keys.join("、")}）吗？\n\n可在「设置 → 画像」随时查看修改。`
             : "要我更新公司画像吗？";
+          return { action: "confirm", prompt };
+        }
+        if (ctx.toolName === "mcp__finance_worker__remember_convention") {
+          const { text, replaces } = getConventionFields(ctx.input);
+          let prompt: string;
+          if (text && replaces) prompt = `要我把工作约定改成「${text}」吗?(替换原来的「${replaces}」)`;
+          else if (replaces) prompt = `要我删除这条工作约定吗?\n「${replaces}」`;
+          else if (text) prompt = `要我记住这条工作约定吗?\n「${text}」`;
+          else prompt = "要我更新工作约定吗?";
           return { action: "confirm", prompt };
         }
         return { action: "confirm", prompt: buildRiskConfirmPrompt(ctx.toolName, ctx.input) };
@@ -233,6 +243,12 @@ function getProfilePatch(input: unknown): Record<string, unknown> {
   // patch is nested under "patch" key per tool schema
   const patch = o.patch && typeof o.patch === "object" ? o.patch as Record<string, unknown> : o;
   return patch;
+}
+
+function getConventionFields(input: unknown): { text: string; replaces: string } {
+  const o = (input && typeof input === "object" ? input : {}) as { text?: unknown; replaces?: unknown };
+  const s = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  return { text: s(o.text), replaces: s(o.replaces) };
 }
 
 export function createTimingHook(

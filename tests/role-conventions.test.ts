@@ -6,7 +6,8 @@
  * - RC-2 角色隔离：写 payroll-officer 不出现在 tax-officer 记忆里
  * - RC-3 未知 roleId → isError，不写库
  * - RC-4 去重：同角色同内容二次调用不重复写入
- * - RC-5 成员契约：两个记忆工具都在 ALLOWED_TOOLS（静默自动放行）、不在 ALWAYS_CONFIRM_TOOLS
+ * - RC-5 成员契约：remember_role_convention 静默（ALLOWED、非 ALWAYS_CONFIRM）；
+ *   remember_convention 仍挂确认门（非 ALLOWED、在 ALWAYS_CONFIRM）
  * - RC-6 对话流轻提示：getToolSummary 渲染「记住口径 + 角色名」
  *
  * 运行：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true node --import tsx tests/role-conventions.test.ts
@@ -64,13 +65,25 @@ export const roleConventionsTestPromise = (async () => {
     assert.match(r4.content[0].text, /已有这条口径/, "RC-4 FAIL: 重复内容应提示已存在");
     assert.equal(listRoleMemory("payroll-officer").length, 1, "RC-4 FAIL: 相同内容不应重复落库");
 
-    // ── RC-5: 成员契约（记忆写入静默 = 自动放行，不挂确认门）──────────────
+    // ── RC-5: 成员契约（角色口径静默；全局约定仍确认）────────────────────
     const { ALLOWED_TOOLS } = await import("../lib/agent/tools/registry.ts");
     const { ALWAYS_CONFIRM_TOOLS } = await import("../lib/agent/hooks/built-in.ts");
-    for (const name of ["mcp__finance_worker__remember_convention", "mcp__finance_worker__remember_role_convention"]) {
-      assert.ok(ALLOWED_TOOLS.includes(name), `RC-5 FAIL: ${name} 应在 ALLOWED_TOOLS（静默自动放行）`);
-      assert.ok(!ALWAYS_CONFIRM_TOOLS.has(name), `RC-5 FAIL: ${name} 不应在 ALWAYS_CONFIRM_TOOLS`);
-    }
+    assert.ok(
+      ALLOWED_TOOLS.includes("mcp__finance_worker__remember_role_convention"),
+      "RC-5 FAIL: remember_role_convention 应在 ALLOWED_TOOLS（静默自动放行）"
+    );
+    assert.ok(
+      !ALWAYS_CONFIRM_TOOLS.has("mcp__finance_worker__remember_role_convention"),
+      "RC-5 FAIL: remember_role_convention 不应在 ALWAYS_CONFIRM_TOOLS"
+    );
+    assert.ok(
+      !ALLOWED_TOOLS.includes("mcp__finance_worker__remember_convention"),
+      "RC-5 FAIL: remember_convention 不应在 ALLOWED_TOOLS（须经确认门）"
+    );
+    assert.ok(
+      ALWAYS_CONFIRM_TOOLS.has("mcp__finance_worker__remember_convention"),
+      "RC-5 FAIL: remember_convention 应在 ALWAYS_CONFIRM_TOOLS"
+    );
 
     // ── RC-6: 对话流轻提示渲染 ────────────────────────────────────────────
     const { getToolSummary } = await import("../lib/agent/tools/renderers.ts");
