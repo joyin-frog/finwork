@@ -526,14 +526,16 @@ export function enqueueTransferDispatch(input: EnqueueTransferDispatchInput): nu
 
 /**
  * CAS: queued → running（乐观并发）。
- * 返回 true 表示成功抢占；false 表示该行已不是 queued（并发或已启动）���
+ * 同时重置 started_at：排队行在 enqueue 时已由 DEFAULT 写入时间戳，
+ * 若不刷新，recordDispatchEnd 会把排队等待算进 duration_ms。
+ * 返回 true 表示成功抢占；false 表示该行已不是 queued（并发或已启动）。
  */
 export function startQueuedDispatch(id: number): boolean {
   const db = getDb();
   const result = db
     .prepare(
       `UPDATE subagent_dispatches
-       SET status = 'running'
+       SET status = 'running', started_at = datetime('now')
        WHERE id = ? AND status = 'queued'`
     )
     .run(id);

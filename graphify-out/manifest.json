@@ -20,8 +20,8 @@
     "semantic_hash": ""
   },
   "app/agents/task-board.tsx": {
-    "mtime": 1784349898.4610307,
-    "ast_hash": "f42fed5f5f45ae170d61f97557576843",
+    "mtime": 1784369817.9710639,
+    "ast_hash": "eb0dd03551e5bfc45dfebd57c39adac6",
     "semantic_hash": ""
   },
   "app/api/agent/answer/route.ts": {
@@ -565,8 +565,8 @@
     "semantic_hash": "f61e266876609496f0fe438361b98cbb"
   },
   "app/components/checklist-card.tsx": {
-    "mtime": 1784349898.5042975,
-    "ast_hash": "851bfd554d0c89935b538a3f401848ae",
+    "mtime": 1784369817.9717503,
+    "ast_hash": "bd7c8958e78e0f4fc703bdd0f5519161",
     "semantic_hash": ""
   },
   "app/components/kingdee-card-data.ts": {
@@ -605,8 +605,8 @@
     "semantic_hash": "eb0f30868714706969e544a82234559b"
   },
   "app/components/tool-call-step.tsx": {
-    "mtime": 1784349898.5077658,
-    "ast_hash": "c79f57cdc2de590b7fbbc458dd99e15f",
+    "mtime": 1784369817.9723616,
+    "ast_hash": "3d7085fdb0fe15105460c334d39fc9f6",
     "semantic_hash": ""
   },
   "app/components/tool-cards.tsx": {
@@ -710,9 +710,9 @@
     "semantic_hash": "566dd2d3a65f0f1938527dc5f25f0823"
   },
   "app/error.tsx": {
-    "mtime": 1784349898.518868,
-    "ast_hash": "1e8091edb4dbf9a860edc3c19bdd7736",
-    "semantic_hash": "1e8091edb4dbf9a860edc3c19bdd7736"
+    "mtime": 1784369817.9727137,
+    "ast_hash": "671dff5aed5ccc1b411fc8981602e994",
+    "semantic_hash": ""
   },
   "app/files/page.tsx": {
     "mtime": 1784349898.5192363,
@@ -720,9 +720,9 @@
     "semantic_hash": ""
   },
   "app/global-error.tsx": {
-    "mtime": 1784349898.519613,
-    "ast_hash": "deef65a6923127002dd2be2e852b7030",
-    "semantic_hash": "deef65a6923127002dd2be2e852b7030"
+    "mtime": 1784369817.9728906,
+    "ast_hash": "4692e4a2a63db7841e42e3906734e0b3",
+    "semantic_hash": ""
   },
   "app/knowledge/doc-card.tsx": {
     "mtime": 1784349898.5228825,
@@ -730,8 +730,8 @@
     "semantic_hash": "ac7d5231a0ae3dc62ca8429ea324ba1a"
   },
   "app/knowledge/page.tsx": {
-    "mtime": 1784349898.5234025,
-    "ast_hash": "94e9e4714d262eb259f87a58fd29b5c9",
+    "mtime": 1784369817.9738522,
+    "ast_hash": "2b235822f757bad7e22c1af2e0bccecd",
     "semantic_hash": ""
   },
   "app/knowledge/search-results.tsx": {
@@ -1280,8 +1280,8 @@
     "semantic_hash": "5c0703e39ca8cadbccbe7d4128c72303"
   },
   "lib/db/dispatch-store.ts": {
-    "mtime": 1784351035.1382513,
-    "ast_hash": "fa120d6c81f9f8d1bb07abee3175657c",
+    "mtime": 1784369892.0148127,
+    "ast_hash": "fd89ec747e09f8ef542cbe835e1a80a7",
     "semantic_hash": ""
   },
   "lib/db/finance-store.ts": {
@@ -5000,8 +5000,8 @@
     "semantic_hash": ""
   },
   "docs/spec/design-agents-ia.md": {
-    "mtime": 1784349898.5974255,
-    "ast_hash": "39a5aa6d98befca84a0166e58a961814",
+    "mtime": 1784369014.3861885,
+    "ast_hash": "09f1918ff7ed662ed9bad8c79bb54f5e",
     "semantic_hash": ""
   },
   "docs/spec/spec-JOY-10-conversation-tabs.md": {
@@ -5160,13 +5160,13 @@
     "semantic_hash": ""
   },
   "app/api/agents/dispatches/[id]/start/route.ts": {
-    "mtime": 1784352690.56881,
-    "ast_hash": "f82f0a3a2df5ec3c46100b996ac908f5",
+    "mtime": 1784369890.1717002,
+    "ast_hash": "0438a48f38ad45feb2da02007d1d4ad4",
     "semantic_hash": ""
   },
   "app/api/agents/transfer/route.ts": {
-    "mtime": 1784351093.9209442,
-    "ast_hash": "3ababd0be4d25b7dadd49f2d71f5f264",
+    "mtime": 1784369884.1913798,
+    "ast_hash": "23a6e4fd850bff130f5bd47f50e551e4",
     "semantic_hash": ""
   },
   "app/components/transfer-proposal-card.tsx": {
@@ -5180,8 +5180,8 @@
     "semantic_hash": ""
   },
   "tests/transfer-queue.test.ts": {
-    "mtime": 1784352985.9136717,
-    "ast_hash": "09fd34c2a9ad84e90bca7dceb7a20808",
+    "mtime": 1784369911.1840675,
+    "ast_hash": "a780486d5aaeb66c85e18b50c6b0862e",
     "semantic_hash": ""
   },
   "undefined/local-settings.json": {

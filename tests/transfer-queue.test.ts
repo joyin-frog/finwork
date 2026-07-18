@@ -239,13 +239,52 @@ export const transferQueueTestPromise = (async () => {
   }
 
   {
-    // /api/agents/transfer/route.ts 存在
+    // /api/agents/transfer/route.ts 存在，且 enqueue 前校验 available / 停用
     const fs = await import("node:fs");
-    const exists = fs.existsSync(
-      new URL("../app/api/agents/transfer/route.ts", import.meta.url).pathname
+    const transferPath = new URL("../app/api/agents/transfer/route.ts", import.meta.url).pathname;
+    assert.ok(fs.existsSync(transferPath), "UI: POST /api/agents/transfer 端点文件应存在");
+    const transferSrc = fs.readFileSync(transferPath, "utf-8");
+    assert.ok(
+      transferSrc.includes("getDisabledRoleIds"),
+      "transfer: enqueue 前应校验 getDisabledRoleIds"
     );
-    assert.ok(exists, "UI: POST /api/agents/transfer 端点文件应存在");
-    console.log("  [transfer-queue] POST /api/agents/transfer 端点文件存在");
+    assert.ok(
+      transferSrc.includes("!role.available") || transferSrc.includes("role.available"),
+      "transfer: enqueue 前应校验 role.available"
+    );
+    console.log("  [transfer-queue] POST /api/agents/transfer 端点含可派发校验");
+  }
+
+  {
+    // /start 端点：CAS 前校验可派发；startQueuedDispatch 重置 started_at
+    const fs = await import("node:fs");
+    const startSrc = fs.readFileSync(
+      new URL("../app/api/agents/dispatches/[id]/start/route.ts", import.meta.url).pathname,
+      "utf-8"
+    );
+    assert.ok(
+      startSrc.includes("getDisabledRoleIds"),
+      "start: CAS 前应校验 getDisabledRoleIds"
+    );
+    const disabledCheckAt = startSrc.indexOf("getDisabledRoleIds().includes");
+    const casCallAt = startSrc.indexOf("startQueuedDispatch(id)");
+    assert.ok(disabledCheckAt >= 0, "start: 应调用 getDisabledRoleIds().includes");
+    assert.ok(casCallAt >= 0, "start: 应调用 startQueuedDispatch(id)");
+    assert.ok(
+      disabledCheckAt < casCallAt,
+      "start: 可派发校验必须在 startQueuedDispatch(id) 之前"
+    );
+
+    const storeSrc = fs.readFileSync(
+      new URL("../lib/db/dispatch-store.ts", import.meta.url).pathname,
+      "utf-8"
+    );
+    assert.ok(
+      /started_at\s*=\s*datetime\('now'\)/.test(storeSrc) &&
+        storeSrc.includes("SET status = 'running', started_at = datetime('now')"),
+      "startQueuedDispatch: 抢占时应重置 started_at"
+    );
+    console.log("  [transfer-queue] start 可派发校验 + started_at 重置合约通过");
   }
 
   // ── B1: 双台账行防护 ─────────────────────────────────────────────────────

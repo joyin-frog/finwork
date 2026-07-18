@@ -551,6 +551,10 @@
   "549": "@types/ws",
   "550": "tw-animate-css",
   "551": "@vscode/ripgrep",
+  "552": "@tauri-apps/api",
+  "553": "@tauri-apps/plugin-dialog",
+  "554": "@tauri-apps/plugin-fs",
+  "555": "@types/ws",
   "556": "postcss.config.mjs",
   "557": "knowledge-reset.mjs",
   "558": "build.rs",
@@ -625,9 +629,9 @@
   "627": "gen-excel-preview-fixture.py",
   "628": "all.test.ts",
   "629": "gen-gbk-csv.py",
-  "634": "mammoth",
-  "635": "pdfjs-dist",
-  "636": "postcss",
-  "638": "rehype-highlight",
-  "639": "ws"
+  "630": "zod",
+  "631": "@playwright/test",
+  "632": "@types/node",
+  "633": "@types/react",
+  "634": "mammoth"
 }

@@ -28,6 +28,7 @@ import { getDispatchById, startQueuedDispatch } from "@/lib/db/dispatch-store";
 import { insertChatMessage } from "@/lib/db/sqlite";
 import { getAppDataDir } from "@/lib/runtime/paths";
 import { getRoleDefinition } from "@/lib/agent/roles/registry";
+import { getDisabledRoleIds } from "@/lib/agent/roles/availability";
 
 export async function POST(
   _req: Request,
@@ -57,6 +58,22 @@ export async function POST(
   const role = getRoleDefinition(row.roleId);
   if (!role) {
     return NextResponse.json({ error: `未知角色 "${row.roleId}"` }, { status: 400 });
+  }
+  // 必须在 CAS 抢占之前校验：runSubagent 对不可派发角色会早返回且不写
+  // recordDispatchEnd，若已把行标成 running 会永久卡住。
+  if (!role.available) {
+    return NextResponse.json(
+      { error: `角色「${role.name}」尚未启用，无法启动排队任务` },
+      { status: 400 }
+    );
+  }
+  if (getDisabledRoleIds().includes(row.roleId)) {
+    return NextResponse.json(
+      {
+        error: `角色「${role.name}」已停用，无法启动排队任务。请先在「智能体」页面启用该专员`,
+      },
+      { status: 400 }
+    );
   }
 
   // CAS: queued → running（乐观并发：两个请求同时到达时只有一个成功）

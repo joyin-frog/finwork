@@ -1,16 +1,16 @@
 # Graph Report - agent-af3797adbe1d8a112  (2026-07-18)
 
 ## Corpus Check
-- 996 files · ~664,881 words
+- 996 files · ~665,132 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 7636 nodes · 12881 edges · 631 communities (480 shown, 151 thin omitted)
+- 7636 nodes · 12887 edges · 635 communities (473 shown, 162 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 76 edges (avg confidence: 0.72)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5b1b0e3b`
+- Built from commit: `4614d325`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -550,6 +550,10 @@
 - @types/ws
 - tw-animate-css
 - @vscode/ripgrep
+- @tauri-apps/api
+- @tauri-apps/plugin-dialog
+- @tauri-apps/plugin-fs
+- @types/ws
 - postcss.config.mjs
 - tailwind.config.ts
 - agent-attachments-json.test.ts
@@ -611,11 +615,11 @@
 - spawn_subagent 工具
 - tax-incentive 技能
 - update_company_profile 工具
+- zod
+- @playwright/test
+- @types/node
+- @types/react
 - mammoth
-- pdfjs-dist
-- postcss
-- rehype-highlight
-- ws
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 336 edges
@@ -643,10 +647,10 @@
 
 ## Import Cycles
 - 3-file cycle: `lib/agent/claude-adapter.ts -> lib/agent/recap-summary.ts -> lib/agent/router.ts -> lib/agent/claude-adapter.ts`
-- 3-file cycle: `lib/agent/mcp-tools/bank-recon-batch.ts -> lib/agent/subagent-runner.ts -> lib/agent/mcp-tools/index.ts -> lib/agent/mcp-tools/bank-recon-batch.ts`
 - 3-file cycle: `lib/agent/mcp-tools/filing-precheck-batch.ts -> lib/agent/subagent-runner.ts -> lib/agent/mcp-tools/index.ts -> lib/agent/mcp-tools/filing-precheck-batch.ts`
+- 3-file cycle: `lib/agent/mcp-tools/bank-recon-batch.ts -> lib/agent/subagent-runner.ts -> lib/agent/mcp-tools/index.ts -> lib/agent/mcp-tools/bank-recon-batch.ts`
 
-## Communities (631 total, 151 thin omitted)
+## Communities (635 total, 162 thin omitted)
 
 ### Community 0 - "Knowledge RAG"
 Cohesion: 0.02
@@ -657,12 +661,12 @@ Cohesion: 0.08
 Nodes (28): /api/debug-excel - 开发者调试, /api/demo - 演示数据注入, /api/knowledge/* - documents·search, 向量+BM25+重排, /api/skills, /settings - skill 开关, Claude 授权, claude-adapter - 会话恢复 session resume, SSE 转发, Claude API - @anthropic-ai/claude-agent-sdk, Opus/Sonnet 主 + Haiku 4.5 Router, sessionId resume·prompt cache, 未配置时本地 mock, /config 配置中心 - model·skills·安全, Conversation Files - <AppDataDir>/files/<id>/, 上传·生成产物, paths.ts 解析 (+20 more)
 
 ### Community 2 - "SQLite DB"
-Cohesion: 0.08
-Nodes (36): AskUserQuestionPayload, AnswerPair(), AskAnsweredSummary(), AskUserCard(), FALLBACK_OPTIONS, parseMultiAnswer(), stripRecommended(), allAnswered() (+28 more)
+Cohesion: 0.17
+Nodes (14): AnswerPair(), AskAnsweredSummary(), AskUserCard(), FALLBACK_OPTIONS, parseMultiAnswer(), stripRecommended(), EASE_OUT_QUICK, EASE_OUT_QUICK_EXIT (+6 more)
 
 ### Community 3 - "E2E Tests"
-Cohesion: 0.12
-Nodes (26): POST(), listActiveKnowledgeDocuments(), chunkText(), pushChunks(), DownloadStep, EmbedModelPaths, ensureEmbedModel(), getEmbedModelDir() (+18 more)
+Cohesion: 0.14
+Nodes (22): POST(), chunkText(), pushChunks(), DownloadStep, EmbedModelPaths, ensureEmbedModel(), getEmbedModelDir(), HF_REMOTE_PATH (+14 more)
 
 ### Community 4 - "Voucher"
 Cohesion: 0.05
@@ -681,16 +685,16 @@ Cohesion: 0.20
 Nodes (22): claimRetentionRun(), cutoffEpochSeconds(), DEFAULT_RETENTION_CONFIG, isRetentionDays(), isValidRetentionSettingsValue(), loadRetentionConfig(), pruneOldAppErrors(), pruneOldAuditLogs() (+14 more)
 
 ### Community 8 - "Settings"
-Cohesion: 0.06
-Nodes (61): GET(), GET(), GET(), POST(), POST(), POST(), revealInFileManager(), GET() (+53 more)
+Cohesion: 0.05
+Nodes (63): GET(), GET(), GET(), POST(), PATCH(), POST(), POST(), revealInFileManager() (+55 more)
 
 ### Community 9 - "Settings (2)"
 Cohesion: 0.12
 Nodes (17): RoleMode, RoleModeContext, useRoleMode(), buildPairs(), CODE_PLUGINS, formatMs(), renderStepText(), RetryGroupRow() (+9 more)
 
 ### Community 10 - "Chat UI"
-Cohesion: 0.07
-Nodes (41): createBusinessAnalysisTool(), createRecordBusinessMetricsTool(), rowSchema, Sdk, jsonCoercible(), tryParseJson(), createRememberConventionTool(), Sdk (+33 more)
+Cohesion: 0.06
+Nodes (52): DispatchButton(), BankReconBatchDeps, createRunBankReconBatchTool(), RunParallelFn, Sdk, createBusinessAnalysisTool(), createRecordBusinessMetricsTool(), rowSchema (+44 more)
 
 ### Community 11 - "Retention"
 Cohesion: 0.07
@@ -701,76 +705,76 @@ Cohesion: 0.05
 Nodes (51): ChecklistCard(), ChecklistCardProps, ChecklistItem, ChecklistItemSeverity, ChecklistItemState, ChecklistStructured, parseChecklistStructured(), STATE_LABELS (+43 more)
 
 ### Community 13 - "Chat UI (3)"
-Cohesion: 0.08
-Nodes (31): buildFileTree(), EXT_LANG, fileLang(), FileTreeNode, filterByCategory(), filterSkills(), FlatEntry, SkillDetail (+23 more)
+Cohesion: 0.06
+Nodes (44): ConversationSearchHit, FileSearchHit, SearchData, buildFileTree(), EXT_LANG, fileLang(), FileTreeNode, filterByCategory() (+36 more)
 
 ### Community 14 - "Chat UI (4)"
-Cohesion: 0.06
-Nodes (52): parseCalcReceiptStructured(), ROUNDING_LABEL, STATUS_LABEL, createReconciliationTools(), fmtRow(), Sdk, createReimbursementTools(), Sdk (+44 more)
+Cohesion: 0.08
+Nodes (42): parseCalcReceiptStructured(), ROUNDING_LABEL, STATUS_LABEL, createFinanceTools(), resolveExpensePolicyPath(), Sdk, createReconciliationTools(), fmtRow() (+34 more)
 
 ### Community 15 - "Query Stages"
-Cohesion: 0.08
-Nodes (29): loadTaxRates(), getUserVersion(), Migration, MIGRATIONS, runMigrations(), setUserVersion(), insertPolicyRule(), InsertPolicyRuleInput (+21 more)
+Cohesion: 0.07
+Nodes (34): getUserVersion(), Migration, MIGRATIONS, runMigrations(), setUserVersion(), addColumnIfMissing(), initializeSchema(), backupDatabase() (+26 more)
 
 ### Community 16 - "Theme"
-Cohesion: 0.11
-Nodes (31): AgentTurnCollector, AgentTurnParams, AgentTurnResult, coalesceTextIntoEvents(), createStreamingResponse(), improveConversationTitle(), insertAssistantTurn(), log (+23 more)
+Cohesion: 0.08
+Nodes (44): AgentTurnCollector, AgentTurnParams, AgentTurnResult, coalesceTextIntoEvents(), createStreamingResponse(), improveConversationTitle(), insertAssistantTurn(), log (+36 more)
 
 ### Community 17 - "MCP Tools"
-Cohesion: 0.07
-Nodes (50): budgetSchema, canonicalBSSchema, canonicalISSchema, PriorPeriodArg, Sdk, AnalysisReportV2, asPct(), asPctTimes() (+42 more)
+Cohesion: 0.06
+Nodes (58): buildTextIndex(), clearHighlights(), FindInChat(), FindInChatProps, makeRange(), TextNodeEntry, findMatches(), budgetSchema (+50 more)
 
 ### Community 18 - "Claude Adapter"
-Cohesion: 0.05
-Nodes (73): createPayrollTools(), EmployeeInput, fmtDelta(), Sdk, recordAudit(), buildMonthView(), buildRangeView(), BusinessMetricRow (+65 more)
+Cohesion: 0.11
+Nodes (34): createPayrollTools(), EmployeeInput, fmtDelta(), Sdk, confirmPayrollPeriod(), getLatestConfirmedPayroll(), getPriorConfirmedPeriod(), listPayrollRecords() (+26 more)
 
 ### Community 19 - "Skills"
-Cohesion: 0.14
-Nodes (17): ALL_GOLDEN_CASES, complexCases, GoldenCase, greetingCases, ragQaCases, toolTaskCases, trivialQaCases, CASE_IDS (+9 more)
+Cohesion: 0.07
+Nodes (41): createSalesInvoiceTools(), Sdk, recordAudit(), buildMonthView(), buildRangeView(), BusinessMetricRow, centsToYuan(), EXAMPLE_CHART_OF_ACCOUNTS (+33 more)
 
 ### Community 20 - "Skills (2)"
-Cohesion: 0.05
-Nodes (47): FilesPageContent(), fmtBytes(), fmtDate(), groupFiles(), KIND_CARD_CLS, KIND_CHIP_SELECTED, KIND_CHIP_UNSELECTED, KIND_LABELS (+39 more)
+Cohesion: 0.06
+Nodes (50): AskUserQuestionPayload, allAnswered(), buildAnswer(), formatSelection(), getSubQuestions(), isMultiQuestion(), SubQuestion, AskUserPanel() (+42 more)
 
 ### Community 21 - "Knowledge RAG (2)"
-Cohesion: 0.06
-Nodes (64): buildAttachmentBlocks(), buildPromptInput(), buildPromptText(), buildSystemEventMessage(), dataUrlToBase64(), formatBytes(), isMeaningfulSystemEvent(), isSupportedImage() (+56 more)
+Cohesion: 0.10
+Nodes (33): runClaudeAgent(), createPathSafetyHook(), createReadGuardHook(), createRiskConfirmHook(), createSubagentBoundaryHook(), createTimingHook(), createUnwiredToolHook(), EXPLICIT_CONFIRM_ANSWERS (+25 more)
 
 ### Community 22 - "Knowledge RAG (3)"
 Cohesion: 0.04
 Nodes (45): 0. 一句话, 10. AI 优化报告 + 半自动闭环, 12. 删除本仓库观测页(上报功能完成后), 13. Tauri 自动更新(本轮完整打通 + 人工审核), 14. 接收端前端设计, 15. 执行编排(workstreams), 16.1 捕获层(发送端,catch everything), 16.2 友好 UI(分级) (+37 more)
 
 ### Community 23 - "Payroll (2)"
-Cohesion: 0.15
-Nodes (15): BusinessMetricsCard(), EMPTY_PROMPT, formatAmount(), MetricRow(), toTrustSource(), VALID_TRUST_SOURCES, VIEW_LABELS, ViewKey (+7 more)
+Cohesion: 0.09
+Nodes (26): BusinessMetricsCard(), EMPTY_PROMPT, formatAmount(), MetricRow(), toTrustSource(), VALID_TRUST_SOURCES, VIEW_LABELS, ViewKey (+18 more)
 
 ### Community 24 - "Settings (3)"
 Cohesion: 0.13
 Nodes (19): GET(), POST(), DELETE(), GET(), BlockedDispatchRow, EnqueueTransferDispatchInput, getDispatchById(), listDispatchesByRole() (+11 more)
 
 ### Community 25 - "Cash Obligations"
-Cohesion: 0.08
-Nodes (21): POST, Ctx, DELETE, GET, PUT, resolve(), Ctx, GET (+13 more)
+Cohesion: 0.15
+Nodes (23): DELETE(), PATCH(), countKnowledgeDocumentsByContentHash(), countKnowledgeDocumentsByStoragePath(), deleteKnowledgeDocument(), getKnowledgeDocumentByFileName(), insertKnowledgeDocument(), listConfirmedMetaDocRows() (+15 more)
 
 ### Community 26 - "Agent Router"
 Cohesion: 0.05
 Nodes (40): 0.1 已确认决策（2026-06-08 锁定）, 0. 总览, 1.1 保留 / 删除清单, 1.2 文件落盘与"明文镜像", 1.3 后端搜索 API, 1.4 前端搜索页, 1.5 SQLite Migration, 1. 模块一：知识库 (+32 more)
 
 ### Community 27 - "Finance Store"
-Cohesion: 0.11
-Nodes (27): isAllowedAttachmentPath(), isInside(), resolveInScopeAttachmentPath(), sanitizeAttachments(), AttachmentTooLargeError, generateShortTitle(), guessMimeType(), log (+19 more)
+Cohesion: 0.08
+Nodes (33): isAllowedAttachmentPath(), isInside(), resolveInScopeAttachmentPath(), sanitizeAttachments(), AttachmentTooLargeError, generateShortTitle(), guessMimeType(), log (+25 more)
 
 ### Community 28 - "Chat UI (5)"
 Cohesion: 0.08
-Nodes (37): routerStage(), buildMessagesUrl(), buildRouterMessages(), CONFIRM_EXACT, getLastRoutingRow(), logRouterDecision(), matchTrivialMessage(), normalizeTier() (+29 more)
+Nodes (40): generateConversationTitle(), sanitizeTitle(), routerStage(), buildMessagesUrl(), buildRouterMessages(), CONFIRM_EXACT, getLastRoutingRow(), logRouterDecision() (+32 more)
 
 ### Community 29 - "Chat UI (6)"
 Cohesion: 0.08
 Nodes (46): App, AtomicBool, Box, Child, Error, ExitStatus, File, Mutex (+38 more)
 
 ### Community 30 - "Chat UI (7)"
-Cohesion: 0.18
-Nodes (13): GET(), buildSpreadsheetMirror(), extractViaWorker(), formatCellValue(), parseDocument(), parseImageDocument(), parseXlsxDocument(), PdfLineMeta (+5 more)
+Cohesion: 0.29
+Nodes (6): GET(), GET(), GET(), getKnowledgeDocumentById(), buildPdfPageMap(), pdfPagemapTestPromise
 
 ### Community 31 - "Chat UI (8)"
 Cohesion: 0.05
@@ -781,8 +785,8 @@ Cohesion: 0.05
 Nodes (37): Excel 文件工作流程, XLSX 创建、编辑和分析, 专业字体, 代码风格指南, 使用 openpyxl, 使用 pandas, 使用 pandas 进行数据分析, 保留现有模板（更新模板时） (+29 more)
 
 ### Community 33 - "Cockpit"
-Cohesion: 0.11
-Nodes (35): NewChatPage(), injectSkillHint(), assertUserEditable(), createSkill(), decodeScalar(), deleteSkill(), deleteSkillFile(), ensureUserPlugin() (+27 more)
+Cohesion: 0.06
+Nodes (52): POST, Ctx, DELETE, GET, PUT, resolve(), Ctx, GET (+44 more)
 
 ### Community 34 - "Cockpit (2)"
 Cohesion: 0.14
@@ -793,8 +797,8 @@ Cohesion: 0.06
 Nodes (34): docx-js 的关键规则, DOCX 创建、编辑和分析, XML 参考, 依赖项, 修订, 分页符, 列表（绝不使用 Unicode 项目符号）, 创建新文档 (+26 more)
 
 ### Community 36 - "Dispatch"
-Cohesion: 0.14
-Nodes (23): GET(), GET(), GET(), GET(), GET(), createQueryKnowledgeTool(), createReadFileTool(), createSearchKnowledgeTool() (+15 more)
+Cohesion: 0.21
+Nodes (17): GET(), createQueryKnowledgeTool(), createReadFileTool(), createSearchKnowledgeTool(), knowledgeText(), resolveDoc(), Sdk, listKnowledgeDocuments() (+9 more)
 
 ### Community 37 - "Chat UI (9)"
 Cohesion: 0.09
@@ -809,8 +813,8 @@ Cohesion: 0.06
 Nodes (32): `app/agents/agent-detail-drawer.tsx`, `app/agents/agent-detail-drawer.tsx`（修改）, `app/dev/theme/theme-playground.tsx`（修改）, `app/globals.css`（修改）, `app/knowledge/page.tsx`, `app/knowledge/page.tsx`（修改）, `app/layout.tsx`（修改）, `app/shared/resource-card.tsx` (+24 more)
 
 ### Community 40 - "MCP Tools (2)"
-Cohesion: 0.19
-Nodes (16): GET, PUT, getSettingsPath(), ClaudeSettings, defaultSettings, maskApiKey(), migrateLegacyKey(), normalizeApiUrl() (+8 more)
+Cohesion: 0.08
+Nodes (37): GET, PUT, GET(), RecentChatPage(), ConfigPage(), validTabs, CONFIG_TAB_KEYS, ConfigTabKey (+29 more)
 
 ### Community 41 - "Agent Router (2)"
 Cohesion: 0.23
@@ -833,8 +837,8 @@ Cohesion: 0.07
 Nodes (29): OCR 技术选型：三层结构, OCR 预处理规则, Spec: 单据拍照 → 金蝶凭证草稿, 不做（本期）, 交互模式：汇总确认（用户 2026-07-01 定案）, 入口：Skill 触发词, 凭证头（每张单据一条凭证）, 凭证字段对照 (+21 more)
 
 ### Community 46 - "Windows Hardening"
-Cohesion: 0.06
-Nodes (27): getDefaultAppDataDir(), getDemoDataPath(), getPythonBinDir(), getPythonPath(), getPythonVenvRoot(), standalonePythonExe(), venvPythonExe(), businessAnalysisScriptTestPromise (+19 more)
+Cohesion: 0.04
+Nodes (59): GET(), GET(), createReadDocumentTool(), docCache, IMAGE_EXTS, TEXT_EXTS, createRunPythonTool(), log (+51 more)
 
 ### Community 47 - "Theme (2)"
 Cohesion: 0.07
@@ -845,8 +849,8 @@ Cohesion: 0.07
 Nodes (28): 1. 背景与目标, 2.1 SQLite Schema, 2.2 字段语义, 2.3 去重策略, 2. 数据模型, 3.1 save_memory, 3.2 recall_memory, 3.3 forget_memory (+20 more)
 
 ### Community 50 - "Unit Tests (2)"
-Cohesion: 0.14
-Nodes (23): GET, billableTokensForTrace(), BlockedNotice, buildBlockedNotice(), classifyTier(), computeUsage(), computeWindow(), formatResetAt() (+15 more)
+Cohesion: 0.13
+Nodes (24): GET, quotaStage(), billableTokensForTrace(), BlockedNotice, buildBlockedNotice(), classifyTier(), computeUsage(), computeWindow() (+16 more)
 
 ### Community 51 - "Task Board"
 Cohesion: 0.07
@@ -857,20 +861,20 @@ Cohesion: 0.07
 Nodes (27): `app/api/agent/query/route.ts`（修改，主要重写）, `app/chat/chat-request.ts`（修改）, `app/chat/chat-types.ts`（修改）, `app/chat/subagent-track.tsx`（修改）, `app/shared/chat-stream.tsx`（修改）, Audit: agent-event-contract (AR2a), Files changed, `lib/agent/claude-adapter.ts`（修改） (+19 more)
 
 ### Community 53 - "Security"
-Cohesion: 0.14
-Nodes (17): POST(), buildDocMap(), buildFallbackTerms(), DocMeta, ingestRgEvents(), mergeTitleAndRank(), parseQueryTerms(), RgJsonEvent (+9 more)
+Cohesion: 0.13
+Nodes (20): POST(), listActiveKnowledgeDocuments(), mergeRrfResults(), rrfScore(), buildDocMap(), buildFallbackTerms(), DocMeta, ingestRgEvents() (+12 more)
 
 ### Community 54 - "MCP Tools (3)"
-Cohesion: 0.11
-Nodes (24): PATCH(), listConfirmedMetaDocRows(), setKnowledgeArchived(), DEFAULT_PENDING, deriveCashObligations(), isDone(), kindFromStatus(), ObligationKind (+16 more)
+Cohesion: 0.12
+Nodes (23): amountText(), CashObligationsCard(), CockpitSummary, TeamRoleItem, BusinessOverview, RecentWorkItem, CashObligation, daysBetween() (+15 more)
 
 ### Community 55 - "PDF Skill"
 Cohesion: 0.07
 Nodes (26): 0. 目标、已拍板立场与非目标, 10. 验收标准, 11. 实施顺序, 12. 开放问题（不阻塞实施）, 1. 信息架构：v1 → v2, 2.1 推导函数 `lib/domain/trust-tier.ts`, 2.2 组件 `app/shared/trust-badge.tsx`, 2.3 globals.css 新增 token（深浅两套，规格对齐现有家族） (+18 more)
 
 ### Community 56 - "Skills (4)"
-Cohesion: 0.18
-Nodes (18): POST(), POST(), createRoleScopeHook(), createProposeTransferTool(), Sdk, assertSpecialistRoleUsable(), getDisabledRoleIds(), listDispatchableRoleIds() (+10 more)
+Cohesion: 0.29
+Nodes (10): POST(), POST(), POST(), assertSpecialistRoleUsable(), getDisabledRoleIds(), setRoleDisabled(), specialistRoleUsabilityIssue(), RoleDefinition (+2 more)
 
 ### Community 57 - "Unit Tests (3)"
 Cohesion: 0.08
@@ -881,12 +885,12 @@ Cohesion: 0.08
 Nodes (25): 0. 现状根因（先把"为什么这么黄"说清楚）, 1. 设计方向（Aesthetic Direction）, 2.1 浅色（默认）, 2.2 深色（**重做：从"死黑"换成"石板月光石"**）, 2.3 字号系统（**核心：主字号 14px**）, 2. 设计令牌（新版 Design Tokens）, 3.1 侧边导航（`app-nav`）, 3.2 驾驶舱（`cockpit`） (+17 more)
 
 ### Community 59 - "Settings (4)"
-Cohesion: 0.13
-Nodes (20): AgentAttachment, neutralizeExternalContextTags(), sanitizeInline(), wrapExternalContext(), buildDynamicSuffix(), buildFileOutputSection(), buildStaticPrefix(), buildSystemPromptParts() (+12 more)
+Cohesion: 0.15
+Nodes (17): neutralizeExternalContextTags(), sanitizeInline(), wrapExternalContext(), buildDynamicSuffix(), buildFileOutputSection(), buildStaticPrefix(), buildSystemPromptParts(), loadStaticTemplate() (+9 more)
 
 ### Community 60 - "Cockpit (3)"
-Cohesion: 0.18
-Nodes (23): GET(), guessMimeByExt(), POST(), resolveFilePath(), revealInFileManager(), deleteLibraryFile(), insertAuditLog(), listAllFiles() (+15 more)
+Cohesion: 0.25
+Nodes (15): insertAuditLog(), analyzeConversationDuplicates(), AttachmentRow, cleanOrphans(), cleanupConversationDuplicates(), CleanupResult, countFilesInDir(), countOrphanFiles() (+7 more)
 
 ### Community 61 - "MCP Tools (4)"
 Cohesion: 0.08
@@ -901,12 +905,12 @@ Cohesion: 0.23
 Nodes (15): getRgPath(), lazyRequire, escapeRe(), headTailCount(), mapGrepToRg(), matchGlob(), parseRangeSpec(), readFilesOrStdin() (+7 more)
 
 ### Community 64 - "Unit Tests (4)"
-Cohesion: 0.09
-Nodes (40): POST(), DELETE(), GET(), getLibraryDir(), PATCH(), GET(), onRequestError(), register() (+32 more)
+Cohesion: 0.12
+Nodes (35): GET(), DELETE(), GET(), getLibraryDir(), sessionStage(), cleanupUnfinalizedFiles(), getAllAttachmentStoragePaths(), getLatestAssistantMessageId() (+27 more)
 
 ### Community 65 - "Checklist"
-Cohesion: 0.04
-Nodes (45): @anthropic-ai/claude-agent-sdk, @base-ui/react, date-fns, docx, docx-preview, highlight.js, @hugeicons/core-free-icons, @hugeicons/react (+37 more)
+Cohesion: 0.09
+Nodes (23): clsx, docx-preview, highlight.js, mammoth, dependencies, clsx, docx-preview, highlight.js (+15 more)
 
 ### Community 66 - "Unit Tests (5)"
 Cohesion: 0.09
@@ -929,12 +933,12 @@ Cohesion: 0.21
 Nodes (17): POST(), getFeatureEventRows(), fetchUnreportedAppErrors(), markAppErrorsReported(), BoundedEnvelope, EnvelopeParams, fetchIncrementalData(), fetchIncrementalFeedback() (+9 more)
 
 ### Community 71 - "Unit Tests (6)"
-Cohesion: 0.23
-Nodes (17): GET(), PUT(), appendToMemorySection(), atomicWrite(), conventionMatches(), conventionText(), editSection(), escapeRegex() (+9 more)
+Cohesion: 0.19
+Nodes (19): GET(), PUT(), createRememberConventionTool(), Sdk, appendToMemorySection(), atomicWrite(), conventionMatches(), conventionText() (+11 more)
 
 ### Community 72 - "Skills (5)"
-Cohesion: 0.16
-Nodes (15): BoardNode(), buildGlobalHeadline(), buildHeadline(), DispatchCard(), STATE_LABEL, STATE_TONE, TaskBoardProps, TaskBoardView() (+7 more)
+Cohesion: 0.18
+Nodes (14): BoardNode(), buildGlobalHeadline(), buildHeadline(), DispatchCard(), STATE_LABEL, STATE_TONE, TaskBoardProps, TaskBoardView() (+6 more)
 
 ### Community 73 - "Test Fixtures"
 Cohesion: 0.09
@@ -949,8 +953,8 @@ Cohesion: 0.10
 Nodes (17): Agent skills, Domain docs, graphify, Issue tracker, Triage labels, UIUX前端设计, 一、先读，再写, 七、调试 (+9 more)
 
 ### Community 79 - "Unit Tests (7)"
-Cohesion: 0.05
-Nodes (50): AttachmentCard(), extOf(), ImageLightbox(), isRenderableImage(), useImageLightbox(), FileGroup(), formatBytes(), getAppGlyph() (+42 more)
+Cohesion: 0.04
+Nodes (73): AttachmentCard(), extOf(), ImageLightbox(), isRenderableImage(), useImageLightbox(), FileGroup(), formatBytes(), getAppGlyph() (+65 more)
 
 ### Community 80 - "Chat UI (13)"
 Cohesion: 0.10
@@ -969,28 +973,28 @@ Cohesion: 0.10
 Nodes (20): core:default, core:window:allow-close, core:window:allow-minimize, core:window:allow-start-dragging, core:window:allow-toggle-maximize, dialog:allow-open, dialog:allow-save, http://127.0.0.1:* (+12 more)
 
 ### Community 84 - "Skills (6)"
-Cohesion: 0.07
-Nodes (34): AgentEvent, getDisplayContent(), stripAttachmentSummary(), AssistantTurn(), formatDuration(), getDisplayContent(), stripLegacyThinking(), ThinkingStatusLine() (+26 more)
+Cohesion: 0.16
+Nodes (16): buildReimbursementReceipt(), InvoiceHistory, mapWarningsToRuleHits(), ReimbursementPolicy, runScript(), SCRIPT, sortReimbursementsByRisk(), validateReimbursements() (+8 more)
 
 ### Community 85 - "Unit Tests (9)"
-Cohesion: 0.25
-Nodes (21): GET(), GET(), ROLE_REGISTRY, listSkills(), skillLabel(), listBlockedDispatches(), listDispatchesForPeriod(), listRoleDispatchSummary() (+13 more)
+Cohesion: 0.19
+Nodes (23): GET(), GET(), CockpitPage(), ROLE_REGISTRY, listSkills(), skillLabel(), listBlockedDispatches(), listDispatchesForPeriod() (+15 more)
 
 ### Community 86 - "Unit Tests (10)"
 Cohesion: 0.19
 Nodes (14): ClaudeAgentRunOptions, isMockAgentEnabled(), lastUserText(), MockResult, runMockAgent(), sleep(), stepDelay(), AgentEventEnvelope (+6 more)
 
 ### Community 87 - "Voucher (2)"
-Cohesion: 0.17
-Nodes (13): POST(), GET(), AuditEntry, DeleteRowsOp, listAuditEntries(), ListAuditOptions, RecordAuditInput, RestoreRowsOp (+5 more)
+Cohesion: 0.21
+Nodes (11): POST(), AuditEntry, DeleteRowsOp, ListAuditOptions, RecordAuditInput, RestoreRowsOp, UNDO_TABLE_WHITELIST, undoAuditEntry() (+3 more)
 
 ### Community 88 - "Repo (3)"
-Cohesion: 0.24
-Nodes (11): fmtReset(), Ring(), ringColor(), UsageBar(), UsageDetail(), UsageRing(), UsageData, UsageWindow (+3 more)
+Cohesion: 0.10
+Nodes (22): fmtReset(), Ring(), ringColor(), UsageBar(), UsageDetail(), UsageRing(), UsageData, UsageWindow (+14 more)
 
 ### Community 89 - "Tax Domain (2)"
-Cohesion: 0.13
-Nodes (18): GET(), createReadDocumentTool(), docCache, IMAGE_EXTS, TEXT_EXTS, createRunPythonTool(), log, Sdk (+10 more)
+Cohesion: 0.17
+Nodes (9): GET(), onRequestError(), register(), appendServerLog(), formatServerError(), logFilePath(), logServerError(), purgeOldServerLogs() (+1 more)
 
 ### Community 90 - "Telemetry (2)"
 Cohesion: 0.10
@@ -1029,12 +1033,12 @@ Cohesion: 0.19
 Nodes (17): _ensure_shim(), get_soffice_env(), _needs_shim(), CompletedProcess, Path, Helper for running LibreOffice (soffice) in environments where AF_UNIX sockets m, run_soffice(), build_slide_list() (+9 more)
 
 ### Community 102 - "Repo (7)"
-Cohesion: 0.10
-Nodes (34): GROUPS, ShortcutsSettings(), NavShortcut(), GlobalSearchDialog(), GlobalShortcuts(), GROUPS, scheduleDialogMotionReset(), ShortcutsHelpDialog() (+26 more)
+Cohesion: 0.11
+Nodes (32): GROUPS, ShortcutsSettings(), NavShortcut(), GlobalSearchDialog(), GlobalShortcuts(), GROUPS, scheduleDialogMotionReset(), ShortcutsHelpDialog() (+24 more)
 
 ### Community 103 - "Markdown"
-Cohesion: 0.08
-Nodes (27): CockpitPage(), PeriodBadge(), ActivityRow, formatRow(), relativeTime(), RoleActivityTicker(), CockpitSummary, TeamRoleItem (+19 more)
+Cohesion: 0.12
+Nodes (18): PeriodBadge(), ActivityRow, formatRow(), relativeTime(), RoleActivityTicker(), CockpitSuggestions, getCockpitSuggestions(), CalendarContext (+10 more)
 
 ### Community 104 - "Unit Tests (12)"
 Cohesion: 0.11
@@ -1093,8 +1097,8 @@ Cohesion: 0.11
 Nodes (17): 0. 目标与非目标, 1.1 MetricStrip（`app/cockpit/metric-strip.tsx`）, 1.2 ComplianceStrip（`app/cockpit/compliance-strip.tsx`）, 1. 删除项, 2. 总览页 v3 布局, 3.1 花名册, 3.2 台账, 3.3 有限配置 (+9 more)
 
 ### Community 125 - "Unit Tests (16)"
-Cohesion: 0.20
-Nodes (8): computePayrollDiff(), delta2(), PayrollDiffField, PayrollDiffResult, PayrollDiffRow, __dirname, payrollDiffTestPromise, ROOT
+Cohesion: 0.13
+Nodes (12): StoredPayrollRecord, computePayrollDiff(), delta2(), PayrollDiffField, PayrollDiffResult, PayrollDiffRow, __dirname, payrollDiffTestPromise (+4 more)
 
 ### Community 126 - "Unit Tests (17)"
 Cohesion: 0.11
@@ -1125,8 +1129,8 @@ Cohesion: 0.17
 Nodes (15): ALLOWED_KEYS, GET(), isAllowedValue(), PUT(), POST(), isTrustedLocalMutation(), exportDatabase(), getAppSetting() (+7 more)
 
 ### Community 133 - "Unit Tests (24)"
-Cohesion: 0.16
-Nodes (15): amountText(), CashObligationsCard(), deadlineTone(), FinanceCalendarCard(), RecentWorkCard(), WorkRow(), Card(), CardAction() (+7 more)
+Cohesion: 0.43
+Nodes (5): groupSlipFiles(), isSlipFile(), SLIP_EXTS, SlipGroup, slipGroupingTestPromise
 
 ### Community 134 - "Unit Tests (25)"
 Cohesion: 0.21
@@ -1161,8 +1165,8 @@ Cohesion: 0.19
 Nodes (15): computeObservabilityMetrics(), countRecentTraces(), exportSpansForTraces(), exportTraces(), getToolEvents(), getTrace(), getTraceTokenSummary(), listSpansForTrace() (+7 more)
 
 ### Community 142 - "Unit Tests (32)"
-Cohesion: 0.18
-Nodes (11): AgentMessage, yieldMessages(), buildStructuredRecap(), createPostCompactHookCallback(), fallbackFlatRecap(), summarizeHistory(), SummarySettings, SpanInput (+3 more)
+Cohesion: 0.07
+Nodes (40): AgentAttachment, AgentMessage, buildAttachmentBlocks(), buildPromptInput(), buildPromptText(), buildSystemEventMessage(), dataUrlToBase64(), formatBytes() (+32 more)
 
 ### Community 143 - "Unit Tests (33)"
 Cohesion: 0.12
@@ -1185,8 +1189,8 @@ Cohesion: 0.12
 Nodes (15): 1. 现状, 2. 目标, 3.1 搜索栏（页面顶部，始终可见）, 3.2 分类筛选 chips, 3.3 文档列表 / 搜索结果, 3.4 上传 FAB, 3.5 预览侧栏, 3. 布局 (+7 more)
 
 ### Community 148 - "Unit Tests (38)"
-Cohesion: 0.26
-Nodes (11): insertChatAgentEvent(), SpanType, trancate(), writeSpan(), cleanup(), freshTmpDbPath(), main(), observabilityTestPromise (+3 more)
+Cohesion: 0.39
+Nodes (7): insertChatAgentEvent(), cleanup(), freshTmpDbPath(), main(), observabilityTestPromise, tmpPaths, useTempDb()
 
 ### Community 150 - "Unit Tests (40)"
 Cohesion: 0.13
@@ -1241,16 +1245,16 @@ Cohesion: 0.13
 Nodes (14): 1. 右侧预览卡 —— 不受影响, 2. 收起侧栏后的红绿灯 —— 不受影响,现有代码已处理, 3. Windows 渲染 —— 卡片不丑,差异来自窗口框且为旧问题, 一、当前实现机制(改前), 三、边界情况结论, 二、翻转改法(把三要素归属对调), 五、落地记录(分支 `ui/sidebar-card-flip`,未提交), 仍待办 (+6 more)
 
 ### Community 163 - "Payroll (3)"
-Cohesion: 0.09
-Nodes (23): eslint, eslint-config-next, @eslint/eslintrc, devDependencies, eslint, eslint-config-next, @eslint/eslintrc, @playwright/test (+15 more)
+Cohesion: 0.13
+Nodes (15): eslint, eslint-config-next, @eslint/eslintrc, devDependencies, eslint, eslint-config-next, @eslint/eslintrc, shadcn (+7 more)
 
 ### Community 164 - "Payroll (4)"
 Cohesion: 0.18
 Nodes (11): AstNode, FileRef, LinkNode, remarkFinanceFileLinks(), Segment, splitByFiles(), TextNode, walkParents() (+3 more)
 
 ### Community 165 - "Payroll (5)"
-Cohesion: 0.30
-Nodes (13): getSecretFallbackPath(), Backend, dpapiGet(), dpapiSet(), execFileAsync, fileGet(), fileSet(), getApiKeySecret() (+5 more)
+Cohesion: 0.40
+Nodes (3): HandlerFn, knowledgeMcpFixesTestPromise, ToolEntry
 
 ### Community 167 - "PDF Skill (3)"
 Cohesion: 0.14
@@ -1265,8 +1269,8 @@ Cohesion: 0.22
 Nodes (12): _ensure_shim(), get_soffice_env(), _needs_shim(), CompletedProcess, Path, Helper for running LibreOffice (soffice) in environments where AF_UNIX sockets m, run_soffice(), has_gtimeout() (+4 more)
 
 ### Community 172 - "Unit Tests (52)"
-Cohesion: 0.21
-Nodes (14): handleGet(), handlePatch(), GET(), PATCH(), createEmitChecklistTool(), Sdk, Artifact, ArtifactItem (+6 more)
+Cohesion: 0.16
+Nodes (17): handleGet(), handlePatch(), GET(), PATCH(), jsonCoercible(), tryParseJson(), createEmitChecklistTool(), Sdk (+9 more)
 
 ### Community 173 - "Unit Tests (53)"
 Cohesion: 0.14
@@ -1343,10 +1347,6 @@ Nodes (12): _can_merge_tracked(), _find_elements(), _get_author(), _get_authors_
 ### Community 191 - "Unit Tests (63)"
 Cohesion: 0.29
 Nodes (12): _can_merge_tracked(), _find_elements(), _get_author(), _get_authors_from_docx(), get_tracked_change_authors(), infer_author(), _is_element(), _merge_tracked_changes_in() (+4 more)
-
-### Community 192 - "Unit Tests (64)"
-Cohesion: 0.24
-Nodes (8): GET(), RecentChatPage(), ConfigPage(), validTabs, CONFIG_TAB_KEYS, ConfigTabKey, readPublicClaudeSettings(), getTelemetryStatus()
 
 ### Community 193 - "Unit Tests (65)"
 Cohesion: 0.15
@@ -1492,17 +1492,9 @@ Nodes (8): isAllowedAppPath(), isValidConversationId(), GET(), getContentType(),
 Cohesion: 0.29
 Nodes (7): conversationRelativePath(), ExpandedDetail(), isImagePath(), FormattedContent, formatToolInput(), formatToolOutput(), sniff()
 
-### Community 229 - "Voucher (9)"
-Cohesion: 0.13
-Nodes (23): DispatchButton(), BankReconBatchDeps, createRunBankReconBatchTool(), RunParallelFn, Sdk, createRunFilingPrecheckBatchTool(), FilingPrecheckBatchDeps, RunParallelFn (+15 more)
-
-### Community 230 - "Voucher (10)"
-Cohesion: 0.29
-Nodes (8): buildTextIndex(), clearHighlights(), FindInChat(), FindInChatProps, makeRange(), TextNodeEntry, findMatches(), findMatchesTestPromise
-
 ### Community 231 - "Voucher (11)"
-Cohesion: 0.05
-Nodes (78): ChatMode, ChatPage(), EMPTY_TIMELINE, buildUserContent(), dataUrlToFile(), dispatchSSEEvent(), formatFolderPathLine(), getClipboardFiles() (+70 more)
+Cohesion: 0.04
+Nodes (89): ChatMode, ChatPage(), EMPTY_TIMELINE, buildUserContent(), dataUrlToFile(), dispatchSSEEvent(), formatFolderPathLine(), getClipboardFiles() (+81 more)
 
 ### Community 232 - "Windows Hardening (2)"
 Cohesion: 0.18
@@ -1641,8 +1633,8 @@ Cohesion: 0.13
 Nodes (14): 0. 评估结论（用户 5 点 → 判定）, 1. 目标与非目标, 2. 成功标准, 3. Files touched, 4.1 应用标签（F3）, 4.2 页内 tabs 去双线, 4.3 预览壳对齐知识库, 4.4 概况中文映射 (+6 more)
 
 ### Community 266 - "Skills (28)"
-Cohesion: 0.17
-Nodes (13): ALWAYS_CONFIRM_TOOLS, ALLOWED_TOOLS, BUILTIN_TOOLS, CONFIRM_REQUIRED_TOOL_NAMES, getToolRiskLevel(), TOOL_REGISTRY, ToolCategory, ToolDef (+5 more)
+Cohesion: 0.05
+Nodes (41): DELETE(), GET(), POST(), ALWAYS_CONFIRM_TOOLS, BINARY_OFFICE_EXTS, CONFIRM_EXEMPT_TOOLS, createAskUserQuestionHook(), createRoleScopeHook() (+33 more)
 
 ### Community 267 - "Skills (29)"
 Cohesion: 0.33
@@ -2069,8 +2061,8 @@ Cohesion: 0.43
 Nodes (6): cleanErrorDetail(), ErrorDetail, extractFirstMessage(), extractMcpValidationJson(), tryParseJson(), errorDetailTestPromise
 
 ### Community 380 - "MCP Tools (9)"
-Cohesion: 0.13
-Nodes (36): DELETE(), POST(), countKnowledgeDocumentsByContentHash(), countKnowledgeDocumentsByStoragePath(), deleteKnowledgeDocument(), getKnowledgeDocumentByFileName(), getKnowledgeDocumentByHash(), insertKnowledgeDocument() (+28 more)
+Cohesion: 0.15
+Nodes (31): GET(), guessMimeByExt(), POST(), resolveFilePath(), revealInFileManager(), GET(), POST(), deleteLibraryFile() (+23 more)
 
 ### Community 381 - "OCR"
 Cohesion: 0.33
@@ -2120,10 +2112,6 @@ Nodes (6): 8. 实施步骤, Step 1 — DB 补函数 + API 端点(无 UI 依赖),
 Cohesion: 0.33
 Nodes (6): M8.1 消息卡片 enter, M8.2 流式光标, WP-M8：消息进入 + 流式渐显, 实现, 现状, 验收
 
-### Community 393 - "first-run-gate.tsx"
-Cohesion: 0.29
-Nodes (8): createFinanceTools(), resolveExpensePolicyPath(), Sdk, getInvoiceLedgerBreakdown(), listReceivablesRaw(), getBundledPluginRoot(), expensePolicyConfigTestPromise, skillPluginTestPromise
-
 ### Community 394 - "Docs (2)"
 Cohesion: 0.33
 Nodes (3): agentRoleToggleTestPromise, __dirname, PROJECT_ROOT
@@ -2155,10 +2143,6 @@ Nodes (5): Common Pitfalls, Multi-Item Content, Other, Smart Quotes, Template Ad
 ### Community 403 - "Unit Tests (111)"
 Cohesion: 0.70
 Nodes (4): findMacAppIcon(), GET(), readDeclaredIconName(), run()
-
-### Community 404 - "Semaphore"
-Cohesion: 0.32
-Nodes (9): DELETE(), GET(), POST(), createRememberRoleConventionTool(), Sdk, addRoleMemory(), deleteRoleMemory(), listRoleMemory() (+1 more)
 
 ### Community 405 - "Chat UI (23)"
 Cohesion: 0.40
@@ -2410,15 +2394,15 @@ Nodes (41): get_field_info(), get_full_annotation_field_id(), make_field_dict(),
 
 ### Community 507 - "team-panel.tsx"
 Cohesion: 0.04
-Nodes (83): AgentCard(), AgentCardProps, AgentDetailDrawer(), AgentDetailDrawerProps, AttentionPanel(), AttentionPanelProps, AgentRosterItem, AgentsPage() (+75 more)
+Nodes (80): AgentCard(), AgentCardProps, AgentDetailDrawer(), AgentDetailDrawerProps, AttentionPanel(), AttentionPanelProps, AgentRosterItem, AgentsPage() (+72 more)
 
 ### Community 512 - "Audit — agents-ia-review-fixes"
 Cohesion: 0.18
 Nodes (10): A. Codex P1 — TaskPreview 切任务残留, Audit — agents-ia-review-fixes, B. Codex P2 — failed 不当「已交付」, C. Codex P2 — 侧栏徽标漏计 review-pending, D. 先前 review P0, Files changed, 不要做（已遵守）, 开放风险 (+2 more)
 
 ### Community 514 - "file-store.ts"
-Cohesion: 0.27
-Nodes (11): GET(), PUT(), CompanyProfilePatchSchema, Sdk, atomicWrite(), CompanyProfile, mergeCompanyProfile(), readCompanyProfile() (+3 more)
+Cohesion: 0.36
+Nodes (9): GET(), PUT(), atomicWrite(), CompanyProfile, mergeCompanyProfile(), readCompanyProfile(), writeCompanyProfile(), writeQueue (+1 more)
 
 ### Community 519 - "money.ts"
 Cohesion: 0.22
@@ -2436,31 +2420,23 @@ Nodes (4): loadExcelWorkbookResilient(), toArrayBuffer(), sanitizeXlsxForPreview
 Cohesion: 0.53
 Nodes (4): insertSkillToken(), main(), skillTokenTestPromise, tokenMatches()
 
-### Community 529 - "usage-accumulate.ts"
-Cohesion: 0.50
-Nodes (3): accumulateModelUsage(), ApiUsageLike, usageAccumulateTestPromise
-
 ### Community 532 - "page.tsx"
 Cohesion: 0.50
 Nodes (3): arrayBufferToBase64(), E2EPreviewInner(), DraftPreviewFile
 
-### Community 535 - "payslip-export.test.ts"
-Cohesion: 0.40
-Nodes (3): payslipExportTestPromise, PROJECT_ROOT, PYTHON_PATH
-
 ## Knowledge Gaps
 - **3496 isolated node(s):** `SkillEntry`, `RoleBoundaryEntry`, `RoleDetail`, `WorkTab`, `TABS` (+3491 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **151 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **162 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `cn()` connect `Knowledge RAG` to `SQLite DB`, `Voucher`, `Unit Tests (24)`, `Repo (7)`, `Voucher (11)`, `Settings (2)`, `Retention`, `Chat UI (2)`, `Chat UI (3)`, `Unit Tests (30)`, `Unit Tests (7)`, `Query Stages`, `Skills (6)`, `Skills (2)`, `Unit Tests (13)`, `Repo (3)`, `team-panel.tsx`?**
+- **Why does `cn()` connect `Knowledge RAG` to `SQLite DB`, `Voucher`, `Repo (7)`, `Voucher (11)`, `Settings (2)`, `Retention`, `Chat UI (2)`, `Chat UI (3)`, `Unit Tests (30)`, `Unit Tests (7)`, `Query Stages`, `Skills (2)`, `Unit Tests (13)`, `Payroll (2)`, `Repo (3)`, `team-panel.tsx`?**
   _High betweenness centrality (0.049) - this node is a cross-community bridge._
 - **Why does `react` connect `Unit Tests (13)` to `Knowledge RAG`, `Retention`, `team-panel.tsx`, `Checklist`?**
   _High betweenness centrality (0.013) - this node is a cross-community bridge._
-- **Why does `dependencies` connect `Checklist` to `exceljs`, `geist`, `next`, `next-themes`, `radix-ui`, `react-file-icon`, `react-resizable-panels`, `recharts`, `remark-gfm`, `@shadcn/react`, `tailwindcss`, `@tailwindcss/postcss`, `@tailwindcss/typography`, `@tauri-apps/api`, `@tauri-apps/plugin-dialog`, `@tauri-apps/plugin-fs`, `@tauri-apps/plugin-shell`, `@tauri-apps/plugin-updater`, `react-dom`, `@types/ws`, `tw-animate-css`, `@vscode/ripgrep`, `Skills (61)`, `cmdk`, `mammoth`, `Unit Tests (13)`, `pptxgenjs`, `pdfjs-dist`, `postcss`, `rehype-highlight`, `ws`?**
+- **Why does `dependencies` connect `Checklist` to `exceljs`, `geist`, `first-run-gate.tsx`, `next`, `next-themes`, `Semaphore`, `@phosphor-icons/react`, `radix-ui`, `usage-accumulate.ts`, `react-file-icon`, `Semaphore`, `react-resizable-panels`, `recharts`, `payslip-export.test.ts`, `remark-gfm`, `@shadcn/react`, `sharp`, `sonner`, `tailwindcss`, `@tailwindcss/postcss`, `@tailwindcss/typography`, `@tauri-apps/api`, `@tauri-apps/plugin-dialog`, `@tauri-apps/plugin-fs`, `@tauri-apps/plugin-shell`, `@tauri-apps/plugin-updater`, `react-dom`, `@types/ws`, `tw-animate-css`, `@vscode/ripgrep`, `@tauri-apps/api`, `@tauri-apps/plugin-dialog`, `@tauri-apps/plugin-fs`, `@types/ws`, `Unit Tests (64)`, `Skills (61)`, `Voucher (9)`, `Voucher (10)`, `zod`, `Unit Tests (13)`, `pptxgenjs`, `cmdk`?**
   _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `runClaudeAgent()` (e.g. with `writeSpan()` and `text()`) actually correct?**
   _`runClaudeAgent()` has 2 INFERRED edges - model-reasoned connections that need verification._
