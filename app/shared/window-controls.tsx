@@ -69,14 +69,16 @@ export function useIsWindowsApp() {
 }
 
 /**
- * Windows 自绘标题栏:无边框窗(见 lib.rs 的 decorations(false))下,顶部一条独立的 32px 拖拽条,
- * 三键(最小化 / 最大化↔还原 / 关闭)固定在右端,底部一条分隔横线把「窗口控制区」与「页面内容」分层。
- * 这样三键彻底离开内容区,不再靠 padding 硬躲——各页 header / 浮动预览卡的右侧内容不会再被盖或被推。
+ * Windows 自绘标题栏:无边框窗(见 lib.rs 的 decorations(false))下,主工作区列顶部的拖拽条,
+ * 三键(最小化 / 最大化↔还原 / 关闭)固定在右端。高度/表面/分隔线由 globals.css 的
+ * .app-titlebar(消费 --window-chrome-height)与风格映射决定,组件不写死窗口几何。
  *
  * 仅 Windows+Tauri 渲染(mac 用系统红绿灯、linux 原生框、web 无);非 Windows 返回 null,
- * 作为 app-shell flex 列的首个子项不占高度 → mac/linux/web 布局零影响。
- * 整条 data-tauri-drag-region 可拖动 + 双击最大化;三键是其子元素,按下命中自身不触发拖拽。
- * 复用项目标准 <Button variant="ghost" size="icon">(32px,见 globals.css 的 .icon-btn)+ Hugeicons,与各页图标按钮同风格。
+ * 作为 app-workspace flex 列的首个子项不占高度 → mac/linux/web 布局零影响。
+ * 整条 data-tauri-drag-region 可拖动 + 双击最大化(Tauri 内建,勿再绑 onDoubleClick 造成双触发);
+ * 三键是其子元素,按下命中自身不触发拖拽。侧栏收起(width 0 + inert)时本条恰横贯全窗宽,独自承接顶部拖动。
+ * 三键点击几何走 .app-titlebar-btn(44px 宽 x 贴满栏高、直角):关闭按钮触达窗口右上角,
+ * 最大化态下甩鼠标到屏幕角落即可命中(Fitts)。
  * 另:dev 预览(?winchrome=1)下也渲染,但此时无窗口 API,三键点击不做事(见 hasWindow)。
  */
 export function WindowTitleBar() {
@@ -108,25 +110,38 @@ export function WindowTitleBar() {
   return (
     <div
       data-tauri-drag-region
-      // relative z-[60]:让顶栏叠在全屏模态(如设置 fixed inset-0 z-50)之上,任何时候都能最小化/关窗
-      // ——沿用旧浮动控件的 z-[60];position:relative 保留其在 flex 列中的 32px 占位。
-      className="app-titlebar relative z-[60] flex h-8 shrink-0 items-center justify-end gap-0.5 border-b border-border bg-background pr-1"
+      // relative z-[60]:让顶栏叠在全屏模态(如设置 fixed inset-0 z-50)之上,任何时候都能最小化/关窗。
+      // 依赖 app-workspace 不形成堆叠上下文(见 app-shell 注释);position:relative 保留 flex 列占位。
+      className="app-titlebar relative z-[60] flex shrink-0 items-center justify-end"
       role="group"
       aria-label="窗口控制"
     >
-      <Button variant="ghost" size="icon" aria-label="最小化" onClick={() => win && void win.minimize()}>
-        <HugeiconsIcon icon={MinusSignIcon} size={16} />
+      <Button
+        variant="ghost"
+        size="icon"
+        className="app-titlebar-btn"
+        aria-label="最小化"
+        onClick={() => win && void win.minimize()}
+      >
+        <HugeiconsIcon icon={MinusSignIcon} className="size-3.5" />
       </Button>
       <Button
         variant="ghost"
         size="icon"
+        className="app-titlebar-btn"
         aria-label={maximized ? "还原" : "最大化"}
         onClick={() => win && void win.toggleMaximize()}
       >
-        <HugeiconsIcon icon={maximized ? Copy01Icon : AppWindowIcon} size={maximized ? 14 : 16} />
+        <HugeiconsIcon icon={maximized ? Copy01Icon : AppWindowIcon} className={maximized ? "size-[13px]" : "size-3.5"} />
       </Button>
-      <Button variant="ghost" size="icon" aria-label="关闭" onClick={() => win && void win.close()}>
-        <HugeiconsIcon icon={Cancel01Icon} size={16} />
+      <Button
+        variant="ghost"
+        size="icon"
+        className="app-titlebar-btn hover:bg-destructive hover:text-white focus-visible:bg-destructive focus-visible:text-white"
+        aria-label="关闭"
+        onClick={() => win && void win.close()}
+      >
+        <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
       </Button>
     </div>
   );

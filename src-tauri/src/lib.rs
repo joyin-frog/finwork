@@ -123,8 +123,10 @@ pub fn run() {
       // 开发态:Next 由 beforeDevCommand 先起好,直接加载真实地址即可。
       let initial_url = if is_release { SPLASH_URL.to_string() } else { url.clone() };
 
+      // 原生标题供 Windows Alt-Tab/任务栏悬停与 mac Mission Control 使用;
+      // mac 标题栏文本仍被 hidden_title(true) 隐藏。conf 里 windows[0].title 因 create:false 不生效。
       let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(initial_url.parse()?))
-        .title("")
+        .title("Finwork")
         .inner_size(1280.0, 860.0)
         .min_inner_size(1024.0, 720.0)
         .resizable(true);
