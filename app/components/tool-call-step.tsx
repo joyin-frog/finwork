@@ -231,7 +231,7 @@ function ExpandedDetail({
         const fmt = formatToolInput(pair.name, pair.input);
         return (
           <div className="mb-1">
-            <span className="text-small uppercase tracking-wide text-muted-foreground">输入</span>
+            <span className="text-small text-muted-foreground">输入</span>
             {"lang" in fmt ? (
               <div className="mt-0.5"><HighlightBlock lang={fmt.lang} text={fmt.text} /></div>
             ) : (
@@ -248,7 +248,7 @@ function ExpandedDetail({
           const { headline, body } = cleanErrorDetail(sliced);
           return (
             <div>
-              <span className="text-small uppercase tracking-wide" style={{ color: "var(--tone-alarm)" }}>
+              <span className="text-small" style={{ color: "var(--tone-alarm)" }}>
                 错误
               </span>
               {/* headline 首行显示（保留「错误」标签样式） */}
@@ -262,7 +262,7 @@ function ExpandedDetail({
         const fmt = formatToolOutput(pair.name, sliced);
         return (
           <div>
-            <span className="text-small uppercase tracking-wide">输出</span>
+            <span className="text-small text-muted-foreground">输出</span>
             {"plain" in fmt ? (
               <div className="mt-0.5"><PlainBlock text={fmt.plain} /></div>
             ) : (

@@ -13,7 +13,7 @@
 
 import { useState, useEffect } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { WarningIcon } from "@/lib/icons";
+import { InfoIcon, WarningIcon } from "@/lib/icons";
 import { toast } from "sonner";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/utils";
@@ -247,6 +247,12 @@ function SeverityIcon({ severity }: { severity?: ChecklistItemSeverity }) {
       />
     );
   }
-  // info
-  return <span className="shrink-0 w-3.5 h-3.5 mt-0.5 text-caption text-muted-foreground/60" aria-hidden="true">ℹ</span>;
+  return (
+    <HugeiconsIcon
+      icon={InfoIcon}
+      size={13}
+      className="shrink-0 mt-0.5 text-muted-foreground/60"
+      aria-hidden="true"
+    />
+  );
 }
