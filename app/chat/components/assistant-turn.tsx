@@ -36,6 +36,7 @@ import {
 } from "@/app/chat/chat-file-browser";
 import { ThinkingSpark } from "@/app/shared/thinking-spark";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 // Local TimelineItem keeps AgentEvent for strict narrowing (ask_user, etc.);
@@ -104,6 +105,18 @@ export function getDisplayContent(message: Message) {
 
 export function stripLegacyThinking(content: string) {
   return content.replace(/<details\s+class=["']thinking-section["'][^>]*>\s*<summary>.*?<\/summary>\s*[\s\S]*?<\/details>/gi, "").trim();
+}
+
+function normalizeErrorComparison(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9\u3400-\u9fff]+/g, "");
+}
+
+/** 旧会话可能把同一条 SDK 错误同时存成助手正文和 turn_incomplete 事件，UI 只展示后者的人话提示。 */
+export function isRawIncompleteErrorContent(content: string, rawError?: string | null) {
+  const visible = normalizeErrorComparison(stripLegacyThinking(content));
+  const raw = normalizeErrorComparison(rawError ?? "");
+  if (!visible || !raw) return false;
+  return raw.includes(visible) || visible.includes(raw);
 }
 
 export function formatDuration(ms: number) {
@@ -220,8 +233,7 @@ export function AssistantTurn({
     () => (message.agentEvents ?? []).some((e) => (e.payload as { subtype?: string } | undefined)?.subtype === "turn_incomplete"),
     [message]
   );
-  // 出错收尾时 turn_incomplete 事件携带的原始错误:用于气泡内常驻展示「友好提示 + 可展开详情」,
-  // 不再只靠转瞬即逝的 toast(过了就没、也看不到原始报错)。
+  // 出错收尾时 turn_incomplete 事件携带原始错误：仅用于归类并生成中文提示，不直接暴露 SDK 文案。
   const incompleteError = useMemo(() => {
     const ev = (message.agentEvents ?? []).find((e) => (e.payload as { subtype?: string } | undefined)?.subtype === "turn_incomplete");
     const raw = ev ? (ev.payload as { message?: string }).message : undefined;
@@ -421,7 +433,10 @@ export function AssistantTurn({
         }
         if (isActive && message.content === "...") return null;
         const hasTextSegments = timeline.some((t) => t.event.type === "text");
-        const displayContent = answerText || (hasTextSegments && isActive ? "" : getDisplayContent(message));
+        const candidateContent = answerText || (hasTextSegments && isActive ? "" : getDisplayContent(message));
+        const displayContent = isIncomplete && isRawIncompleteErrorContent(candidateContent, incompleteError)
+          ? ""
+          : candidateContent;
         if (!displayContent.trim()) return null;
         return (
           <div className="md-content">
@@ -463,12 +478,12 @@ export function AssistantTurn({
       {message.id != null && !isActive ? (
         <div className="group">
           <div className="flex items-center gap-1 mt-1">
-            {/* 未完成回合的「重试」并入操作行(常驻,不随 hover 隐藏——出错恢复是主动作);其余操作仍 hover 浮现。 */}
+            {/* 重试与复制等消息操作保持一致：默认隐藏，hover 或键盘聚焦时显示。 */}
             {isIncomplete && isLatest && onContinue ? (
               <button
                 type="button"
                 // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                className="flex items-center gap-1 px-2 py-1 rounded text-meta text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
+                className="msg-toolbar-btn-fade flex items-center gap-1 px-2 py-1 rounded text-meta text-muted-foreground opacity-0 transition-colors transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground hover:bg-muted"
                 aria-label="重试"
                 onClick={onContinue}
               >
@@ -548,10 +563,9 @@ export function AssistantTurn({
                   </button>
                 ))}
               </div>
-              <input
+              <Input
                 type="text"
-                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                className="w-full rounded border border-border bg-background px-2 py-1 text-meta placeholder:text-muted-foreground"
+                className="h-7 w-full px-2 py-1 text-meta"
                 placeholder="补充说明（可跳过）"
                 value={customReason}
                 onChange={(e) => setCustomReason(e.target.value)}

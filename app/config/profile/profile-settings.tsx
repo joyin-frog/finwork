@@ -3,16 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { SettingsSection, SettingsRow, SaveStatusText, settingsSelectClass, type SaveStatus } from "@/app/config/settings-ui";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SettingsSection, SettingsRow } from "@/app/config/settings-ui";
 import { toast } from "sonner";
 import type { CompanyProfile } from "@/lib/profile/file-store";
 import { INDUSTRY_OPTIONS } from "@/lib/profile/industry-options";
 
 export function ProfileSettings() {
   const [profile, setProfile] = useState<CompanyProfile>({});
-  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<SaveStatus>("idle");
   // 年营收原始输入(用于就地校验:非法值标红且不写入,不静默存脏值)
   const [revenueRaw, setRevenueRaw] = useState("");
   const [revenueError, setRevenueError] = useState(false);
@@ -25,11 +31,10 @@ export function ProfileSettings() {
         const res = await fetch("/api/profile");
         const payload = (await res.json()) as {
           ok: boolean;
-          data?: { profile: CompanyProfile; updatedAt: string | null };
+          data?: { profile: CompanyProfile };
         };
         if (payload.ok && payload.data) {
           setProfile(payload.data.profile);
-          setUpdatedAt(payload.data.updatedAt);
           setRevenueRaw(
             payload.data.profile.scaleRevenueWan != null
               ? String(payload.data.profile.scaleRevenueWan)
@@ -44,7 +49,7 @@ export function ProfileSettings() {
     })();
   }, []);
 
-  // 自动保存:字段变更防抖 600ms 落库,带状态指示(去掉手动保存按钮)
+  // 自动保存:字段变更防抖 600ms 落库;失败用 toast 提示,不为成功状态预留布局。
   useEffect(() => {
     if (loading) return;
     if (!hydrated.current) {
@@ -53,7 +58,6 @@ export function ProfileSettings() {
     }
     const t = setTimeout(() => {
       void (async () => {
-        setStatus("saving");
         try {
           const res = await fetch("/api/profile", {
             method: "PUT",
@@ -61,14 +65,9 @@ export function ProfileSettings() {
             body: JSON.stringify({ profile }),
           });
           const payload = (await res.json()) as { ok: boolean; error?: string };
-          if (payload.ok) {
-            setUpdatedAt(new Date().toISOString());
-            setStatus("saved");
-          } else {
-            setStatus("error");
-          }
+          if (!payload.ok) toast.error("公司画像保存失败");
         } catch {
-          setStatus("error");
+          toast.error("公司画像保存失败");
         }
       })();
     }, 600);
@@ -110,11 +109,6 @@ export function ProfileSettings() {
         title="公司画像"
         description="支撑税务优惠发现和经营分析。"
       >
-        <div className="-mt-1 flex items-center gap-2 text-meta text-muted-foreground">
-          {updatedAt && <span>上次更新：{new Date(updatedAt).toLocaleString("zh-CN")}</span>}
-          <SaveStatusText status={status} />
-        </div>
-
         <SettingsRow label="所在地区">
           <Input
             value={profile.region ?? ""}
@@ -137,20 +131,25 @@ export function ProfileSettings() {
         </SettingsRow>
 
         <SettingsRow label="纳税人类型">
-          <select
-            className={settingsSelectClass}
+          <Select
             value={profile.taxpayerType ?? ""}
-            onChange={(e) => {
-              const val = e.target.value as "" | "小规模" | "一般纳税人";
-              if (val === "") updateField("taxpayerType", undefined);
-              else updateField("taxpayerType", val);
+            onValueChange={(value) => {
+              if (value === "unset") updateField("taxpayerType", undefined);
+              else updateField("taxpayerType", value as "小规模" | "一般纳税人");
             }}
             disabled={loading}
           >
-            <option value="">（未填写）</option>
-            <option value="小规模">小规模纳税人</option>
-            <option value="一般纳税人">一般纳税人</option>
-          </select>
+            <SelectTrigger className="h-8 w-full" aria-label="纳税人类型">
+              <SelectValue placeholder="（未填写）" />
+            </SelectTrigger>
+            <SelectContent position="popper" align="end">
+              <SelectGroup>
+                <SelectItem value="unset">（未填写）</SelectItem>
+                <SelectItem value="小规模">小规模纳税人</SelectItem>
+                <SelectItem value="一般纳税人">一般纳税人</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </SettingsRow>
 
         <SettingsRow label="高新技术企业" hint="影响所得税率和研发加计扣除">

@@ -21,6 +21,8 @@ import { useChatStream, isFinished } from "@/app/shared/chat-stream";
 import type { StartTurnParams } from "@/app/shared/chat-stream";
 import type { DisplayFile, Message } from "@/app/chat/chat-types";
 import { Surface } from "@/components/ui/surface";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 // ─── 空数组常量（MarkdownMessage 不需要文件列表时的占位） ────────────────────
 const EMPTY_FILES: DisplayFile[] = [];
@@ -247,7 +249,7 @@ export function ChatFloat() {
           {/* 输入区 */}
           <div className="shrink-0 border-t border-border px-3 py-2">
             <div className="relative">
-              <textarea
+              <Textarea
                 ref={textareaRef}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -259,20 +261,20 @@ export function ChatFloat() {
                 }}
                 placeholder="有什么财务问题？"
                 rows={2}
-                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 pr-8 text-body text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full resize-none pr-8 text-body"
                 aria-label="对话输入"
               />
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 aria-label="发送"
                 disabled={!draft.trim() || isStreaming}
                 onClick={handleSend}
-                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                className="absolute bottom-2 right-2 flex items-center justify-center rounded-sm text-muted-foreground/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+                className="absolute bottom-1.5 right-1.5 text-muted-foreground/60 hover:text-foreground"
               >
                 <HugeiconsIcon icon={CornerDownLeftIcon} size={14} />
-              </button>
+              </Button>
             </div>
           </div>
         </Surface>

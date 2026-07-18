@@ -25,11 +25,13 @@ import { Input } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { useNavState } from "@/app/shared/nav-state";
+import { AgentTabSurface } from "@/app/agents/agent-tab-surface";
 import { ROLE_UI, ROLE_LABELS } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
 import { useWorkspaceWorkTab } from "./workspace-work-tab";
@@ -107,7 +109,11 @@ export default function AgentWorkspacePage() {
   const { list: workList, preview: workPreview } = useWorkspaceWorkTab(role?.roleId ?? "", resize);
 
   const listContent = (
-    <div className="flex flex-col h-full min-h-0">
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(value as WorkTab)}
+      className="h-full min-h-0 gap-0"
+    >
       {/* 顶栏：拖拽 + 侧栏开关 + 角色身份 + 派任务——只跨列表列，不横跨预览（同知识库） */}
       <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
         <DragHandle />
@@ -164,23 +170,19 @@ export default function AgentWorkspacePage() {
 
       {/* 页签：只留选中态下划线，不再加容器 border-b（header 的 ::after 已画一条线，避免双线） */}
       {role && (
-        <div className="flex items-center gap-1 px-page shrink-0">
+        // eslint-disable-next-line no-restricted-syntax -- shadcn Tabs 的 line 变体需要页面布局尺寸
+        <TabsList variant="line" className="h-auto justify-start gap-1 rounded-none p-0 px-page shrink-0">
           {TABS.map((t) => (
-            <button
+            // eslint-disable-next-line no-restricted-syntax -- 保持既有页签密度并让下划线贴合内容区
+            <TabsTrigger
               key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={
-                "text-body px-3 py-2 border-b-2 -mb-px transition-colors " +
-                (tab === t.key
-                  ? "border-primary text-foreground font-medium"
-                  : "border-transparent text-muted-foreground hover:text-foreground")
-              }
+              value={t.key}
+              className="h-auto flex-none rounded-none px-3 py-2 text-body data-active:font-medium after:bottom-0"
             >
               {t.label}
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
       )}
 
       {loading ? (
@@ -195,18 +197,23 @@ export default function AgentWorkspacePage() {
           <p>找不到这个角色</p>
           <Link href="/cockpit"><Button variant="outline" size="sm">回总览</Button></Link>
         </div>
-      ) : tab === "work" ? (
-        workList
       ) : (
-        <div className="flex-1 overflow-auto p-page">
-          {tab === "memory" && <MemoryTabView roleId={role.roleId} roleName={role.name} />}
-          {tab === "conversations" && <ConversationsTabView roleId={role.roleId} />}
-          {tab === "profile" && (
+        <>
+          <TabsContent value="work" className="min-h-0">
+            {workList}
+          </TabsContent>
+          <TabsContent value="memory" className="min-h-0 overflow-auto p-page">
+            <MemoryTabView roleId={role.roleId} roleName={role.name} />
+          </TabsContent>
+          <TabsContent value="conversations" className="min-h-0 overflow-auto p-page">
+            <ConversationsTabView roleId={role.roleId} />
+          </TabsContent>
+          <TabsContent value="profile" className="min-h-0 overflow-auto p-page">
             <ProfileTabView key={role.roleId} role={role} onToggled={fetchAgentRoster} />
-          )}
-        </div>
+          </TabsContent>
+        </>
       )}
-    </div>
+    </Tabs>
   );
 
   return (
@@ -256,41 +263,43 @@ function ProfileTabView({ role, onToggled }: { role: RoleDetail; onToggled: () =
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-2xl">
-      <section>
-        <p className="text-meta font-semibold text-muted-foreground mb-1.5">职责</p>
-        <p className="text-body">{role.charter}</p>
-      </section>
-      <section>
-        <p className="text-meta font-semibold text-muted-foreground mb-1.5">数据权限</p>
-        <div className="flex flex-wrap gap-1.5">
-          {role.dataScope.map((scope) => (
-            <Surface key={scope} level="page" edge="hairline" shape="pill" className="text-meta px-2 py-0.5 bg-muted/50">
-              {scope}
-            </Surface>
-          ))}
-        </div>
-      </section>
-      {role.skills.length > 0 && (
+    <AgentTabSurface pad="none">
+      <div className="flex flex-col gap-5 p-4">
         <section>
-          <p className="text-meta font-semibold text-muted-foreground mb-1.5">会做的活</p>
+          <p className="text-meta font-semibold text-muted-foreground mb-1.5">职责</p>
+          <p className="text-body">{role.charter}</p>
+        </section>
+        <section>
+          <p className="text-meta font-semibold text-muted-foreground mb-1.5">数据权限</p>
           <div className="flex flex-wrap gap-1.5">
-            {role.skills.map((skill) => (
-              <Surface
-                key={skill.name}
-                level="page"
-                edge="hairline"
-                shape="pill"
-                className="text-meta px-2 py-0.5 bg-muted/50 cursor-help"
-                title={skill.description}
-              >
-                {skill.name}
+            {role.dataScope.map((scope) => (
+              <Surface key={scope} level="page" edge="hairline" shape="pill" className="text-meta px-2 py-0.5 bg-muted/50">
+                {scope}
               </Surface>
             ))}
           </div>
         </section>
-      )}
-      <section className="border-t border-border pt-4">
+        {role.skills.length > 0 && (
+          <section>
+            <p className="text-meta font-semibold text-muted-foreground mb-1.5">会做的活</p>
+            <div className="flex flex-wrap gap-1.5">
+              {role.skills.map((skill) => (
+                <Surface
+                  key={skill.name}
+                  level="page"
+                  edge="hairline"
+                  shape="pill"
+                  className="text-meta px-2 py-0.5 bg-muted/50 cursor-help"
+                  title={skill.description}
+                >
+                  {skill.name}
+                </Surface>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+      <section className="border-t border-border p-4">
         <p className="text-meta font-semibold text-muted-foreground mb-1.5">启用状态</p>
         <div className="flex items-center gap-3">
           <Switch
@@ -311,7 +320,7 @@ function ProfileTabView({ role, onToggled }: { role: RoleDetail; onToggled: () =
           </span>
         </div>
       </section>
-    </div>
+    </AgentTabSurface>
   );
 }
 
@@ -373,7 +382,7 @@ function MemoryTabView({ roleId, roleName }: { roleId: string; roleName: string 
   }
 
   return (
-    <div className="max-w-2xl flex flex-col gap-3">
+    <AgentTabSurface className="flex flex-col gap-3">
       <div
         className="fa-toned rounded-[var(--radius)] px-3 py-2 text-meta"
         style={{ "--tone": "var(--tone-analysis)" } as CSSProperties}
@@ -439,7 +448,7 @@ function MemoryTabView({ roleId, roleName }: { roleId: string; roleName: string 
       <p className="text-meta text-muted-foreground">
         对话中你确认或纠正的口径会自动沉淀到这里（对话里会提示「已记住这条口径」），也可手动添加。
       </p>
-    </div>
+    </AgentTabSurface>
   );
 }
 
@@ -466,19 +475,19 @@ function ConversationsTabView({ roleId }: { roleId: string }) {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-body text-muted-foreground">
+      <AgentTabSurface className="flex flex-col items-center gap-3 py-12 text-body text-muted-foreground">
         <p>加载失败</p>
         <Button variant="outline" size="sm" onClick={fetchRows}>重试</Button>
-      </div>
+      </AgentTabSurface>
     );
   }
-  if (rows == null) return <div className="py-12 text-center text-body text-muted-foreground">加载中…</div>;
+  if (rows == null) return <AgentTabSurface className="py-12 text-center text-body text-muted-foreground">加载中…</AgentTabSurface>;
   if (rows.length === 0) {
-    return <div className="py-12 text-center text-body text-muted-foreground">还没有相关对话。点右上角「派任务」发起</div>;
+    return <AgentTabSurface className="py-12 text-center text-body text-muted-foreground">还没有相关对话。点右上角「派任务」发起</AgentTabSurface>;
   }
 
   return (
-    <div className="max-w-2xl flex flex-col gap-1">
+    <AgentTabSurface className="flex flex-col gap-1">
       <p className="text-meta text-muted-foreground mb-2">按角色过滤的全局会话——它们同时也在侧栏「最近」里，这里不是独立的聊天窗。</p>
       {rows.map((c) => {
         const others = c.roleIds.filter((r) => r !== roleId);
@@ -501,6 +510,6 @@ function ConversationsTabView({ roleId }: { roleId: string }) {
           </Link>
         );
       })}
-    </div>
+    </AgentTabSurface>
   );
 }

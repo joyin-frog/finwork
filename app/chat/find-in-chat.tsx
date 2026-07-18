@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowUp01Icon, ArrowDown01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { findMatches } from "./find-matches";
 
 interface FindInChatProps {
@@ -202,42 +204,51 @@ export function FindInChat({ open, initialQuery = "", threadRef, onClose, conten
       data-find-ui
       className="absolute right-4 top-4 z-30 flex items-center gap-1.5 rounded-xl border border-border bg-card shadow-[var(--elevation-2)] px-2 py-1.5"
     >
-      <input
+      <Input
         ref={inputRef}
         type="text"
         value={query}
         onChange={handleQueryChange}
         onKeyDown={handleKeyDown}
         placeholder="在对话中查找…"
-        className="w-44 bg-transparent text-small text-foreground placeholder:text-muted-foreground outline-none"
+        className="h-auto w-44 rounded-none border-0 bg-transparent px-0 py-0 text-small shadow-none focus-visible:ring-0 dark:bg-transparent"
         aria-label="查找"
       />
       <span className="text-caption text-muted-foreground min-w-[3rem] text-right select-none">
         {query.trim() ? `${displayIndex} / ${totalCount}` : ""}
       </span>
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={goPrev}
         aria-label="上一个"
-        className="rounded p-0.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
+        className="text-muted-foreground hover:text-foreground"
         disabled={totalCount === 0}
       >
         <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
-      </button>
-      <button
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={goNext}
         aria-label="下一个"
-        className="rounded p-0.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
+        className="text-muted-foreground hover:text-foreground"
         disabled={totalCount === 0}
       >
         <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
-      </button>
-      <button
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={handleClose}
         aria-label="关闭查找"
-        className="rounded p-0.5 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+        className="text-muted-foreground hover:text-foreground"
       >
         <HugeiconsIcon icon={Cancel01Icon} size={14} />
-      </button>
+      </Button>
     </div>
   );
 }

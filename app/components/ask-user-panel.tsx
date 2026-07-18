@@ -8,6 +8,7 @@ import { Edit02Icon, HelpCircleIcon, ArrowLeft01Icon, ArrowRight01Icon } from "@
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -169,12 +170,11 @@ export function AskUserPanel({
         {/* 「本次对话不再询问」勾选（仅 run_python 的 trustable 确认卡出现） */}
         {question.trustable && (
           <label className="flex items-center gap-2 text-body text-muted-foreground">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={trustSession}
-              onChange={(e) => setTrustSession(e.target.checked)}
+              onCheckedChange={(checked) => setTrustSession(checked === true)}
               disabled={submitting}
-              className="accent-primary h-3.5 w-3.5"
+              className="size-3.5"
             />
             本次对话不再询问
           </label>

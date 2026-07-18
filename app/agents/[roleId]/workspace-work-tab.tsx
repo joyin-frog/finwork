@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Surface } from "@/components/ui/surface";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { AgentTabSurface } from "@/app/agents/agent-tab-surface";
 import type { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { FilePreviewPage, type LocalPreviewFile } from "@/app/shared/file-preview-page";
 import { relativeTime } from "@/lib/utils/relative-time";
@@ -179,27 +180,29 @@ export function useWorkspaceWorkTab(
         </div>
       )}
       <div className="flex-1 overflow-auto p-page">
-        {error ? (
-          <div className="flex flex-col items-center gap-3 py-12 text-body text-muted-foreground">
-            <p>任务记录加载失败</p>
-            <Button variant="outline" size="sm" onClick={fetchDispatches}>重试</Button>
-          </div>
-        ) : dispatches == null ? (
-          <div className="py-12 text-center text-body text-muted-foreground">加载中…</div>
-        ) : dispatches.length === 0 ? (
-          <div className="py-12 text-center text-body text-muted-foreground">本月还没有任务。点右上角「派任务」发起</div>
-        ) : (
-          <div className="flex flex-col gap-6 max-w-3xl">
-            {grouped.map((g) => (
-              <section key={g.key} className="flex flex-col gap-1.5">
-                <h2 className="text-meta font-semibold text-muted-foreground">{g.label} · {g.rows.length}</h2>
-                {g.rows.map((row) => (
-                  <TaskRow key={row.id} row={row} selected={row.id === selectedId} onSelect={() => selectTask(row.id)} />
-                ))}
-              </section>
-            ))}
-          </div>
-        )}
+        <AgentTabSurface>
+          {error ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-body text-muted-foreground">
+              <p>任务记录加载失败</p>
+              <Button variant="outline" size="sm" onClick={fetchDispatches}>重试</Button>
+            </div>
+          ) : dispatches == null ? (
+            <div className="py-12 text-center text-body text-muted-foreground">加载中…</div>
+          ) : dispatches.length === 0 ? (
+            <div className="py-12 text-center text-body text-muted-foreground">本月还没有任务。点右上角「派任务」发起</div>
+          ) : (
+            <div className="flex flex-col gap-6">
+              {grouped.map((g) => (
+                <section key={g.key} className="flex flex-col gap-1.5">
+                  <h2 className="text-meta font-semibold text-muted-foreground">{g.label} · {g.rows.length}</h2>
+                  {g.rows.map((row) => (
+                    <TaskRow key={row.id} row={row} selected={row.id === selectedId} onSelect={() => selectTask(row.id)} />
+                  ))}
+                </section>
+              ))}
+            </div>
+          )}
+        </AgentTabSurface>
       </div>
     </div>
   );

@@ -15,9 +15,9 @@ export function ShortcutsSettings() {
     <div className="flex flex-col gap-8">
       {GROUPS.map((group) => (
         <SettingsSection key={group.title} title={group.title}>
-          <div className="flex flex-col">
+          <div className="-mx-4 flex flex-col">
             {SHORTCUTS.filter((s) => group.scopes.includes(s.scope)).map((shortcut) => (
-              <div key={shortcut.id} className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-b-0">
+              <div key={shortcut.id} className="flex items-center justify-between gap-3 px-4 py-2 border-b border-border last:border-b-0">
                 <span className="text-body">{shortcut.description}</span>
                 <Kbd>{formatShortcut(shortcut.combo, isMac)}</Kbd>
               </div>

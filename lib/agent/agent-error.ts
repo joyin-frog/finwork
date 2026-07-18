@@ -28,7 +28,7 @@ export function humanizeAgentError(raw: string | undefined | null): HumanAgentEr
     text.includes("api key") ||
     text.includes("permission")
   ) {
-    return { message: "API Key 鉴权没通过。请到 设置 → 模型 检查 API Key 是否填对、有没有过期。", action: "config" };
+    return { message: "API 密钥验证未通过。请到 设置 → 模型 检查密钥是否填对、有没有过期。", action: "config" };
   }
 
   // 模型 ID / 网关地址配置问题

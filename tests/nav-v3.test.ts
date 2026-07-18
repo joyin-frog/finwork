@@ -258,16 +258,17 @@ export const navV3TestPromise = (async () => {
     assert.equal(opened2.activeKey, "page:agents:bookkeeper", "F3 FAIL: 新开标签应激活自己");
   }
 
-  // ── 抛光: 侧栏角色行状态只用圆点表达，不再跟「在忙/待拍板」文字（圆点保留 a11y） ──
+  // ── 抛光: 侧栏角色行用角色头像取代常显状态点，只在有事时显示状态 ──
   {
     const navSrc = src("app/shared/app-nav.tsx");
-    assert.ok(
-      !navSrc.includes('{tag && <span className="shrink-0 text-meta text-muted-foreground">{tag}</span>}'),
-      "抛光 FAIL: 角色行不应再渲染跟随圆点的文字 tag"
-    );
     const roleRowBody = navSrc.slice(navSrc.indexOf("function renderRoleRow"), navSrc.indexOf("function renderConversationRow"));
-    assert.ok(roleRowBody.includes("aria-label={dotLabel}"), "抛光 FAIL: 状态圆点应带 aria-label 承载可读状态");
-    assert.ok(roleRowBody.includes("title={dotLabel}"), "抛光 FAIL: 状态圆点应带 title 承载可读状态（hover 提示）");
+    assert.ok(roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 角色头像应使用岗位 tone");
+    assert.ok(roleRowBody.includes("r.name.slice(0, 1)"), "抛光 FAIL: 角色头像应有可辨识的岗位字样");
+    assert.ok(!roleRowBody.includes('"var(--tone-neutral)"'), "抛光 FAIL: 空闲角色不应常显中性圆点");
+    assert.ok(!roleRowBody.includes('"\u7a7a\u95f2"'), "抛光 FAIL: 空闲状态不应生成常显提示");
+    assert.ok(roleRowBody.includes("dotTone &&"), "抛光 FAIL: 只有进行中或待拍板时才应显示状态点");
+    assert.ok(roleRowBody.includes("aria-label={dotLabel}"), "抛光 FAIL: 有事状态点应带 aria-label");
+    assert.ok(!navSrc.includes("AiBrain01Icon"), "抛光 FAIL: 智能体分组标题不应显示图标");
   }
 
   // ── 契约 5a: app-nav.tsx「智能体」为可展开分组，子项直达角色工作台 ──────────
@@ -293,9 +294,7 @@ export const navV3TestPromise = (async () => {
   {
     const navStateSrc = src("app/shared/nav-state.tsx");
     const chatPageSrc = src("app/chat/chat-page.tsx");
-    const tabBarSrc = src("app/shared/app-tab-bar.tsx");
     const shellSrc = src("app/shared/app-shell.tsx");
-    const globalCss = src("app/globals.css");
     const titleUpdateBody = navStateSrc.slice(
       navStateSrc.indexOf("const updateConversationTitle"),
       navStateSrc.indexOf("useEffect", navStateSrc.indexOf("const updateConversationTitle"))
@@ -317,38 +316,37 @@ export const navV3TestPromise = (async () => {
       completionEffectBody.includes("syncCompletedConversationTitle"),
       "F1 FAIL: 新会话 done/incomplete 应复用已行为测试的完成态标题同步逻辑"
     );
-    assert.ok(tabBarSrc.includes("closeAppTab"), "JOY-10 v2 FAIL: 标签栏应通过统一 NavState 关闭标签");
-    assert.ok(tabBarSrc.includes("resolveSelectedAppTabKey"), "JOY-10 v2.1 FAIL: 标签栏应复用选中态竞态 helper");
-    assert.ok(!tabBarSrc.includes("关闭全部标签"), "JOY-10 v2.1 FAIL: 顶部不应再提供关闭全部入口");
-    assert.ok(shellSrc.includes("RouteTabSync") && shellSrc.includes("<Suspense fallback={null}>"), "JOY-10 v2 FAIL: AppShell 应在显式 Suspense 中挂载 RouteTabSync");
+    assert.ok(!shellSrc.includes("AppTabBar") && !shellSrc.includes("RouteTabSync"), "导航精简 FAIL: AppShell 不应保留顶部标签栏接线");
     assert.ok(chatPageSrc.includes("upgradeNewConversationTab"), "JOY-10 v2 FAIL: meta 应将 chat:new 原位升级为真实会话");
     assert.ok(chatPageSrc.includes("router.replace(`/chat/recent?id=${cid}`)"), "JOY-10 v2 FAIL: meta 后应通过 App Router replace 进入 recent");
-    assert.ok(globalCss.includes("flex: 0 1 auto") && globalCss.includes("min-width: 5rem") && globalCss.includes("max-width: 13rem"), "JOY-10 v2.2 FAIL: 非活动标签应按标题自适应在 80–208px 之间");
-    assert.ok(globalCss.includes("min-width: 5.75rem") && globalCss.includes("max-width: 14rem"), "JOY-10 v2.2 FAIL: 活动标签应使用更大的 92–224px 宽度契约");
-    assert.ok(tabBarSrc.includes('className="truncate"'), "JOY-10 v2.2 FAIL: 超过最大宽度的标签标题应显示省略号");
-    assert.ok(globalCss.includes("--window-controls-inset: 6.75rem"), "JOY-10 v2.1 FAIL: Windows 标签栏应保留窗口三键净空");
-    assert.ok(globalCss.includes("border-radius: 999px"), "JOY-10 v2.1 FAIL: 关闭按钮 hover 应使用门禁允许的圆形命中区");
-    assert.ok(!tabBarSrc.includes("stopTurn"), "JOY-10 FAIL: 关闭标签不得停止后台生成");
     assert.ok(!navStateSrc.includes('localStorage.setItem("conversation'), "JOY-10 FAIL: v1 不应持久化会话标签");
   }
 
-  // ── 契约 5b: 「智能体」分组位于总览之后（indexOf 顺序断言）─────────────────
+  // ── 契约 5b: 「智能体」作为会话分组，位于「置顶」之前 ─────────────────────
   {
     const navSrc = src("app/shared/app-nav.tsx");
-    // 总览用 href 锚点；智能体父项已无 href，用文案锚点。
-    const cockpitHrefIdx = navSrc.indexOf('href="/cockpit"');
-    const agentsIdx = navSrc.indexOf("智能体");
-    assert.ok(
-      cockpitHrefIdx !== -1,
-      "C5b FAIL: app-nav.tsx 应含 href=\"/cockpit\"（总览项）"
-    );
+    const agentsIdx = navSrc.indexOf("setAgentsOpen(!agentsOpen)");
+    const pinnedIdx = navSrc.indexOf("setPinnedOpen(!pinnedOpen)");
     assert.ok(
       agentsIdx !== -1,
-      "C5b FAIL: app-nav.tsx 应含「智能体」分组"
+      "C5b FAIL: app-nav.tsx 应含「智能体」展开/收起按钮"
     );
     assert.ok(
-      cockpitHrefIdx < agentsIdx,
-      `C5b FAIL: 「总览」href（pos ${cockpitHrefIdx}）应先于「智能体」（pos ${agentsIdx}）——智能体应在总览之后`
+      pinnedIdx !== -1,
+      "C5b FAIL: app-nav.tsx 应含「置顶」展开/收起按钮"
+    );
+    assert.ok(
+      agentsIdx < pinnedIdx,
+      `C5b FAIL: 「智能体」（pos ${agentsIdx}）应位于「置顶」（pos ${pinnedIdx}）之前`
+    );
+    const agentsHeader = navSrc.slice(navSrc.lastIndexOf("<button", agentsIdx), navSrc.indexOf("</button>", agentsIdx));
+    assert.ok(
+      agentsHeader.includes('className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"'),
+      "C5b FAIL: 「智能体」标题应与「置顶」使用相同样式、缩进和间距"
+    );
+    assert.ok(
+      !agentsHeader.includes("UserGroupIcon"),
+      "C5b FAIL: 「智能体」分组标题不应显示图标"
     );
   }
 
@@ -425,5 +423,24 @@ export const navV3TestPromise = (async () => {
     );
   }
 
-  console.log("nav-v3: JOY-10 + C5–C7 checks passed ✓");
+  // ── 契约 8: 侧栏缩放手柄为中部短线，不再覆盖整栏高度 ───────────────────────
+  {
+    const navSrc = src("app/shared/app-nav.tsx");
+    const dividerSrc = src("app/shared/vertical-resize-divider.tsx");
+    const resizeStart = navSrc.indexOf('aria-label="调整侧栏宽度"');
+    const resizeBlock = navSrc.slice(Math.max(0, resizeStart - 900), resizeStart + 300);
+    assert.ok(resizeStart !== -1, "C8 FAIL: 侧栏应保留键鼠可操作的宽度调整手柄");
+    assert.ok(
+      resizeBlock.includes("VerticalResizeDivider") && resizeBlock.includes("top-0 bottom-0"),
+      "C8 FAIL: 侧栏应复用整高纵向拖拽分隔区"
+    );
+    assert.ok(dividerSrc.includes("self-stretch") && dividerSrc.includes("w-1"), "C8 FAIL: 共享分隔区应整高可拖且保持 4px 命中宽度");
+    assert.ok(!dividerSrc.includes("before:"), "C8 FAIL: 共享分隔区不应再绘制独立短手柄");
+    assert.ok(
+      !resizeBlock.includes("w-[5px]"),
+      "C8 FAIL: 拖拽分隔区不应使用 5px 粗条"
+    );
+  }
+
+  console.log("nav-v3: JOY-10 + C5–C8 checks passed ✓");
 })();

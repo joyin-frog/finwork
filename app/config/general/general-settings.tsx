@@ -87,7 +87,7 @@ export function GeneralSettings({
               </button>
             ) : null}
           </div>
-          <input
+          <Input
             ref={fileInputRef}
             type="file"
             accept="image/*"

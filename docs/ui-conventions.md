@@ -1,7 +1,13 @@
 # UI 约定：间距节奏 · 交互态 · 界面文案
 
-> 2026-07-08。与 `app/globals.css`（token 本体）、`docs/spec/spec-typography-spacing-system.md`（字阶与间距阶的推导）配套。
+> 2026-07-18。与 `app/styles/tokens.css`（颜色主题）、`app/globals.css`（布局与风格）、`docs/spec/spec-typography-spacing-system.md`（字阶与间距阶的推导）配套。
 > 本文只写"日常写界面时按什么规矩"，不重复 token 定义。
+
+颜色主题与界面风格是两条独立轴：light / dark 只在 `app/styles/tokens.css` 定义语义颜色；default / linear 的 `data-style` 只负责布局、密度、圆角和层级策略。风格选择器可以使用 `var(--background)` 等语义色，不得定义或覆写颜色 token。
+
+同一语义区域在不同界面风格中必须消费同一个颜色 token。现代风格把侧栏、Windows 标题栏和主内容四周露出的窗口底层视为一个连续外壳，全部使用 `--sidebar`；经典风格的侧栏同样使用 `--sidebar`，但窗口底层仍是页面 `--background`。两种风格只通过外边距、圆角、描边和阴影表达“平铺”与“浮起”，不再维护独立的窗口背板颜色。
+
+现代风格不使用应用级顶部标签栏。全局搜索与侧栏收起按钮位于侧栏顶部；侧栏收起后，由各页面头部的展开按钮恢复导航。页面内部仍可按内容语义使用页签，例如智能体的工作、记忆、相关对话和概况。
 
 ## 一、间距节奏
 
@@ -13,6 +19,10 @@
 
 卡片内边距：常规 `p-4`（16px），信息密的列表行/紧凑卡 `p-3`（12px），页面头部或强调区 `p-6`（24px）。同一视图内不混用两种以上卡片 padding。
 
+**页签内容画布**：页面头部与页签是导航框架，不套卡片；每个页签承载的主要内容必须放进一个稳定的语义画布。智能体工作台统一复用 `AgentTabSurface`，工作、记忆、相关对话、概况以及各自的加载、空、错误状态都不能绕过它。画布是否存在属于信息结构，不由界面风格决定；default / linear 只通过 token 改变圆角、阴影、边框和密度。画布内可以为重复数据项使用次级行卡片，但不要再给整块内容套一层同级卡片。
+
+`SettingsSection` 已为每个直接子项提供 `px-4`，直接子项之间的分隔线会自然贯穿卡片。若必须在单个子项内部嵌套列表，分隔线容器使用 `-mx-4` 延伸到卡片边缘，并在行内容上补回 `px-4`；不要直接在已缩进的内容节点上画短分隔线。
+
 ## 二、交互态
 
 - **hover 底色的正字**是 `hover:bg-accent`；列表行等大面积次级 hover 用 `hover:bg-muted`。两者语义：accent = 可点条目的悬停示意，muted = 弱一档的区域感应。
@@ -20,6 +30,11 @@
 - 按下反馈全站统一是 `active:translate-y-px`（下沉 1px，见 button.tsx base），不另发明 `active:bg-*`。
 - disabled 统一 `disabled:opacity-50 disabled:pointer-events-none`。
 - 焦点环由全局 `outline-ring/50` 提供，不手动去 outline。
+- **页内视图切换**使用 shadcn `Tabs` 的 `line` 变体，例如智能体的「工作 / 记忆 / 相关对话 / 概况」；不要改成筛选 chip。
+- **列表分类筛选**统一使用 `app/shared/filter-chip-group.tsx`，例如知识库与技能分类；选中态为浅色 `accent`，不要在业务页各自手写黑色胶囊或按钮组。
+- `Tabs` 与 `FilterChipGroup` 不混用：前者切换内容面板，后者只改变当前列表的筛选结果。
+- 网格卡片里的按钮和操作图标必须固定在卡片边角，不随正文长度移动。卡片使用 `flex h-full flex-col`，hover 操作区统一复用 `CardActionDock`；常驻底部操作行至少使用 `mt-auto`。
+- 可调宽列统一复用 `VerticalResizeDivider`：直接让现有列边界整高可拖，不再额外绘制短拖拽手柄。
 
 ## 三、界面文案
 

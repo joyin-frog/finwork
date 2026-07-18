@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
 
 /**
  * ResizablePreviewPanel — 共享的可拖宽预览面板外层装配壳。
@@ -13,7 +14,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
  * 布局：
  *   flex flex-1 overflow-hidden (ref=mainRef)
  *     左列 (flex-1, listMinWidthClass, maximized→hidden但保持挂载)  ← list 插槽
- *     分隔条 (w-1 cursor-col-resize)                      ← 只在 !collapsed && preview 时渲染
+ *     整高透明分隔区 (4px 命中宽度)                       ← 只在 !collapsed && preview 时渲染
  *     右面板 (shrink-0, 宽=previewW / maximized→flex-1)   ← preview 插槽
  */
 
@@ -109,17 +110,12 @@ export function ResizablePreviewPanel({
         {list}
       </motion.div>
 
-      {/* 分隔拖拽条 */}
+      {/* 整高透明拖拽区：复用页面原有列边界，不额外绘制手柄。 */}
       {showRight && (
-        <div
-          className={cn(
-            "w-1 shrink-0 cursor-col-resize bg-clip-content px-[1.5px] hover:bg-primary/30 transition-colors",
-            dragging && "bg-primary/30"
-          )}
+        <VerticalResizeDivider
           onMouseDown={onBeginResize}
           onDoubleClick={onResetWidth}
-          role="separator"
-          aria-orientation="vertical"
+          aria-label="调整预览宽度"
           tabIndex={0}
         />
       )}

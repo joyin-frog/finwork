@@ -85,12 +85,12 @@ export const resizablePreviewPanelTestPromise = (async () => {
 
   const shellSrc = src("app/shared/resizable-preview-panel.tsx");
 
-  // B1: 壳含 cursor-col-resize（分隔条）
+  // B1: 壳复用共享拖拽分隔区（cursor 样式由组件统一提供）
   assert.ok(
-    shellSrc.includes("cursor-col-resize"),
-    "B1 FAIL: 壳应含 cursor-col-resize 分隔条"
+    shellSrc.includes("VerticalResizeDivider"),
+    "B1 FAIL: 壳应复用 VerticalResizeDivider"
   );
-  console.log("B1: 壳含 cursor-col-resize ✓");
+  console.log("B1: 壳复用共享拖拽分隔区 ✓");
 
   // B2: 壳含 maximized 装配（放大逻辑）
   assert.ok(
@@ -136,6 +136,21 @@ export const resizablePreviewPanelTestPromise = (async () => {
     "B6 FAIL: 壳右面板应统一用 preview-card-frame（三处预览外观必须一致，浮起卡片）"
   );
   console.log("B6: 壳统一 preview-card-frame（三处一致）✓");
+
+  // B7: 所有预览分隔处复用整高透明拖拽区，不额外绘制短手柄。
+  {
+    const chatPageSrc = src("app/chat/chat-page.tsx");
+    const dividerSrc = src("app/shared/vertical-resize-divider.tsx");
+    for (const [name, source] of [["共享预览壳", shellSrc], ["聊天右侧栏", chatPageSrc]] as const) {
+      assert.ok(
+        source.includes("VerticalResizeDivider"),
+        `B7 FAIL: ${name} 应复用整高纵向拖拽分隔区`
+      );
+    }
+    assert.ok(dividerSrc.includes("self-stretch") && dividerSrc.includes("w-1"), "B7 FAIL: 共享分隔区应整高可拖且保持 4px 命中宽度");
+    assert.ok(!dividerSrc.includes("before:"), "B7 FAIL: 共享分隔区不应再绘制独立短手柄");
+  }
+  console.log("B7: 预览分隔区统一为整高透明拖拽区 ✓");
 
   // ─── C. 三处采纳源码契约 ──────────────────────────────────────────────────
 

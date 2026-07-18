@@ -60,7 +60,7 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
       edge="hairline"
       shape="card"
       className={[
-        "cursor-pointer select-none transition-colors",
+        "flex h-full flex-col cursor-pointer select-none transition-colors",
         selected ? "border-foreground/30 ring-1 ring-foreground/10" : "hover:border-foreground/20",
         isDisabled && !isBlocked && !isRunning ? "opacity-60" : "",
         compact ? "px-3 py-2" : "px-4 py-3",
@@ -114,7 +114,7 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
       </div>
 
       {/* 底部行：本月次数（左）+ 派活（右下角） */}
-      <div className="flex items-center justify-between mt-2" style={{ paddingLeft: bottomIndent }}>
+      <div className="mt-auto flex items-center justify-between pt-2" style={{ paddingLeft: bottomIndent }}>
         <span className="text-meta text-muted-foreground whitespace-nowrap">
           {card.dispatchCount > 0
             ? `${card.dispatchCount} 次${card.lastAt ? ` · ${relativeTime(card.lastAt)}` : ""}`

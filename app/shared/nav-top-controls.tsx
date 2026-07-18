@@ -7,8 +7,8 @@ import { ShortcutHint } from "@/app/shared/shortcut-hint";
 
 /**
  * 搜索按钮 + 侧栏折叠/展开切换按钮。
- * 默认风格:挂在 app-nav-topbar 里(展开态可见);
- * Linear 风格:挂在 app-tabbar 里(收起/展开态都可见,且可重新展开)。
+ * 两种风格都挂在 app-nav-topbar 里，侧栏展开时可见；
+ * 侧栏收起后由各页面头部的 SidebarToggle 提供重新展开入口。
  */
 export function NavTopControls() {
   const { collapsed, setCollapsed, setSearchOpen } = useNavState();

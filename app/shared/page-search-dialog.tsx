@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeholder, label, onSubmit }: {
   open: boolean;
@@ -44,23 +46,24 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
         onSubmit={(event) => { event.preventDefault(); onSubmit?.(); }}
       >
         <HugeiconsIcon icon={Search01Icon} size={16} className="shrink-0 text-muted-foreground" />
-        <input
+        <Input
           ref={inputRef}
           value={value}
           onChange={(event) => onValueChange(event.target.value)}
           placeholder={placeholder}
           aria-label={label}
-          className="min-w-0 flex-1 border-0 bg-transparent text-body outline-none placeholder:text-muted-foreground"
+          className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-0 text-body shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
           aria-label="关闭搜索"
           onClick={() => onOpenChange(false)}
-          // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-          className="inline-grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
         >
           <HugeiconsIcon icon={Cancel01Icon} size={14} />
-        </button>
+        </Button>
       </form>
     </div>
   );
