@@ -7,8 +7,9 @@ const src = (file: string) => readFileSync(path.join(root, file), "utf8");
 
 export const overlayScrimTestPromise = (async () => {
   const globals = src("app/globals.css");
-  assert.match(globals, /--scrim-modal:\s*color-mix\([^;]+8%/, "应定义 8% 常规模态遮罩 token");
-  assert.match(globals, /--scrim-blocking:\s*color-mix\([^;]+16%/, "应定义 16% 阻塞遮罩 token");
+  const tokens = src("app/styles/tokens.css");
+  assert.match(tokens, /--scrim-modal:\s*color-mix\([^;]+8%/, "应定义 8% 常规模态遮罩 token");
+  assert.match(tokens, /--scrim-blocking:\s*color-mix\([^;]+16%/, "应定义 16% 阻塞遮罩 token");
   assert.ok(globals.includes("--color-scrim-modal: var(--scrim-modal)"), "常规模态 token 应暴露为 Tailwind 语义色");
   assert.ok(globals.includes("--color-scrim-blocking: var(--scrim-blocking)"), "阻塞 token 应暴露为 Tailwind 语义色");
 

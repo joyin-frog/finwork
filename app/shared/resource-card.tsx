@@ -22,6 +22,7 @@ import {
 import { Surface } from "@/components/ui/surface";
 import { FileTypeIcon } from "@/app/shared/file-type-icon";
 import { cn } from "@/lib/utils";
+import { CardActionDock } from "@/app/shared/card-action-dock";
 
 export type ResourceCardMenuItem = {
   label: string;
@@ -81,7 +82,7 @@ export function ResourceCard({
       // Surface provides shape=card (lg) + edge=hairline + level=card shadow.
       // Selected/colorCls/archived overrides added via className.
       className={cn(
-        "group relative flex flex-col gap-2 p-3 transition-colors cursor-pointer",
+        "group relative flex h-full flex-col gap-2 p-3 transition-colors cursor-pointer",
         selected
           ? "border-primary bg-accent ring-1 ring-primary/40"
           : colorCls ?? "hover:border-primary/40 hover:bg-accent/40",
@@ -147,8 +148,8 @@ export function ResourceCard({
       )}
 
       {/* hover 常用图标:对话(最左)+ 下载(最右) */}
-      <div
-        className="flex items-center justify-between pt-1 opacity-0 group-hover:opacity-100 transition-opacity"
+      <CardActionDock
+        className="justify-between"
         onClick={(e) => e.stopPropagation()}
       >
         {onChat ? (
@@ -175,7 +176,7 @@ export function ResourceCard({
             <HugeiconsIcon icon={Download01Icon} size={14} />
           </button>
         ) : <span />}
-      </div>
+      </CardActionDock>
     </Surface>
   );
 }

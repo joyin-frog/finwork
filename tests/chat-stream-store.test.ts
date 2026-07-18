@@ -195,8 +195,8 @@ export const chatStreamStoreTestPromise = (async () => {
   );
   // errorMessage 已在 store catch 里经 humanizeAgentError 人话化,这里直接原样展示(不再加"Agent 调用失败"前缀)。
   assert.equal(
-    activeAssistantContent(baseTurn({ status: "error", errorMessage: "API Key 鉴权没通过。请到 设置 → 模型 检查 API Key 是否填对、有没有过期。" })),
-    "API Key 鉴权没通过。请到 设置 → 模型 检查 API Key 是否填对、有没有过期。",
+    activeAssistantContent(baseTurn({ status: "error", errorMessage: "API 密钥验证未通过。请到 设置 → 模型 检查密钥是否填对、有没有过期。" })),
+    "API 密钥验证未通过。请到 设置 → 模型 检查密钥是否填对、有没有过期。",
     "AC5 FAIL: 失败应直接展示已人话化的错误说明"
   );
   const overlay = overlayMessages(baseTurn({ status: "stopped", streamedContent: "半句" }));

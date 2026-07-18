@@ -14,6 +14,7 @@ import type { SkillSummary } from "@/app/skills/skills-shared";
 import { SkillCard } from "@/app/skills/skill-card";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
 import { PageSearchBar } from "@/app/shared/page-search-dialog";
+import { FilterChipGroup } from "@/app/shared/filter-chip-group";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
@@ -96,25 +97,12 @@ export function SkillsManager() {
             placeholder="搜索技能"
             label="技能"
           />
-          {/* 筛选 chip 行 */}
-          <div className="flex items-center gap-1 px-4 pt-3 pb-2 shrink-0">
-            {chips.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                onClick={() => setCategory(c.key)}
-                // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                className={cn(
-                  "px-3 py-1 rounded-md text-body transition-colors",
-                  category === c.key
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground hover:bg-accent/60",
-                )}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
+          <FilterChipGroup
+            value={category}
+            options={chips.map(({ key, label }) => ({ value: key, label }))}
+            onValueChange={setCategory}
+            ariaLabel="技能分类"
+          />
 
           {/* 卡片网格 */}
           <div className="flex-1 overflow-auto">

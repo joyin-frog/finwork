@@ -63,12 +63,14 @@ function UsageBar({ label, win, kind }: { label: string; win: UsageWindow; kind:
 }
 
 /** 5h / 周两条额度比例条;进度环浮层与设置「用量」页共用。只显示百分比与重置时刻,不露绝对数与上限。 */
-export function UsageDetail({ usage }: { usage: UsageData }) {
+export function UsageDetail({ usage, separated = false }: { usage: UsageData; separated?: boolean }) {
   if (!usage.fivehour || !usage.week) return null;
   return (
     <div className="flex flex-col gap-3">
       <UsageBar label="5 小时额度" win={usage.fivehour} kind="5h" />
-      <UsageBar label="每周额度" win={usage.week} kind="week" />
+      <div className={separated ? "-mx-4 border-t border-border px-4 pt-3" : undefined}>
+        <UsageBar label="每周额度" win={usage.week} kind="week" />
+      </div>
     </div>
   );
 }

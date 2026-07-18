@@ -30,8 +30,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
 import { ROLE_LABELS, ROLE_UI } from "@/lib/domain/role-ui";
 import { surfaceVariants } from "@/components/ui/surface";
+import { Input } from "@/components/ui/input";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowDown01Icon,
@@ -44,7 +46,6 @@ import {
   ChatAddIcon,
   Settings02Icon,
   Delete02Icon,
-  UserGroupIcon,
   NoteIcon,
 } from "@hugeicons/core-free-icons";
 
@@ -192,17 +193,17 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     const isRunning = r.status === "running";
     const isBlocked = (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending;
     const disabled = !r.available || r.userDisabled;
-    // 状态点走状态语义(非角色色):在忙=主色呼吸、待拍板=notice、空闲=空心。
-    // 状态只用圆点表达，不再跟文字(用户反馈 4)；圆点自带 title/aria-label 承载可读状态。
+    const roleTone = ROLE_UI[r.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral";
+    // 角色头像负责岗位识别；状态点只在进行中/待拍板时出现，避免空闲圆点常驻造成噪声。
     const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;
-    const dotLabel = isRunning ? "在忙" : isBlocked ? "待拍板" : "空闲";
+    const dotLabel = isRunning ? "在忙" : "待拍板";
     return (
       <Link
         key={r.roleId}
         href={`/agents/${r.roleId}`}
         title={r.name}
         className={cn(
-          "group relative flex items-center gap-2 rounded-[var(--radius)] pl-8 pr-2 min-h-[32px] text-small transition-colors",
+          "group relative flex items-center gap-2 rounded-[var(--radius)] pl-3 pr-2 min-h-[32px] text-small transition-colors",
           isActive
             ? "bg-primary/10 text-primary font-medium"
             : disabled
@@ -210,24 +211,21 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               : "text-muted-foreground hover:bg-accent hover:text-foreground"
         )}
       >
-        {dotTone ? (
-          <span
-            className={cn("fa-tone-dot shrink-0", isRunning && "fa-dot-pulse")}
-            style={{ "--tone": dotTone } as CSSProperties}
-            title={dotLabel}
-            aria-label={dotLabel}
-            role="status"
-          />
-        ) : (
-          // 空闲=中性色圆点弱化(走 fa-tone-dot 系统,不用裸 rounded/border 类)
-          <span
-            className="fa-tone-dot shrink-0 opacity-30"
-            style={{ "--tone": "var(--tone-neutral)" } as CSSProperties}
-            title={dotLabel}
-            aria-label={dotLabel}
-            role="status"
-          />
-        )}
+        <span
+          className="fa-toned relative shrink-0 flex size-5 items-center justify-center text-[10px] font-semibold select-none"
+          style={{ "--tone": `var(${roleTone})`, borderRadius: "50%" } as CSSProperties}
+        >
+          <span aria-hidden="true">{r.name.slice(0, 1)}</span>
+          {dotTone && (
+            <span
+              className={cn("fa-tone-dot absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar", isRunning && "fa-dot-pulse")}
+              style={{ "--tone": dotTone } as CSSProperties}
+              title={dotLabel}
+              aria-label={dotLabel}
+              role="status"
+            />
+          )}
+        </span>
         <span className="flex-1 min-w-0 truncate">{r.name}</span>
       </Link>
     );
@@ -276,10 +274,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           />
         )}
         {renamingId === c.id ? (
-          <input
+          <Input
             ref={renameInputRef}
-            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            className="flex-1 mx-2 px-2 py-1 text-body bg-background border border-border rounded-md"
+            className="mx-2 h-7 flex-1 px-2 py-1 text-body"
             value={renameDraft}
             onChange={(e) => setRenameDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -385,42 +382,6 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               <HugeiconsIcon icon={DashboardSquare02Icon} size={16} />
               <span>总览</span>
             </Link>
-            {/* 智能体：父项为展开/收起开关(不导航、无落地页);子列表=角色,直达各自工作台。
-                徽标=待拍板专员数,收起时仍可见(唯一"有事"信号)。 */}
-            <div className="flex flex-col gap-1">
-              <button
-                type="button"
-                onClick={() => setAgentsOpen(!agentsOpen)}
-                aria-expanded={agentsOpen}
-                className={cn(navLinkClass(active === "agents"), "group w-full text-left")}
-              >
-                <HugeiconsIcon icon={UserGroupIcon} size={16} />
-                <span>智能体</span>
-                <span className="ml-auto flex items-center gap-1.5">
-                  {agentPendingCount > 0 && (
-                    <span
-                      className="fa-toned text-meta font-medium px-1.5 tabular-nums"
-                      style={{ "--tone": "var(--tone-notice)", borderRadius: "999px" } as CSSProperties}
-                      title={`${agentPendingCount} 位专员等你拍板`}
-                    >
-                      {agentPendingCount}
-                    </span>
-                  )}
-                  <HugeiconsIcon
-                    icon={ArrowDown01Icon}
-                    size={12}
-                    className={cn("transition-transform motion-reduce:transition-none text-muted-foreground", agentsOpen && "rotate-180")}
-                  />
-                </span>
-              </button>
-              <CollapsibleSectionMotion open={agentsOpen} reduce={reduce}>
-                {agentRoster.length === 0 ? (
-                  <span className="pl-8 pr-2 py-1 text-meta text-muted-foreground">加载中…</span>
-                ) : (
-                  agentRoster.map(renderRoleRow)
-                )}
-              </CollapsibleSectionMotion>
-            </div>
             <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
               {(active === "files" || active === "knowledge") && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={LibraryIcon} size={16} />
@@ -439,6 +400,42 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             onScroll={handleScroll}
             className="sidebar-nav-scroll flex-1 overflow-y-auto px-2 flex flex-col gap-4"
           >
+            {/* 智能体：与置顶/最近同级的会话分组；子列表直达各角色工作台。
+                徽标=待拍板专员数，是唯一的"有事"信号。 */}
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => setAgentsOpen(!agentsOpen)}
+                aria-expanded={agentsOpen}
+                className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <span>智能体</span>
+                <span className="ml-auto flex items-center gap-1.5">
+                  {agentPendingCount > 0 && (
+                    <span
+                      className="fa-toned text-meta font-medium px-1.5 tabular-nums"
+                      style={{ "--tone": "var(--tone-notice)", borderRadius: "999px" } as CSSProperties}
+                      title={`${agentPendingCount} 位专员等你拍板`}
+                    >
+                      {agentPendingCount}
+                    </span>
+                  )}
+                  <HugeiconsIcon
+                    icon={ArrowDown01Icon}
+                    size={12}
+                    className={cn("transition-transform motion-reduce:transition-none", agentsOpen && "rotate-180")}
+                  />
+                </span>
+              </button>
+              <CollapsibleSectionMotion open={agentsOpen} reduce={reduce}>
+                {agentRoster.length === 0 ? (
+                  <span className="pl-8 pr-2 py-1 text-meta text-muted-foreground">加载中…</span>
+                ) : (
+                  agentRoster.map(renderRoleRow)
+                )}
+              </CollapsibleSectionMotion>
+            </div>
+
             {pinnedConversations.length > 0 && (
               <div className="flex flex-col gap-1">
                 <button
@@ -526,16 +523,10 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         onConfirm={handleConfirmDelete}
       />
 
-      {/* 右边缘拖拽条:仅展开时渲染;绝对定位于 aside 右侧整高 */}
+      {/* 右边缘整高拖拽区：透明覆盖已有边界，不额外绘制手柄。 */}
       {!collapsed && (
-        // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-        <div
-          className={cn(
-            "absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize hover:bg-primary/30 transition-colors",
-            dragging && "bg-primary/30"
-          )}
-          role="separator"
-          aria-orientation="vertical"
+        <VerticalResizeDivider
+          className="absolute -right-0.5 top-0 bottom-0"
           aria-label="调整侧栏宽度"
           aria-valuenow={Math.round(navWidth)}
           aria-valuemin={MIN_NAV_WIDTH}

@@ -6,7 +6,7 @@ const eq = assert.equal;
 const ok = assert.ok;
 
 const ROOT = process.cwd();
-const globalsCss = readFileSync(path.join(ROOT, "app/globals.css"), "utf8");
+const colorTokensCss = readFileSync(path.join(ROOT, "app/styles/tokens.css"), "utf8");
 
 // ── AC-CSS-TOKEN: globals.css 5 个新 tone token 双段存在性 (spec §2.3) ──
 // 每个 token 必须在浅色段(:root)和深色段(.dark)各出现一次，共两次
@@ -22,18 +22,18 @@ export const cockpitTokensTestPromise = (async () => {
   for (const token of NEW_TOKENS) {
     // 统计该 token 在文件中出现的总次数（涵盖定义行）
     const re = new RegExp(token.replace(/-/g, "\\-"), "g");
-    const matches = globalsCss.match(re) ?? [];
+    const matches = colorTokensCss.match(re) ?? [];
     assert.ok(
       matches.length >= 2,
-      `AC-CSS-TOKEN "${token}" 必须在 globals.css 出现至少 2 次(浅色段+深色段各一次),实际出现 ${matches.length} 次`
+      `AC-CSS-TOKEN "${token}" 必须在 tokens.css 出现至少 2 次(浅色段+深色段各一次),实际出现 ${matches.length} 次`
     );
   }
 
   // ── AC-CSS-TOKEN-LIGHT: 浅色段(:root)包含各 token 定义 ──
   // 浅色段在 .dark { 之前（取 .dark 出现之前的文本部分）
-  const darkIdx = globalsCss.indexOf(".dark {");
-  ok(darkIdx > 0, "AC-CSS-TOKEN-LIGHT globals.css 必须包含 .dark { 段");
-  const lightSection = globalsCss.slice(0, darkIdx);
+  const darkIdx = colorTokensCss.indexOf(".dark {");
+  ok(darkIdx > 0, "AC-CSS-TOKEN-LIGHT tokens.css 必须包含 .dark { 段");
+  const lightSection = colorTokensCss.slice(0, darkIdx);
 
   for (const token of NEW_TOKENS) {
     ok(
@@ -43,7 +43,7 @@ export const cockpitTokensTestPromise = (async () => {
   }
 
   // ── AC-CSS-TOKEN-DARK: 深色段(.dark)包含各 token 定义 ──
-  const darkSection = globalsCss.slice(darkIdx);
+  const darkSection = colorTokensCss.slice(darkIdx);
 
   for (const token of NEW_TOKENS) {
     ok(

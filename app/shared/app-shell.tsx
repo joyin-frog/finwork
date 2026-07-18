@@ -1,49 +1,17 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast, Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppNav } from "@/app/shared/app-nav";
-import { AppTabBar } from "@/app/shared/app-tab-bar";
 import { GlobalShortcuts } from "@/app/shared/global-shortcuts";
 import { ChatFloat } from "@/app/shared/chat-float";
 import { IsMacProvider } from "@/app/shared/use-is-mac";
 import { useDetectPlatform, WindowTitleBar } from "@/app/shared/window-controls";
 import { FirstRunGate } from "@/app/shared/first-run-gate";
-import { pageTabFromRoute, useNavState } from "@/app/shared/nav-state";
-
-function RouteTabSync() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const { openPageTab, activateAppTab, agentRoster } = useNavState();
-  const search = searchParams.toString();
-  const conversationId = conversationIdFromSearch(pathname, searchParams.get("id"));
-
-  useEffect(() => {
-    const pageTab = pageTabFromRoute(pathname, search);
-    if (pageTab) {
-      // 角色标签：roster 到位后用其权威中文名覆盖 title（未到位时 pageTabFromRoute 已用 ROLE_LABELS 兜底）。
-      if (pageTab.pageKind === "agents" && pageTab.key.startsWith("page:agents:")) {
-        const roleId = pageTab.key.slice("page:agents:".length);
-        const rosterName = agentRoster.find((r) => r.roleId === roleId)?.name;
-        if (rosterName) pageTab.title = rosterName;
-      }
-      openPageTab(pageTab);
-      return;
-    }
-    if (conversationId) activateAppTab(`conversation:${conversationId}`);
-  }, [activateAppTab, agentRoster, conversationId, openPageTab, pathname, search]);
-
-  return null;
-}
-
-function conversationIdFromSearch(pathname: string, rawId: string | null) {
-  if (pathname !== "/chat/recent") return null;
-  const id = Number(rawId);
-  return Number.isFinite(id) && id > 0 ? id : null;
-}
+import { useNavState } from "@/app/shared/nav-state";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -147,14 +115,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <IsMacProvider>
     <TooltipProvider delayDuration={300}>
-      {/* 背板用主内容底色;侧栏做成浮起的圆角卡片(见 app-nav),主区平铺为底层。
-          最外层竖排:Windows 自绘标题栏在最上(非 Windows 渲染 null、不占高),下方一行为侧栏 + 主区。 */}
-      <div className="flex h-screen flex-col overflow-hidden bg-[var(--shell-canvas)]">
+      {/* 默认风格的窗口底层使用页面底色；现代风格由 .app-shell 改为 --sidebar，
+          与侧栏、Windows 标题栏组成连续外壳。主导航只在侧栏与页面头部，不渲染顶部标签栏。 */}
+      <div className="app-shell flex h-screen flex-col overflow-hidden bg-background">
         <WindowTitleBar />
-        <Suspense fallback={null}>
-          <RouteTabSync />
-        </Suspense>
-        <AppTabBar />
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <a
             href="#main-content"

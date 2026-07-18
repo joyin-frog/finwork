@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./styles/tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -110,10 +111,9 @@
 }
 
 :root {
-    /* ════ Surface 语义 token ════ */
+    /* ════ 几何、排版、密度 token；颜色见 app/styles/tokens.css ════ */
     /* chip 圆角（0.25rem = 4px）：承接试点里裸 rounded 8 处，像素不变 */
     --radius-chip: 0.25rem;
-    --shell-canvas: var(--background); /* 窗口背板色;默认风格与页面底同色(不可见),linear 风格下变灰/近黑背板 */
     /* ── 外壳几何 token(单一来源):所有依赖侧栏宽度/红绿灯净空的定位一律引用它们,禁止再写镜像常量 ── */
     --nav-width: 13.5rem;    /* 侧栏展开默认宽度(216px)。首帧兜底；运行期由 app-nav useEffect 用实时 navWidth 覆盖 */
     --tl-inset: 5rem;        /* macOS 红绿灯净空;Windows 平台规则覆写为 0.5rem */
@@ -125,53 +125,10 @@
     --section-gap: 1.5rem;     /* 页面区块间距(原 gap-6) */
     --card-gap: 1rem;          /* 卡片网格间距(原 gap-4) */
 
-    /* ════ 可调设计 token(亮)—— 调试台 /dev/theme 导出对应这一节,导入时整段替换 ════ */
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.21 0 0);
-    --primary: oklch(0.546 0.215 262.9);
-    --primary-foreground: oklch(0.97 0 0);
-    --ring: oklch(0.655 0 0);
-    --card: oklch(1 0 0);
-    --sidebar: oklch(0.96 0 224 / 0.1);
-    --muted: oklch(0.96 0 0.9);
-    --accent: oklch(0.95 0 0.5);
-    --border: oklch(0.95 0 0);
     --radius: 0.7rem;
     --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
     --font-mono: var(--font-jetbrains), "SF Mono", Consolas, monospace;
 
-    /* ════ 派生 / 固定 token —— 语义色 / tone / chart / sidebar 子项 / 纸面层;一般不在调试台调 ════ */
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --secondary: oklch(0.967 0.001 286.375);
-    --secondary-foreground: oklch(0.21 0.006 285.885);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.55 0.16 27);
-    --input: oklch(0.922 0 0);
-    /* Tone system — 状态色(主角,语义固定):红报警/橙警告/黄提醒/绿正常/蓝中性/紫AI。
-       实色做图标/色点/边条;10% wash 做芯片底(暗色 16%)。同状态同色可重复。 */
-    --tone-alarm: oklch(0.55 0.15 27);
-    --tone-warn: oklch(0.60 0.12 48);
-    --tone-notice: oklch(0.66 0.10 85);
-    --tone-ok: oklch(0.55 0.11 150);
-    --tone-neutral: oklch(0.50 0.11 248);
-    /* 搭配色(辅助,低一档饱和):只做模块识别,用在无状态语义的位置。 */
-    --tone-skill: oklch(0.56 0.095 125);
-    --tone-payroll: oklch(0.56 0.10 355);
-    --tone-invoice: oklch(0.57 0.10 330);
-    --tone-unverified: oklch(0.55 0.02 260);
-    --tone-tax: oklch(0.57 0.10 220);
-    --tone-treasury: oklch(0.56 0.10 190);
-    --tone-receivables: oklch(0.56 0.10 290);
-    --tone-analysis: oklch(0.58 0.10 105);
-    /* Chart 系列色:图表按序取 1..5;ChartConfig 的 color 传 var(--chart-n)。基于 tone,自动适配明暗。 */
-    --chart-1: var(--tone-neutral);
-    --chart-2: var(--tone-treasury);
-    --chart-3: var(--tone-notice);
-    --chart-4: var(--tone-receivables);
-    --chart-5: var(--tone-ok);
     /* —— Elevation 高度阶(语义,非尺寸):一处定浓淡,全站协同;light/dark 各一套 —— */
     /* 1 raised 纸面微升(卡片) · 2 overlay 浮层(菜单/下拉/气泡) · 3 modal 模态(弹窗/抽屉/大面板) */
     --elevation-1: 0 1px 3px 0 oklch(0.16 0.018 253 / 4%), 0 1px 2px -1px oklch(0.16 0.018 253 / 6%);
@@ -180,10 +137,6 @@
     /* inset:主内容大卡片浮在侧栏背板上,只向左投影(其余三边贴窗口,投了也看不见) */
     --elevation-inset: -8px 0 24px -10px oklch(0.16 0.018 253 / 12%), -2px 0 6px -3px oklch(0.16 0.018 253 / 8%);
     --card-lift: var(--elevation-1);  /* 卡片沿用 1 档,旧名保留兼容 */
-    --card-ring: oklch(0 0 0 / 5%);   /* 卡片描边色(黑@5%);dev 可调浓度 */
-    /* 全屏遮罩只保留两档语义：常规模态保持上下文，阻塞决策稍加强；均随 foreground 自动适配明暗主题。 */
-    --scrim-modal: color-mix(in oklch, var(--foreground) 8%, transparent);
-    --scrim-blocking: color-mix(in oklch, var(--foreground) 16%, transparent);
     /* Motion token:CSS 侧时长/缓动。JS 侧孪生是 app/shared/motion-presets.ts(EASE_OUT_QUICK 等),调整时两处对照。 */
     --motion-fast: 120ms;   /* 即时反馈:hover 过渡/按压/淡出 */
     --motion-slow: 300ms;   /* 大面积浮现:滚动条淡入淡出/入场 */
@@ -191,48 +144,12 @@
 }
 
 .dark {
-    /* ════ 可调设计 token(暗)—— 调试台「暗」模式导出对应这一节 ════ */
-    --background: oklch(0.25 0 0);
-    --foreground: oklch(0.95 0 0);
-    --primary: oklch(0.62 0.19 262.9);
-    --primary-foreground: oklch(0.915 0 0);
-    --ring: oklch(0.5 0 0);
-    --card: oklch(0.3 0 0 / 0.5);
-    --sidebar: oklch(0.275 0 0.5);
-    --muted: oklch(0.4 0 0);
-    --accent: oklch(0.35 0 0 / 50%);
-    --border: oklch(1 0 0 / 5%);
-
-    /* ════ 派生 / 固定 token(暗)════ */
     /* Elevation 暗色:Tailwind 内置阴影在深底上几乎不可见,故每档单独加深以保住层级感 */
     --elevation-1: 0 1px 3px 0 oklch(0 0 0 / 30%), 0 1px 2px -1px oklch(0 0 0 / 50%);
     --elevation-2: 0 4px 16px -4px oklch(0 0 0 / 55%), 0 2px 6px -3px oklch(0 0 0 / 45%);
     --elevation-3: 0 14px 40px -6px oklch(0 0 0 / 65%), 0 6px 16px -8px oklch(0 0 0 / 55%);
     --elevation-inset: -10px 0 28px -8px oklch(0 0 0 / 55%), -2px 0 6px -3px oklch(0 0 0 / 45%);
     /* --card-lift 经 :root 别名 var(--elevation-1),此处覆盖 elevation-1 即随之变,无需重复 */
-    --card-ring: oklch(0.975 0 0 / 5%);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.274 0.006 286.033);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.68 0.14 25);
-    --input: oklch(1 0 0 / 15%);
-    --tone-alarm: oklch(0.70 0.14 25);
-    --tone-warn: oklch(0.72 0.12 50);
-    --tone-notice: oklch(0.76 0.10 85);
-    --tone-ok: oklch(0.72 0.11 150);
-    --tone-neutral: oklch(0.72 0.10 248);
-    --tone-skill: oklch(0.72 0.095 125);
-    --tone-payroll: oklch(0.72 0.10 355);
-    --tone-invoice: oklch(0.72 0.10 330);
-    --tone-unverified: oklch(0.72 0.02 260);
-    --tone-tax: oklch(0.72 0.10 220);
-    --tone-treasury: oklch(0.72 0.10 190);
-    --tone-receivables: oklch(0.72 0.10 290);
-    --tone-analysis: oklch(0.72 0.10 105);
 }
 
 @layer base {
@@ -703,23 +620,19 @@ html button.composer-send-button.stop {
    ════════════════════════════════════════════════════════════════════
 
    data-style 由 app/layout.tsx 的 <html data-style="default"> 挂载。
-   新增第二套风格时，在下方追加一个覆盖块：
+   新增第二套风格时，在下方追加一个布局覆盖块：
 
      [data-style='x'] {
        --radius: 0rem;           ← 示例：直边风格
-       --card: oklch(0.98 0 0);  ← 示例：另一套卡片色
+       --surface-pad: 0.75rem;    ← 示例：紧凑密度
      }
 
-   ⚠️  暗色必须用组合选择器，特异性 [0,2,0] 才能盖过单独 .dark：
-
-     html.dark[data-style='x'] {
-       --card: oklch(0.20 0 0);  ← 暗色下的覆盖
-     }
+   颜色只允许在 app/styles/tokens.css 的 :root / .dark 中定义。
+   data-style 可以决定结构如何使用语义色，但不得拥有另一套配色。
 
    （注意：本块是一整段 CSS 注释，示例代码内禁止出现「星号+斜杠」的注释结束序列——
    CSS 注释不可嵌套，会提前终结外层注释导致整站样式编译失败。2026-07-06 实测踩坑后修复。）
 
-   否则 .dark 的同名 token 会在应用顺序上盖掉 [data-style='x'] 的值。
    Surface variant 如需随风格切换，可在同一块里追加 variant 映射注释。
 
    默认风格（data-style="default"）：零覆盖，完全继承 :root / .dark。
@@ -727,15 +640,7 @@ html button.composer-send-button.stop {
 
 /* ── Linear 风格（亮）── 布局反转:侧栏平铺、主内容浮起卡 */
 [data-style='linear'] {
-  --shell-canvas: oklch(0.930 0.017 264.5);    /* 浅蓝灰背板(≈rgb 226 232 244):比白卡深一档带冷蓝调,白色标签/浮起卡靠色差浮出 */
-  --sidebar: transparent;                       /* 侧栏融入背板 */
   --radius: 0.625rem;                           /* 派生 md=8px(按钮)/xl=14px,贴近 Linear 8/12 谱 */
-  --border: oklch(0.90 0.004 260);              /* 发丝线略实,浮起卡靠描边而非阴影 */
-  /* hover 色与背板同色相:纯中性灰在蓝灰背板上因对比产生暖感,加极小 chroma 与背板对齐消除错觉 */
-  --accent: oklch(0.950 0.010 264.5);          /* ≈ rgb(235,239,245) — 侧栏行/图标按钮 hover */
-  --muted:  oklch(0.960 0.010 264.5);          /* ≈ rgb(238,242,249) — ghost 按钮 hover */
-  --app-tab-inactive-bg: oklch(0.96 0 0);      /* 标签必须保持中性浅灰，避免在蓝灰背板上产生偏粉错觉 */
-  --app-tab-inactive-border: oklch(0.88 0 0);
   /* 密度收紧(间距与明暗无关,直接挂在 data-style 上) */
   --surface-pad: 0.75rem;
   --surface-pad-sm: 0.5rem;
@@ -748,39 +653,27 @@ html button.composer-send-button.stop {
 [data-style='linear'] [data-slot="card"] {
   --card-spacing: var(--surface-pad);
 }
+[data-style='linear'] .app-shell {
+  background: var(--sidebar);
+}
 [data-style='linear'] .app-side {
-  background: transparent;
   border-color: transparent;
   box-shadow: none;
   border-radius: 0;
   margin: 0;
 }
 [data-style='linear'] .app-main {
-  margin: 0.25rem 0.375rem 0.375rem 0; /* 上4px收更紧(标签条已隔开)/右下6px略收/左0:主卡贴侧栏,拖拽条即分隔线,消掉浮空缝隙(标签对齐由 lead 宽补偿,见下) */
+  margin: 0.25rem 0.375rem 0.375rem 0; /* 上方保留呼吸感，右下略收；左侧贴合侧栏，拖拽区域即分隔线 */
   border-radius: var(--radius-xl);   /* 0.625rem x 1.4 = ~14px,走 token 不写死 */
   border: 1px solid var(--border);
   background: var(--background);
-  box-shadow: var(--elevation-1);    /* 有意不用 --elevation-inset:侧栏已透明,无"左墙"可投;inset 留给默认风格的休眠语义 */
+  box-shadow: var(--elevation-1);    /* 有意不用 --elevation-inset:现代侧栏平铺且无侧栏阴影;inset 留给默认风格的休眠语义 */
 }
 [data-style='linear'] .app-titlebar {
-  background: var(--shell-canvas);   /* Windows 标题栏落背板层;默认风格不受影响 */
+  background: var(--sidebar);   /* Windows 标题栏与现代外壳、侧栏共用同一表面色 */
 }
-/* ── Linear 风格（暗）── 必须组合选择器压过 .dark */
+/* ── Linear 风格（暗）── 只改变深度策略，颜色仍完全继承 .dark */
 html.dark[data-style='linear'] {
-  --shell-canvas: oklch(0.13 0.003 260);        /* 近黑背板(oklch 换算值实施时以肉眼校准为准) */
-  --background: oklch(0.178 0.002 260);         /* 主卡面 */
-  --card: oklch(0.205 0.002 260);               /* 内部卡片抬一档 */
-  --popover: oklch(0.225 0.002 260);
-  --foreground: oklch(0.975 0.001 260);         /* 近白文字 */
-  --muted-foreground: oklch(0.635 0.005 260);   /* 次要文字 */
-  --border: oklch(0.26 0.003 260);              /* hairline */
-  --input: oklch(0.26 0.003 260);
-  --sidebar: transparent;
-  /* 暗色还原:亮色 linear 块覆盖了 --accent/--muted,此处用高特异性 (0,2,0) 压回正确暗色值 */
-  --accent: oklch(0.35 0.003 260 / 50%);        /* 暗色 hover,与 .dark 基值近似,微加冷调 */
-  --muted:  oklch(0.40 0.003 260);              /* 暗色 ghost-btn hover */
-  --app-tab-inactive-bg: oklch(0.22 0 0);
-  --app-tab-inactive-border: oklch(0.31 0 0);
   /* 暗色深度弃投影、靠描边:elevation 大幅减弱 */
   --elevation-1: 0 0 0 1px oklch(1 0 0 / 4%);
   --elevation-2: 0 4px 12px -4px oklch(0 0 0 / 50%);
@@ -794,97 +687,6 @@ html.dark[data-style='linear'] .app-main {
   --tl-inset: 0.5rem;
   --window-controls-inset: 6.75rem;
 }
-/* ── Linear 风格标签条 ──
-   几何契约:标签左缘 = 主卡左缘 = --nav-width(主卡已无左外边距,左缘恰在侧栏右缘)。
-   实现:lead 展开态定宽 calc(--nav-width - 0.5rem),bar 的 gap 0.5rem 恰好补回,
-   故 lead 之后的标签落在 --nav-width = 主卡左缘——对齐随 --nav-width(实时侧栏宽)自动跟随。 */
-[data-style='linear'] .app-tabbar {
-  display: flex;
-  align-items: center;
-  height: 2.5rem;
-  padding-inline-end: var(--window-controls-inset);
-  background: var(--shell-canvas);
-}
-[data-style='linear'] .app-tabbar-lead {
-  justify-content: flex-end;              /* 按钮簇贴标签一侧(Linear 实物:控件簇挨着标签,不挨红绿灯) */
-  padding-left: var(--tl-inset);          /* 红绿灯净空:收起态 lead 自然宽时靠它保住 */
-}
-[data-style='linear'][data-nav-collapsed="false"] .app-tabbar-lead {
-  width: calc(var(--nav-width) - 0.5rem); /* 展开态:lead = 侧栏宽 - gap,+ bar gap 0.5rem 后标签左缘落在 --nav-width = 主卡左缘 */
-}
-[data-style='linear'] .app-tab {
-  flex: 0 1 auto;
-  width: fit-content;
-  min-width: 5rem;
-  max-width: 13rem;
-  border: 1px solid var(--app-tab-inactive-border);
-  background: var(--app-tab-inactive-bg);
-  border-radius: var(--radius-md);
-  color: var(--muted-foreground);
-  transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
-}
-[data-style='linear'] .app-tab-list {
-  scrollbar-width: thin;
-  overscroll-behavior-inline: contain;
-}
-[data-style='linear'] .app-tab:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
-[data-style='linear'] .app-tab.is-active {
-  flex: 0 1 auto;
-  min-width: 5.75rem;
-  max-width: 14rem;
-  border-color: var(--border);
-  background: var(--background);
-  color: var(--foreground);
-}
-[data-style='linear'] .app-tab-label {
-  height: 100%;
-  outline-offset: -2px;
-}
-[data-style='linear'] .app-tab-close {
-  display: grid;
-  place-items: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  margin-right: 0.125rem;
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--motion-fast) ease, color var(--motion-fast) ease, background-color var(--motion-fast) ease;
-}
-[data-style='linear'] .app-tab:hover .app-tab-close,
-[data-style='linear'] .app-tab:focus-within .app-tab-close,
-[data-style='linear'] .app-tab-close:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-[data-style='linear'] .app-tab-close:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
-[data-style='linear'] .app-tab-status {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 999px;
-  background: var(--tone-ok);
-}
-[data-style='linear'] .app-tab-status.is-streaming {
-  background: var(--primary);
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-[data-style='linear'] .app-tab-status.is-error {
-  background: var(--tone-alarm);
-}
-/* 红绿灯与搜索/收起已由标签条承接,原顶条整行隐藏 */
-[data-style='linear'] .app-nav-topbar { display: none; }
-/* 收起侧栏后,展开入口在标签条(NavTopControls),内容页头的展开按钮多余,linear 下隐藏 */
-[data-style='linear'] .app-sidebar-toggle { display: none; }
-/* 上一行连带隐藏了折叠按钮承载的左内距,收起态下页头标题会贴主卡左缘。
-   此行(页头)不含红绿灯——红绿灯在顶部标签条——只需补一档常规左内距,与页面内容左缘对齐。 */
-[data-style='linear'][data-nav-collapsed="true"] .app-page-header { padding-left: var(--page-pad); }
 /* Linear:预览全屏占满主卡内容区,去卡框的缝/圆角/描边/影(默认风格不动) */
 [data-style='linear'] .preview-card-frame.is-maximized,
 [data-style='linear'] .preview-page-shell.is-docked.is-maximized {

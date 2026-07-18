@@ -35,6 +35,12 @@ process.on("unhandledRejection", (err) => {
   const { designComplianceTestPromise } = await import("./design-compliance.test.ts");
   await designComplianceTestPromise;
 
+  const { shadcnNativeControlsTestPromise } = await import("./shadcn-native-controls.test.ts");
+  await shadcnNativeControlsTestPromise;
+
+  const { chatErrorPresentationTestPromise } = await import("./chat-error-presentation.test.ts");
+  await chatErrorPresentationTestPromise;
+
   await import("./feature-flags.test.ts");
   await import("./chat-features.test.ts");
   await import("./code-language.test.ts");
@@ -690,6 +696,18 @@ process.on("unhandledRejection", (err) => {
 
   const { roleConventionsTestPromise } = await import("./role-conventions.test.ts");
   await roleConventionsTestPromise;
+
+  const { styleColorOrthogonalityTestPromise } = await import("./style-color-orthogonality.test.ts");
+  await styleColorOrthogonalityTestPromise;
+
+  const { appTabBarRemovalTestPromise } = await import("./app-tab-bar-removal.test.ts");
+  await appTabBarRemovalTestPromise;
+
+  const { cardActionDockTestPromise } = await import("./card-action-dock.test.ts");
+  await cardActionDockTestPromise;
+
+  const { agentTabSurfaceTestPromise } = await import("./agent-tab-surface.test.ts");
+  await agentTabSurfaceTestPromise;
 
   const { specialistSessionTestPromise } = await import("./specialist-session.test.ts");
   await specialistSessionTestPromise;

@@ -12,8 +12,8 @@ export function UsageSettings() {
   }
 
   return (
-    <div className="flex max-w-md flex-col gap-4">
-      {usage ? <UsageDetail usage={usage} /> : <p className="text-small text-muted-foreground">加载中…</p>}
+    <div className="flex w-full flex-col">
+      {usage ? <UsageDetail usage={usage} separated /> : <p className="text-small text-muted-foreground">加载中…</p>}
     </div>
   );
 }

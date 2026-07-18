@@ -64,6 +64,8 @@ import { type PreviewFileSelection } from "@/app/shared/file-preview-page";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -81,6 +83,7 @@ import {
 import { useUsage } from "./use-usage";
 import { UsageRing } from "./usage-ring";
 import { cn } from "@/lib/utils";
+import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
 import { surfaceVariants } from "@/components/ui/surface";
 
 import { AssistantTurn, type TimelineItem } from "@/app/chat/components/assistant-turn";
@@ -198,14 +201,12 @@ export default function ChatPage({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(0);
-  const [dragging, setDragging] = useState(false);
   const [sidebarMaximized, setSidebarMaximized] = useState(false);
   const [filePanelOpen, setFilePanelOpen] = useState(false);
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [feedbackMap, setFeedbackMap] = useState<Record<number, { rating: "up" | "down"; reason: string | null }>>({});
   // 会话级信任工具列表(供 header chip 展示/撤销)
   const [trustedTools, setTrustedTools] = useState<string[]>([]);
-  const draggingRef = useRef(false);
   const sidebarTouchedRef = useRef(false);
   const startXRef = useRef(0);
   const startSidebarRef = useRef(0);
@@ -282,10 +283,8 @@ export default function ChatPage({
   function handleSidebarDividerDown(e: React.MouseEvent) {
     e.preventDefault();
     sidebarTouchedRef.current = true;
-    draggingRef.current = true;
     startXRef.current = e.clientX;
     startSidebarRef.current = sidebarWidth;
-    setDragging(true);
     setSidebarMaximized(false);
 
     function onMove(ev: MouseEvent) {
@@ -296,8 +295,6 @@ export default function ChatPage({
     }
 
     function onUp() {
-      setDragging(false);
-      draggingRef.current = false;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     }
@@ -1136,7 +1133,7 @@ export default function ChatPage({
                     void sendMessage(draft);
                   }}
                 >
-                  <input
+                  <Input
                     ref={fileInputRef}
                     type="file"
                     multiple
@@ -1158,9 +1155,9 @@ export default function ChatPage({
                     />
                     <div className="composer-highlight-wrap">
                       <ComposerHighlightOverlay text={draft} skills={referencedSkills} ref={composerHighlightRef} />
-                      <textarea
+                      <Textarea
                         ref={textareaRef}
-                        className="composer-textarea w-full resize-none bg-transparent text-body outline-none placeholder:text-muted-foreground py-1 min-h-[24px]"
+                        className="composer-textarea min-h-[24px] w-full resize-none rounded-none border-0 bg-transparent px-0 py-1 text-body shadow-none focus-visible:ring-0 dark:bg-transparent"
                         aria-label="输入消息"
                         onChange={handleDraftChange}
                         onKeyDown={handleKeyDown}
@@ -1260,9 +1257,10 @@ export default function ChatPage({
               </section>
             </div>
           </section>
-          <div
-            className={cn("w-1 shrink-0 cursor-col-resize hover:bg-primary/30 transition-colors", dragging && "bg-primary/30", sidebarMaximized && "hidden")}
+          <VerticalResizeDivider
+            className={cn(sidebarMaximized && "hidden")}
             onMouseDown={handleSidebarDividerDown}
+            aria-label="调整右侧预览宽度"
           />
           <ChatPreviewSidebar collapsed={sidebarCollapsed} width={sidebarWidth} previewSelection={previewSelection} onMaximize={maximizeSidebar} isMaximized={sidebarMaximized} onCollapse={toggleSidebar} />
         </div>

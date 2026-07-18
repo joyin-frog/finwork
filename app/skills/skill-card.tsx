@@ -7,6 +7,7 @@ import { SourceTag } from "@/app/skills/skills-shared";
 import type { SkillSummary } from "@/app/skills/skills-shared";
 import { cn } from "@/lib/utils";
 import { surfaceVariants } from "@/components/ui/surface";
+import { CardActionDock } from "@/app/shared/card-action-dock";
 
 export function SkillCard({ skill }: { skill: SkillSummary }) {
   const router = useRouter();
@@ -15,7 +16,7 @@ export function SkillCard({ skill }: { skill: SkillSummary }) {
       href={`/skills/${encodeURIComponent(skill.name)}`}
       className={cn(
         surfaceVariants({ level: "card", edge: "hairline", shape: "card" }),
-        "group relative flex flex-col gap-2 p-3 transition-colors",
+        "group relative flex h-full flex-col gap-2 p-3 transition-colors",
         "hover:border-primary/40 hover:bg-accent/40",
         !skill.enabled && "opacity-60",
       )}
@@ -25,7 +26,7 @@ export function SkillCard({ skill }: { skill: SkillSummary }) {
         <SourceTag source={skill.source} />
       </div>
       <p className="text-meta text-muted-foreground line-clamp-3">{skill.summary || skill.description}</p>
-      <div className="flex justify-end pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <CardActionDock className="justify-end">
         {/* 停用的用户技能不进 SDK 白名单,禁用「进入对话」入口(避免带一个加载不了的技能进对话) */}
         <button
           type="button"
@@ -38,7 +39,7 @@ export function SkillCard({ skill }: { skill: SkillSummary }) {
         >
           <HugeiconsIcon icon={BubbleChatAddIcon} size={14} />
         </button>
-      </div>
+      </CardActionDock>
     </Link>
   );
 }

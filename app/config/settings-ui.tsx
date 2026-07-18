@@ -63,10 +63,6 @@ export function SettingsField({ label, htmlFor, hint, children }: {
   );
 }
 
-/** 与 Input 视觉一致的原生 select 样式(28px、bg-input/20、无阴影)。 */
-export const settingsSelectClass =
-  "h-8 w-full rounded-md border border-input bg-input/20 px-2.5 text-body transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30";
-
 /** 防抖自动保存的统一状态语言:idle 不渲染,saving/saved/error 用文字表达。 */
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 

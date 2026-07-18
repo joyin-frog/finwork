@@ -10,11 +10,13 @@ export function AboutSettings() {
   return (
     <div className="flex flex-col gap-8">
       <SettingsSection title="版本信息" description="当前应用版本；桌面版可在此检查更新。">
-        <div className="text-body">
-          <span className="font-medium">当前版本：</span>
-          <span className="text-muted-foreground">{formatAppVersion(process.env.NEXT_PUBLIC_APP_VERSION)}</span>
+        <div className="flex flex-col gap-3">
+          <div className="text-body">
+            <span className="font-medium">当前版本：</span>
+            <span className="text-muted-foreground">{formatAppVersion(process.env.NEXT_PUBLIC_APP_VERSION)}</span>
+          </div>
+          <UpdaterBody />
         </div>
-        <UpdaterBody />
       </SettingsSection>
 
       <SettingsSection

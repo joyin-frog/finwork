@@ -13,12 +13,14 @@ import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { ResourceTabs } from "@/app/shared/resource-tabs";
+import { FilterChipGroup } from "@/app/shared/filter-chip-group";
 import { ResourceCard, type ResourceCardMenuItem } from "@/app/shared/resource-card";
 import { PageSearchBar } from "@/app/shared/page-search-dialog";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { inferCategory } from "@/lib/knowledge/category";
 import type { DocMetadata } from "@/lib/knowledge/types";
@@ -112,10 +114,9 @@ function MetadataPanel({
           <div key={key} className="flex flex-col gap-0.5">
             <label htmlFor={`meta-${key}`} className="text-caption text-muted-foreground">{label}</label>
             {editing ? (
-              /* eslint-disable-next-line no-restricted-syntax */
-              <input
+              <Input
                 id={`meta-${key}`}
-                className="h-7 px-2 text-meta border border-input rounded-md bg-background"
+                className="h-7 px-2 text-meta"
                 value={String(form[key] ?? "")}
                 onChange={e => {
                   const v = e.target.value;
@@ -869,38 +870,22 @@ function KnowledgePageContent() {
             </div>
           </header>
 
-          {/* Category chips */}
-          <div className="flex gap-2 px-3.5 py-2 overflow-x-auto [scrollbar-width:none] shrink-0">
-            {chips.map(({ key, label }) => (
-              // eslint-disable-next-line no-restricted-syntax
-              <button
-                key={key}
-                className={cn(
-                  "px-3 py-1 rounded-full border text-meta font-medium whitespace-nowrap cursor-pointer transition-colors",
-                  !showArchived && filterCat === key
-                    ? "bg-foreground text-background border-transparent"
-                    : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                )}
-                onClick={() => { setShowArchived(false); setFilterCat(key); }}
-              >
-                {label} {catCounts[key] ?? 0}
-              </button>
-            ))}
-            {archivedCount > 0 && (
-              // eslint-disable-next-line no-restricted-syntax
-              <button
-                className={cn(
-                  "px-3 py-1 rounded-full border text-meta font-medium whitespace-nowrap cursor-pointer transition-colors",
-                  showArchived
-                    ? "bg-foreground text-background border-transparent"
-                    : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                )}
-                onClick={() => setShowArchived(true)}
-              >
-                已归档 {archivedCount}
-              </button>
-            )}
-          </div>
+          <FilterChipGroup
+            value={showArchived ? "__archived" : filterCat}
+            options={[
+              ...chips.map(({ key, label }) => ({ value: key, label, count: catCounts[key] ?? 0 })),
+              ...(archivedCount > 0 ? [{ value: "__archived", label: "已归档", count: archivedCount }] : []),
+            ]}
+            onValueChange={(value) => {
+              if (value === "__archived") {
+                setShowArchived(true);
+                return;
+              }
+              setShowArchived(false);
+              setFilterCat(value);
+            }}
+            ariaLabel="知识库分类"
+          />
 
           <PageSearchBar
             open={searchOpen}
@@ -936,7 +921,7 @@ function KnowledgePageContent() {
               ) : null}
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-3.5">
                 {/* 上传卡:常驻网格首位,点击直接弹系统文件选择器 */}
-                <input
+                <Input
                   ref={fileInputRef}
                   type="file"
                   accept={KB_SUPPORTED_EXTS.join(",")}
