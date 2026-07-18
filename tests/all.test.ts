@@ -703,6 +703,12 @@ process.on("unhandledRejection", (err) => {
   const { appTabBarRemovalTestPromise } = await import("./app-tab-bar-removal.test.ts");
   await appTabBarRemovalTestPromise;
 
+  const { windowChromeLayoutTestPromise } = await import("./window-chrome-layout.test.ts");
+  await windowChromeLayoutTestPromise;
+
+  const { windowControlsTestPromise } = await import("./window-controls.test.ts");
+  await windowControlsTestPromise;
+
   const { cardActionDockTestPromise } = await import("./card-action-dock.test.ts");
   await cardActionDockTestPromise;
 
