@@ -16,6 +16,7 @@ import {
 } from "./kingdee-card-data";
 import { ReceiptCard, parseCalcReceiptStructured } from "./receipt-card";
 import { ChecklistCard, parseChecklistStructured } from "./checklist-card";
+import { TransferProposalCard, parseTransferProposalStructured } from "./transfer-proposal-card";
 
 /**
  * kind 字段判别注册表（TOOLS_WITH_RESULT_CARD 的权威来源见下方，由 TOOL_CARD_REGISTRY 派生）。
@@ -30,6 +31,11 @@ const KIND_CARD_REGISTRY: Record<string, (structured: unknown) => ReactNode> = {
     // kind 判别优先：structured 已声明自己是 CalcReceipt，直接解析渲染。
     const receipt = parseCalcReceiptStructured(structured);
     return receipt ? <ReceiptCard receipt={receipt} /> : null;
+  },
+  transfer_proposal: (structured) => {
+    // D2·刀8: 转交卡——由 propose_transfer 工具返回，用户点按钮才真正发起转交。
+    const data = parseTransferProposalStructured(structured);
+    return data ? <TransferProposalCard data={data} /> : null;
   },
 };
 

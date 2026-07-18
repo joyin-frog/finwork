@@ -950,6 +950,23 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 20,
+    name: "transfer_queue_instructions",
+    up: (db) => {
+      // 智能体 IA · D 刀（越权转交排队）：subagent_dispatches 加 instructions 列，
+      // 存储转交卡携带的完整任务指令，供「现在开始」端点构建 SubagentTask 使用。
+      // status='queued' 是本刀引入的新状态值；SQLite 无枚举约束，无需 DDL 变更，
+      // 已有 status TEXT NOT NULL DEFAULT 'running' 列足以存储新值。
+      // 表存在性守卫与 v15 同模式：测试可能绕过 v4 DDL，此时静默跳过。
+      const tableExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='subagent_dispatches'"
+      ).get();
+      if (tableExists) {
+        addColumnIfMissing(db, "subagent_dispatches", "instructions", "TEXT");
+      }
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

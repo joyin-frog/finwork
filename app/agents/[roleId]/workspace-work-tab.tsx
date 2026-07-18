@@ -24,6 +24,7 @@ import {
   ArrowRight01Icon,
   BubbleChatIcon,
   CheckmarkCircle02Icon,
+  Delete02Icon,
   FileSearchIcon,
   PanelRightIcon,
   ArrowExpand01Icon,
@@ -41,18 +42,24 @@ import type { DispatchRow } from "@/lib/db/dispatch-store";
 /** page.tsx 持有的 usePreviewResize 状态子集——本 hook 只消费展开/收起/放大，不管宽度与拖拽。 */
 type WorkTabResize = Pick<ReturnType<typeof usePreviewResize>, "collapsed" | "maximized" | "open" | "toggle" | "maximize">;
 
-type TaskGroupKey = "pending" | "running" | "failed" | "done";
+type TaskGroupKey = "pending" | "running" | "queued" | "failed" | "done";
+// 设计稿 B2：疑点永远在前——「等你拍板」→「进行中」→「排队中」→「失败」→「已交付」
 const TASK_GROUPS: { key: TaskGroupKey; label: string }[] = [
   { key: "pending", label: "等你拍板" },
   { key: "running", label: "进行中" },
+  { key: "queued", label: "排队中" },
   { key: "failed", label: "失败" },
   { key: "done", label: "已交付" },
 ];
 
+function isQueued(row: DispatchRow) {
+  return row.status === "queued";
+}
 function isPending(row: DispatchRow) {
-  return (row.blockedReason != null && row.blockedReason !== "") || row.reviewStatus === "pending";
+  return !isQueued(row) && ((row.blockedReason != null && row.blockedReason !== "") || row.reviewStatus === "pending");
 }
 function groupOf(row: DispatchRow): TaskGroupKey {
+  if (isQueued(row)) return "queued";
   if (isPending(row)) return "pending";
   if (row.status === "running") return "running";
   if (row.status === "failed") return "failed";
@@ -212,6 +219,7 @@ export function useWorkspaceWorkTab(
       maximized={maximized}
       onMaximize={maximize}
       onCollapse={toggle}
+      onRefresh={fetchDispatches}
     />
   ) : null;
 
@@ -219,11 +227,12 @@ export function useWorkspaceWorkTab(
 }
 
 function TaskRow({ row, selected, onSelect }: { row: DispatchRow; selected: boolean; onSelect: () => void }) {
+  const queued = isQueued(row);
   const pending = isPending(row);
   const running = row.status === "running" && !pending;
   const failed = row.status === "failed" && !pending;
-  const tone = pending ? "var(--tone-notice)" : running ? "var(--tone-analysis)" : failed ? "var(--tone-alarm)" : "var(--tone-ok)";
-  const tag = pending ? "等你拍板" : running ? "进行中" : failed ? "失败" : "已交付";
+  const tone = queued ? "var(--muted-foreground)" : pending ? "var(--tone-notice)" : running ? "var(--tone-analysis)" : failed ? "var(--tone-alarm)" : "var(--tone-ok)";
+  const tag = queued ? "排队中" : pending ? "等你拍板" : running ? "进行中" : failed ? "失败" : "已交付";
   return (
     <button type="button" onClick={onSelect} className="text-left w-full">
       <Surface
@@ -251,19 +260,59 @@ function TaskPreview({
   maximized,
   onMaximize,
   onCollapse,
+  onRefresh,
 }: {
   row: DispatchRow;
   maximized: boolean;
   onMaximize: () => void;
   onCollapse: () => void;
+  onRefresh?: () => void;
 }) {
   const [filePreview, setFilePreview] = useState<LocalPreviewFile | null>(null);
   const [locking, setLocking] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [startingOrRemoving, setStartingOrRemoving] = useState(false);
 
+  const queued = isQueued(row);
   const pending = isPending(row);
   const running = row.status === "running" && !pending;
   const failed = row.status === "failed" && !pending;
+
+  const handleStart = useCallback(async () => {
+    setStartingOrRemoving(true);
+    try {
+      const res = await fetch(`/api/agents/dispatches/${row.id}/start`, { method: "POST" });
+      if (res.ok) {
+        toast.success("任务已启动，后台执行中");
+        onRefresh?.();
+      } else {
+        const json = await res.json().catch(() => ({})) as { error?: string };
+        toast.error(json.error ?? "启动失败");
+      }
+    } catch {
+      toast.error("启动失败，请检查网络");
+    } finally {
+      setStartingOrRemoving(false);
+    }
+  }, [row.id, onRefresh]);
+
+  const handleRemove = useCallback(async () => {
+    setStartingOrRemoving(true);
+    try {
+      const res = await fetch(`/api/agents/dispatches/${row.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("已移除排队任务");
+        onRefresh?.();
+      } else {
+        const json = await res.json().catch(() => ({})) as { error?: string };
+        toast.error(json.error ?? "移除失败");
+      }
+    } catch {
+      toast.error("移除失败，请检查网络");
+    } finally {
+      setStartingOrRemoving(false);
+    }
+  }, [row.id, onRefresh]);
   const files = fileList(row);
   const convHref = row.conversationId ? `/chat/recent?id=${row.conversationId}` : undefined;
 
@@ -309,6 +358,32 @@ function TaskPreview({
               来源会话：
               <Link href={convHref} className="text-primary hover:underline">{title}</Link>
             </div>
+          )}
+
+          {/* 排队中：任务摘要 + 来源会话 + 现在开始 / 移除 */}
+          {queued && (
+            <section
+              className="fa-toned rounded-[var(--radius)] px-3 py-2.5 flex flex-col gap-2"
+              style={{ "--tone": "var(--tone-analysis,var(--muted-foreground))", borderLeft: "2px solid var(--tone-analysis,var(--muted-foreground))" } as CSSProperties}
+            >
+              <p className="text-meta font-semibold" style={{ color: "var(--tone-analysis,var(--muted-foreground))" }}>等待启动</p>
+              <p className="text-body">{row.label ?? row.summary ?? "该任务已排入队列，等待手动启动。"}</p>
+              {convHref && (
+                <p className="text-meta text-muted-foreground">
+                  来自对话：<Link href={convHref} className="text-primary hover:underline">{title}</Link>
+                </p>
+              )}
+              <div className="flex items-center gap-1 pt-1">
+                <Button size="sm" onClick={handleStart} disabled={startingOrRemoving}>
+                  <HugeiconsIcon icon={ArrowRight01Icon} size={13} className="mr-1" />
+                  {startingOrRemoving ? "操作中…" : "现在开始"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleRemove} disabled={startingOrRemoving}>
+                  <HugeiconsIcon icon={Delete02Icon} size={13} className="mr-1" />
+                  移除
+                </Button>
+              </div>
+            </section>
           )}
 
           {/* 待拍板：疑点/停在确认门 + 去处理 + 确认 */}
