@@ -54,7 +54,8 @@ graphify-out/.graphify_labels.json.sig
 graphify-out/graph-app-lib.json
 graphify-out/GRAPH_REPORT-app-lib.md
 graphify-out/.labels-app-lib.json
-graphify-out/2026-07-16/
+# Graphify 重复运行产生的日期快照；根目录正式图谱仍提交
+graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
 # 子目录抽取/合并用的中间 graphify-out（只保留仓库根 graphify-out/）
 */graphify-out/
 .codex/
