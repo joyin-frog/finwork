@@ -117,9 +117,6 @@ function DispatchCard({ card }: { card: TaskBoardCard }) {
         {timeLabel && (
           <span className="text-meta text-muted-foreground shrink-0">{timeLabel}</span>
         )}
-        {card.state === "locked" && (
-          <span className="shrink-0" aria-label="已拍板">🔒</span>
-        )}
       </div>
 
       {/* 主体：objectLabel + summary */}

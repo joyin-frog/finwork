@@ -161,6 +161,10 @@ export function createRoleScopeHook(roleId: string): Hook {
       if (ctx.toolName === "mcp__finance_worker__spawn_subagent") {
         return { action: "deny", reason: `专员会话不能派发其他角色。请直接完成职责内的部分；跨域需求请向用户说明，由用户转到对应专员会话或回主管会话处理。` };
       }
+      // 专员会话越权转交（D2×E4）：放行 propose_transfer（不限目标角色——越权即可转任何域）。
+      if (ctx.toolName === "mcp__finance_worker__propose_transfer") {
+        return { action: "allow" };
+      }
       // 专员会话可沉淀本角色口径（C2×E6）：放行 remember_role_convention，但锁定只能写本角色记忆
       // （roleId 是模型填的参数，不锁则专员能越权写他角记忆，破坏 C1 隔离边界）。
       if (ctx.toolName === "mcp__finance_worker__remember_role_convention") {
@@ -249,6 +253,26 @@ function getConventionFields(input: unknown): { text: string; replaces: string }
   const o = (input && typeof input === "object" ? input : {}) as { text?: unknown; replaces?: unknown };
   const s = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   return { text: s(o.text), replaces: s(o.replaces) };
+}
+
+/**
+ * 子代理边界守卫（M2·刀8）：runSubagent 路径（非专员直聊）禁止调用 propose_transfer。
+ * 子代理在后台自主执行，没有前端渲染转交卡的上下文；调用后只能在结果文本里说明越权原因。
+ * 参照 createRoleScopeHook 中对 spawn_subagent 的处理方式。
+ */
+export function createSubagentBoundaryHook(): Hook {
+  return {
+    name: "subagent-boundary",
+    async before(ctx): Promise<BeforeToolResult> {
+      if (ctx.toolName === "mcp__finance_worker__propose_transfer") {
+        return {
+          action: "deny",
+          reason: "子代理不能发起转交。请在结果文本中说明 out_of_scope 并返回已完成的部分，由主对话或用户决定是否转交。",
+        };
+      }
+      return { action: "allow" };
+    },
+  };
 }
 
 export function createTimingHook(

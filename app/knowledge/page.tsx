@@ -112,7 +112,7 @@ function MetadataPanel({
           { label: "业务状态", key: "status" as keyof DocMetadata },
         ].map(({ label, key }) => (
           <div key={key} className="flex flex-col gap-0.5">
-            <label htmlFor={`meta-${key}`} className="text-caption text-muted-foreground uppercase tracking-wide">{label}</label>
+            <label htmlFor={`meta-${key}`} className="text-caption text-muted-foreground">{label}</label>
             {editing ? (
               <Input
                 id={`meta-${key}`}
@@ -136,7 +136,7 @@ function MetadataPanel({
         ))}
         {(display.keyDates ?? []).length > 0 && (
           <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">关键日期</span>
+            <span className="text-caption text-muted-foreground font-medium">关键日期</span>
             <div className="space-y-1">
               {(display.keyDates ?? []).map((kd, i) => (
                 <div key={i} className="flex gap-2 text-foreground">
@@ -149,7 +149,7 @@ function MetadataPanel({
         )}
         {display.fields && Object.keys(display.fields).length > 0 && (
           <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">附加字段</span>
+            <span className="text-caption text-muted-foreground font-medium">附加字段</span>
             <div className="space-y-1">
               {Object.entries(display.fields).map(([k, v]) => (
                 <div key={k} className="flex gap-2">

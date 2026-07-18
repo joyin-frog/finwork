@@ -20,6 +20,7 @@ import { createEmitChecklistTool } from "./emit-checklist";
 import { createRunFilingPrecheckBatchTool } from "./filing-precheck-batch";
 import { createRunBankReconBatchTool } from "./bank-recon-batch";
 import { createUndoLastWriteTool } from "./undo-write";
+import { createProposeTransferTool } from "./propose-transfer";
 import type { SdkLike } from "./sdk-types";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 
@@ -59,6 +60,8 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createRunBankReconBatchTool(sdk, outputDir, traceId, conversationId, onSubagentEvent),
       // WP15: 撤销最近 agent 写操作（high 风险，confirm gate 拦截）
       createUndoLastWriteTool(sdk),
+      // D2·刀8: 越权转交卡（safe，ALLOWED_TOOLS 静默放行）
+      createProposeTransferTool(sdk, conversationId),
     ],
   });
 }

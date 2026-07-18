@@ -38,6 +38,8 @@ import { useWorkspaceWorkTab } from "./workspace-work-tab";
 
 type SkillEntry = { name: string; description: string };
 
+type RoleBoundaryEntry = { cannot: string; transferTo: string };
+
 type RoleDetail = {
   roleId: string;
   name: string;
@@ -51,6 +53,7 @@ type RoleDetail = {
   blockedReason: string | null;
   conversationId: string | null;
   reviewPending: boolean;
+  boundaries: RoleBoundaryEntry[];
 };
 
 type WorkTab = "work" | "memory" | "conversations" | "profile";
@@ -295,6 +298,31 @@ function ProfileTabView({ role, onToggled }: { role: RoleDetail; onToggled: () =
                   {skill.name}
                 </Surface>
               ))}
+            </div>
+          </section>
+        )}
+        {role.boundaries && role.boundaries.length > 0 && (
+          <section>
+            <p className="text-meta font-semibold text-muted-foreground mb-1.5">边界</p>
+            <div className="flex flex-col gap-1.5">
+              {role.boundaries.map((boundary) => {
+                const targetName = ROLE_LABELS[boundary.transferTo] ?? boundary.transferTo;
+                return (
+                  <div key={boundary.cannot} className="flex items-start gap-2 text-body">
+                    <span
+                      className="shrink-0 text-meta font-semibold mt-0.5"
+                      style={{ color: "var(--tone-alarm)" }}
+                      aria-hidden="true"
+                    >
+                      ✗
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      {boundary.cannot}
+                      <span className="text-meta text-muted-foreground ml-1.5">→ 转交{targetName}</span>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}

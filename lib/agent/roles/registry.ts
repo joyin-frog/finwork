@@ -1,5 +1,11 @@
 import { TOOL_REGISTRY, ALLOWED_TOOLS } from "@/lib/agent/tools/registry";
 
+/** 角色越权边界条目：说明不可做事项及应转交的目标角色 id。供概况页展示与运行时提示复用。 */
+export type RoleBoundary = {
+  cannot: string;     // 不可做的事，财务语言描述
+  transferTo: string; // 应转交的目标角色 id（须为有效 roleId）
+};
+
 export type RoleDefinition = {
   id: string;                 // 稳定 id，进 dispatches 表与 spawn 枚举
   name: string;               // 中文名，UI 展示
@@ -11,6 +17,7 @@ export type RoleDefinition = {
   dataScope: string[];        // 数据域说明（文档性质；执行靠 tools + pathSafety）
   deliverables: string[];     // 输出契约类型，主 Agent 按此汇总
   rolePrompt: string;         // B 段角色定位（见 §3）
+  boundaries: RoleBoundary[]; // 越权边界映射（D1·刀8）；transferTo 必须是有效 roleId
 };
 
 // 所有角色共享的底座工具（现状内置文件/检索工具照旧放行，不在此列）
@@ -37,6 +44,12 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     ],
     dataScope: ["documents", "fact_invoices", "金蝶科目表", "报销制度文件"],
     deliverables: ["voucher_draft", "risk_list", "ledger_entries"],
+    boundaries: [
+      { cannot: "薪资及个税相关凭证编制（须以已确认的汇总数为源）", transferTo: "payroll-officer" },
+      { cannot: "纳税申报合规性判断与申报前复核", transferTo: "tax-officer" },
+      { cannot: "银行流水与账面核对、资金日报", transferTo: "treasury-officer" },
+      { cannot: "应收应付账龄分析与催款清单", transferTo: "receivables-officer" },
+    ],
     rolePrompt: `你是记账专员，负责核算与报告域：报销单据合规核查与发票台账登记、
 原始单据到金蝶凭证草稿、合同要点结构化、月末结账前检查。
 边界（违反即任务失败）：
@@ -60,6 +73,12 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     ],
     dataScope: ["fact_payroll（全产品唯一有工资明细权限的角色）", "税率配置"],
     deliverables: ["payroll_draft", "calc_receipt", "diff_list", "payslip_sheet"],
+    boundaries: [
+      { cannot: "代扣代缴之外的纳税申报（如增值税、企业所得税申报）", transferTo: "tax-officer" },
+      { cannot: "报销单据合规性核查与凭证编制", transferTo: "bookkeeper" },
+      { cannot: "应收应付台账与往来对账", transferTo: "receivables-officer" },
+      { cannot: "银行流水核对与资金到期管理", transferTo: "treasury-officer" },
+    ],
     rolePrompt: `你是薪税专员，负责薪酬核算域：按累计预扣预缴法算工资个税、
 五险一金核对、社保基数与专项附加扣除的口径检查。
 边界（违反即任务失败）：
@@ -82,6 +101,12 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     tools: ["tax_calculator", "query_payroll_status", "query_invoice_ledger"],
     dataScope: ["fact_invoices（读）", "company_profile（读）", "薪资状态汇总（非明细）", "知识库政策文件"],
     deliverables: ["risk_list", "checklist"],
+    boundaries: [
+      { cannot: "薪资个税以外的工资核算与社保基数核对", transferTo: "payroll-officer" },
+      { cannot: "报销发票合规核查与凭证编制", transferTo: "bookkeeper" },
+      { cannot: "应收应付账龄分析", transferTo: "receivables-officer" },
+      { cannot: "银行流水核对与资金日报", transferTo: "treasury-officer" },
+    ],
     rolePrompt: `你是税务专员，负责税务管理域：申报日历与截止提醒、申报前复核、
 税收优惠线索发现、研发加计扣除形式核查。
 边界（违反即任务失败）：
@@ -101,6 +126,11 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     tools: ["reconcile_bank_statement"],
     dataScope: ["银行流水文件（用户上传）", "documents 合同收付义务（读）"],
     deliverables: ["recon_report", "risk_list"],
+    boundaries: [
+      { cannot: "应收应付台账与账龄分析", transferTo: "receivables-officer" },
+      { cannot: "凭证编制与发票台账登记", transferTo: "bookkeeper" },
+      { cannot: "薪资核算与个税计算", transferTo: "payroll-officer" },
+    ],
     rolePrompt: `你是资金专员，负责资金管理域：银行流水与账面核对、余额与收付汇总、
 合同收付义务的到期提醒。
 边界（违反即任务失败）：
@@ -126,6 +156,11 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     ],
     dataScope: ["fact_obligations（读，kind=receive）", "fact_invoices（sales，direction=out）", "documents 合同收付义务（读）"],
     deliverables: ["aging_report", "dunning_list"],
+    boundaries: [
+      { cannot: "凭证编制与发票合规核查", transferTo: "bookkeeper" },
+      { cannot: "薪资核算与个税代扣", transferTo: "payroll-officer" },
+      { cannot: "纳税申报与税收优惠核查", transferTo: "tax-officer" },
+    ],
     rolePrompt: `你是往来专员，负责往来管理域：应收应付台账、账龄分析、
 催款清单、与客户/供应商的对账单核对。
 边界（违反即任务失败）：
@@ -147,6 +182,11 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     tools: ["generate_business_analysis"],
     dataScope: ["fact_metrics（只读）", "用户上传的报表/费用/工资汇总文件"],
     deliverables: ["analysis_report", "metric_table"],
+    boundaries: [
+      { cannot: "薪酬明细核算与个税计算", transferTo: "payroll-officer" },
+      { cannot: "凭证编制与发票核查", transferTo: "bookkeeper" },
+      { cannot: "纳税申报与税务复核", transferTo: "tax-officer" },
+    ],
     rolePrompt: `你是经营分析师，负责管理会计域：经营数据分析、费用拆解、
 财务比率、环比同比与趋势解读。
 边界（违反即任务失败）：

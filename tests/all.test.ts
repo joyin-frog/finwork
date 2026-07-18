@@ -712,6 +712,9 @@ process.on("unhandledRejection", (err) => {
   const { specialistSessionTestPromise } = await import("./specialist-session.test.ts");
   await specialistSessionTestPromise;
 
+  const { transferQueueTestPromise } = await import("./transfer-queue.test.ts");
+  await transferQueueTestPromise;
+
 })().catch((err) => {
   console.error("[all.test] 测试链失败:", err);
   process.exitCode = 1;

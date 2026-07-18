@@ -473,7 +473,7 @@ html button.composer-send-button.stop {
 .fa-pulse.done { background: var(--muted-foreground); opacity: 0.6; }
 .fa-pulse.done::after { animation: none; opacity: 0; }
 
-/* 紧急待办红点扩散脉冲 */
+/* 进行中/紧急状态点：扁平圆点，仅透明度呼吸（无光晕扩散） */
 .fa-dot-pulse { animation: fa-dot-pulse 2s ease-in-out infinite; }
 
 /* 过程区子步骤时间线:节点(行首图标/圆点 .fa-node)串在竖线上,线挂在节点上,
@@ -497,7 +497,7 @@ html button.composer-send-button.stop {
 .fa-thread > *:last-child > button > .fa-node::after { content: none; }
 
 @keyframes fa-think-breathe { 0%, 100% { transform: scale(0.6); opacity: 0; } 50% { transform: scale(1); opacity: 0.22; } }
-@keyframes fa-dot-pulse { 0%, 100% { box-shadow: 0 0 0 0 oklch(from var(--tone-alarm) l c h / 35%); } 55% { box-shadow: 0 0 0 5px oklch(from var(--tone-alarm) l c h / 0%); } }
+@keyframes fa-dot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* 走光「shimmer」:项目自维护,替代 shadcn 4.13 的 shimmer utility——只为两个 CSS 类升级
    整包会引入跨平台 lockfile 问题(macOS 生成的 lockfile 漏 Linux 的 @emnapi wasm 可选依赖,
