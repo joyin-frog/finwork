@@ -52,7 +52,6 @@ export default function ErrorPage({
           border: "1px solid var(--border, #e5e7eb)",
         }}
       >
-        <div style={{ fontSize: 36, marginBottom: "0.75rem" }}>⚠️</div>
         <h2
           style={{
             fontSize: "1.1rem",

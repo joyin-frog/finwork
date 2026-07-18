@@ -58,7 +58,6 @@ export default function GlobalError({
               border: "1px solid #e5e7eb",
             }}
           >
-            <div style={{ fontSize: 40, marginBottom: "1rem" }}>😔</div>
             <h1
               style={{
                 fontSize: "1.25rem",
