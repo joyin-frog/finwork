@@ -1,6 +1,7 @@
 import { createRunPythonTool } from "./run-python";
 import { createSpawnSubagentTool } from "./subagent";
 import { createRememberConventionTool } from "./conventions";
+import { createRememberRoleConventionTool } from "./role-conventions";
 import { createRecordBusinessMetricsTool } from "./business-metrics";
 import { createBusinessAnalysisTool } from "./business-analysis-tool";
 import { createSearchKnowledgeTool, createQueryKnowledgeTool, createReadFileTool } from "./knowledge";
@@ -37,6 +38,7 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createReadDocumentTool(sdk),
       createScanSlipFolderTool(sdk),
       createRememberConventionTool(sdk),
+      createRememberRoleConventionTool(sdk),
       createRecordBusinessMetricsTool(sdk),
       createBusinessAnalysisTool(sdk),
       ...createPayrollTools(sdk, outputDir),

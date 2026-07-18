@@ -37,6 +37,14 @@ export type SubagentResult = {
   durationMs: number;
 };
 
+// 财务纪律段:派发子代理与专员会话共用(单一来源,防两份漂移)。
+const FINANCE_DISCIPLINE_SECTION = `【财务纪律】
+- 金额、税率、比率一律经工具计算，禁止心算；金额以分或 Decimal 处理。
+- 查不到的数据明确说「没有查到」，禁止用近似值填空。
+- 输出的每个关键数字带三样：来源（文件/表/发票号）、口径或期间、
+  结算状态（草稿/已确认）。
+- 身份证号、银行卡号不写入结果正文；需要引用时用掩码。`;
+
 // A 段共享基座(spec-role-registry §3);技能正文不手注,经 SDK 原生 skills 白名单按需加载。
 const SUBAGENT_BASE_PROMPT = `你是财务工作台的角色子代理，由主 Agent 派发执行单一任务。
 
@@ -49,28 +57,49 @@ const SUBAGENT_BASE_PROMPT = `你是财务工作台的角色子代理，由主 A
 - 部分高风险工具会被系统拒绝，这是设计而非故障：把已完成的准备工作
   与「待人确认的下一步」写进结果返回。
 
-【财务纪律】
-- 金额、税率、比率一律经工具计算，禁止心算；金额以分或 Decimal 处理。
-- 查不到的数据明确说「没有查到」，禁止用近似值填空。
-- 输出的每个关键数字带三样：来源（文件/表/发票号）、口径或期间、
-  结算状态（草稿/已确认）。
-- 身份证号、银行卡号不写入结果正文；需要引用时用掩码。
+${FINANCE_DISCIPLINE_SECTION}
 
 【交付契约】
 - 回复第一段固定为【结果摘要】：关键数字 + 结论 + 异常计数。
 - 异常与疑点按风险从高到低排列，每条给出定位与建议动作。
 - 产出文件用 finalize_deliverable 声明。`;
 
+// 每角色独立记忆（IA · C 刀）：把该角色沉淀的口径/约定拼进系统提示，遵守它们。
+// 注：content 为用户手动输入（单用户单机产品，自输入可信）；若将来演进多租户，
+// 此处需对记忆内容做提示注入防护（分隔/转义）。
+function roleMemorySection(memories: string[]): string {
+  if (memories.length === 0) return "";
+  const lines = memories.map((m) => `- ${m}`).join("\n");
+  return `\n\n【你的记忆（该角色专属口径与约定，执行时遵守）】\n${lines}`;
+}
+
 export function buildSubagentSystemPrompt(role: RoleDefinition, memories: string[] = []): string {
-  let prompt = `${SUBAGENT_BASE_PROMPT}\n\n${role.rolePrompt}`;
-  if (memories.length > 0) {
-    // 每角色独立记忆（IA · C 刀）：把该角色沉淀的口径/约定拼进系统提示，遵守它们。
-    // 注：content 为用户手动输入（单用户单机产品，自输入可信）；若将来演进多租户，
-    // 此处需对记忆内容做提示注入防护（分隔/转义）。
-    const lines = memories.map((m) => `- ${m}`).join("\n");
-    prompt += `\n\n【你的记忆（该角色专属口径与约定，执行时遵守）】\n${lines}`;
-  }
-  return prompt;
+  return `${SUBAGENT_BASE_PROMPT}\n\n${role.rolePrompt}${roleMemorySection(memories)}`;
+}
+
+/**
+ * 专员会话系统提示（E 刀）：与派发共用 B 段 rolePrompt 与记忆段，A 段换成交互式纪律——
+ * 专员可直接向用户提问、走确认卡（补上子代理不能提问的缺口），但不越职责边界、不派发。
+ */
+export function buildSpecialistChatSystemPrompt(role: RoleDefinition, memories: string[] = [], outputDir?: string): string {
+  const base = `你是财务工作台的「${role.name}」专员（${role.domain}），正在与用户直接对话（专员会话）。
+
+【会话纪律】
+- 这是交互式会话：口径拿不准、信息缺失时直接向用户提问（多方案选择用 AskUserQuestion）；
+  高风险动作系统会弹确认卡，用户拍板后才执行，不要自行跳过。
+- 只做本角色职责与数据权限内的事。职责外的请求不硬拒：说明这超出你的职责/数据边界，
+  建议用户转到对应专员的会话或回主管会话（新对话）处理。
+- 本会话没有派发能力：不要尝试调用其他角色或替其他域作答。
+- 用户确认或纠正的、需长期遵守的本角色口径（计算规则/名单例外/流程偏好），
+  静默调用 remember_role_convention 记住（roleId 固定填 "${role.id}"），回复里一句话告知即可；
+  一次性拍板、数值结果不记。
+- 执行域内专业作业时，先用 Skill 工具加载对应技能并遵循其流程。
+
+${FINANCE_DISCIPLINE_SECTION}`;
+  const outputSection = outputDir
+    ? `\n\n【输出目录】\n生成或另存的文件保存到：${outputDir}（run_python 里用 output_dir 变量）。`
+    : "";
+  return `${base}\n\n${role.rolePrompt}${roleMemorySection(memories)}${outputSection}`;
 }
 
 export async function runSubagent(

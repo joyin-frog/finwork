@@ -19,7 +19,6 @@ export const confirmGateFixTestPromise = (async () => {
     "mcp__finance_worker__calculate_payroll_batch",
     "mcp__finance_worker__confirm_payroll_period",
     "mcp__kingdee_worker__export_kingdee_draft",
-    "mcp__finance_worker__remember_convention",
     "mcp__finance_worker__update_company_profile",
   ];
   for (const name of mustExclude) {
@@ -40,6 +39,9 @@ export const confirmGateFixTestPromise = (async () => {
   const mustInclude = [
     "mcp__finance_worker__query_payroll_status",
     "mcp__finance_worker__diff_payroll_period",
+    // 记忆写入按刀6拍板走静默(自动放行,不经确认门):全局约定 + 角色口径
+    "mcp__finance_worker__remember_convention",
+    "mcp__finance_worker__remember_role_convention",
   ];
   for (const name of mustInclude) {
     assert.ok(

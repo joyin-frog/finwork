@@ -9,9 +9,11 @@ export async function submitAgentRequest(params: {
   referencedAttachments: ReferencedFile[];
   referencedSkills?: SkillRef[];
   modelTier?: ModelTier;
+  /** 专员会话（E 刀）：创建新会话时绑定的角色 id；既有会话忽略此参数（服务端以 DB 为准）。 */
+  role?: string;
   signal: AbortSignal;
 }) {
-  const { messages, conversationId, attachments, referencedAttachments, referencedSkills, modelTier, signal } = params;
+  const { messages, conversationId, attachments, referencedAttachments, referencedSkills, modelTier, role, signal } = params;
   const refAgentAttachments = referencedAttachments.map((file) => ({
     name: file.name,
     mimeType: file.mimeType,
@@ -36,13 +38,14 @@ export async function submitAgentRequest(params: {
     }
     if (skillNames.length) formData.append("referencedSkills", JSON.stringify(skillNames));
     if (tier) formData.append("modelTier", tier);
+    if (role) formData.append("role", role);
     return fetch("/api/agent/query", { method: "POST", body: formData, signal });
   }
 
   return fetch("/api/agent/query", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ conversationId, messages, attachments: refAgentAttachments, referencedSkills: skillNames, modelTier: tier }),
+    body: JSON.stringify({ conversationId, messages, attachments: refAgentAttachments, referencedSkills: skillNames, modelTier: tier, role }),
     signal
   });
 }

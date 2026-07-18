@@ -349,6 +349,8 @@ export type StoredChatConversation = {
   claudeSessionUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 专员会话的角色 id（E 刀）；NULL/undefined = 主管会话。 */
+  roleId: string | null;
   messages: StoredChatMessage[];
 };
 
@@ -382,6 +384,7 @@ type ConversationRow = {
   created_at: string;
   updated_at: string;
   pinned: number;
+  role_id: string | null;
 };
 
 type MessageRow = {
@@ -401,10 +404,10 @@ type AgentEventRow = {
   trace_id: string | null;
 };
 
-export function createChatConversation(title: string) {
+export function createChatConversation(title: string, roleId?: string | null) {
   const db = getDb();
-  const statement = db.prepare("INSERT INTO chat_conversations (title) VALUES (?)");
-  const result = statement.run(title);
+  const statement = db.prepare("INSERT INTO chat_conversations (title, role_id) VALUES (?, ?)");
+  const result = statement.run(title, roleId ?? null);
   return Number(result.lastInsertRowid);
 }
 
@@ -458,7 +461,7 @@ export function listRecentChatConversations(limit = 10) {
   const db = getDb();
   const convRows = db
     .prepare(
-      "SELECT id, title, claude_session_id, claude_session_updated_at, created_at, updated_at, pinned FROM chat_conversations ORDER BY updated_at DESC, id DESC LIMIT ?"
+      "SELECT id, title, claude_session_id, claude_session_updated_at, created_at, updated_at, pinned, role_id FROM chat_conversations ORDER BY updated_at DESC, id DESC LIMIT ?"
     )
     .all(limit) as ConversationRow[];
 
@@ -511,16 +514,18 @@ export type ConversationSummary = {
   title: string;
   updatedAt: string;
   pinned: boolean;
+  /** 专员会话的角色 id（E 刀，侧栏角色小头像用）；null = 主管会话。 */
+  roleId: string | null;
 };
 
 export function listRecentConversationSummaries(limit = 5, offset = 0): ConversationSummary[] {
   const db = getDb();
   const rows = db
     .prepare(
-      "SELECT id, title, updated_at, pinned FROM chat_conversations ORDER BY pinned DESC, updated_at DESC, id DESC LIMIT ? OFFSET ?"
+      "SELECT id, title, updated_at, pinned, role_id FROM chat_conversations ORDER BY pinned DESC, updated_at DESC, id DESC LIMIT ? OFFSET ?"
     )
-    .all(limit, offset) as Array<{ id: number; title: string; updated_at: string; pinned: number }>;
-  return rows.map((row) => ({ id: row.id, title: row.title, updatedAt: row.updated_at, pinned: row.pinned === 1 }));
+    .all(limit, offset) as Array<{ id: number; title: string; updated_at: string; pinned: number; role_id: string | null }>;
+  return rows.map((row) => ({ id: row.id, title: row.title, updatedAt: row.updated_at, pinned: row.pinned === 1, roleId: row.role_id ?? null }));
 }
 
 export function updateChatConversationTitle(conversationId: number, title: string) {
@@ -546,7 +551,7 @@ export function deleteChatConversation(conversationId: number) {
 export function getChatConversation(conversationId: number) {
   const db = getDb();
   const row = db
-    .prepare("SELECT id, title, claude_session_id, claude_session_updated_at, created_at, updated_at, pinned FROM chat_conversations WHERE id = ?")
+    .prepare("SELECT id, title, claude_session_id, claude_session_updated_at, created_at, updated_at, pinned, role_id FROM chat_conversations WHERE id = ?")
     .get(conversationId) as ConversationRow | undefined;
   return row ? mapConversationRow(row, listChatMessages(row.id)) : null;
 }
@@ -616,6 +621,7 @@ function mapConversationRow(row: ConversationRow, messages: StoredChatMessage[])
     claudeSessionUpdatedAt: row.claude_session_updated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    roleId: row.role_id ?? null,
     messages
   };
 }
@@ -1391,24 +1397,29 @@ export type RoleConversationItem = {
   updatedAt: string;
   /** 该会话涉及的全部角色（用于「涉及：薪税+税务」多角色标记）。 */
   roleIds: string[];
+  /** true = 与该角色的专员会话（直聊，E 刀）；false/缺省 = 主管会话中派发涉及。 */
+  isDirect?: boolean;
 };
 
 /**
  * 某角色相关的会话（角色工作台「相关对话」页签，spec design-agents-ia B5）。
  *
- * = 有过该 role_id 派发的会话，按更新时间倒序。会话本身归全局（侧栏「最近」），
- * 这里只是按 roleIds 过滤的视图；一条会话可涉及多个角色，故一并带出全部 roleIds。
+ * = 有过该 role_id 派发的主管会话 ∪ 该角色的专员会话（chat_conversations.role_id 精确匹配，E 刀），
+ * 按更新时间倒序。会话本身归全局（侧栏「最近」），这里只是按角色过滤的视图；
+ * 一条会话可涉及多个角色，故一并带出全部 roleIds。
  */
 export function listConversationsForRole(roleId: string, limit = 30): RoleConversationItem[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT DISTINCT c.id AS conversation_id, c.title, c.updated_at
+    SELECT c.id AS conversation_id, c.title, c.updated_at,
+           MAX(CASE WHEN c.role_id = ? THEN 1 ELSE 0 END) AS is_direct
     FROM chat_conversations c
-    JOIN subagent_dispatches d ON CAST(d.conversation_id AS INTEGER) = c.id
-    WHERE d.role_id = ?
+    LEFT JOIN subagent_dispatches d ON CAST(d.conversation_id AS INTEGER) = c.id
+    WHERE d.role_id = ? OR c.role_id = ?
+    GROUP BY c.id
     ORDER BY c.updated_at DESC
     LIMIT ?
-  `).all(roleId, limit) as Array<{ conversation_id: number; title: string; updated_at: string }>;
+  `).all(roleId, roleId, roleId, limit) as Array<{ conversation_id: number; title: string; updated_at: string; is_direct: number }>;
 
   if (rows.length === 0) return [];
 
@@ -1431,7 +1442,9 @@ export function listConversationsForRole(roleId: string, limit = 30): RoleConver
     conversationId: row.conversation_id,
     title: row.title,
     updatedAt: row.updated_at,
-    roleIds: [...(roleIdsByConv.get(row.conversation_id) ?? [])],
+    // 专员会话即使无派发也涉及本角色
+    roleIds: [...new Set([...(row.is_direct ? [roleId] : []), ...(roleIdsByConv.get(row.conversation_id) ?? [])])],
+    ...(row.is_direct ? { isDirect: true } : {}),
   }));
 }
 

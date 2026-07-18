@@ -58,6 +58,8 @@ export type GeneratedAttachment = {
 export type Conversation = {
   id: number;
   title: string;
+  /** 专员会话的角色 id（E 刀）；null/缺省 = 主管会话。 */
+  roleId?: string | null;
   messages: Message[];
 };
 

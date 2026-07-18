@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -14,6 +14,7 @@ import {
 import { useRouter } from "next/navigation";
 import type { StoredChatAttachment } from "@/lib/db/sqlite";
 import { RoleModeProvider, type RoleMode } from "@/app/chat/role-mode";
+import { ROLE_LABELS, ROLE_UI } from "@/lib/domain/role-ui";
 import { AskUserPanel } from "@/app/components/ask-user-panel";
 import { ChatFilePanel } from "@/app/chat/chat-file-panel";
 import { ComposerTip } from "@/app/chat/composer-tips";
@@ -99,6 +100,7 @@ export default function ChatPage({
   initialConversationId = null,
   initialDraft,
   initialSkill,
+  initialRole,
   quickPrompts,
   roleMode = "daily",
 }: {
@@ -106,6 +108,8 @@ export default function ChatPage({
   initialConversationId?: number | null;
   initialDraft?: string;
   initialSkill?: SkillRef;
+  /** 专员会话（E 刀）：非空时本会话与该角色直聊——头部身份标识 + 首条消息携带 role 参数。 */
+  initialRole?: { id: string; name: string };
   quickPrompts?: ChatQuickPrompt[];
   roleMode?: RoleMode;
 }) {
@@ -517,9 +521,12 @@ export default function ChatPage({
     }
   }, [pendingAsk, conversationId]);
 
+  // 专员会话身份：新会话来自 initialRole；打开既有会话时由 loadConversation 按 DB roleId 回填。
+  const [sessionRole, setSessionRole] = useState<{ id: string; name: string } | null>(initialRole ?? null);
+
   const placeholder = useMemo(
-    () => "随心输入",
-    []
+    () => (sessionRole ? `和${sessionRole.name}说…` : "随心输入"),
+    [sessionRole]
   );
 
   async function loadConversation(id: number, isCancelled: () => boolean = () => false) {
@@ -534,6 +541,8 @@ export default function ChatPage({
     const payload = (await response.json()) as { data: { conversation: Conversation } };
     if (isCancelled()) return;
     const conversation = payload.data.conversation;
+    // 专员会话身份回填（DB 权威）：roleId 非空即专员会话，角色名走 client-safe 的 ROLE_LABELS
+    setSessionRole(conversation.roleId ? { id: conversation.roleId, name: ROLE_LABELS[conversation.roleId] ?? conversation.roleId } : null);
     setConversationTitle(conversation.title);
     openConversationTab(conversation.id, conversation.title);
     // 喂回 nav-state(标题单一源):打开会话时用 DB 权威标题校正侧栏,避免旧摘要标题反盖 header。
@@ -904,6 +913,8 @@ export default function ChatPage({
       referencedAttachments: outgoingRefAttachments,
       referencedSkills: outgoingSkills,
       modelTier,
+      // 专员会话（E 刀）：首条消息携带角色,服务端创建会话时落 role_id;既有会话由 DB 行为准
+      role: sessionRole?.id,
       retryPayload: {
         text: value,
         attachments: outgoingAttachments,
@@ -966,7 +977,23 @@ export default function ChatPage({
             <header className="app-page-header relative flex items-center justify-between gap-3 pr-5 h-11 shrink-0">
               <DragHandle />
               <SidebarToggle />
-              <h1 data-tauri-drag-region className="flex-1 min-w-0 text-title truncate">{displayTitle}</h1>
+              {sessionRole && (
+                <span
+                  className="fa-toned shrink-0 flex items-center justify-center w-6 h-6 text-meta font-semibold select-none"
+                  style={{ "--tone": `var(${ROLE_UI[sessionRole.id as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral"})`, borderRadius: "50%" } as CSSProperties}
+                  aria-hidden="true"
+                >
+                  {sessionRole.name.slice(0, 1)}
+                </span>
+              )}
+              <h1 data-tauri-drag-region className="flex-1 min-w-0 text-title truncate">
+                {sessionRole ? `${sessionRole.name} · 专员会话` : displayTitle}
+              </h1>
+              {sessionRole && (
+                <span className="fa-tone-pill text-meta shrink-0 text-muted-foreground" style={{ "--tone": "var(--tone-neutral)" } as CSSProperties}>
+                  工具与数据仅限本角色
+                </span>
+              )}
               {trustedTools.length > 0 && (
                 <div className="flex items-center gap-2 shrink-0 text-meta text-muted-foreground">
                   <span>已信任代码执行</span>

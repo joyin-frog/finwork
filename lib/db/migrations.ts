@@ -935,6 +935,21 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 19,
+    name: "conversation_role_id",
+    up: (db) => {
+      // 智能体 IA · E 刀（专员会话）：会话加角色维度。
+      // NULL = 主管会话（现状全部会话，零改动）；非 NULL = 绕过主管直接与该专员的会话。
+      // addColumnIfMissing 幂等；表存在性守卫应对测试构造的局部库（真实库 baseline 必有此表）。
+      const tableExists = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='chat_conversations'"
+      ).get();
+      if (tableExists) {
+        addColumnIfMissing(db, "chat_conversations", "role_id", "TEXT");
+      }
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

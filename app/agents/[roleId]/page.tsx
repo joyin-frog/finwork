@@ -134,7 +134,17 @@ export default function AgentWorkspacePage() {
                 </span>
               )}
             </div>
-            <div className="ml-auto shrink-0">
+            <div className="ml-auto shrink-0 flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link href={`/chat/new?role=${encodeURIComponent(role.roleId)}`} aria-label="和它对话">
+                    <Button size="icon" variant="ghost">
+                      <HugeiconsIcon icon={BubbleChatIcon} size={16} />
+                    </Button>
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>和它对话（专员会话）</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href={`/chat/new?prompt=${encodeURIComponent(`请${role.name}，`)}`} aria-label="派任务">
@@ -425,13 +435,13 @@ function MemoryTabView({ roleId, roleName }: { roleId: string; roleName: string 
       )}
 
       <p className="text-meta text-muted-foreground">
-        目前需手动记录；从对话里自动沉淀口径为紧接着的能力。
+        对话中你确认或纠正的口径会自动沉淀到这里（对话里会提示「已记住这条口径」），也可手动添加。
       </p>
     </div>
   );
 }
 
-type RoleConversation = { conversationId: number; title: string; updatedAt: string; roleIds: string[] };
+type RoleConversation = { conversationId: number; title: string; updatedAt: string; roleIds: string[]; isDirect?: boolean };
 
 function ConversationsTabView({ roleId }: { roleId: string }) {
   const [rows, setRows] = useState<RoleConversation[] | null>(null);
@@ -470,9 +480,12 @@ function ConversationsTabView({ roleId }: { roleId: string }) {
       <p className="text-meta text-muted-foreground mb-2">按角色过滤的全局会话——它们同时也在侧栏「最近」里，这里不是独立的聊天窗。</p>
       {rows.map((c) => {
         const others = c.roleIds.filter((r) => r !== roleId);
-        const tag = others.length > 0
-          ? `涉及 ${c.roleIds.map((r) => ROLE_LABELS[r] ?? r).join("、")}`
-          : "仅本角色";
+        // 专员会话（E 刀）优先标注；派发涉及的会话按角色面标注
+        const tag = c.isDirect
+          ? "专员会话"
+          : others.length > 0
+            ? `涉及 ${c.roleIds.map((r) => ROLE_LABELS[r] ?? r).join("、")}`
+            : "仅本角色";
         return (
           <Link
             key={c.conversationId}

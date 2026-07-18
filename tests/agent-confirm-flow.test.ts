@@ -51,11 +51,19 @@ export const agentConfirmFlowTestPromise = (async () => {
     const r = await runBeforeHooks(chain, ctxFor(tool, undefined));
     assert.equal(r.behavior, "deny", `AC1b FAIL: 高风险工具 ${tool} 无确认通道应拒绝(即需确认)`);
   }
-  // remember_convention:ALWAYS_CONFIRM,无 resolver → deny
+  // remember_convention / remember_role_convention:刀6拍板改静默写入(medium,不挂确认门),无 resolver 也放行
+  for (const tool of ["mcp__finance_worker__remember_convention", "mcp__finance_worker__remember_role_convention"]) {
+    assert.equal(
+      (await runBeforeHooks(chain, ctxFor(tool, undefined))).behavior,
+      "allow",
+      `AC1b FAIL: ${tool} 应静默放行(记忆写入不再挂确认门)`
+    );
+  }
+  // update_company_profile 是唯一保留的 ALWAYS_CONFIRM 工具:无 resolver 必须 fail-closed
   assert.equal(
-    (await runBeforeHooks(chain, ctxFor("mcp__finance_worker__remember_convention", undefined))).behavior,
+    (await runBeforeHooks(chain, ctxFor("mcp__finance_worker__update_company_profile", undefined))).behavior,
     "deny",
-    "AC1b FAIL: remember_convention 应始终需确认"
+    "AC1b FAIL: update_company_profile 无确认通道应拒绝(ALWAYS_CONFIRM 路径守卫)"
   );
   // run_python 是 high-risk，每次必须确认；子 Agent 无确认通道时 fail-closed。
   const runPython = "mcp__finance_worker__run_python";

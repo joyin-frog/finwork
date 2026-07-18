@@ -884,6 +884,14 @@
         "notnull": 1,
         "dflt_value": "'default-user'",
         "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "role_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
       }
     ],
     "chat_feedback": [

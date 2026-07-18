@@ -13,6 +13,8 @@ type ConversationSummary = {
   title: string;
   updatedAt: string;
   pinned: boolean;
+  /** 专员会话的角色 id（E 刀）；null/缺省 = 主管会话。 */
+  roleId?: string | null;
 };
 
 /** 侧栏「智能体」子列表用的精简角色项（来自 /api/agents 的 roster，只取导航所需字段）。 */

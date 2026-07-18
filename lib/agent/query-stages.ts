@@ -26,6 +26,7 @@ import {
 import { getConversationFilesDir } from "@/lib/runtime/paths";
 import { snapshotGeneratedFiles } from "@/lib/chat/generated-files";
 import { matchTrivialMessage, normalizeTier, resolveModelByTier, runRouter } from "@/lib/agent/router";
+import { getRoleDefinition } from "@/lib/agent/roles/registry";
 import { injectSkillHint } from "@/lib/agent/skill-hint";
 import { getUsageStatus } from "@/lib/usage/store";
 import { buildBlockedNotice } from "@/lib/usage/quota";
@@ -67,6 +68,8 @@ export type ParseOutput = ParseInput & {
   lastUserContent: string;
   useStreaming: boolean;
   requestSignal: AbortSignal | undefined;
+  /** 专员会话（E 刀）：客户端请求的角色 id（已校验存在），仅在创建新会话时生效。 */
+  roleParam: string | undefined;
 };
 
 export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
@@ -77,6 +80,7 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
   let attachments: AgentAttachment[] = [];
   let referencedSkills: string[] = [];
   let modelTier: string | undefined;
+  let roleParam: string | undefined;
 
   try {
     const contentType = request.headers.get("content-type") ?? "";
@@ -87,6 +91,7 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
       attachments = parsed.attachments;
       referencedSkills = parsed.referencedSkills;
       modelTier = parsed.modelTier;
+      roleParam = parsed.roleParam;
     } else {
       const parsed = await parseJsonRequest(request);
       messages = parsed.messages;
@@ -94,6 +99,7 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
       attachments = parsed.attachments;
       referencedSkills = parsed.referencedSkills;
       modelTier = parsed.modelTier;
+      roleParam = parsed.roleParam;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -130,6 +136,7 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
     lastUserContent,
     useStreaming,
     requestSignal: request.signal,
+    roleParam,
   };
 };
 
@@ -145,6 +152,8 @@ export type SessionOutput = SessionInput & {
   outputDir: string | undefined;
   beforeGenerate: Set<string>;
   modelOverride: string | undefined;
+  /** 专员会话（E 刀）：本会话绑定的角色 id（服务端以 DB 行为准）；NULL = 主管会话。 */
+  sessionRoleId: string | null;
 };
 
 export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
@@ -157,9 +166,10 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
     let dedupMessageId: number | undefined;
     if (!conversationId) {
       const shortTitle = generateShortTitle(lastUserContent);
-      conversationId = createChatConversation(shortTitle);
+      // 专员会话（E 刀）：role 参数只在创建新会话时生效；此后角色以 DB 行为准（服务端权威）。
+      conversationId = createChatConversation(shortTitle, (await validRoleId(ctx.roleParam)) ?? null);
       conversation = getChatConversation(conversationId);
-      log.info("conversation created", { traceId, conversationId, title: shortTitle });
+      log.info("conversation created", { traceId, conversationId, title: shortTitle, roleId: conversation?.roleId ?? null });
     } else {
       // 去重：若会话最后一条是同内容的 user 消息，跳过 insert（重试场景防双写）
       const lastMsg = getDb()
@@ -253,6 +263,7 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
     outputDir,
     beforeGenerate,
     modelOverride,
+    sessionRoleId: conversation?.roleId ?? null,
   };
 };
 
@@ -327,6 +338,18 @@ export type RouterOutput = RouterInput & {
 export const routerStage: Stage<RouterInput, RouterOutput> = async (ctx) => {
   const { traceId, lastUserContent, messages, existingClaudeSessionId, conversationId } = ctx;
 
+  // 专员会话（E 刀）：不过路由器——cheap 直答/分层是主管人格的机制，专员回合恒走
+  // 完整 agent（角色系统提示 + 角色工具白名单在 claude-adapter 按 roleId 装配）。
+  if (ctx.sessionRoleId) {
+    const routerResult = {
+      path: "main" as const,
+      decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: `specialist session (${ctx.sessionRoleId})` },
+      latencyMs: 0,
+    };
+    log.info("router skipped (specialist session)", { traceId, roleId: ctx.sessionRoleId });
+    return { ...ctx, routerResult };
+  }
+
   // --- Router ---
   // 路由器关闭时仍先过零成本本地问候直答(matchTrivialMessage),只跳过 LLM 分类调用
   const localTrivial = !isEnabled("ROUTER_ENABLED") && lastUserContent ? matchTrivialMessage(lastUserContent) : null;
@@ -353,6 +376,25 @@ export const routerStage: Stage<RouterInput, RouterOutput> = async (ctx) => {
 
 function shouldUseStreaming(request: Request): boolean {
   return new URL(request.url).searchParams.get("stream") !== "false";
+}
+
+/** 角色 id 校验（E 刀）：未知/未启用/已停用的角色丢弃并告警（回落为主管会话），
+ * 与派发的可派发性口径一致（subagent-runner 的 available + 停用检查）。 */
+async function validRoleId(raw: string | undefined | null): Promise<string | undefined> {
+  if (!raw) return undefined;
+  const role = getRoleDefinition(raw);
+  if (!role || !role.available) {
+    log.warn("忽略未知/未启用角色参数", { role: raw });
+    return undefined;
+  }
+  try {
+    const { getDisabledRoleIds } = await import("@/lib/agent/roles/availability");
+    if (getDisabledRoleIds().includes(raw)) {
+      log.warn("忽略已停用角色参数", { role: raw });
+      return undefined;
+    }
+  } catch { /* 停用表读不到时不拦 */ }
+  return raw;
 }
 
 function generateShortTitle(text: string): string {
@@ -382,13 +424,14 @@ async function parseMultipartRequest(request: Request, traceId: string) {
   const formData = await request.formData();
   const messages: AgentMessage[] = formData.get("messages") ? (JSON.parse(formData.get("messages") as string) as AgentMessage[]) : [];
   let conversationId: number | undefined = (formData.get("conversationId") as string) ? Number(formData.get("conversationId")) : undefined;
+  const roleParam = await validRoleId(formData.get("role") as string | null);
   const uploadedFiles = formData.getAll("files") as File[];
   const attachments: AgentAttachment[] = [];
 
   if (uploadedFiles.length > 0) {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!conversationId && lastUser?.content.trim()) {
-      conversationId = createConv(generateShortTitle(lastUser.content.trim()));
+      conversationId = createConv(generateShortTitle(lastUser.content.trim()), roleParam ?? null);
       log.info("conversation created for files", { traceId, conversationId });
     }
     if (conversationId) {
@@ -409,13 +452,14 @@ async function parseMultipartRequest(request: Request, traceId: string) {
   if (skillsJson) { try { referencedSkills = JSON.parse(skillsJson) as string[]; } catch { /* ok */ } }
   const modelTier = (formData.get("modelTier") as string | null) ?? undefined;
 
-  return { messages, conversationId, attachments, referencedSkills, modelTier };
+  return { messages, conversationId, attachments, referencedSkills, modelTier, roleParam };
 }
 
 async function parseJsonRequest(request: Request) {
   const { createChatConversation: createConv } = await import("@/lib/db/sqlite");
-  const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[]; referencedSkills?: string[]; modelTier?: string };
+  const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[]; referencedSkills?: string[]; modelTier?: string; role?: string };
   let conversationId = body.conversationId;
+  const roleParam = await validRoleId(body.role);
   const rawAttachments = body.attachments ?? [];
 
   // Persist any dataUrl-only attachments to disk so downstream (claude-adapter,
@@ -433,7 +477,7 @@ async function parseJsonRequest(request: Request) {
         if (!conversationId) {
           const lastUser = [...(body.messages ?? [])].reverse().find((m) => m.role === "user");
           const title = lastUser?.content?.trim() ? generateShortTitle(lastUser.content.trim()) : "新对话";
-          conversationId = createConv(title);
+          conversationId = createConv(title, roleParam ?? null);
         }
         const filePath = saveAttachmentBuffer(conversationId, att.name, buffer);
         attachments.push({ ...att, storagePath: filePath, size: buffer.length });
@@ -443,7 +487,7 @@ async function parseJsonRequest(request: Request) {
     attachments.push(att);
   }
 
-  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId, attachments, referencedSkills: body.referencedSkills ?? [], modelTier: body.modelTier };
+  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId, attachments, referencedSkills: body.referencedSkills ?? [], modelTier: body.modelTier, roleParam };
 }
 
 function guessMimeType(fileName: string): string {
