@@ -17,7 +17,7 @@
 > | 5 | 独立记忆 C（第一版，不含自动沉淀） | ✅ ship（经 reviewer，修掉 1 BLOCKER） |
 > | 6 | C 自动沉淀 | ✅ ship（2026-07-17，机制与粒度经用户拍板，见刀6节） |
 > | 7 | E 专员会话（和它对话） | ✅ ship（2026-07-17，v19 迁移 + 运行时装配 + UI 标识，见刀7节） |
-> | 8 | D 越权转交排队 | ⬜ 待办 |
+> | 8 | D 越权转交排队 | ✅ ship（2026-07-18，v20 迁移 + propose_transfer + 排队态 + 结果回流；经 reviewer 修 1 BLOCKER+1 HIGH+3 MEDIUM，真机验证排队组/移除端到端） |
 > | 9 | F1 删花名册 + F3 标签适配 | 🟨 F3+工作台抛光见 `spec-agents-ia-ui-polish.md`；F1 仍待办 |
 
 ## 一、背景与现状事实
@@ -212,12 +212,13 @@ F1 删花名册放最后（新工作台可用后再删旧页），F2 明确不�
 - **验证**：`tests/specialist-session.test.ts`（SS-1..6：scope/hook 边界/确认门/提示词/落库归属/源码契约）；真机：工作台「和它对话」→ 专员会话头部标识 + 占位 ✓，服务端日志 `router skipped (specialist session)` ✓，侧栏「最近」角色小头像 ✓，相关对话页签「专员会话」标注 ✓（dev 环境 API key 无效，真实 LLM 回合待用户真机）。
 - **reviewer 结论 SHIP**（独立审过越权面/SQL/迁移/回归面）；两条 MEDIUM 已修：/chat/new 客户端也校验 `available`（防 UI 宣称边界与服务端回落不一致）、ALWAYS_CONFIRM 确认文案按工具名显式分发（新增成员落通用兜底不误用画像文案）。已知取舍：已存在的专员会话在角色被停用后仍可继续对话（停用只拦新建与派发）。~~专员会话暂不给记忆沉淀工具~~ **已补（2026-07-18）**：role-scope hook 放行 remember_role_convention 并锁定 `input.roleId === 会话角色`（防越权写他角记忆），专员系统提示带沉淀指引（roleId 固定本角色）。
 
-#### 刀 8 — D 越权转交排队
-- **目标**：角色收到职责外请求 → 说明双重边界 + 一键转交卡 → 转交生成目标角色排队任务 → 结果回原对话。见 D1-D4。
-- **迁移**：`subagent_dispatches` 加排队态字段（如 `queued` 状态或 `transfer_from` 来源标记）。三查 + golden 追加。
-- **边界数据化（D1）**：角色"不可做事项 → 转交对象"映射落 `ROLE_REGISTRY` 或派生数据，供概况页签（现只列职责/数据权限/技能，**边界/越权段未做**）与运行时提示复用。
-- **UI**：转交卡（对话流内，见 UI 要点 D）；工作台任务流水加「排队」组（`workspace-work-tab.tsx` 的 `TASK_GROUPS` 现为 pending/running/done，**加 queued**）+ 预览「现在开始/移除」。
-- **高风险**：动 agent 运行时（转交逻辑、结果回流）→ 必派 reviewer。
+#### 刀 8 — D 越权转交排队（✅ 已 ship 2026-07-18）
+- **D1 边界数据化**：`RoleDefinition.boundaries: Array<{cannot; transferTo}>`（六角色各填真实边界，transferTo 均有效 roleId，测试守）；概况页签「职责边界与转交」段展示 ✗ 列表+转交对象；专员/子代理系统提示注入边界，指引调 propose_transfer 不硬拒。
+- **D2 转交卡**：新工具 `propose_transfer`（`lib/agent/mcp-tools/propose-transfer.ts`，safe/静默/只发提议不执行；校验目标 available+未停用，**fail-closed**；工具端生成 proposalId UUID 进结构化返回，供卡片 localStorage 已处理态稳定去重）。渲染 = `app/components/transfer-proposal-card.tsx`（warn 色条 +「转给X处理/不用了」，注册进 tool-cards `KIND_CARD_REGISTRY`）。POST `/api/agents/transfer` 落 queued dispatch。主管会话（ALLOWED_TOOLS）+ 专员会话（role-scope 放行）可用；**子代理 `createSubagentBoundaryHook` 显式 deny**（无前端渲染上下文）。
+- **D3 排队态**：迁移 v20 `subagent_dispatches.instructions TEXT`（三查后取号，sqlite_master 守卫，golden cid 18 追加）；`dispatch-store` 加 `enqueueTransferDispatch`/`startQueuedDispatch`(CAS queued→running)/`removeQueuedDispatch`。工作台 `TASK_GROUPS` 加 queued，顺序 **pending→running→queued→failed→done**（疑点永在前）；预览「现在开始」(POST `/api/agents/dispatches/[id]/start`，fire-and-forget 跑 runSubagent) /「移除」(DELETE，仅 queued 行)。**B1 修复**：`SubagentTask.existingDispatchId` 复用 start 端点已 CAS 的行，跳过 runSubagent 内 recordDispatchStart，杜绝台账双行。
+- **D4 结果回流**：转交任务完成/失败均 `insertChatMessage(originConversationId, "assistant", "【转交任务完成/失败】<角色>·<label>\n"+结果)`，经 updated_at 浮回「最近」，不静默丢。
+- **审查与验证**：reviewer 独立审出 1 BLOCKER（B1 双行）+1 HIGH（分组序）+3 MEDIUM（fail-open/子代理 deny/键碰撞）全部已修；真机验证排队组渲染+移除端到端（DB 行确删）；端点边界齐全（404 gone/409 非 queued）。
+- **已知取舍**：start 端点 fire-and-forget 依赖桌面常驻进程（serverless 需队列 worker，已注释）；`/api/agents/transfer` 的 originConversationId 未做会话归属校验（本地单机端点，已注释）。
 
 #### 刀 9 — F1 删花名册 + F3 标签适配（最后）
 - 删 `app/agents/page.tsx` 团队视图 + `agent-card`/`agent-detail-drawer`/`attention-panel`（能力已并入工作台）。

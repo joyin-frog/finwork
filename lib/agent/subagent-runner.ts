@@ -7,7 +7,7 @@ import { getProjectRoot, getClaudeConfigDir } from "@/lib/runtime/paths";
 import { buildFinanceMcpServers } from "./mcp-tools";
 import { getSkillPluginConfig } from "./skill-plugin";
 import { runBeforeHooks, runAfterHooks } from "./hooks/chain";
-import { createUnwiredToolHook, createPathSafetyHook, createTimingHook, createRiskConfirmHook } from "./hooks/built-in";
+import { createUnwiredToolHook, createPathSafetyHook, createTimingHook, createRiskConfirmHook, createSubagentBoundaryHook } from "./hooks/built-in";
 import { createSdkPreToolUseHook } from "./hooks/sdk-pre-tool-use";
 import { Semaphore } from "@/lib/utils/semaphore";
 import { getRoleDefinition, resolveRoleAllowedTools, type RoleDefinition } from "./roles/registry";
@@ -28,6 +28,12 @@ export type SubagentTask = {
   businessObject?: string;
   /** 期间，格式 YYYY-MM——有值时透传给 dispatch 台账 */
   period?: string;
+  /**
+   * D3·刀8: 已存在的 dispatch 行 id（status='queued' 转 running）。
+   * 有值时直接复用该 id 作为 dispatchId，跳过内部二次 INSERT，
+   * 防止「start 端点 CAS + runSubagent 内部落行」产生双台账行。
+   */
+  existingDispatchId?: number;
 };
 
 export type SubagentResult = {
@@ -82,20 +88,25 @@ export function buildSubagentSystemPrompt(role: RoleDefinition, memories: string
  * 专员可直接向用户提问、走确认卡（补上子代理不能提问的缺口），但不越职责边界、不派发。
  */
 export function buildSpecialistChatSystemPrompt(role: RoleDefinition, memories: string[] = [], outputDir?: string): string {
+  // 边界段：从 role.boundaries 生成提示，指引使用 propose_transfer 发转交卡
+  const boundariesSection = role.boundaries.length > 0
+    ? `\n\n【职责边界与转交】\n以下事项超出你的职责或数据权限，收到此类请求时说明原因，并调用 propose_transfer 工具发一张转交卡（不要硬拒，也不要尝试代做）：\n${role.boundaries.map((b) => `- ${b.cannot}（建议转交 targetRoleId="${b.transferTo}"）`).join("\n")}`
+    : "";
   const base = `你是财务工作台的「${role.name}」专员（${role.domain}），正在与用户直接对话（专员会话）。
 
 【会话纪律】
 - 这是交互式会话：口径拿不准、信息缺失时直接向用户提问（多方案选择用 AskUserQuestion）；
   高风险动作系统会弹确认卡，用户拍板后才执行，不要自行跳过。
 - 只做本角色职责与数据权限内的事。职责外的请求不硬拒：说明这超出你的职责/数据边界，
-  建议用户转到对应专员的会话或回主管会话（新对话）处理。
+  调用 propose_transfer 发转交卡（系统会提示应转哪位专员），用户一键即可转交；
+  无明确转交对象时建议回主管会话。
 - 本会话没有派发能力：不要尝试调用其他角色或替其他域作答。
 - 用户确认或纠正的、需长期遵守的本角色口径（计算规则/名单例外/流程偏好），
   静默调用 remember_role_convention 记住（roleId 固定填 "${role.id}"），回复里一句话告知即可；
   一次性拍板、数值结果不记。
 - 执行域内专业作业时，先用 Skill 工具加载对应技能并遵循其流程。
 
-${FINANCE_DISCIPLINE_SECTION}`;
+${FINANCE_DISCIPLINE_SECTION}${boundariesSection}`;
   const outputSection = outputDir
     ? `\n\n【输出目录】\n生成或另存的文件保存到：${outputDir}（run_python 里用 output_dir 变量）。`
     : "";
@@ -156,19 +167,24 @@ export async function runSubagent(
     }
 
     // 角色已解析 → 落调度起始行(roleId 未知时不落行)
-    try {
-      dispatchId = _dispatchStore.recordDispatchStart({
-        roleId: task.roleId,
-        label: task.label,
-        conversationId: opts.conversationId,
-        traceId: opts.traceId,
-        taskTemplateId: task.taskTemplateId,
-        businessObject: task.businessObject,
-        period: task.period,
-        files: task.files,
-      });
-    } catch (e) {
-      console.warn("[dispatch] dispatch-start 失败(不影响任务):", e);
+    // existingDispatchId: D3·刀8 start 端点已 CAS queued→running，行已存在，直接复用，禁止二次 INSERT。
+    if (task.existingDispatchId != null) {
+      dispatchId = task.existingDispatchId;
+    } else {
+      try {
+        dispatchId = _dispatchStore.recordDispatchStart({
+          roleId: task.roleId,
+          label: task.label,
+          conversationId: opts.conversationId,
+          traceId: opts.traceId,
+          taskTemplateId: task.taskTemplateId,
+          businessObject: task.businessObject,
+          period: task.period,
+          files: task.files,
+        });
+      } catch (e) {
+        console.warn("[dispatch] dispatch-start 失败(不影响任务):", e);
+      }
     }
 
     // emit start 里程碑（旁路，不影响主流程）
@@ -227,6 +243,8 @@ export async function runSubagent(
     const hookChain = [
       createUnwiredToolHook(),
       createPathSafetyHook(),
+      // M2·刀8: 子代理不能发起转交（没有前端渲染上下文），显式 deny。
+      createSubagentBoundaryHook(),
       // 子 Agent 现在拿到的是工具全集(含算薪/金蝶等高风险),但它无人工确认通道
       // (resolveUserQuestion 为 undefined)。挂上确认门:高风险工具 → confirm → 无 resolver → deny,
       // 即高风险财务动作绝不在自主子 Agent 里静默执行(留给主 Agent 经人确认)。

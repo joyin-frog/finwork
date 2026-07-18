@@ -122,7 +122,7 @@ export function getDispatchById(id: number): DispatchRow | undefined {
   const row = db
     .prepare(
       `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
-              task_template_id, business_object, period, review_status, files
+              task_template_id, business_object, period, review_status, files, instructions
        FROM subagent_dispatches
        WHERE id = ?`
     )
@@ -141,6 +141,7 @@ export function getDispatchById(id: number): DispatchRow | undefined {
       period: string | null;
       review_status: string | null;
       files: string | null;
+      instructions: string | null;
     } | undefined;
   if (!row) return undefined;
   return {
@@ -158,6 +159,7 @@ export function getDispatchById(id: number): DispatchRow | undefined {
     period: row.period ?? null,
     reviewStatus: row.review_status ?? null,
     files: parseFiles(row.files),
+    instructions: row.instructions ?? null,
   };
 }
 
@@ -228,6 +230,7 @@ export type DispatchRow = {
   period: string | null;
   reviewStatus: string | null;
   files: string[];
+  instructions: string | null;
 };
 
 /**
@@ -239,7 +242,7 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
   const rows = db
     .prepare(
       `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
-              task_template_id, business_object, period, review_status, files
+              task_template_id, business_object, period, review_status, files, instructions
        FROM subagent_dispatches
        WHERE role_id = ?
        ORDER BY started_at DESC, id DESC
@@ -260,6 +263,7 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
       period: string | null;
       review_status: string | null;
       files: string | null;
+      instructions: string | null;
     }>;
   return rows.map((r) => ({
     id: Number(r.id),
@@ -276,6 +280,7 @@ export function listDispatchesByRole(roleId: string, limit = 20, offset = 0): Di
     period: r.period ?? null,
     reviewStatus: r.review_status ?? null,
     files: parseFiles(r.files),
+    instructions: r.instructions ?? null,
   }));
 }
 
@@ -334,7 +339,7 @@ export function listDispatchesForPeriod(period: string): DispatchRow[] {
   const rows = db
     .prepare(
       `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
-              task_template_id, business_object, period, review_status, files
+              task_template_id, business_object, period, review_status, files, instructions
        FROM subagent_dispatches
        WHERE period = ?
        ORDER BY started_at DESC, id DESC`
@@ -354,6 +359,7 @@ export function listDispatchesForPeriod(period: string): DispatchRow[] {
       period: string | null;
       review_status: string | null;
       files: string | null;
+      instructions: string | null;
     }>;
   return rows.map((r) => ({
     id: Number(r.id),
@@ -370,6 +376,7 @@ export function listDispatchesForPeriod(period: string): DispatchRow[] {
     period: r.period ?? null,
     reviewStatus: r.review_status ?? null,
     files: parseFiles(r.files),
+    instructions: r.instructions ?? null,
   }));
 }
 
@@ -485,4 +492,65 @@ export function listRoleLatestStatus(): RoleLatestStatus[] {
       hasReviewPending: reviewPendingRow != null,
     };
   });
+}
+
+// ─── D3·刀8: 转交排队 ───────────���─────────────────────────────────────────
+
+export type EnqueueTransferDispatchInput = {
+  /** 目标角色 id */
+  targetRoleId: string;
+  /** 任务名（任务卡标题） */
+  label: string;
+  /** 给目标角色的完整任务指令 */
+  instructions: string;
+  /** 来源会话 id（Integer），用于 D4 回写结果；NULL 表示无来源 */
+  originConversationId?: number | null;
+};
+
+/**
+ * 插入 status='queued' 的转交排队行，返回新行 id。
+ * conversation_id 存来源会话 id（字符串化），供 D4 回写使用。
+ */
+export function enqueueTransferDispatch(input: EnqueueTransferDispatchInput): number {
+  const db = getDb();
+  const convId = input.originConversationId != null ? String(input.originConversationId) : null;
+  const result = db
+    .prepare(
+      `INSERT INTO subagent_dispatches
+         (role_id, label, status, instructions, conversation_id)
+       VALUES (?, ?, 'queued', ?, ?)`
+    )
+    .run(input.targetRoleId, input.label, input.instructions, convId);
+  return Number(result.lastInsertRowid);
+}
+
+/**
+ * CAS: queued → running（乐观并发）。
+ * 返回 true 表示成功抢占；false 表示该行已不是 queued（并发或已启动）���
+ */
+export function startQueuedDispatch(id: number): boolean {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `UPDATE subagent_dispatches
+       SET status = 'running'
+       WHERE id = ? AND status = 'queued'`
+    )
+    .run(id);
+  return (result.changes ?? 0) > 0;
+}
+
+/**
+ * 删除 status='queued' 的排队行（仅 queued 可删，防止误删进行中/已完成任务）。
+ * 返回 true 表示成功删除；false 表示行不存在或已非 queued 状态。
+ */
+export function removeQueuedDispatch(id: number): boolean {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `DELETE FROM subagent_dispatches
+       WHERE id = ? AND status = 'queued'`
+    )
+    .run(id);
+  return (result.changes ?? 0) > 0;
 }

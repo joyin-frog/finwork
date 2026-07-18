@@ -81,6 +81,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__run_bank_recon_batch",      category: "finance", riskLevel: "safe" },
   // WP15: 撤销最近 agent 写操作（high 风险，经 confirm gate 拦截；无角色白名单——主对话动作）
   { name: "mcp__finance_worker__undo_last_write",           category: "finance", riskLevel: "high" },
+  // D2·刀8: 越权转交卡（safe；主管与专员会话均可用；不进任何角色工具白名单——角色不可递归转交）
+  { name: "mcp__finance_worker__propose_transfer",          category: "finance", riskLevel: "safe" },
 ];
 
 // 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。

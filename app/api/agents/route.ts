@@ -80,6 +80,8 @@ export async function GET() {
         blockedReason: latestStatus?.blockedReason ?? null,
         conversationId: latestStatus?.conversationId ?? null,
         reviewPending: latestStatus?.hasReviewPending ?? false,
+        // D1·刀8：越权边界（transferTo roleId 原样下发，客户端按 ROLE_LABELS 解名）
+        boundaries: role.boundaries,
       };
 
       // bookkeeper 专项：附发票台账计数
