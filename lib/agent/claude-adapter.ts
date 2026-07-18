@@ -22,6 +22,11 @@ import {
   createUnwiredToolHook,
 } from "./hooks/built-in";
 import { buildSystemPromptParts } from "./system-prompt";
+import { resolveRoleAllowedTools } from "./roles/registry";
+import { assertSpecialistRoleUsable } from "./roles/availability";
+import { buildSpecialistChatSystemPrompt } from "./subagent-runner";
+import { getRoleMemoryForPrompt } from "@/lib/db/role-memory-store";
+import { createRoleScopeHook } from "./hooks/built-in";
 import { isMockAgentEnabled, runMockAgent } from "./mock-agent";
 import { createToolEventTracker, extractUserToolResults, type TrackedToolResult } from "./tool-event-tracker";
 import { accumulateModelUsage } from "./usage-accumulate";
@@ -79,6 +84,9 @@ export type ClaudeAgentRunOptions = {
   traceId?: string;
   /** 派发子代理时写入 subagent_dispatches.conversation_id,供「最近工作」角色徽章关联(2026-07-02 补) */
   conversationId?: number;
+  /** 专员会话（E 刀）：非空时本回合以该角色身份运行——角色系统提示+独立记忆、
+   *  角色工具白名单 + role-scope hook 边界、不注入 spawn_subagent。NULL/缺省 = 主管会话。 */
+  roleId?: string | null;
 };
 
 /**
@@ -133,6 +141,10 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     claudeSessionId: runOptions.claudeSessionId ?? null,
     resumeSession: Boolean(runOptions.resumeSession),
   });
+
+  // 专员会话（E 刀）：解析并校验角色（未知/未启用/已停用均 fail-closed）。
+  // 必须在 mock 短路之前——否则停用角色在 e2e/mock 路径会漏检。
+  const specialistRole = runOptions.roleId ? assertSpecialistRoleUsable(runOptions.roleId) : undefined;
 
   // 确定性模拟 Agent(e2e 用):置 FINANCE_AGENT_MOCK_AGENT=1 即接管,优先于真 key,
   // 让 agent 类 journey 不依赖网络/密钥也能在 CI 跑绿。见 lib/agent/mock-agent.ts。
@@ -210,7 +222,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     runOptions.onSubagentEvent
   );
   // 静态工具全集(含 Bash/Write 供 skill 脚本);不再按 skill 收敛,高风险工具经确认门兜底。
-  const allowedTools = ALLOWED_TOOLS;
+  // 专员会话：免确认放行名单收窄到角色白名单（域内高风险工具不在其中 → 经确认门弹卡）。
+  const allowedTools = specialistRole ? resolveRoleAllowedTools(specialistRole.id) : ALLOWED_TOOLS;
   const skillPlugin = await getSkillPluginConfig();
 
   const memoryStartedAt = Date.now();
@@ -235,6 +248,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     createStuckGuardHook(),
     createAskUserQuestionHook(),
     createPathSafetyHook(),
+    // 专员会话：域外 MCP 工具（含 spawn_subagent）在确认门之前 deny——出界工具不该弹确认卡
+    ...(specialistRole ? [createRoleScopeHook(specialistRole.id)] : []),
     createRiskConfirmHook(),
     createTimingHook((name, durationMs, isError) => {
       log.info("tool done", { traceId: requestId, name, durationMs, isError });
@@ -262,15 +277,28 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     catch { return [] as string[]; }
   })();
 
-  const systemPromptParts = buildSystemPromptParts({
-    identity: { companyName: settings.companyName, agentName: settings.agentName },
-    memoryMarkdown,
-    roleMode: settings.roleMode,
-    recentNegativeFeedback: recentNegativeFeedback.length > 0 ? recentNegativeFeedback : undefined,
-    outputDir,
-    companyProfile: Object.keys(companyProfile).length > 0 ? companyProfile as Record<string, unknown> : undefined,
-  });
-  const systemPrompt = isEnabled("PROMPT_CACHE_ENABLED") ? systemPromptParts : systemPromptParts.join("\n");
+  // 专员会话：系统提示 = 角色 rolePrompt + 该角色独立记忆（C4），不注入主管的
+  // 全局记忆/画像/反馈段（C1 隔离：记忆按角色分区，主管上下文不给专员）。
+  let systemPrompt: string | string[];
+  if (specialistRole) {
+    let roleMemories: string[] = [];
+    try {
+      roleMemories = getRoleMemoryForPrompt(specialistRole.id);
+    } catch (err) {
+      log.warn("角色记忆加载失败，跳过注入", { traceId: requestId, error: err });
+    }
+    systemPrompt = buildSpecialistChatSystemPrompt(specialistRole, roleMemories, outputDir);
+  } else {
+    const systemPromptParts = buildSystemPromptParts({
+      identity: { companyName: settings.companyName, agentName: settings.agentName },
+      memoryMarkdown,
+      roleMode: settings.roleMode,
+      recentNegativeFeedback: recentNegativeFeedback.length > 0 ? recentNegativeFeedback : undefined,
+      outputDir,
+      companyProfile: Object.keys(companyProfile).length > 0 ? companyProfile as Record<string, unknown> : undefined,
+    });
+    systemPrompt = isEnabled("PROMPT_CACHE_ENABLED") ? systemPromptParts : systemPromptParts.join("\n");
+  }
 
   const claudeCliPath = getBundledClaudeCliPath();
   const options: Record<string, unknown> = {
@@ -282,7 +310,8 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     mcpServers,
     allowedTools,
     plugins: skillPlugin.plugins,
-    skills: skillPlugin.skills,
+    // 专员会话技能收敛到角色白名单（与派发一致），主管仍是全集
+    skills: specialistRole ? specialistRole.skills : skillPlugin.skills,
     settingSources: skillPlugin.settingSources,
     systemPrompt,
     canUseTool,

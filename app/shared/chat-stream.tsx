@@ -77,6 +77,8 @@ export type StartTurnParams = {
   referencedSkills?: SkillRef[];
   /** 本条消息的推理强度档位(可选,默认 auto)。 */
   modelTier?: ModelTier;
+  /** 专员会话（E 刀）：新会话首条消息绑定的角色 id；既有会话服务端以 DB 为准。 */
+  role?: string;
   /** ChatPage 终态恢复所需的原始发送数据；浮窗等无需恢复的调用方可不传。 */
   retryPayload?: StreamRetryPayload;
 };
@@ -335,6 +337,7 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
         referencedAttachments: params.referencedAttachments,
         referencedSkills: params.referencedSkills,
         modelTier: params.modelTier,
+        role: params.role,
         signal: controller.signal
       });
 

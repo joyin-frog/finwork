@@ -688,6 +688,12 @@ process.on("unhandledRejection", (err) => {
   const { recapSummaryTestPromise } = await import("./recap-summary.test.ts");
   await recapSummaryTestPromise;
 
+  const { roleConventionsTestPromise } = await import("./role-conventions.test.ts");
+  await roleConventionsTestPromise;
+
+  const { specialistSessionTestPromise } = await import("./specialist-session.test.ts");
+  await specialistSessionTestPromise;
+
 })().catch((err) => {
   console.error("[all.test] 测试链失败:", err);
   process.exitCode = 1;

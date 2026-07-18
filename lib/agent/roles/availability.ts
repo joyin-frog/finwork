@@ -12,7 +12,7 @@
  *   全部停用时兜底返回 available 全集
  */
 
-import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
+import { ROLE_REGISTRY, getRoleDefinition, type RoleDefinition } from "@/lib/agent/roles/registry";
 import { getAppSetting, setAppSetting, insertAuditLog } from "@/lib/db/sqlite";
 
 const SETTINGS_KEY = "agent_disabled_roles";
@@ -27,6 +27,27 @@ export function getDisabledRoleIds(): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * 专员会话可用性（E 刀）：与派发口径一致——未知 / available:false / 用户停用均不可用。
+ * 返回 null 表示可用；否则返回可直接展示给用户的原因。
+ */
+export function specialistRoleUsabilityIssue(roleId: string): string | null {
+  const role = getRoleDefinition(roleId);
+  if (!role) return `未知角色「${roleId}」，无法启动专员会话`;
+  if (!role.available) return `角色「${role.name}」尚未启用，无法启动专员会话`;
+  if (getDisabledRoleIds().includes(roleId)) {
+    return `角色「${role.name}」已停用，无法继续专员会话。请在「智能体」页面重新启用后再对话。`;
+  }
+  return null;
+}
+
+/** 专员会话 fail-closed：不可用则抛错，禁止静默回落主管。 */
+export function assertSpecialistRoleUsable(roleId: string): RoleDefinition {
+  const issue = specialistRoleUsabilityIssue(roleId);
+  if (issue) throw new Error(issue);
+  return getRoleDefinition(roleId)!;
 }
 
 /**

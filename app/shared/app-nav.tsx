@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { ROLE_LABELS, ROLE_UI } from "@/lib/domain/role-ui";
 import { surfaceVariants } from "@/components/ui/surface";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -52,6 +53,8 @@ type ConversationSummary = {
   title: string;
   updatedAt: string;
   pinned: boolean;
+  /** 专员会话的角色 id（E 刀）；null/缺省 = 主管会话。 */
+  roleId?: string | null;
 };
 
 type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" | "skills";
@@ -288,10 +291,20 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         ) : (
           <Link
             href={`/chat/recent?id=${c.id}`}
-            title={c.title}
-            className="flex-1 min-w-0 pl-4 pr-3 py-1 text-small truncate"
+            title={c.roleId ? `${ROLE_LABELS[c.roleId] ?? c.roleId} · 专员会话 · ${c.title}` : c.title}
+            className="flex-1 min-w-0 pl-4 pr-3 py-1 text-small truncate flex items-center gap-1.5"
           >
-            {c.title}
+            {c.roleId && (
+              // 专员会话（E 刀）：15px 角色小头像区分直聊会话
+              <span
+                className="fa-toned shrink-0 flex items-center justify-center w-[15px] h-[15px] text-[9px] font-semibold select-none"
+                style={{ "--tone": `var(${ROLE_UI[c.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral"})`, borderRadius: "50%" } as CSSProperties}
+                aria-hidden="true"
+              >
+                {(ROLE_LABELS[c.roleId] ?? c.roleId).slice(0, 1)}
+              </span>
+            )}
+            <span className="min-w-0 truncate">{c.title}</span>
           </Link>
         )}
         {renamingId !== c.id && (

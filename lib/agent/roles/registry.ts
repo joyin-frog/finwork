@@ -173,13 +173,24 @@ export function getRoleDefinition(id: string): RoleDefinition | undefined {
  * 返回值必然 ⊆ ALLOWED_TOOLS。
  */
 export function resolveRoleAllowedTools(roleId: string): string[] {
+  const allowedSet = new Set<string>(ALLOWED_TOOLS);
+  // 确保结果 ⊆ ALLOWED_TOOLS
+  return resolveRoleScopeTools(roleId).filter((t) => allowedSet.has(t));
+}
+
+/**
+ * 角色的职责域工具全集（E 刀·专员会话）：与 resolveRoleAllowedTools 同源，
+ * 但**不**与 ALLOWED_TOOLS 取交集——包含角色域内的高风险工具（如薪税的 calculate_payroll_batch）。
+ * 用途：专员会话的 role-scope hook 以此为边界——域内高风险工具放行到确认门（交互式会话可弹确认卡），
+ * 域外工具（含 spawn_subagent 与其他角色的工具）一律 deny。
+ */
+export function resolveRoleScopeTools(roleId: string): string[] {
   const role = getRoleDefinition(roleId);
   if (!role) {
-    throw new Error(`resolveRoleAllowedTools: 未知角色 "${roleId}"`);
+    throw new Error(`resolveRoleScopeTools: 未知角色 "${roleId}"`);
   }
 
   const toolFullNameSet = new Set<string>(TOOL_REGISTRY.map((t) => t.name));
-  const allowedSet = new Set<string>(ALLOWED_TOOLS);
 
   function resolveBare(bare: string): string {
     // 如果已经是全名（builtin 工具如 "Read"）
@@ -190,7 +201,7 @@ export function resolveRoleAllowedTools(roleId: string): string[] {
     // 尝试 kingdee_worker 前缀
     const kingdeeName = `mcp__kingdee_worker__${bare}`;
     if (toolFullNameSet.has(kingdeeName)) return kingdeeName;
-    throw new Error(`resolveRoleAllowedTools: 裸名 "${bare}" 在 TOOL_REGISTRY 中找不到对应全名`);
+    throw new Error(`resolveRoleScopeTools: 裸名 "${bare}" 在 TOOL_REGISTRY 中找不到对应全名`);
   }
 
   const result = new Set<string>();
@@ -212,6 +223,5 @@ export function resolveRoleAllowedTools(roleId: string): string[] {
     result.add(resolveBare(bare));
   }
 
-  // 确保结果 ⊆ ALLOWED_TOOLS
-  return Array.from(result).filter((t) => allowedSet.has(t));
+  return Array.from(result);
 }

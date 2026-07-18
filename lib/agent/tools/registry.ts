@@ -28,8 +28,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "mcp__finance_worker__read_file",        category: "finance", riskLevel: "safe" },
   { name: "mcp__finance_worker__read_document",     category: "finance", riskLevel: "safe" },
   { name: "mcp__finance_worker__scan_slip_folder",  category: "finance", riskLevel: "safe" },
-  // 写入用户约定:hook 层无条件要求用户确认(ALWAYS_CONFIRM)
+  // 写入用户约定/角色口径:静默写入+对话内轻提示,记忆页可删(刀6 拍板去确认卡)
   { name: "mcp__finance_worker__remember_convention", category: "finance", riskLevel: "medium" },
+  { name: "mcp__finance_worker__remember_role_convention", category: "finance", riskLevel: "medium" },
   // 经营数据登记
   { name: "mcp__finance_worker__record_business_metrics", category: "finance", riskLevel: "medium" },
   { name: "mcp__finance_worker__generate_business_analysis", category: "finance", riskLevel: "safe" },
@@ -83,8 +84,9 @@ export const TOOL_REGISTRY: ToolDef[] = [
 ];
 
 // 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。
-// always-confirm 两名与 built-in.ALWAYS_CONFIRM_TOOLS 同步（confirm-gate-fix.test 守无漂移）。
+// 成员与 built-in.ALWAYS_CONFIRM_TOOLS 同步（confirm-gate-fix.test 守无漂移）。
 // 注意：不 import built-in（会循环依赖，built-in 已依赖本模块的 getToolRiskLevel）。
+// remember_role_convention（刀6）静默写入；remember_convention 仍挂确认门。
 const CONFIRM_REQUIRED_TOOL_NAMES = new Set<string>([
   "mcp__finance_worker__remember_convention",
   "mcp__finance_worker__update_company_profile",

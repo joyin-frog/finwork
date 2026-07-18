@@ -3,6 +3,7 @@ import type { Hook, BeforeToolResult } from "./types";
 import { getToolRiskLevel } from "@/lib/agent/tools/registry";
 import { getToolSummary } from "@/lib/agent/tools/renderers";
 import { isToolTrustedForConversation } from "./session-trust";
+import { getRoleDefinition, resolveRoleScopeTools } from "@/lib/agent/roles/registry";
 
 // 高风险工具确认时,除了"做什么"还要点明"会有什么后果"(尤其不可逆/锁定类),
 // 让非技术财务在按"确认"前看清影响,而不是面对一句裸工具名。
@@ -144,10 +145,45 @@ export function createStuckGuardHook(): Hook {
   };
 }
 
-// 无论如何都必须经用户确认的工具(写入用户约定等不可静默的动作)
+/**
+ * 专员会话工具边界（E 刀）：MCP 工具只放行该角色职责域内的（resolveRoleScopeTools，
+ * 含域内高风险工具——它们继续走后面的确认门，交互式会话可弹确认卡）；
+ * 域外 MCP 工具（含 spawn_subagent——专员不越级派发，与其他角色的域工具）一律 deny。
+ * 内置工具（Read/Write 等）不经此闸：沿用链上既有 hook 与 SDK 原生 PreToolUse 机制。
+ */
+export function createRoleScopeHook(roleId: string): Hook {
+  const scope = new Set(resolveRoleScopeTools(roleId));
+  const roleName = getRoleDefinition(roleId)?.name ?? roleId;
+  return {
+    name: "role-scope",
+    async before(ctx): Promise<BeforeToolResult> {
+      if (!ctx.toolName.startsWith("mcp__")) return { action: "allow" };
+      if (ctx.toolName === "mcp__finance_worker__spawn_subagent") {
+        return { action: "deny", reason: `专员会话不能派发其他角色。请直接完成职责内的部分；跨域需求请向用户说明，由用户转到对应专员会话或回主管会话处理。` };
+      }
+      // 专员会话可沉淀本角色口径（C2×E6）：放行 remember_role_convention，但锁定只能写本角色记忆
+      // （roleId 是模型填的参数，不锁则专员能越权写他角记忆，破坏 C1 隔离边界）。
+      if (ctx.toolName === "mcp__finance_worker__remember_role_convention") {
+        const target = (ctx.input as { roleId?: unknown } | null | undefined)?.roleId;
+        if (target !== roleId) {
+          return { action: "deny", reason: `专员会话只能写入「${roleName}」自己的记忆，roleId 请填 "${roleId}" 后重试。` };
+        }
+        return { action: "allow" };
+      }
+      if (!scope.has(ctx.toolName)) {
+        return { action: "deny", reason: `该工具超出「${roleName}」的职责与数据权限范围。请向用户说明这超出本角色边界，并建议转到对应专员会话或回主管会话处理。` };
+      }
+      return { action: "allow" };
+    },
+  };
+}
+
+// 无论如何都必须经用户确认的工具。
+// remember_convention：全局约定影响所有对话，仍走事前确认。
+// remember_role_convention（刀6）：角色口径静默写入 + 对话内轻提示，安全靠可见可删。
 export const ALWAYS_CONFIRM_TOOLS = new Set([
   "mcp__finance_worker__remember_convention",
-  // P3: 公司画像写入需用户确认
+  // P3: 公司画像写入需用户确认(事实数据,非口径)
   "mcp__finance_worker__update_company_profile",
 ]);
 
@@ -163,6 +199,7 @@ export function createRiskConfirmHook(): Hook {
     name: "risk-confirm",
     async before(ctx): Promise<BeforeToolResult> {
       if (ALWAYS_CONFIRM_TOOLS.has(ctx.toolName)) {
+        // 按工具名显式分发确认文案:新增 always-confirm 工具而未写文案时落到通用兜底,不会误用画像文案。
         if (ctx.toolName === "mcp__finance_worker__update_company_profile") {
           const patch = getProfilePatch(ctx.input);
           const keys = Object.keys(patch).filter((k) => k !== "idempotency_key");
@@ -171,13 +208,16 @@ export function createRiskConfirmHook(): Hook {
             : "要我更新公司画像吗？";
           return { action: "confirm", prompt };
         }
-        const { text, replaces } = getConventionFields(ctx.input);
-        let prompt: string;
-        if (text && replaces) prompt = `要我把工作约定改成「${text}」吗?(替换原来的「${replaces}」)`;
-        else if (replaces) prompt = `要我删除这条工作约定吗?\n「${replaces}」`;
-        else if (text) prompt = `要我记住这条工作约定吗?\n「${text}」`;
-        else prompt = "要我更新工作约定吗?";
-        return { action: "confirm", prompt };
+        if (ctx.toolName === "mcp__finance_worker__remember_convention") {
+          const { text, replaces } = getConventionFields(ctx.input);
+          let prompt: string;
+          if (text && replaces) prompt = `要我把工作约定改成「${text}」吗?(替换原来的「${replaces}」)`;
+          else if (replaces) prompt = `要我删除这条工作约定吗?\n「${replaces}」`;
+          else if (text) prompt = `要我记住这条工作约定吗?\n「${text}」`;
+          else prompt = "要我更新工作约定吗?";
+          return { action: "confirm", prompt };
+        }
+        return { action: "confirm", prompt: buildRiskConfirmPrompt(ctx.toolName, ctx.input) };
       }
       if (CONFIRM_EXEMPT_TOOLS.has(ctx.toolName)) return { action: "allow" };
       const riskLevel = getToolRiskLevel(ctx.toolName);

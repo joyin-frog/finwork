@@ -15,8 +15,8 @@
 > | 3 | 启停开关（B6） | ✅ ship |
 > | 4 | 相关对话（B5） | ✅ ship |
 > | 5 | 独立记忆 C（第一版，不含自动沉淀） | ✅ ship（经 reviewer，修掉 1 BLOCKER） |
-> | 6 | C 自动沉淀 | ⬜ 待办 |
-> | 7 | E 专员会话（和它对话） | ⬜ 待办 |
+> | 6 | C 自动沉淀 | ✅ ship（2026-07-17，机制与粒度经用户拍板，见刀6节） |
+> | 7 | E 专员会话（和它对话） | ✅ ship（2026-07-17，v19 迁移 + 运行时装配 + UI 标识，见刀7节） |
 > | 8 | D 越权转交排队 | ⬜ 待办 |
 > | 9 | F1 删花名册 + F3 标签适配 | 🟨 F3+工作台抛光见 `spec-agents-ia-ui-polish.md`；F1 仍待办 |
 
@@ -147,7 +147,7 @@ F1 删花名册放最后（新工作台可用后再删旧页），F2 明确不�
 
 1. 「本月任务」看板最终归属（总览区块 vs 独立入口）——看板阶段再议。
 2. 专员会话中产出的交付物是否落 dispatch 卡进任务流水（MVP 倾向不落：直聊是问答不是任务对象）。
-3. 记忆沉淀的判定粒度（哪些确认/纠正算"口径"值得记）——写第 6 刀时定义。
+3. ~~记忆沉淀的判定粒度~~ **已拍板（2026-07-17）**：严格粒度——仅记跨任务复用的口径（计算口径/名单例外/流程偏好），一次性拍板、数值结果、任务状态不记；判定由模型按工具描述执行，护栏 = 对话内轻提示可见 + 记忆页签可删（**非**事前确认卡）。同时拍板：整个记忆体系去确认卡改静默（含全局 remember_convention），对齐 Claude Code 自动记忆模式；update_company_profile 保留确认（事实数据非口径）。
 4. 徽标与总览 attention 的同源刷新机制（轮询/事件）。当前徽标数据来自 nav-state 挂载时取一次 /api/agents，`agentPendingCount` = roster 中 blockedReason 非空的角色数（近似"待拍板专员数"，非事项级计数）。
 
 ---
@@ -196,19 +196,21 @@ F1 删花名册放最后（新工作台可用后再删旧页），F2 明确不�
 
 ### 6.4 待办刀方案
 
-#### 刀 6 — C 自动沉淀（承接 C 记忆）
-- **目标**：任务/对话中用户的确认与纠正自动写入该角色 `role_memory`（`source` 填来源任务/会话），对话内轻提示「已记住这条口径」。补上第一版缺的"自动"。
-- **做法**：需在 agent 循环里侦测"用户确认了某口径/纠正了某处理"的时机。候选切入点：确认门（confirm-gate）通过时、或用户在对话里明确纠正后。写入走 `addRoleMemory(roleId, content, source)`（store 已就绪，`source` 字段已预留）。
-- **坑/未决**：判定"哪些算值得记的口径"是最难点（见五-3）；避免噪音（别把每句话都记）。这是**设计敏感 + 动 agent 循环 = 高风险**，先小范围（如仅确认门场景）再扩。**实施前建议先与用户拍板判定规则**。
-- **验证**：触发确认门 → 确认 → role_memory 新增一条带 source；下次派该角色，记忆被注入（`getRoleMemoryForPrompt` 已验证注入链路）。
+#### 刀 6 — C 自动沉淀（✅ 已 ship 2026-07-17）
+- **实际方案（与原设想不同，经用户两轮拍板）**：不侵入 agent 循环、不走确认门切入点，而是**角色分区版 remember_convention**——新增 MCP 工具 `remember_role_convention(roleId, text, source)`（`lib/agent/mcp-tools/role-conventions.ts`），模型按工具描述侦测"用户确认/纠正了某专员职责域口径"时调用，**静默写入** `role_memory`（不弹确认卡），对话内轻提示 = 工具行摘要「记住口径「…」→ 薪税专员」+ 返回文案「已记住这条口径」。
+- **连带拍板**：全局 `remember_convention` 一并去确认卡改静默（从 `ALWAYS_CONFIRM_TOOLS`/`CONFIRM_REQUIRED_TOOL_NAMES` 移除，回到 ALLOWED_TOOLS 自动放行）；安全模型从"事前确认"改为"可见+可删"（对齐 Claude Code 自动记忆）。`update_company_profile` 保留确认卡。
+- **判定粒度（严格版）**：仅跨任务复用口径；一次性拍板/数值结果/任务状态不记；全局偏好走 remember_convention、专员域口径走 remember_role_convention（分流写进两工具描述 + SYSTEM_PROMPT.md）。
+- **护栏**：未知 roleId 拒写；同角色同内容去重（主对话看不到既有角色记忆，防跨会话重复沉淀）；工作台记忆页签可单条删除（刀5 已 ship）。
+- **验证**：`tests/role-conventions.test.ts`（RC-1..6：落库/隔离/拒写/去重/成员契约/摘要渲染）+ `confirm-gate-fix`/`agent-confirm-flow` 契约更新，全套件绿。注入链路复用 `getRoleMemoryForPrompt`（刀5 已验证）。
 
-#### 刀 7 — E 专员会话（"和它对话"）
-- **目标**：绕过主管直接和某专员对话。见功能点 E1-E6。
-- **迁移**：`chat_conversations` 加 `role_id`（NULL=主管会话，零改动现状）。**做迁移前三查**（当前 v18，下一个大概率 v19 但须现查）。golden-schema 只追加。
-- **入口**：工作台头部加「和它对话」图标按钮（`BubbleChatIcon` + tooltip），→ `/chat/new?role=<roleId>`。`app/chat/new/page.tsx` 现支持 `prompt`/`skill` 两参（见现状事实），**加 `role` 参**。
-- **运行时装配**：专员会话的系统提示 = 角色 rolePrompt（`buildSubagentSystemPrompt` 已有，可复用）+ 该角色记忆（`getRoleMemoryForPrompt`，链路已通）；`allowedTools` = 角色工具白名单（比主管窄）；数据域 = dataScope；**不注入 `spawn_subagent`**（不越级）。切入点在 chat 的 agent 装配处（`lib/agent/claude-adapter.ts` / `query-stages.ts`，需 graphify 定位主对话如何拼 systemPrompt/allowedTools，按 role_id 分支）。
-- **归属**：专员会话进全局「最近」+ 工作台「相关对话」页签（**B5 的 `listConversationsForRole` 需扩展**：现按 dispatch.role_id 过滤，要 UNION 上 `chat_conversations.role_id = ?` 的直聊会话）。会话头部/侧栏加角色标识（E5）。
-- **高风险**：动 chat 核心 agent 装配 + 迁移 → 必派 reviewer。**架构红利**：交互式会话中角色可直接问用户（补子代理不能提问的缺口）。
+#### 刀 7 — E 专员会话（"和它对话"）（✅ 已 ship 2026-07-17）
+- **迁移 v19**：`chat_conversations.role_id TEXT`（NULL=主管会话）；带 sqlite_master 表存在性守卫（policy-rules 测试构造的局部库没有该表）。golden-schema 追加 cid 8。
+- **角色穿线**：客户端 `role` 参数（`/chat/new?role=` → ChatPage `initialRole` → 首条消息请求体）只在**创建会话**时生效并经 `validRoleId` 校验（未知/未启用/停用角色回落主管+告警）；此后每回合 `sessionStage` 从 DB 行读 `roleId`（服务端权威，防客户端伪造扩权）→ `routerStage` 跳过路由器 → `runClaudeAgent(roleId)`。
+- **运行时装配（claude-adapter 按 specialistRole 分支）**：系统提示 = `buildSpecialistChatSystemPrompt`（**新建的交互式 A 段**——子代理 A 段的"不能提问"纪律对直聊是错的，财务纪律段抽成共享常量防漂移）+ rolePrompt B 段 + 角色记忆 + 输出目录；`allowedTools = resolveRoleAllowedTools`（免确认名单收窄）；`skills = role.skills`；不注入主管的全局记忆/画像/反馈段（C1 隔离）。
+- **工具边界两层**：新增 `resolveRoleScopeTools`（域全集，**不**与 ALLOWED_TOOLS 取交集）+ `createRoleScopeHook`——域外 MCP 工具（含 spawn_subagent、他角色工具）在确认门**之前** deny 并给转交引导文案；**域内高风险工具（如薪税的算薪）穿过 role-scope 落到确认门弹卡**——这正是"角色可走确认卡"的架构红利，一刀切拦掉就把红利砍了。
+- **归属与标识**：`listConversationsForRole` 改 LEFT JOIN 并集（dispatch 会话 ∪ `c.role_id=?` 直聊，`isDirect` 标记）；会话头部 = 角色头像 +「角色名 · 专员会话」+ chip「工具与数据仅限本角色」；输入框占位「和薪税专员说…」；侧栏「最近」条目 15px 角色小头像（`ConversationSummary.roleId`）。
+- **验证**：`tests/specialist-session.test.ts`（SS-1..6：scope/hook 边界/确认门/提示词/落库归属/源码契约）；真机：工作台「和它对话」→ 专员会话头部标识 + 占位 ✓，服务端日志 `router skipped (specialist session)` ✓，侧栏「最近」角色小头像 ✓，相关对话页签「专员会话」标注 ✓（dev 环境 API key 无效，真实 LLM 回合待用户真机）。
+- **reviewer 结论 SHIP**（独立审过越权面/SQL/迁移/回归面）；两条 MEDIUM 已修：/chat/new 客户端也校验 `available`（防 UI 宣称边界与服务端回落不一致）、ALWAYS_CONFIRM 确认文案按工具名显式分发（新增成员落通用兜底不误用画像文案）。已知取舍：已存在的专员会话在角色被停用后仍可继续对话（停用只拦新建与派发）。~~专员会话暂不给记忆沉淀工具~~ **已补（2026-07-18）**：role-scope hook 放行 remember_role_convention 并锁定 `input.roleId === 会话角色`（防越权写他角记忆），专员系统提示带沉淀指引（roleId 固定本角色）。
 
 #### 刀 8 — D 越权转交排队
 - **目标**：角色收到职责外请求 → 说明双重边界 + 一键转交卡 → 转交生成目标角色排队任务 → 结果回原对话。见 D1-D4。

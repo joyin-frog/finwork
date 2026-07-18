@@ -61,7 +61,7 @@ export async function POST(request: Request) {
   const {
     conversationId, existingClaudeSessionId, claudeSessionId,
     agentMessages, attachments, outputDir, beforeGenerate,
-    lastUserContent, useStreaming, routerResult, modelOverride,
+    lastUserContent, useStreaming, routerResult, modelOverride, sessionRoleId,
   } = r;
 
   // --- Run agent ---
@@ -73,6 +73,8 @@ export async function POST(request: Request) {
       attachments, outputDir, routerResult, conversationId,
       // 模型由「深度思考」开关决定:默认快速模型,开了用推理模型(该档未配则回落主模型)。
       modelOverride,
+      // 专员会话（E 刀）:以会话绑定的角色身份运行本回合
+      roleId: sessionRoleId,
     };
     const persistParams: PersistTurnParams = {
       conversationId, existingClaudeSessionId, beforeGenerate,
@@ -125,6 +127,8 @@ type AgentTurnParams = {
   existingClaudeSessionId: string | null; attachments: AgentAttachment[];
   outputDir: string | undefined; routerResult: Awaited<ReturnType<typeof runRouter>>;
   modelOverride?: string;
+  /** 专员会话（E 刀）：会话绑定的角色 id；NULL = 主管会话。 */
+  roleId?: string | null;
   signal?: AbortSignal;
   resolveUserQuestion?: (question: AgentQuestion) => Promise<string>;
   /** 流式路径：每条 AgentEventEnvelope 发出时回调（非流式路径无此回调）。 */
@@ -205,6 +209,7 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     traceId,
     conversationId: params.conversationId,
     modelOverride: params.modelOverride,
+    roleId: params.roleId,
     signal: params.signal,
     resolveUserQuestion: params.resolveUserQuestion,
     // 主 Agent 事件走主 emitter

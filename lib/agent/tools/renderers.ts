@@ -63,6 +63,7 @@ const summaries: Record<string, SummaryFn> = {
   },
   read_file: (i) => { const f = str(i, "fileName"); return f ? `读取资料：${f}` : "读取资料"; },
   remember_convention: (i) => { const t = str(i, "text"); const r = str(i, "replaces"); return t ? (r ? `更新约定「${t.slice(0, 40)}」` : `记住约定「${t.slice(0, 40)}」`) : (r ? `取消约定「${r.slice(0, 40)}」` : "更新工作约定"); },
+  remember_role_convention: (i) => { const t = str(i, "text"); const role = getRoleDefinition(str(i, "roleId"))?.name; return t ? `记住口径「${t.slice(0, 40)}」${role ? ` → ${role}` : ""}` : "记录角色口径"; },
   record_business_metrics: (i) => {
     const rows = Array.isArray((i as Record<string, unknown>)?.rows) ? (i as Record<string, unknown>).rows as unknown[] : [];
     return `登记经营数据(${rows.length} 个月)`;

@@ -40,6 +40,8 @@ export const confirmGateFixTestPromise = (async () => {
   const mustInclude = [
     "mcp__finance_worker__query_payroll_status",
     "mcp__finance_worker__diff_payroll_period",
+    // 角色口径（刀6）静默写入；全局约定仍挂确认门（见 mustExclude / ALWAYS_CONFIRM）
+    "mcp__finance_worker__remember_role_convention",
   ];
   for (const name of mustInclude) {
     assert.ok(
@@ -47,6 +49,10 @@ export const confirmGateFixTestPromise = (async () => {
       `CGF-2 FAIL: "${name}" 应在 ALLOWED_TOOLS 中（非确认工具不应被误排除）`
     );
   }
+  assert.ok(
+    !allowedSet.has("mcp__finance_worker__remember_convention"),
+    "CGF-2c FAIL: remember_convention 应挂确认门，不应在 ALLOWED_TOOLS 中"
+  );
 
   assert.ok(
     !allowedSet.has("mcp__finance_worker__run_python"),
