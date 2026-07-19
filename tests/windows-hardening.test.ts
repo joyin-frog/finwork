@@ -82,6 +82,8 @@ export const windowsHardeningTestPromise = (async () => {
         },
         pipInstall: async () => { /* should not reach */ },
         exists: () => false,
+        readText: () => null,
+        writeText: () => {},
       };
 
       const result = await installPythonRuntime({ steps });

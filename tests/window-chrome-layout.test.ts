@@ -77,13 +77,15 @@ export const windowChromeLayoutTestPromise = (async () => {
   assert.match(controls, /z-\[60\]/, "标题栏必须保留 z-[60]（压过全屏模态，任何时候可关窗）");
   assert.match(controls, /data-tauri-drag-region/, "标题栏必须保留拖动区标记");
 
-  // 顶部控件的 Tooltip 不得向上伸入 Windows 自绘标题栏；Portal + 高层级作极端碰撞兜底。
+  // Tooltip 全局默认保持中性；侧栏顶栏就地加 side=right + collisionPadding，避免伸入 Windows 标题栏。
   const tooltip = read("components/ui/tooltip.tsx");
-  assert.match(tooltip, /side\s*=\s*"bottom"/, "Tooltip 应默认向下展示");
-  assert.match(tooltip, /sideOffset\s*=\s*[4-9]/, "Tooltip 应与触发器保留安全间距");
-  assert.match(tooltip, /collisionPadding\s*=\s*[4-9]/, "Tooltip 应保留视口碰撞边距");
   assert.match(tooltip, /<TooltipPrimitive\.Portal>/, "Tooltip 必须经 Portal 脱离页面 overflow 容器");
-  assert.match(tooltip, /z-\[70\]/, "Tooltip 层级应高于 z-[60] 的 Windows 标题栏");
+  assert.doesNotMatch(tooltip, /side\s*=\s*"bottom"/, "不得把 side=bottom 写进全局 Tooltip 默认");
+  assert.doesNotMatch(tooltip, /z-\[70\]/, "不得抬高全局 Tooltip z-index 去迁就标题栏");
+  const navTop = read("app/shared/nav-top-controls.tsx");
+  assert.match(navTop, /side="right"/, "侧栏顶栏 ShortcutHint 应 side=right，不向上伸入标题栏");
+  assert.match(navTop, /collisionPadding=\{8\}/, "侧栏顶栏 ShortcutHint 应带 collisionPadding");
+  assert.match(navTop, /sideOffset=\{6\}/, "侧栏顶栏 ShortcutHint 应带 sideOffset");
 
   // macOS 零变化：侧栏顶栏继续 h-11，不因 Windows 统一高度被顺手改掉。
   const nav = read("app/shared/app-nav.tsx");

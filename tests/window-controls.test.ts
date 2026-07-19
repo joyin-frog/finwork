@@ -30,9 +30,18 @@ export const windowControlsTestPromise = (async () => {
     "关闭按钮应调用 win.close()"
   );
 
-  // onCloseRequested 在未 preventDefault 时会调用 win.destroy() 完成关窗。
+  // CloseGuard：有活动流时 preventDefault，用户确认后必须 destroy() 真正关窗（需 allow-destroy）。
   const capability = read("src-tauri/capabilities/default.json");
-  assert.match(capability, /"core:window:allow-destroy"/, "关窗监听必须有 allow-destroy 权限");
+  assert.match(capability, /"core:window:allow-destroy"/, "确认关窗的 destroy() 必须有 allow-destroy 权限");
+  const closeGuard = read("app/shared/close-guard.tsx");
+  assert.match(closeGuard, /onCloseRequested/, "CloseGuard 应监听 onCloseRequested");
+  assert.match(closeGuard, /event\.preventDefault\(\)/, "有活动流时应 preventDefault 拦截关窗");
+  assert.match(closeGuard, /\.destroy\(\)/, "确认退出应调用 destroy() 而非再次 close()");
+  assert.doesNotMatch(
+    closeGuard.slice(closeGuard.indexOf("function handleConfirm"), closeGuard.indexOf("function handleOpenChange")),
+    /\.close\(\)/,
+    "handleConfirm 不得再调 close()（会再次进入守卫）"
+  );
 
   // 最大化状态同步：初值 isMaximized() + onResized 订阅 + 卸载清理。
   assert.match(controls, /win\.isMaximized\(\)\.then\(setMaximized\)/, "应以 isMaximized() 初始化状态");

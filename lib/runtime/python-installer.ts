@@ -21,7 +21,18 @@ export type InstallSteps = {
   extract: (archive: string, destDir: string) => Promise<void>;
   pipInstall: (pythonPath: string, requirementsPath: string) => Promise<void>;
   exists?: (p: string) => boolean;
+  /** 读文本文件；缺省用 fs。单测可注入，避免碰真实 app data。 */
+  readText?: (p: string) => string | null;
+  /** 写文本文件；缺省用 fs。成功安装后写入运行时版本戳。 */
+  writeText?: (p: string, data: string) => void;
 };
+
+/** 与 resolvePythonAssetUrl 同源：升级后戳不一致则强制重解压。 */
+export const PYTHON_RUNTIME_TAG = "20240814";
+export const PYTHON_RUNTIME_VER = "3.12.5";
+export const PYTHON_RUNTIME_STAMP = `${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}`;
+
+const STAMP_FILENAME = ".fa-python-runtime-stamp";
 
 // python-build-standalone 布局:Windows 的 python.exe 在根目录(不在 Scripts/),unix 在 bin/python3。
 // 早期误判为 Scripts/python.exe → 解压成功仍报"未找到 Python"导致 Windows 安装失败。
@@ -31,13 +42,30 @@ function pythonExeIn(dir: string): string {
     : path.join(dir, "bin", "python3");
 }
 
+function stampPath(dir: string): string {
+  return path.join(dir, STAMP_FILENAME);
+}
+
+function defaultReadText(p: string): string | null {
+  try {
+    return fs.readFileSync(p, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function defaultWriteText(p: string, data: string): void {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, data, "utf8");
+}
+
 /**
  * python-build-standalone 资产 URL(按平台)。release tag / 资产命名需核实最新发布(残留)。
  * 仅在确实需要下载时调用。
  */
 export function resolvePythonAssetUrl(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string {
-  const TAG = "20240814"; // 需核实最新 python-build-standalone release
-  const VER = "3.12.5";
+  const TAG = PYTHON_RUNTIME_TAG;
+  const VER = PYTHON_RUNTIME_VER;
   const tripleMap: Record<string, string> = {
     "darwin-arm64": "aarch64-apple-darwin",
     "darwin-x64": "x86_64-apple-darwin",
@@ -75,59 +103,71 @@ export async function installPythonRuntime(opts: {
 }): Promise<InstallResult> {
   const onProgress = opts.onProgress ?? (() => {});
   const exists = opts.steps.exists ?? fs.existsSync;
+  const readText = opts.steps.readText ?? defaultReadText;
+  const writeText = opts.steps.writeText ?? defaultWriteText;
   const dir = getInstalledPythonDir();
   try {
     const pythonPath = pythonExeIn(dir);
-    // 自检常见的修复场景是「Python 已在,只缺 pip 依赖」。复用现有运行时，
+    const stampFile = stampPath(dir);
+    // 自检常见修复场景是「Python 已在、版本戳匹配、只缺 pip 依赖」。复用现有运行时，
     // 避免 Windows 上递归删除被存活 Python 进程加载的 DLL 而报 EPERM。
-    let installed = exists(pythonPath);
+    // 戳不一致（升级换了 bundled CPython）或 pip 失败时再走一次强制重装出口。
+    let installed =
+      exists(pythonPath) && readText(stampFile)?.trim() === PYTHON_RUNTIME_STAMP;
+    let reusedExisting = installed;
     let lastError: unknown;
 
-    // C 方案:优先用随安装包内嵌的 Python 归档(解压即用,免联网下载——绕开 GitHub 抖动/版本漂移)。
-    const bundled = getBundledPythonArchive();
-    if (!installed && exists(bundled)) {
-      try {
-        onProgress({ phase: "extract", message: "正在解压内置组件…" });
-        await opts.steps.extract(bundled, dir);
-        installed = exists(pythonPath);
-        if (!installed) lastError = new Error("内置归档解压后未找到 Python 可执行文件");
-      } catch (error) {
-        lastError = error;
-      }
-    }
+    const materialize = async () => {
+      if (installed) return;
 
-    // 兜底:没内嵌归档(或归档损坏)→ 联网下载。镜像/代理优先,GitHub 末位;
-    // download+extract+校验作为一次完整尝试(镜像常返回「200+错误页」,download 不抛但 extract 会失败,故 extract 也纳入重试)。
-    if (!installed) {
-      onProgress({ phase: "resolve", message: "确定高级分析组件版本…" });
-      const urls = resolvePythonAssetUrls();
-      const archive = path.join(os.tmpdir(), "fa-python-runtime.tar.gz");
-      try {
-        for (const url of urls) {
-          try {
-            onProgress({ phase: "download", message: "正在下载高级分析组件…" });
-            await opts.steps.download(url, archive);
-            onProgress({ phase: "extract", message: "正在解压…" });
-            await opts.steps.extract(archive, dir);
-            if (!exists(pythonPath)) {
-              lastError = new Error("解压后未找到 Python 可执行文件");
-              continue;
+      // C 方案:优先用随安装包内嵌的 Python 归档(解压即用,免联网下载——绕开 GitHub 抖动/版本漂移)。
+      const bundled = getBundledPythonArchive();
+      if (exists(bundled)) {
+        try {
+          onProgress({ phase: "extract", message: "正在解压内置组件…" });
+          await opts.steps.extract(bundled, dir);
+          installed = exists(pythonPath);
+          if (!installed) lastError = new Error("内置归档解压后未找到 Python 可执行文件");
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      // 兜底:没内嵌归档(或归档损坏)→ 联网下载。镜像/代理优先,GitHub 末位;
+      // download+extract+校验作为一次完整尝试(镜像常返回「200+错误页」,download 不抛但 extract 会失败,故 extract 也纳入重试)。
+      if (!installed) {
+        onProgress({ phase: "resolve", message: "确定高级分析组件版本…" });
+        const urls = resolvePythonAssetUrls();
+        const archive = path.join(os.tmpdir(), "fa-python-runtime.tar.gz");
+        try {
+          for (const url of urls) {
+            try {
+              onProgress({ phase: "download", message: "正在下载高级分析组件…" });
+              await opts.steps.download(url, archive);
+              onProgress({ phase: "extract", message: "正在解压…" });
+              await opts.steps.extract(archive, dir);
+              if (!exists(pythonPath)) {
+                lastError = new Error("解压后未找到 Python 可执行文件");
+                continue;
+              }
+              installed = true;
+              break;
+            } catch (error) {
+              lastError = error;
             }
-            installed = true;
-            break;
-          } catch (error) {
-            lastError = error;
+          }
+        } finally {
+          // 归档 50-100MB,解压完(或全部候选源失败)后即删,避免在 tmpdir 长期占盘。
+          try {
+            fs.rmSync(archive, { force: true });
+          } catch {
+            // best-effort:删不掉也不影响安装结果
           }
         }
-      } finally {
-        // 归档 50-100MB,解压完(或全部候选源失败)后即删,避免在 tmpdir 长期占盘。
-        try {
-          fs.rmSync(archive, { force: true });
-        } catch {
-          // best-effort:删不掉也不影响安装结果
-        }
       }
-    }
+    };
+
+    await materialize();
 
     if (!installed) {
       const msg = lastError instanceof Error ? lastError.message : String(lastError);
@@ -137,8 +177,28 @@ export async function installPythonRuntime(opts: {
       throw lastError ?? new Error("下载失败:所有候选源均不可用");
     }
 
+    const requirementsPath = path.join(getProjectRoot(), "requirements.txt");
     onProgress({ phase: "pip", message: "正在安装依赖…" });
-    await opts.steps.pipInstall(pythonPath, path.join(getProjectRoot(), "requirements.txt"));
+    try {
+      await opts.steps.pipInstall(pythonPath, requirementsPath);
+    } catch (pipError) {
+      if (!reusedExisting) throw pipError;
+      // 复用路径下 pip 失败：半残/漂移运行时。强制重解压一次后再 pip（仍可能因 EPERM 失败，错误对人话降级）。
+      onProgress({ phase: "extract", message: "运行时异常，正在重装组件…" });
+      installed = false;
+      reusedExisting = false;
+      lastError = pipError;
+      await materialize();
+      if (!installed) throw lastError ?? pipError;
+      onProgress({ phase: "pip", message: "正在安装依赖…" });
+      await opts.steps.pipInstall(pythonPath, requirementsPath);
+    }
+
+    try {
+      writeText(stampFile, PYTHON_RUNTIME_STAMP);
+    } catch {
+      // 戳写失败不阻断已成功的 pip；下次可能多解压一次，可接受。
+    }
 
     onProgress({ phase: "done", message: "高级分析组件已就绪。" });
     return { ok: true, pythonPath, detail: "高级 Excel/PDF 分析已启用。" };

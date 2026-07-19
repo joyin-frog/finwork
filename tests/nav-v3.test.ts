@@ -263,7 +263,10 @@ export const navV3TestPromise = (async () => {
     const navSrc = src("app/shared/app-nav.tsx");
     const roleRowBody = navSrc.slice(navSrc.indexOf("function renderRoleRow"), navSrc.indexOf("function renderConversationRow"));
     assert.ok(roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 角色图标应使用岗位 tone");
-    assert.ok(roleRowBody.includes("ROLE_NAV_ICONS"), "抛光 FAIL: 角色应使用 Hugeicons 语义图标映射");
+    assert.ok(roleRowBody.includes("roleNavIcon"), "抛光 FAIL: 角色图标应经 roleNavIcon 按 ROLE_UI.iconName 解析");
+    assert.ok(!navSrc.includes("ROLE_NAV_ICONS"), "抛光 FAIL: 不得再维护与 ROLE_UI 脱节的 ROLE_NAV_ICONS");
+    const roleIconsSrc = src("lib/domain/role-icons.ts");
+    assert.ok(roleIconsSrc.includes("ROLE_UI"), "抛光 FAIL: role-icons 应以 ROLE_UI.iconName 为唯一来源");
     assert.ok(roleRowBody.includes("rounded"), "抛光 FAIL: 角色图标槽应为轻圆角方形，不得使用圆形头像");
     assert.ok(!roleRowBody.includes("r.name.slice(0, 1)"), "抛光 FAIL: 角色图标不应继续使用圆形汉字头像");
     assert.ok(!roleRowBody.includes('"var(--tone-neutral)"'), "抛光 FAIL: 空闲角色不应常显中性圆点");
@@ -360,12 +363,39 @@ export const navV3TestPromise = (async () => {
       "C5b FAIL: 「智能体」分组标题不应显示图标"
     );
     assert.ok(
-      navSrc.includes('className="sidebar-nav-scroll flex-1 overflow-y-auto px-2 flex flex-col gap-5"'),
-      "C5b FAIL: 侧栏大分组应使用 20px 间距"
+      navSrc.includes("sidebar-nav-scroll") && navSrc.includes("gap-5") && navSrc.includes("overflow-y-auto"),
+      "C5b FAIL: 侧栏中部滚动区应使用 20px 大分组间距"
     );
     assert.ok(
       navSrc.includes('className="flex flex-col gap-0 px-2 pb-5 shrink-0"'),
       "C5b FAIL: 一级菜单行应连续排列，同时与智能体目录保留 20px 间距"
+    );
+    // 一级导航以下共用一条滚动条：智能体与置顶/最近同在 data-nav-scroll 内。
+    const scrollIdx = navSrc.indexOf('data-nav-scroll=""');
+    const agentDirIdx = navSrc.indexOf('data-nav-agent-directory="always"');
+    const pinnedIdx2 = navSrc.indexOf("setPinnedOpen(!pinnedOpen)");
+    assert.ok(scrollIdx > -1 && agentDirIdx > scrollIdx, "C5b FAIL: 智能体应位于统一滚动容器内");
+    assert.ok(pinnedIdx2 > agentDirIdx, "C5b FAIL: 置顶应与智能体同属统一滚动区且位于其后");
+    assert.ok(
+      navSrc.includes("sidebar-nav-edge-top") && navSrc.includes("sidebar-nav-edge-bottom"),
+      "C5b FAIL: 滚动区应有上下边缘渐隐"
+    );
+    assert.ok(
+      navSrc.includes("data-nav-scroll-top") && navSrc.includes("data-nav-scroll-bottom"),
+      "C5b FAIL: 边缘渐隐应按滚动位置显隐"
+    );
+    const globals = src("app/globals.css");
+    assert.match(globals, /\.sidebar-nav-edge-top/, "C5b FAIL: globals 应定义顶部边缘渐隐");
+    assert.match(globals, /\.sidebar-nav-edge-bottom/, "C5b FAIL: globals 应定义底部边缘渐隐");
+    assert.match(globals, /backdrop-filter:\s*blur/, "C5b FAIL: 边缘渐隐应含轻 blur");
+    // 「最近」默认策略：有置顶收起、无置顶展开。
+    assert.ok(
+      navSrc.includes("setRecentOpen(!hasPinnedNow)"),
+      "C5b FAIL: 应根据是否有置顶设置「最近」默认开合"
+    );
+    assert.ok(
+      navSrc.includes("pinnedPresenceRef"),
+      "C5b FAIL: 「最近」默认策略应只在置顶有无变化时套用"
     );
   }
 
@@ -374,6 +404,9 @@ export const navV3TestPromise = (async () => {
     const conventions = src("docs/ui-conventions.md");
     assert.match(conventions, /紧凑行、宽分组/, "设计语言 FAIL: 应记录侧栏的核心节奏");
     assert.match(conventions, /20px/, "设计语言 FAIL: 应记录密集侧栏的大分组间距");
+    assert.match(conventions, /一条滚动条/, "设计语言 FAIL: 应记录一级导航以下共用滚动");
+    assert.match(conventions, /渐隐/, "设计语言 FAIL: 应记录侧栏滚动区边缘渐隐");
+    assert.match(conventions, /有置顶时/, "设计语言 FAIL: 应记录「最近」相对置顶的默认开合策略");
     assert.match(conventions, /双轴对齐/, "设计语言 FAIL: 应记录图形轴与文字轴对齐规则");
     assert.match(conventions, /常驻目录/, "设计语言 FAIL: 应记录短目录默认常驻的原则");
   }
