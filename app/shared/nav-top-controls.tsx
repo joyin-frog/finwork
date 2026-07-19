@@ -14,7 +14,8 @@ export function NavTopControls() {
   const { collapsed, setCollapsed, setSearchOpen } = useNavState();
   return (
     <>
-      <ShortcutHint label="搜索" combo="mod+g" side="right">
+      {/* side=right + 碰撞边距：提示不向上伸入 Windows 自绘标题栏（不改全局 Tooltip 默认）。 */}
+      <ShortcutHint label="搜索" combo="mod+g" side="right" sideOffset={6} collisionPadding={8}>
         <button
           type="button"
           onClick={() => setSearchOpen(true)}
@@ -25,7 +26,7 @@ export function NavTopControls() {
           <HugeiconsIcon icon={Search01Icon} size={16} />
         </button>
       </ShortcutHint>
-      <ShortcutHint label={collapsed ? "展开菜单" : "收起菜单"} combo="mod+b" side="right">
+      <ShortcutHint label={collapsed ? "展开菜单" : "收起菜单"} combo="mod+b" side="right" sideOffset={6} collisionPadding={8}>
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}

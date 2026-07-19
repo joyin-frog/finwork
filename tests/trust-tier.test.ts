@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { deriveTrustTier, type TrustTier, type TrustSource, type TrustStatus } from "../lib/domain/trust-tier.ts";
 import { ROLE_UI } from "../lib/domain/role-ui.ts";
 
@@ -61,9 +62,14 @@ export const trustTierTestPromise = (async () => {
   eq(ROLE_UI["receivables-officer"].tone, "--tone-receivables", "AC-ROLE_UI receivables-officer.tone=--tone-receivables");
   eq(ROLE_UI["analyst"].tone, "--tone-analysis", "AC-ROLE_UI analyst.tone=--tone-analysis");
 
-  // ── AC-ROLE_UI-ICON: 每个 key 都有 iconName 字段 ──
+  // ── AC-ROLE_UI-ICON: 每个 key 都有 iconName 字段，且 role-icons 表覆盖 ──
+  const roleIconsSrc = readFileSync(new URL("../lib/domain/role-icons.ts", import.meta.url), "utf8");
   for (const k of EXPECTED_KEYS) {
     ok(typeof ROLE_UI[k].iconName === "string" && ROLE_UI[k].iconName.length > 0, `AC-ROLE_UI key "${k}" 必须有非空 iconName`);
+    ok(
+      roleIconsSrc.includes(`"${ROLE_UI[k].iconName}"`) || roleIconsSrc.includes(`${ROLE_UI[k].iconName}:`),
+      `AC-ROLE_UI iconName "${ROLE_UI[k].iconName}" 必须在 role-icons.ts 有 Hugeicons 映射`
+    );
   }
 
   console.log("trust-tier: all matrix + ROLE_UI checks passed ✓");

@@ -30,13 +30,26 @@ export const windowControlsTestPromise = (async () => {
     "关闭按钮应调用 win.close()"
   );
 
+  // CloseGuard：有活动流时 preventDefault，用户确认后必须 destroy() 真正关窗（需 allow-destroy）。
+  const capability = read("src-tauri/capabilities/default.json");
+  assert.match(capability, /"core:window:allow-destroy"/, "确认关窗的 destroy() 必须有 allow-destroy 权限");
+  const closeGuard = read("app/shared/close-guard.tsx");
+  assert.match(closeGuard, /onCloseRequested/, "CloseGuard 应监听 onCloseRequested");
+  assert.match(closeGuard, /event\.preventDefault\(\)/, "有活动流时应 preventDefault 拦截关窗");
+  assert.match(closeGuard, /\.destroy\(\)/, "确认退出应调用 destroy() 而非再次 close()");
+  assert.doesNotMatch(
+    closeGuard.slice(closeGuard.indexOf("function handleConfirm"), closeGuard.indexOf("function handleOpenChange")),
+    /\.close\(\)/,
+    "handleConfirm 不得再调 close()（会再次进入守卫）"
+  );
+
   // 最大化状态同步：初值 isMaximized() + onResized 订阅 + 卸载清理。
   assert.match(controls, /win\.isMaximized\(\)\.then\(setMaximized\)/, "应以 isMaximized() 初始化状态");
   assert.match(controls, /\.onResized\(/, "应订阅 onResized 同步最大化态");
   assert.match(controls, /unlisten\?\.\(\)/, "卸载时应清理 onResized 监听");
 
   // 图标随状态切换，且尺寸符合 §4.3（常规 14px=size-3.5，还原双框 13px）。
-  assert.match(controls, /maximized \? Copy01Icon : AppWindowIcon/, "中键图标应随最大化态切换");
+  assert.match(controls, /maximized \? Copy01Icon : SquareIcon/, "中键应以单方框表示最大化、双框表示还原");
   assert.match(controls, /size-3\.5/, "常规图标应为 14px（size-3.5）");
   assert.match(controls, /size-\[13px\]/, "还原图标应为 13px");
 

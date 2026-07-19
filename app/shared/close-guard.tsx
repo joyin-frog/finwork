@@ -12,8 +12,8 @@ import { useChatStream } from "@/app/shared/chat-stream";
  *
  * 实现要点：
  * - onCloseRequested 只注册一次（effect[]），通过 ref 读取最新 hasActiveTurns，避免闭包捕获旧值。
- * - bypassRef：用户确认退出后置 true，监听器里直接放行（不再弹框），保证 Rust 的 kill 路径照常走。
- * - 取消确认后 bypassRef 保持 false（初始值），下次关窗仍会弹框。
+ * - 确认退出后调用 destroy()（需 core:window:allow-destroy）：跳过再次 close 事件，直接销毁窗口，
+ *   保证 Rust 的 WindowEvent::Destroyed 子进程回收路径照常走。
  */
 export function CloseGuard() {
   const { hasActiveTurns } = useChatStream();
@@ -23,9 +23,6 @@ export function CloseGuard() {
   const hasActiveTurnsRef = useRef(hasActiveTurns);
   hasActiveTurnsRef.current = hasActiveTurns;
 
-  // 确认退出后置 true，让监听器直接放行，保证走到 Rust 的子进程 kill 路径
-  const bypassRef = useRef(false);
-
   useEffect(() => {
     if (!isTauri()) return;
 
@@ -34,11 +31,6 @@ export function CloseGuard() {
 
     void win
       .onCloseRequested((event) => {
-        if (bypassRef.current) {
-          // 用户已确认退出，本次直接放行
-          bypassRef.current = false;
-          return;
-        }
         if (hasActiveTurnsRef.current) {
           event.preventDefault();
           setConfirmOpen(true);
@@ -53,13 +45,12 @@ export function CloseGuard() {
 
   function handleConfirm() {
     setConfirmOpen(false);
-    bypassRef.current = true;
-    void getCurrentWindow().close();
+    // preventDefault 之后必须 destroy 才能真正关窗；再次 close() 可能再次进入守卫。
+    void getCurrentWindow().destroy();
   }
 
   function handleOpenChange(open: boolean) {
     setConfirmOpen(open);
-    // 取消时 bypassRef 不变（保持 false），下次关窗仍弹确认
   }
 
   return (

@@ -10,11 +10,17 @@ export function ShortcutHint({
   label,
   combo,
   side = "bottom",
+  sideOffset = 0,
+  collisionPadding = 0,
   children
 }: {
   label: string;
   combo: string;
   side?: "top" | "bottom" | "left" | "right";
+  /** 与触发器间距；侧栏顶栏等靠窗缘控件可加大以免贴边。 */
+  sideOffset?: number;
+  /** 视口碰撞边距；侧栏顶栏传非零值，避免提示伸入 Windows 自绘标题栏。 */
+  collisionPadding?: number;
   children: React.ReactNode;
 }) {
   const isMac = useIsMac();
@@ -23,7 +29,7 @@ export function ShortcutHint({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side}>
+      <TooltipContent side={side} sideOffset={sideOffset} collisionPadding={collisionPadding}>
         {label}
         <Kbd>{formatShortcut(combo, isMac)}</Kbd>
       </TooltipContent>

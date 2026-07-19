@@ -32,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
 import { ROLE_LABELS, ROLE_UI } from "@/lib/domain/role-ui";
+import { roleNavIcon } from "@/lib/domain/role-icons";
 import { surfaceVariants } from "@/components/ui/surface";
 import { Input } from "@/components/ui/input";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -124,7 +125,6 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     navWidth, setNavWidth,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    agentsOpen, setAgentsOpen,
     agentRoster, agentPendingCount,
     conversations, hasMore, loaded, loadError, fetchConversations,
     deleteTarget,
@@ -148,6 +148,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   const renameInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLElement>(null);
+  // 「最近」默认策略：有置顶时收起，无置顶时展开。只在置顶有无变化时套用，不覆盖用户手势。
+  const pinnedPresenceRef = useRef<boolean | null>(null);
+  const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false });
 
   const activeConversationId = (() => {
     if (chatActive !== "recent") return null;
@@ -161,16 +164,39 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     }
   }, [renamingId]);
 
+  useEffect(() => {
+    if (!loaded) return;
+    const hasPinnedNow = conversations.some((c) => c.pinned);
+    if (pinnedPresenceRef.current === hasPinnedNow) return;
+    pinnedPresenceRef.current = hasPinnedNow;
+    setRecentOpen(!hasPinnedNow);
+  }, [loaded, conversations, setRecentOpen]);
+
+  const updateScrollEdges = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = el.scrollTop > 2;
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight > 2;
+    setScrollEdges((prev) => (prev.top === top && prev.bottom === bottom ? prev : { top, bottom }));
+  }, []);
+
   const handleScroll = useCallback(() => {
+    updateScrollEdges();
     const el = listRef.current;
     if (!el || !hasMore) return;
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
       fetchConversations(conversations.length);
     }
-  }, [hasMore, conversations.length, fetchConversations]);
+  }, [hasMore, conversations.length, fetchConversations, updateScrollEdges]);
 
   const pinnedConversations = conversations.filter((c) => c.pinned);
   const recentConversations = conversations.filter((c) => !c.pinned);
+  const hasPinned = pinnedConversations.length > 0;
+
+  // 内容高度变化后重算上下边缘渐隐（折叠开合、花名册加载等）。
+  useEffect(() => {
+    updateScrollEdges();
+  }, [agentRoster.length, conversations.length, pinnedOpen, recentOpen, hasPinned, updateScrollEdges]);
 
   async function handleConfirmDelete() {
     const result = await confirmDelete();
@@ -182,7 +208,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   const navLinkClass = (isActive: boolean) =>
     cn(
-      "relative isolate flex items-center gap-2 px-3 min-h-[36px] rounded-md text-body transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
+      "relative isolate flex items-center gap-3 px-3 min-h-[36px] rounded-md text-body transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
       isActive
         ? "text-primary font-medium"
         : "text-foreground hover:bg-accent hover:text-accent-foreground"
@@ -194,7 +220,8 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     const isBlocked = (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending;
     const disabled = !r.available || r.userDisabled;
     const roleTone = ROLE_UI[r.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral";
-    // 角色头像负责岗位识别；状态点只在进行中/待拍板时出现，避免空闲圆点常驻造成噪声。
+    const roleIcon = roleNavIcon(r.roleId);
+    // 方形语义图标负责岗位识别；状态点只在进行中/待拍板时出现，避免空闲圆点常驻造成噪声。
     const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;
     const dotLabel = isRunning ? "在忙" : "待拍板";
     return (
@@ -212,10 +239,10 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         )}
       >
         <span
-          className="fa-toned relative shrink-0 flex size-5 items-center justify-center text-[10px] font-semibold select-none"
-          style={{ "--tone": `var(${roleTone})`, borderRadius: "50%" } as CSSProperties}
+          className="fa-toned relative shrink-0 flex size-5 items-center justify-center rounded select-none"
+          style={{ "--tone": `var(${roleTone})` } as CSSProperties}
         >
-          <span aria-hidden="true">{r.name.slice(0, 1)}</span>
+          <HugeiconsIcon icon={roleIcon} size={14} aria-hidden="true" />
           {dotTone && (
             <span
               className={cn("fa-tone-dot absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar", isRunning && "fa-dot-pulse")}
@@ -370,7 +397,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       </div>
 
         <>
-          <div className="flex flex-col gap-1 px-2 pb-4 shrink-0">
+          <div className="flex flex-col gap-0 px-2 pb-5 shrink-0">
             <Link href="/chat/new" onClick={() => trackFeature("nav.chat")} className={cn(navLinkClass(active === "chat" && chatActive === "new"), "group")}>
               {active === "chat" && chatActive === "new" && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={ChatAddIcon} size={16} />
@@ -394,96 +421,95 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             </Link>
           </div>
 
-          <nav
-            ref={listRef as React.RefObject<HTMLElement>}
-            aria-label="主导航"
-            onScroll={handleScroll}
-            className="sidebar-nav-scroll flex-1 overflow-y-auto px-2 flex flex-col gap-4"
+          {/* 一级导航以下共用一条滚动条；上下边缘在可滚时渐隐模糊，避免内容硬切。 */}
+          <div
+            className="relative flex min-h-0 flex-1 flex-col"
+            data-nav-scroll-top={scrollEdges.top ? "" : undefined}
+            data-nav-scroll-bottom={scrollEdges.bottom ? "" : undefined}
           >
-            {/* 智能体：与置顶/最近同级的会话分组；子列表直达各角色工作台。
-                徽标=待拍板专员数，是唯一的"有事"信号。 */}
-            <div className="flex flex-col gap-1">
-              <button
-                type="button"
-                onClick={() => setAgentsOpen(!agentsOpen)}
-                aria-expanded={agentsOpen}
-                className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <span>智能体</span>
-                <span className="ml-auto flex items-center gap-1.5">
-                  {agentPendingCount > 0 && (
-                    <span
-                      className="fa-toned text-meta font-medium px-1.5 tabular-nums"
-                      style={{ "--tone": "var(--tone-notice)", borderRadius: "999px" } as CSSProperties}
-                      title={`${agentPendingCount} 位专员等你拍板`}
-                    >
-                      {agentPendingCount}
-                    </span>
+            <nav
+              ref={listRef as React.RefObject<HTMLElement>}
+              aria-label="主导航"
+              onScroll={handleScroll}
+              data-nav-scroll=""
+              className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-2"
+            >
+              {/* 智能体是短而稳定的核心目录，始终渲染；徽标是唯一的“有事”信号。 */}
+              <div data-nav-agent-directory="always" className="flex flex-col gap-1">
+                <div className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground">
+                  <span>智能体</span>
+                  <span className="ml-auto flex items-center gap-1.5">
+                    {agentPendingCount > 0 && (
+                      <span
+                        className="fa-toned text-meta font-medium px-1.5 tabular-nums"
+                        style={{ "--tone": "var(--tone-notice)", borderRadius: "999px" } as CSSProperties}
+                        title={`${agentPendingCount} 位专员等你拍板`}
+                      >
+                        {agentPendingCount}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {agentRoster.length === 0 ? (
+                    <span className="pl-8 pr-2 py-1 text-meta text-muted-foreground">加载中…</span>
+                  ) : (
+                    agentRoster.map(renderRoleRow)
                   )}
-                  <HugeiconsIcon
-                    icon={ArrowDown01Icon}
-                    size={12}
-                    className={cn("transition-transform motion-reduce:transition-none", agentsOpen && "rotate-180")}
-                  />
-                </span>
-              </button>
-              <CollapsibleSectionMotion open={agentsOpen} reduce={reduce}>
-                {agentRoster.length === 0 ? (
-                  <span className="pl-8 pr-2 py-1 text-meta text-muted-foreground">加载中…</span>
-                ) : (
-                  agentRoster.map(renderRoleRow)
-                )}
-              </CollapsibleSectionMotion>
-            </div>
+                </div>
+              </div>
 
-            {pinnedConversations.length > 0 && (
+              {hasPinned && (
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPinnedOpen(!pinnedOpen)}
+                    className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <span>置顶</span>
+                    <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", pinnedOpen && "rotate-180")} />
+                  </button>
+                  <CollapsibleSectionMotion open={pinnedOpen} reduce={reduce}>
+                      <AnimatePresence initial={false}>
+                        {pinnedConversations.map(renderConversationRow)}
+                      </AnimatePresence>
+                  </CollapsibleSectionMotion>
+                </div>
+              )}
+
               <div className="flex flex-col gap-1">
                 <button
                   type="button"
-                  onClick={() => setPinnedOpen(!pinnedOpen)}
-                  className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setRecentOpen(!recentOpen)}
+                  className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <span>置顶</span>
-                  <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", pinnedOpen && "rotate-180")} />
+                  <span>最近</span>
+                  <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", recentOpen && "rotate-180")} />
                 </button>
-                <CollapsibleSectionMotion open={pinnedOpen} reduce={reduce}>
-                    <AnimatePresence initial={false}>
-                      {pinnedConversations.map(renderConversationRow)}
-                    </AnimatePresence>
+                <CollapsibleSectionMotion open={recentOpen} reduce={reduce}>
+                    {recentConversations.length === 0 && loaded ? (
+                      loadError ? (
+                        <button
+                          type="button"
+                          onClick={() => void fetchConversations(0)}
+                          className="px-3 py-2 text-meta text-muted-foreground hover:bg-muted rounded text-left"
+                        >
+                          加载失败，点此重试
+                        </button>
+                      ) : (
+                        <span className="px-3 py-2 text-meta text-muted-foreground">还没有对话。点上方「新对话」开始</span>
+                      )
+                    ) : (
+                      <AnimatePresence initial={false}>
+                        {recentConversations.map(renderConversationRow)}
+                      </AnimatePresence>
+                    )}
                 </CollapsibleSectionMotion>
               </div>
-            )}
-
-            <div className="flex flex-col gap-1">
-              <button
-                type="button"
-                onClick={() => setRecentOpen(!recentOpen)}
-                className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <span>最近</span>
-                <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", recentOpen && "rotate-180")} />
-              </button>
-              <CollapsibleSectionMotion open={recentOpen} reduce={reduce}>
-                  {recentConversations.length === 0 && loaded ? (
-                    loadError ? (
-                      <button
-                        type="button"
-                        onClick={() => void fetchConversations(0)}
-                        className="px-3 py-2 text-meta text-muted-foreground hover:bg-muted rounded text-left"
-                      >
-                        加载失败，点此重试
-                      </button>
-                    ) : (
-                      <span className="px-3 py-2 text-meta text-muted-foreground">还没有对话。点上方「新对话」开始</span>
-                    )
-                  ) : (
-                    <AnimatePresence initial={false}>
-                      {recentConversations.map(renderConversationRow)}
-                    </AnimatePresence>
-                  )}
-              </CollapsibleSectionMotion>
-            </div>
-          </nav>
+            </nav>
+            <div aria-hidden className="sidebar-nav-edge sidebar-nav-edge-top" />
+            <div aria-hidden className="sidebar-nav-edge sidebar-nav-edge-bottom" />
+          </div>
 
           <div className="flex flex-col gap-0.5 px-2 py-2 shrink-0">
             {/* 与上方对话列表隔一条发丝线 */}

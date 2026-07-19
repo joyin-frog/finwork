@@ -115,10 +115,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <IsMacProvider>
     <TooltipProvider delayDuration={300}>
-      {/* 默认风格的窗口底层使用页面底色；现代风格由 .app-shell 改为 --sidebar，
-          与侧栏、Windows 标题栏组成连续外壳。主导航只在侧栏与页面头部，不渲染顶部标签栏。
-          外壳横排：侧栏直接从窗口顶部开始；Windows 标题栏收进主工作区列（非 Windows 渲染 null）。 */}
-      <div className="app-shell flex h-screen overflow-hidden bg-background">
+      {/* Windows 标题栏横贯全窗，侧栏与主内容从其下方开始；macOS/Linux/Web 下
+          WindowTitleBar 返回 null，app-shell-body 会自然占满全高。主导航不恢复顶部标签栏。 */}
+      <div className="app-shell flex h-screen flex-col overflow-hidden bg-background">
         <a
           href="#main-content"
           // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
@@ -126,21 +125,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           跳转到主内容
         </a>
-        <Suspense fallback={null}>
-          <AppNav active={active} chatActive={chatActive} />
-        </Suspense>
-        {/* 几何中性包装层：仅 flex 穿透，禁止 margin/padding/overflow/transform 等一切会改几何或
-            创建堆叠上下文的属性——.app-titlebar 的 z-[60] 依赖与全屏模态(z-50)同处根堆叠上下文。 */}
-        <div className="app-workspace flex flex-1 min-w-0 min-h-0 flex-col">
-          <WindowTitleBar />
-          {/* min-h-0 必须保留：main 是纵排主轴子项，缺它则长内容把 main 撑出视口、overflow-auto 失效。 */}
-          <main
-            id="main-content"
-            tabIndex={-1}
-            className="app-main flex-1 min-w-0 min-h-0 overflow-auto bg-background"
-          >
-            <FirstRunGate>{children}</FirstRunGate>
-          </main>
+        <WindowTitleBar />
+        <div className="app-shell-body flex flex-1 min-h-0 min-w-0">
+          <Suspense fallback={null}>
+            <AppNav active={active} chatActive={chatActive} />
+          </Suspense>
+          {/* 工作区只负责横向剩余空间与内容滚动，不形成新的堆叠上下文。 */}
+          <div className="app-workspace flex flex-1 min-w-0 min-h-0 flex-col">
+            {/* min-h-0 必须保留：长内容不能把 main 撑出视口。 */}
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className="app-main flex-1 min-w-0 min-h-0 overflow-auto bg-background"
+            >
+              <FirstRunGate>{children}</FirstRunGate>
+            </main>
+          </div>
         </div>
         <Suspense fallback={null}>
           <GlobalShortcuts />
