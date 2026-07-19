@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MinusSignIcon, AppWindowIcon, Copy01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import { MinusSignIcon, SquareIcon, Copy01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -69,12 +69,12 @@ export function useIsWindowsApp() {
 }
 
 /**
- * Windows 自绘标题栏:无边框窗(见 lib.rs 的 decorations(false))下,主工作区列顶部的拖拽条,
- * 三键(最小化 / 最大化↔还原 / 关闭)固定在右端。高度/表面/分隔线由 globals.css 的
+ * Windows 自绘标题栏:无边框窗(见 lib.rs 的 decorations(false))下横贯全窗的拖拽条,
+ * 左侧显示品牌,三键(最小化 / 最大化↔还原 / 关闭)固定在右端。高度/表面/分隔线由 globals.css 的
  * .app-titlebar(消费 --window-chrome-height)与风格映射决定,组件不写死窗口几何。
  *
  * 仅 Windows+Tauri 渲染(mac 用系统红绿灯、linux 原生框、web 无);非 Windows 返回 null,
- * 作为 app-workspace flex 列的首个子项不占高度 → mac/linux/web 布局零影响。
+ * 作为 app-shell flex 列的首个子项不占高度 → mac/linux/web 布局零影响。
  * 整条 data-tauri-drag-region 可拖动 + 双击最大化(Tauri 内建,勿再绑 onDoubleClick 造成双触发);
  * 三键是其子元素,按下命中自身不触发拖拽。侧栏收起(width 0 + inert)时本条恰横贯全窗宽,独自承接顶部拖动。
  * 三键点击几何走 .app-titlebar-btn(44px 宽 x 贴满栏高、直角):关闭按钮触达窗口右上角,
@@ -87,8 +87,7 @@ export function WindowTitleBar() {
   const hasWindow = isWin; // 只有真 Tauri 才有 getCurrentWindow 可用;dev 预览无窗口 API
   const [maximized, setMaximized] = useState(false);
 
-  // 同步最大化态用于切换中键图标:还原态=窗口图标(AppWindow),最大化态=双框叠放(Copy01,即 Windows 还原图标)。
-  // 注意 Hugeicons 的 Square01 渲染的是 x²(数学符号)不是方框,故窗口用 AppWindow。
+  // 同步最大化态用于切换中键图标:还原态=单方框(Square),最大化态=双框叠放(Copy01,即 Windows 还原图标)。
   // onResized 覆盖最大化/还原/边缘缩放触发的尺寸变化;非 Windows 不订阅。
   useEffect(() => {
     if (!hasWindow) return;
@@ -111,38 +110,44 @@ export function WindowTitleBar() {
     <div
       data-tauri-drag-region
       // relative z-[60]:让顶栏叠在全屏模态(如设置 fixed inset-0 z-50)之上,任何时候都能最小化/关窗。
-      // 依赖 app-workspace 不形成堆叠上下文(见 app-shell 注释);position:relative 保留 flex 列占位。
-      className="app-titlebar relative z-[60] flex shrink-0 items-center justify-end"
+      className="app-titlebar relative z-[60] flex shrink-0 items-center justify-between"
       role="group"
       aria-label="窗口控制"
     >
-      <Button
-        variant="ghost"
-        size="icon"
-        className="app-titlebar-btn"
-        aria-label="最小化"
-        onClick={() => win && void win.minimize()}
-      >
-        <HugeiconsIcon icon={MinusSignIcon} className="size-3.5" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="app-titlebar-btn"
-        aria-label={maximized ? "还原" : "最大化"}
-        onClick={() => win && void win.toggleMaximize()}
-      >
-        <HugeiconsIcon icon={maximized ? Copy01Icon : AppWindowIcon} className={maximized ? "size-[13px]" : "size-3.5"} />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="app-titlebar-btn hover:bg-destructive hover:text-white focus-visible:bg-destructive focus-visible:text-white"
-        aria-label="关闭"
-        onClick={() => win && void win.close()}
-      >
-        <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
-      </Button>
+      <div data-tauri-drag-region className="app-titlebar-brand flex min-w-0 items-center gap-2">
+        {/* eslint-disable-next-line @next/next/no-img-element -- 复用 app metadata 的正式 SVG 品牌资产 */}
+        <img data-tauri-drag-region src="/icon.svg" alt="" className="size-[18px] shrink-0" />
+        <span data-tauri-drag-region className="truncate text-[13px] font-semibold tracking-[-0.01em]">Finwork</span>
+      </div>
+      <div className="flex h-full shrink-0 items-center">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="app-titlebar-btn"
+          aria-label="最小化"
+          onClick={() => win && void win.minimize()}
+        >
+          <HugeiconsIcon icon={MinusSignIcon} className="size-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="app-titlebar-btn"
+          aria-label={maximized ? "还原" : "最大化"}
+          onClick={() => win && void win.toggleMaximize()}
+        >
+          <HugeiconsIcon icon={maximized ? Copy01Icon : SquareIcon} className={maximized ? "size-[13px]" : "size-3.5"} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="app-titlebar-btn hover:bg-destructive hover:text-white focus-visible:bg-destructive focus-visible:text-white"
+          aria-label="关闭"
+          onClick={() => win && void win.close()}
+        >
+          <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }

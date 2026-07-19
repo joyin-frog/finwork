@@ -78,12 +78,14 @@ export async function installPythonRuntime(opts: {
   const dir = getInstalledPythonDir();
   try {
     const pythonPath = pythonExeIn(dir);
-    let installed = false;
+    // 自检常见的修复场景是「Python 已在,只缺 pip 依赖」。复用现有运行时，
+    // 避免 Windows 上递归删除被存活 Python 进程加载的 DLL 而报 EPERM。
+    let installed = exists(pythonPath);
     let lastError: unknown;
 
     // C 方案:优先用随安装包内嵌的 Python 归档(解压即用,免联网下载——绕开 GitHub 抖动/版本漂移)。
     const bundled = getBundledPythonArchive();
-    if (exists(bundled)) {
+    if (!installed && exists(bundled)) {
       try {
         onProgress({ phase: "extract", message: "正在解压内置组件…" });
         await opts.steps.extract(bundled, dir);

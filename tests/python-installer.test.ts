@@ -8,18 +8,35 @@ import { installPythonRuntime, resolvePythonAssetUrl, resolvePythonAssetUrls, ty
 // C 方案:优先用随包内嵌归档(免联网),无归档时兜底联网下载。
 export const pythonInstallerTestPromise = (async () => {
   const savedArchive = process.env.FINANCE_AGENT_PYTHON_ARCHIVE;
+  // 已有运行时时只补依赖；Windows 会禁止删除被存活 Python 进程加载的 DLL（EPERM）。
+  process.env.FINANCE_AGENT_PYTHON_ARCHIVE = "/fake/bundled/python-runtime.tar.gz";
+  {
+    let downloadCalled = false, extractCalled = false, pipCalled = false;
+    const steps: InstallSteps = {
+      download: async () => { downloadCalled = true; },
+      extract: async () => { extractCalled = true; },
+      pipInstall: async () => { pipCalled = true; },
+      exists: () => true,
+    };
+    const r = await installPythonRuntime({ steps });
+    assert.equal(r.ok, true, "existing-runtime FAIL: 已有运行时应直接成功");
+    assert.equal(downloadCalled, false, "existing-runtime FAIL: 不应重新下载");
+    assert.equal(extractCalled, false, "existing-runtime FAIL: 不应删除并重新解压正在使用的运行时");
+    assert.equal(pipCalled, true, "existing-runtime FAIL: 应继续补装依赖");
+  }
   try {
     // ── C:有随包归档 → 解压即用,不联网下载 ──────────────────────────────
     process.env.FINANCE_AGENT_PYTHON_ARCHIVE = "/fake/bundled/python-runtime.tar.gz";
     {
       let downloadCalled = false, pipCalled = false;
+      let extracted = false;
       const extractArgs: string[] = [];
       const phases: string[] = [];
       const steps: InstallSteps = {
         download: async () => { downloadCalled = true; },
-        extract: async (a) => { extractArgs.push(a); },
+        extract: async (a) => { extractArgs.push(a); extracted = true; },
         pipInstall: async () => { pipCalled = true; },
-        exists: () => true,
+        exists: (p) => p === "/fake/bundled/python-runtime.tar.gz" || extracted,
       };
       const r = await installPythonRuntime({ steps, onProgress: (p) => phases.push(p.phase) });
       assert.equal(r.ok, true, "C FAIL: 有随包归档应成功");
@@ -35,12 +52,13 @@ export const pythonInstallerTestPromise = (async () => {
     process.env.FINANCE_AGENT_PYTHON_ARCHIVE = ABSENT;
     {
       let downloadCalled = false, pipCalled = false;
+      let extracted = false;
       const phases: string[] = [];
       const steps: InstallSteps = {
         download: async () => { downloadCalled = true; },
-        extract: async () => {},
+        extract: async () => { extracted = true; },
         pipInstall: async () => { pipCalled = true; },
-        exists: (p) => p !== ABSENT, // 随包归档不存在 → 走下载;其它(pythonPath)视为存在
+        exists: (p) => p !== ABSENT && extracted,
       };
       const r = await installPythonRuntime({ steps, onProgress: (p) => phases.push(p.phase) });
       assert.equal(r.ok, true, "fallback FAIL: 下载路径应成功");
@@ -51,7 +69,7 @@ export const pythonInstallerTestPromise = (async () => {
     // ── 下载失败:降级人话 detail,不抛 ────────────────────────────────
     {
       const r = await installPythonRuntime({
-        steps: { download: async () => { throw new Error("network down"); }, extract: async () => {}, pipInstall: async () => {}, exists: (p) => p !== ABSENT },
+        steps: { download: async () => { throw new Error("network down"); }, extract: async () => {}, pipInstall: async () => {}, exists: () => false },
       });
       assert.equal(r.ok, false, "dl-fail FAIL: 应不 ok");
       assert.ok(r.detail.includes("安装失败") && r.detail.includes("network down") && r.detail.includes("基础功能不受影响"), "dl-fail FAIL: detail 应降级说明");
@@ -62,8 +80,9 @@ export const pythonInstallerTestPromise = (async () => {
       const archive = path.join(tmpdir(), "fa-python-runtime.tar.gz");
       // 成功路径:download 落盘 → extract 后归档应被删除
       writeFileSync(archive, "fake-tarball");
+      let extracted = false;
       const rOk = await installPythonRuntime({
-        steps: { download: async () => {}, extract: async () => {}, pipInstall: async () => {}, exists: (p) => p !== ABSENT },
+        steps: { download: async () => {}, extract: async () => { extracted = true; }, pipInstall: async () => {}, exists: (p) => p !== ABSENT && extracted },
       });
       assert.equal(rOk.ok, true, "archive-rm FAIL: 前提是安装成功");
       assert.equal(existsSync(archive), false, "archive-rm FAIL: 解压成功后应删除下载归档");
@@ -71,7 +90,7 @@ export const pythonInstallerTestPromise = (async () => {
       // 失败路径:所有候选源下载都失败 → 归档(半截文件)也应被删除
       writeFileSync(archive, "half-downloaded");
       const rFail = await installPythonRuntime({
-        steps: { download: async () => { throw new Error("network down"); }, extract: async () => {}, pipInstall: async () => {}, exists: (p) => p !== ABSENT },
+        steps: { download: async () => { throw new Error("network down"); }, extract: async () => {}, pipInstall: async () => {}, exists: () => false },
       });
       assert.equal(rFail.ok, false, "archive-rm FAIL: 前提是下载失败");
       assert.equal(existsSync(archive), false, "archive-rm FAIL: 下载失败后也应删除残留归档");

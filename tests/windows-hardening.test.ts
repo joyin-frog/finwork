@@ -81,7 +81,7 @@ export const windowsHardeningTestPromise = (async () => {
           throw new Error("Windows 10 1803 以下需手动安装 Python 运行时或升级系统（tar 不可用）");
         },
         pipInstall: async () => { /* should not reach */ },
-        exists: (p) => !p.endsWith("fa-python-runtime.tar.gz") && !p.endsWith("python-runtime.tar.gz"),
+        exists: () => false,
       };
 
       const result = await installPythonRuntime({ steps });

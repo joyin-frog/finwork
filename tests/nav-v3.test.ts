@@ -5,7 +5,7 @@
  * 并保留设置内的 skill-catalog 能力目录;后续迭代按用户要求把「技能」升为一级导航项(独立卡片页,
  * /skills 渲染 SkillsManager 不再重定向)、删除 skill-catalog.tsx、并把「资料」改名「知识库」指向
  * /knowledge。本测试已同步到当前契约:
- * 契约 5 — app/shared/app-nav.tsx：「智能体」为可展开分组(总览之后,子项直达/agents/<roleId>)；「技能」href="/skills" 为一级项；
+ * 契约 5 — app/shared/app-nav.tsx：「智能体」为常驻目录(总览之后,子项直达/agents/<roleId>)；「技能」href="/skills" 为一级项；
  *           新对话/总览/知识库(/knowledge)/技能(/skills)/设置 保留
  * 契约 6 — app/skills/page.tsx 渲染 SkillsManager(卡片首页,不再重定向);skill-catalog.tsx 已删除
  * 契约 7 — app/shared/app-shell.tsx：active 映射含 "/agents"
@@ -258,12 +258,14 @@ export const navV3TestPromise = (async () => {
     assert.equal(opened2.activeKey, "page:agents:bookkeeper", "F3 FAIL: 新开标签应激活自己");
   }
 
-  // ── 抛光: 侧栏角色行用角色头像取代常显状态点，只在有事时显示状态 ──
+  // ── 抛光: 侧栏角色行使用方形语义图标，只在有事时显示状态点 ──
   {
     const navSrc = src("app/shared/app-nav.tsx");
     const roleRowBody = navSrc.slice(navSrc.indexOf("function renderRoleRow"), navSrc.indexOf("function renderConversationRow"));
-    assert.ok(roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 角色头像应使用岗位 tone");
-    assert.ok(roleRowBody.includes("r.name.slice(0, 1)"), "抛光 FAIL: 角色头像应有可辨识的岗位字样");
+    assert.ok(roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 角色图标应使用岗位 tone");
+    assert.ok(roleRowBody.includes("ROLE_NAV_ICONS"), "抛光 FAIL: 角色应使用 Hugeicons 语义图标映射");
+    assert.ok(roleRowBody.includes("rounded"), "抛光 FAIL: 角色图标槽应为轻圆角方形，不得使用圆形头像");
+    assert.ok(!roleRowBody.includes("r.name.slice(0, 1)"), "抛光 FAIL: 角色图标不应继续使用圆形汉字头像");
     assert.ok(!roleRowBody.includes('"var(--tone-neutral)"'), "抛光 FAIL: 空闲角色不应常显中性圆点");
     assert.ok(!roleRowBody.includes('"\u7a7a\u95f2"'), "抛光 FAIL: 空闲状态不应生成常显提示");
     assert.ok(roleRowBody.includes("dotTone &&"), "抛光 FAIL: 只有进行中或待拍板时才应显示状态点");
@@ -271,18 +273,27 @@ export const navV3TestPromise = (async () => {
     assert.ok(!navSrc.includes("AiBrain01Icon"), "抛光 FAIL: 智能体分组标题不应显示图标");
   }
 
-  // ── 契约 5a: app-nav.tsx「智能体」为可展开分组，子项直达角色工作台 ──────────
+  // ── 契约 5a: app-nav.tsx「智能体」为常驻目录，子项直达角色工作台 ────────────
   // IA 重构（docs/spec/design-agents-ia.md）：父项不再导航到 /agents 落地页，
-  // 而是纯展开/收起开关；子列表为角色，直达 /agents/<roleId> 工作台。
+  // 标题只承担目录标识；子列表始终渲染并直达 /agents/<roleId> 工作台。
   {
     const navSrc = src("app/shared/app-nav.tsx");
+    const navStateSrc = src("app/shared/nav-state.tsx");
     assert.ok(
       navSrc.includes("智能体"),
       "C5a FAIL: app-nav.tsx 应含「智能体」文案"
     );
     assert.ok(
-      navSrc.includes("setAgentsOpen"),
-      "C5a FAIL: 「智能体」应为可展开/收起分组开关（setAgentsOpen），不再导航"
+      !navSrc.includes("setAgentsOpen") && !navSrc.includes("agentsOpen"),
+      "C5a FAIL: 「智能体」目录应常驻，不得保留折叠状态或开关"
+    );
+    assert.ok(
+      !navStateSrc.includes("setAgentsOpen") && !navStateSrc.includes("agentsOpen"),
+      "C5a FAIL: NavState 不得保留已废弃的智能体折叠状态"
+    );
+    assert.ok(
+      navSrc.includes('data-nav-agent-directory="always"'),
+      "C5a FAIL: 智能体常驻目录应有稳定结构标记"
     );
     assert.ok(
       navSrc.includes("/agents/${"),
@@ -322,14 +333,14 @@ export const navV3TestPromise = (async () => {
     assert.ok(!navStateSrc.includes('localStorage.setItem("conversation'), "JOY-10 FAIL: v1 不应持久化会话标签");
   }
 
-  // ── 契约 5b: 「智能体」作为会话分组，位于「置顶」之前 ─────────────────────
+  // ── 契约 5b: 「智能体」作为常驻目录，位于「置顶」之前 ─────────────────────
   {
     const navSrc = src("app/shared/app-nav.tsx");
-    const agentsIdx = navSrc.indexOf("setAgentsOpen(!agentsOpen)");
+    const agentsIdx = navSrc.indexOf('data-nav-agent-directory="always"');
     const pinnedIdx = navSrc.indexOf("setPinnedOpen(!pinnedOpen)");
     assert.ok(
       agentsIdx !== -1,
-      "C5b FAIL: app-nav.tsx 应含「智能体」展开/收起按钮"
+      "C5b FAIL: app-nav.tsx 应含常驻智能体目录"
     );
     assert.ok(
       pinnedIdx !== -1,
@@ -339,15 +350,32 @@ export const navV3TestPromise = (async () => {
       agentsIdx < pinnedIdx,
       `C5b FAIL: 「智能体」（pos ${agentsIdx}）应位于「置顶」（pos ${pinnedIdx}）之前`
     );
-    const agentsHeader = navSrc.slice(navSrc.lastIndexOf("<button", agentsIdx), navSrc.indexOf("</button>", agentsIdx));
+    const agentsHeader = navSrc.slice(agentsIdx, navSrc.indexOf("agentRoster.length", agentsIdx));
     assert.ok(
-      agentsHeader.includes('className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"'),
-      "C5b FAIL: 「智能体」标题应与「置顶」使用相同样式、缩进和间距"
+      agentsHeader.includes("min-h-8") && agentsHeader.includes("px-3"),
+      "C5b FAIL: 「智能体」标题应使用 32px 高度与统一水平缩进"
     );
     assert.ok(
       !agentsHeader.includes("UserGroupIcon"),
       "C5b FAIL: 「智能体」分组标题不应显示图标"
     );
+    assert.ok(
+      navSrc.includes('className="sidebar-nav-scroll flex-1 overflow-y-auto px-2 flex flex-col gap-5"'),
+      "C5b FAIL: 侧栏大分组应使用 20px 间距"
+    );
+    assert.ok(
+      navSrc.includes('className="flex flex-col gap-0 px-2 pb-5 shrink-0"'),
+      "C5b FAIL: 一级菜单行应连续排列，同时与智能体目录保留 20px 间距"
+    );
+  }
+
+  // ── 设计语言: 参考图提炼出的侧栏节奏必须写入长期 UI 约定 ────────────────
+  {
+    const conventions = src("docs/ui-conventions.md");
+    assert.match(conventions, /紧凑行、宽分组/, "设计语言 FAIL: 应记录侧栏的核心节奏");
+    assert.match(conventions, /20px/, "设计语言 FAIL: 应记录密集侧栏的大分组间距");
+    assert.match(conventions, /双轴对齐/, "设计语言 FAIL: 应记录图形轴与文字轴对齐规则");
+    assert.match(conventions, /常驻目录/, "设计语言 FAIL: 应记录短目录默认常驻的原则");
   }
 
   // ── 契约 5c: 「技能」为一级导航项（导航区含 href="/skills"）─────────────────

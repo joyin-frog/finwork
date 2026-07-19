@@ -117,7 +117,7 @@
     /* ── 外壳几何 token(单一来源):所有依赖侧栏宽度/红绿灯净空的定位一律引用它们,禁止再写镜像常量 ── */
     --nav-width: 13.5rem;    /* 侧栏展开默认宽度(216px)。首帧兜底；运行期由 app-nav useEffect 用实时 navWidth 覆盖 */
     --tl-inset: 5rem;        /* macOS 红绿灯净空;Windows 平台规则覆写为 0.5rem */
-    --window-chrome-height: 2.5rem; /* Windows 窗口控制区高度(40px):.app-titlebar 与 Windows 侧栏顶栏共用;mac 不消费 */
+    --window-chrome-height: 2.5rem; /* Windows 独立品牌标题栏高度(40px);侧栏与内容从其下方开始,mac 不消费 */
     /* 密度 token:间距随风格切换的旋钮。默认值与既有 Tailwind class 严格等值(p-4=1rem 等),保证默认风格像素零变化 */
     --surface-pad: 1rem;       /* 卡片内边距(原 p-4) */
     --surface-pad-sm: 0.75rem; /* 紧凑卡内边距(原 p-3) */
@@ -604,12 +604,12 @@ html button.composer-send-button.stop {
 .sidebar-nav-scroll::-webkit-scrollbar { width: 8px; }
 .sidebar-nav-scroll::-webkit-scrollbar-track { margin-block: 28px; }
 
-/* Windows 自绘标题栏(见 WindowTitleBar):三键在主工作区列顶部,不覆盖业务页面 header,
+/* Windows 自绘标题栏(见 WindowTitleBar):横贯全窗,左侧品牌、右侧三键,不覆盖业务页面 header,
    故无需给各页 header / 预览卡右侧让位——旧的 padding-right 通配规则会误伤「右缘不在窗口右缘」
    的 header(对话/资料预览列、居中设置模态)而把按钮左推,已随顶栏方案一并去掉。
 
    窗口系统几何(平台属性,独立于界面风格):高度走 --window-chrome-height 单一 Token,
-   经典/现代共用;表面与分隔线才是风格差异(经典细分隔线,现代由主卡上边界分层,见 linear 覆盖块)。 */
+   经典/现代共用;侧栏与主内容位于其下方。 */
 .app-titlebar {
   height: var(--window-chrome-height);
   background: var(--background);
@@ -622,14 +622,16 @@ html button.composer-send-button.stop {
   height: 100%;
   border-radius: 0;
 }
+.app-titlebar-brand {
+  padding-inline: 0.75rem;
+  color: var(--foreground);
+}
 
-/* Windows 无红绿灯,收掉左侧栏顶栏为 mac 红绿灯预留的左侧空档,让搜索/收起键靠左、不留空;
-   补 0.5rem 左内边距,与下方导航项(px-2)左缘对齐。高度与标题栏同 Token,左右两列顶部高度一致
-   (经典侧栏卡有 m-1,存在 4px 视觉错位,属 Spec 明示的接受项);mac 不覆盖,保持 h-11。 */
+/* Windows 无红绿灯,侧栏已位于独立标题栏下方，因此仅收掉 mac 红绿灯净空并靠左；
+   内部顶栏继续使用组件的 h-11(44px)正常节奏，不再伪装成窗口标题栏。 */
 :root[data-platform="windows"] .app-nav-topbar {
   justify-content: flex-start;
   padding-left: 0.5rem;
-  height: var(--window-chrome-height);
 }
 @media (prefers-reduced-motion: reduce) {
   ::-webkit-scrollbar-thumb { transition: none; }
@@ -690,8 +692,8 @@ html button.composer-send-button.stop {
   box-shadow: var(--elevation-1);    /* 有意不用 --elevation-inset:现代侧栏平铺且无侧栏阴影;inset 留给默认风格的休眠语义 */
 }
 [data-style='linear'] .app-titlebar {
-  background: var(--sidebar);   /* Windows 标题栏与现代外壳、侧栏共用同一表面色 */
-  border-bottom: none;          /* 现代不加第二条重线:分层由主卡上边界完成 */
+  background: var(--sidebar);   /* Windows 品牌标题栏与现代外壳共用同一表面色 */
+  border-bottom: 1px solid var(--border);
 }
 /* ── Linear 风格（暗）── 只改变深度策略，颜色仍完全继承 .dark */
 html.dark[data-style='linear'] {

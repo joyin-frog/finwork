@@ -329,9 +329,6 @@ type NavState = {
   setPinnedOpen: (v: boolean) => void;
   recentOpen: boolean;
   setRecentOpen: (v: boolean) => void;
-  /** 「智能体」子列表展开态（默认展开，同 pinnedOpen 语义）。 */
-  agentsOpen: boolean;
-  setAgentsOpen: (v: boolean) => void;
   /** 角色花名册（导航子列表 + 状态点用）；挂载时取一次。 */
   agentRoster: AgentRosterLite[];
   /** 待拍板专员数（blockedReason 非空或 reviewPending 为真的角色数）——父项徽标用。 */
@@ -409,7 +406,6 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(false);
-  const [agentsOpen, setAgentsOpen] = useState(true);
   const [agentRoster, setAgentRoster] = useState<AgentRosterLite[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [appTabsState, dispatchAppTabs] = useReducer(appTabsReducer, {
@@ -620,7 +616,6 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     searchOpen, setSearchOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    agentsOpen, setAgentsOpen,
     agentRoster, agentPendingCount, fetchAgentRoster,
     conversations,
     appTabs: appTabsState.tabs,
@@ -638,7 +633,6 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     searchOpen, setSearchOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    agentsOpen, setAgentsOpen,
     agentRoster, agentPendingCount, fetchAgentRoster,
     conversations, appTabsState,
     openPageTab, openConversationTab, upgradeNewConversationTab, activateAppTab, closeAppTab, closeAllAppTabs,

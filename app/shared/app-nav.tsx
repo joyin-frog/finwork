@@ -47,6 +47,12 @@ import {
   Settings02Icon,
   Delete02Icon,
   NoteIcon,
+  ReceiptTextIcon,
+  UserAccountIcon,
+  TaxesIcon,
+  BankIcon,
+  Invoice01Icon,
+  ChartLineData01Icon,
 } from "@hugeicons/core-free-icons";
 
 type ConversationSummary = {
@@ -60,6 +66,15 @@ type ConversationSummary = {
 
 type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" | "skills";
 type ChatActive = "new" | "recent";
+
+const ROLE_NAV_ICONS = {
+  "bookkeeper": ReceiptTextIcon,
+  "payroll-officer": UserAccountIcon,
+  "tax-officer": TaxesIcon,
+  "treasury-officer": BankIcon,
+  "receivables-officer": Invoice01Icon,
+  "analyst": ChartLineData01Icon,
+} as const;
 
 function NavActivePill({ reduce }: { reduce: boolean | null }) {
   return (
@@ -124,7 +139,6 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     navWidth, setNavWidth,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    agentsOpen, setAgentsOpen,
     agentRoster, agentPendingCount,
     conversations, hasMore, loaded, loadError, fetchConversations,
     deleteTarget,
@@ -182,7 +196,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   const navLinkClass = (isActive: boolean) =>
     cn(
-      "relative isolate flex items-center gap-2 px-3 min-h-[36px] rounded-md text-body transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
+      "relative isolate flex items-center gap-3 px-3 min-h-[36px] rounded-md text-body transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
       isActive
         ? "text-primary font-medium"
         : "text-foreground hover:bg-accent hover:text-accent-foreground"
@@ -194,7 +208,8 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     const isBlocked = (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending;
     const disabled = !r.available || r.userDisabled;
     const roleTone = ROLE_UI[r.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral";
-    // 角色头像负责岗位识别；状态点只在进行中/待拍板时出现，避免空闲圆点常驻造成噪声。
+    const roleIcon = ROLE_NAV_ICONS[r.roleId as keyof typeof ROLE_NAV_ICONS] ?? NoteIcon;
+    // 方形语义图标负责岗位识别；状态点只在进行中/待拍板时出现，避免空闲圆点常驻造成噪声。
     const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;
     const dotLabel = isRunning ? "在忙" : "待拍板";
     return (
@@ -212,10 +227,10 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         )}
       >
         <span
-          className="fa-toned relative shrink-0 flex size-5 items-center justify-center text-[10px] font-semibold select-none"
-          style={{ "--tone": `var(${roleTone})`, borderRadius: "50%" } as CSSProperties}
+          className="fa-toned relative shrink-0 flex size-5 items-center justify-center rounded select-none"
+          style={{ "--tone": `var(${roleTone})` } as CSSProperties}
         >
-          <span aria-hidden="true">{r.name.slice(0, 1)}</span>
+          <HugeiconsIcon icon={roleIcon} size={14} aria-hidden="true" />
           {dotTone && (
             <span
               className={cn("fa-tone-dot absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar", isRunning && "fa-dot-pulse")}
@@ -370,7 +385,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       </div>
 
         <>
-          <div className="flex flex-col gap-1 px-2 pb-4 shrink-0">
+          <div className="flex flex-col gap-0 px-2 pb-5 shrink-0">
             <Link href="/chat/new" onClick={() => trackFeature("nav.chat")} className={cn(navLinkClass(active === "chat" && chatActive === "new"), "group")}>
               {active === "chat" && chatActive === "new" && <NavActivePill reduce={reduce} />}
               <HugeiconsIcon icon={ChatAddIcon} size={16} />
@@ -398,17 +413,11 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             ref={listRef as React.RefObject<HTMLElement>}
             aria-label="主导航"
             onScroll={handleScroll}
-            className="sidebar-nav-scroll flex-1 overflow-y-auto px-2 flex flex-col gap-4"
+            className="sidebar-nav-scroll flex-1 overflow-y-auto px-2 flex flex-col gap-5"
           >
-            {/* 智能体：与置顶/最近同级的会话分组；子列表直达各角色工作台。
-                徽标=待拍板专员数，是唯一的"有事"信号。 */}
-            <div className="flex flex-col gap-1">
-              <button
-                type="button"
-                onClick={() => setAgentsOpen(!agentsOpen)}
-                aria-expanded={agentsOpen}
-                className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
+            {/* 智能体是短而稳定的核心目录，始终常驻；徽标是唯一的“有事”信号。 */}
+            <div data-nav-agent-directory="always" className="flex flex-col gap-1">
+              <div className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground">
                 <span>智能体</span>
                 <span className="ml-auto flex items-center gap-1.5">
                   {agentPendingCount > 0 && (
@@ -420,20 +429,15 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                       {agentPendingCount}
                     </span>
                   )}
-                  <HugeiconsIcon
-                    icon={ArrowDown01Icon}
-                    size={12}
-                    className={cn("transition-transform motion-reduce:transition-none", agentsOpen && "rotate-180")}
-                  />
                 </span>
-              </button>
-              <CollapsibleSectionMotion open={agentsOpen} reduce={reduce}>
+              </div>
+              <div className="flex flex-col gap-1">
                 {agentRoster.length === 0 ? (
                   <span className="pl-8 pr-2 py-1 text-meta text-muted-foreground">加载中…</span>
                 ) : (
                   agentRoster.map(renderRoleRow)
                 )}
-              </CollapsibleSectionMotion>
+              </div>
             </div>
 
             {pinnedConversations.length > 0 && (
@@ -441,7 +445,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                 <button
                   type="button"
                   onClick={() => setPinnedOpen(!pinnedOpen)}
-                  className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <span>置顶</span>
                   <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", pinnedOpen && "rotate-180")} />
@@ -458,7 +462,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               <button
                 type="button"
                 onClick={() => setRecentOpen(!recentOpen)}
-                className="flex items-center justify-between px-3 py-1 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
+                className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
                 <span>最近</span>
                 <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", recentOpen && "rotate-180")} />
