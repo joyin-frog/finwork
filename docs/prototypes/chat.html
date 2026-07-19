@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 · 对话 Chat</title>
+  <link rel="stylesheet" href="_prototype.css">
+</head>
+<body>
+<div class="proto-shell">
+
+  <!-- ============ 侧栏（新对话 active） ============ -->
+  <aside class="proto-sidebar">
+    <div class="brand">
+      <span class="brand-mark">财</span>
+      <span>财务智能体</span>
+    </div>
+
+    <div class="nav-group">
+      <a class="nav-link active">
+        <svg class="ico"><use href="#i-chat-add"></use></svg><span>新对话</span>
+        <span class="nav-shortcut">⌘N</span>
+      </a>
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-dashboard"></use></svg><span>总览</span>
+      </a>
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-library"></use></svg><span>知识库</span>
+      </a>
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-note"></use></svg><span>技能</span>
+      </a>
+    </div>
+
+    <div class="nav-scroll">
+      <div class="col gap-2">
+        <div class="nav-section-label">
+          <span>智能体</span>
+          <span class="nav-badge">2</span>
+        </div>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-invoice)"></span>票据专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-payroll)"></span>薪酬专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-tax)"></span>税务专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-treasury)"></span>资金专员</a>
+      </div>
+      <div class="col gap-2">
+        <div class="nav-section-label"><span>最近</span></div>
+        <a class="nav-sub truncate" style="background:var(--accent);color:var(--foreground)">6 月增值税进项核对</a>
+        <a class="nav-sub truncate">员工社保基数调整</a>
+        <a class="nav-sub truncate">华东项目回款跟进</a>
+      </div>
+    </div>
+
+    <div class="nav-group" style="padding-top:8px;border-top:1px solid var(--border)">
+      <a class="nav-link"><svg class="ico"><use href="#i-settings"></use></svg><span>设置</span></a>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="proto-main">
+    <header class="proto-header">
+      <svg class="ico muted"><use href="#i-sidebar-toggle"></use></svg>
+      <h1 class="t-title flex-1 truncate">6 月增值税进项核对</h1>
+      <!-- 原型态切换：对话视图 / 新对话空态 -->
+      <div class="seg" id="view-toggle">
+        <button aria-pressed="true" data-view="convo">对话</button>
+        <button data-view="empty">空态</button>
+      </div>
+    </header>
+
+    <!-- ===== 对话视图 ===== -->
+    <div class="chat-thread" id="view-convo">
+      <div class="chat-col col" style="gap:0">
+
+        <!-- 用户消息 -->
+        <div class="msg-user" style="padding:12px 0">
+          <div class="attach-card">
+            <span class="attach-tile">XLS</span>
+            <div class="col" style="gap:1px;min-width:0">
+              <span class="t-small truncate">6月进项发票.xlsx</span>
+              <span class="t-meta muted">86 KB</span>
+            </div>
+          </div>
+          <div class="user-bubble">
+            <div class="md-content t-body">帮我核对 6 月的进项发票，找出不能抵扣的，做一张核对表。</div>
+          </div>
+          <div class="msg-toolbar">
+            <button title="复制"><svg class="ico ico-13"><use href="#i-copy"></use></svg></button>
+            <button title="撤回到输入框"><svg class="ico ico-13"><use href="#i-undo"></use></svg></button>
+          </div>
+        </div>
+
+        <!-- 助手回合 -->
+        <div class="msg-assistant" style="padding:12px 0">
+          <!-- 过程块（展开） -->
+          <details class="process" open>
+            <summary>
+              <span class="truncate">已处理 5 步 · 用时 14s</span>
+              <svg class="ico ico-15 details-chevron"><use href="#i-chevron-right"></use></svg>
+            </summary>
+            <div class="process-steps">
+              <div class="tool-step"><svg class="ico ico-13"><use href="#i-check"></use></svg>读取发票文件（38 张）</div>
+              <div class="tool-step"><svg class="ico ico-13"><use href="#i-check"></use></svg>核对供应商税号与开票信息</div>
+              <div class="tool-step"><svg class="ico ico-13"><use href="#i-check"></use></svg>比对可抵扣清单，识别异常</div>
+              <div class="tool-step"><svg class="ico ico-13"><use href="#i-check"></use></svg>标记 3 张不可抵扣发票</div>
+              <div class="tool-step"><svg class="ico ico-13"><use href="#i-check"></use></svg>生成核对表</div>
+            </div>
+          </details>
+
+          <!-- 答案正文 -->
+          <div class="md-content t-body">
+            <p>核对完成，38 张进项发票里有 <strong>3 张不能抵扣</strong>，其余 35 张可正常认证抵扣：</p>
+            <p style="margin:0">
+              · <strong>云图设计</strong>「培训费」— 与经营无关，不得抵扣<br>
+              · <strong>明志餐饮</strong>「业务招待」— 招待费进项不得抵扣<br>
+              · <strong>华东物流</strong> — 发票抬头非本公司，需换开
+            </p>
+          </div>
+
+          <!-- 产物文件 -->
+          <div class="output-file">
+            <span class="file-tile">XLS</span>
+            <div class="col flex-1" style="gap:1px;min-width:0">
+              <span class="t-small truncate">6月进项发票核对表.xlsx</span>
+              <span class="t-meta muted">38 行 · 可抵扣 35 / 不可抵扣 3</span>
+            </div>
+            <button class="btn btn-icon btn-ghost" title="预览"><svg class="ico ico-15 muted"><use href="#i-arrow-right"></use></svg></button>
+          </div>
+
+          <!-- 反馈条 -->
+          <div class="msg-toolbar">
+            <button title="复制全文"><svg class="ico ico-13"><use href="#i-copy"></use></svg></button>
+            <button title="有帮助"><svg class="ico ico-13"><use href="#i-thumb-up"></use></svg></button>
+            <button title="没帮上"><svg class="ico ico-13"><use href="#i-thumb-down"></use></svg></button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== 空态（新对话） ===== -->
+    <div class="chat-thread" id="view-empty" style="display:none">
+      <div class="col" style="height:100%;justify-content:center;align-items:center;gap:12px;padding:24px">
+        <h2 class="text-display">今天要处理什么？</h2>
+        <p class="t-meta" style="color:color-mix(in oklch,var(--muted-foreground) 70%,transparent)">输入 <span style="font-family:ui-monospace,monospace;background:var(--muted);border-radius:4px;padding:1px 5px">/</span> 引用技能，<span style="font-family:ui-monospace,monospace;background:var(--muted);border-radius:4px;padding:1px 5px">@</span> 引用文件</p>
+        <div class="col gap-2" style="width:100%;max-width:380px;margin-top:8px">
+          <button class="quick-prompt"><span>核对本月进项发票</span><span class="t-meta muted">报税期</span></button>
+          <button class="quick-prompt"><span>生成 6 月工资表</span><span class="t-meta muted">算薪窗口</span></button>
+          <button class="quick-prompt"><span>整理待开票合同</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 输入框（两态共用） ===== -->
+    <div style="padding:0 24px 24px">
+      <form class="composer" onsubmit="return false">
+        <textarea class="composer-textarea" rows="1" placeholder="随心输入"></textarea>
+        <div class="composer-row">
+          <button type="button" class="composer-add" title="添加照片、文件或技能">
+            <svg class="ico ico-20"><use href="#i-add"></use></svg>
+          </button>
+          <div class="composer-actions">
+            <div class="deep-toggle" role="group" aria-label="模型档位">
+              <button aria-pressed="true">快速</button>
+              <button>推理</button>
+            </div>
+            <span class="usage-ring" title="用量 42%"></span>
+            <button type="submit" class="composer-send" title="发送">
+              <svg class="ico" style="width:18px;height:18px"><use href="#i-arrow-up"></use></svg>
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<script src="_icons.js" defer></script>
+<script src="_prototype.js" defer></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // 视图切换（对话 / 空态）
+    var toggle = document.getElementById("view-toggle");
+    var convo = document.getElementById("view-convo");
+    var empty = document.getElementById("view-empty");
+    var title = document.querySelector(".proto-header h1");
+    toggle.querySelectorAll("button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        toggle.querySelectorAll("button").forEach(function (x) { x.removeAttribute("aria-pressed"); });
+        b.setAttribute("aria-pressed", "true");
+        var isEmpty = b.dataset.view === "empty";
+        convo.style.display = isEmpty ? "none" : "";
+        empty.style.display = isEmpty ? "" : "none";
+        title.textContent = isEmpty ? "新对话" : "6 月增值税进项核对";
+      });
+    });
+    // 深度思考切换
+    document.querySelectorAll(".deep-toggle button").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        btn.parentElement.querySelectorAll("button").forEach(function (b) { b.removeAttribute("aria-pressed"); });
+        btn.setAttribute("aria-pressed", "true");
+      });
+    });
+  });
+</script>
+</body>
+</html>

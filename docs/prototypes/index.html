@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型索引 · 财务智能体</title>
+  <link rel="stylesheet" href="_prototype.css">
+  <style>
+    .wrap { max-width: 720px; margin: 0 auto; padding: 48px 24px; }
+    .proto-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--card-gap); margin-top: 24px; }
+    .proto-card { display: flex; flex-direction: column; gap: 4px; padding: 16px; text-decoration: none; color: inherit; }
+    .proto-card:hover { border-color: var(--primary); }
+    .proto-card.todo { opacity: 0.55; pointer-events: none; }
+    .status { font-size: var(--text-meta); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="row between">
+      <div>
+        <h1 class="t-figure">页面原型</h1>
+        <p class="t-body muted">高保真线框，复用真实设计 token。改 UI 前先在这里画 / 更新。</p>
+      </div>
+    </div>
+
+    <div class="proto-list">
+      <a class="card proto-card" href="cockpit.html">
+        <strong class="t-title">总览 Cockpit</strong>
+        <span class="status" style="color:var(--tone-ok)">● 已画</span>
+      </a>
+      <a class="card proto-card" href="chat.html">
+        <strong class="t-title">对话 Chat</strong>
+        <span class="status" style="color:var(--tone-ok)">● 已画</span>
+      </a>
+      <a class="card proto-card" href="agents.html">
+        <strong class="t-title">智能体 Agents</strong>
+        <span class="status" style="color:var(--tone-ok)">● 已画</span>
+      </a>
+      <a class="card proto-card" href="knowledge.html">
+        <strong class="t-title">知识库 Knowledge</strong>
+        <span class="status" style="color:var(--tone-ok)">● 已画</span>
+      </a>
+      <a class="card proto-card" href="skills.html">
+        <strong class="t-title">技能 Skills</strong>
+        <span class="status" style="color:var(--tone-ok)">● 已画</span>
+      </a>
+      <a class="card proto-card" href="config.html">
+        <strong class="t-title">设置 Config</strong>
+        <span class="status" style="color:var(--tone-ok)">● 已画</span>
+      </a>
+    </div>
+  </div>
+  <script src="_prototype.js" defer></script>
+</body>
+</html>

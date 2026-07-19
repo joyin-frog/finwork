@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 · 设置 Config</title>
+  <link rel="stylesheet" href="_prototype.css">
+</head>
+<body>
+<div class="proto-shell">
+
+  <!-- ============ 侧栏（设置 active） ============ -->
+  <aside class="proto-sidebar">
+    <div class="brand">
+      <span class="brand-mark">财</span>
+      <span>财务智能体</span>
+    </div>
+
+    <div class="nav-group">
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-chat-add"></use></svg><span>新对话</span>
+        <span class="nav-shortcut">⌘N</span>
+      </a>
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-dashboard"></use></svg><span>总览</span>
+      </a>
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-library"></use></svg><span>知识库</span>
+      </a>
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-note"></use></svg><span>技能</span>
+      </a>
+    </div>
+
+    <div class="nav-scroll">
+      <div class="col gap-2">
+        <div class="nav-section-label">
+          <span>智能体</span>
+          <span class="nav-badge">2</span>
+        </div>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-invoice)"></span>票据专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-payroll)"></span>薪酬专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-tax)"></span>税务专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-treasury)"></span>资金专员</a>
+      </div>
+    </div>
+
+    <div class="nav-group" style="padding-top:8px;border-top:1px solid var(--border)">
+      <a class="nav-link active"><svg class="ico"><use href="#i-settings"></use></svg><span>设置</span></a>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="proto-main">
+    <header class="proto-header">
+      <svg class="ico muted"><use href="#i-sidebar-toggle"></use></svg>
+      <h1 class="t-title">设置</h1>
+      <button class="btn btn-icon btn-ghost ml-auto" title="搜索设置"><svg class="ico"><use href="#i-search"></use></svg></button>
+    </header>
+
+    <div class="set-body">
+      <!-- 分区导航 -->
+      <nav class="set-sidebar" id="set-tabs">
+        <a class="nav-link active" data-tab="general"><svg class="ico ico-15"><use href="#i-config"></use></svg><span>常规</span></a>
+        <a class="nav-link" data-tab="appearance"><svg class="ico ico-15"><use href="#i-paint"></use></svg><span>外观</span></a>
+        <a class="nav-link" data-tab="personalization"><svg class="ico ico-15"><use href="#i-brain"></use></svg><span>个性化</span></a>
+        <a class="nav-link" data-tab="model"><svg class="ico ico-15"><use href="#i-bot"></use></svg><span>模型</span></a>
+        <a class="nav-link" data-tab="shortcuts"><svg class="ico ico-15"><use href="#i-keyboard"></use></svg><span>快捷键</span></a>
+        <a class="nav-link" data-tab="about"><svg class="ico ico-15"><use href="#i-info"></use></svg><span>关于</span></a>
+      </nav>
+
+      <!-- 分区内容 -->
+      <div class="set-content">
+        <div class="set-content-head">
+          <h2 class="t-title" style="font-weight:600" id="set-title">常规</h2>
+          <span class="status-saved">已保存 ✓</span>
+        </div>
+
+        <div class="set-scroll">
+
+          <!-- ===== 常规 ===== -->
+          <div class="tab-panel active" data-panel="general">
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">用户</h3>
+                <p class="set-section-desc">显示在侧栏底部，仅本地保存，用于个性化。</p>
+              </div>
+              <div class="set-card">
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">头像</span></div>
+                  <div class="set-row-control"><span class="avatar">高</span></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">用户名</span></div>
+                  <div class="set-row-control"><input class="input" value="高" placeholder="你的名字"></div>
+                </div>
+              </div>
+            </section>
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">助手身份</h3>
+                <p class="set-section-desc">设置助手的名称和所属公司，用于对外展示和系统提示词。</p>
+              </div>
+              <div class="set-card">
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">助手名称</span></div>
+                  <div class="set-row-control"><input class="input" value="小财" placeholder="小财"></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">公司名称</span></div>
+                  <div class="set-row-control"><input class="input" placeholder="例如：XX 科技"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ===== 外观 ===== -->
+          <div class="tab-panel" data-panel="appearance">
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">主题</h3>
+                <p class="set-section-desc">选择界面显示模式，跟随系统会自动匹配操作系统的明暗偏好。</p>
+              </div>
+              <div class="seg">
+                <button>跟随系统</button>
+                <button aria-pressed="true">亮色</button>
+                <button>暗色</button>
+              </div>
+            </section>
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">界面风格</h3>
+                <p class="set-section-desc">切换整体外观风格，与明暗模式相互独立，可自由组合。</p>
+              </div>
+              <div class="seg">
+                <button aria-pressed="true">现代</button>
+                <button>经典</button>
+              </div>
+            </section>
+          </div>
+
+          <!-- ===== 个性化 ===== -->
+          <div class="tab-panel" data-panel="personalization">
+            <section class="set-section">
+              <div class="col" style="gap:2px"><h3 class="set-section-title">回复风格</h3></div>
+              <div class="set-card">
+                <div class="set-row">
+                  <div class="set-row-label">
+                    <span class="t-body">技术细节</span>
+                    <span class="t-meta muted">用于展示对话输出过程细节</span>
+                  </div>
+                  <div class="set-row-control" style="align-items:center"><button class="switch" aria-checked="false"></button></div>
+                </div>
+              </div>
+            </section>
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">公司画像</h3>
+                <p class="set-section-desc">支撑税务优惠发现和经营分析。</p>
+              </div>
+              <div class="set-card">
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">所在地区</span></div>
+                  <div class="set-row-control"><input class="input" placeholder="上海市松江区"></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">所在园区</span></div>
+                  <div class="set-row-control"><input class="input" placeholder="临港新片区"></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">纳税人类型</span></div>
+                  <div class="set-row-control"><div class="select"><span>一般纳税人</span><svg class="ico ico-12 muted" style="transform:rotate(90deg)"><use href="#i-arrow-right"></use></svg></div></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label">
+                    <span class="t-body">高新技术企业</span>
+                    <span class="t-meta muted">影响所得税率和研发加计扣除</span>
+                  </div>
+                  <div class="set-row-control" style="align-items:center"><button class="switch" aria-checked="true"></button></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">所属行业</span></div>
+                  <div class="set-row-control"><input class="input" value="软件和信息技术服务" placeholder="软件和信息技术服务"></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">年营收（万元）</span></div>
+                  <div class="set-row-control"><input class="input" type="number" value="1000" placeholder="1000"></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">收入拆分维度</span></div>
+                  <div class="set-row-control"><input class="input" placeholder="事业部、产品线"></div>
+                </div>
+              </div>
+            </section>
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">记忆</h3>
+                <p class="set-section-desc">从聊天中生成新记忆，并将其带入新聊天。</p>
+              </div>
+              <div class="set-card" style="padding:12px 16px">
+                <textarea class="textarea" placeholder="还没有记忆内容。在对话里对小财说你的规矩，或直接在这里编写。">- 报表金额一律保留两位小数
+- 未确认的口述数据不要写入凭证
+- 每月 10 日前提醒我核对社保基数</textarea>
+              </div>
+            </section>
+          </div>
+
+          <!-- ===== 模型 ===== -->
+          <div class="tab-panel" data-panel="model">
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">模型连接</h3>
+                <p class="set-section-desc">配置 LLM 端点和 API 密钥</p>
+              </div>
+              <div class="set-card">
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">LLM URL</span></div>
+                  <div class="set-row-control" style="flex-basis:340px"><input class="input" value="https://api.anthropic.com"></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">API Key</span></div>
+                  <div class="set-row-control" style="flex-basis:340px"><input class="input" type="password" placeholder="已配置：sk-ant-…9f2c"></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">快速模型</span></div>
+                  <div class="set-row-control" style="flex-basis:340px"><input class="input" value="claude-haiku-4-5-20251001"></div>
+                </div>
+                <div class="set-row">
+                  <div class="set-row-label"><span class="t-body">推理模型</span></div>
+                  <div class="set-row-control" style="flex-basis:340px"><input class="input" value="claude-sonnet-4-6"></div>
+                </div>
+              </div>
+            </section>
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">用量</h3>
+                <p class="set-section-desc">查看当前用量保护状态和重置周期。</p>
+              </div>
+              <div class="set-card" style="padding:16px">
+                <div class="col gap-3">
+                  <div class="col" style="gap:6px">
+                    <div class="row between t-meta muted"><span>5 小时额度</span><span>42%</span></div>
+                    <div style="height:8px;border-radius:999px;background:var(--muted);overflow:hidden"><div style="width:42%;height:100%;background:var(--tone-ok)"></div></div>
+                  </div>
+                  <div class="col" style="gap:6px">
+                    <div class="row between t-meta muted"><span>本周额度</span><span>68%</span></div>
+                    <div style="height:8px;border-radius:999px;background:var(--muted);overflow:hidden"><div style="width:68%;height:100%;background:var(--tone-warn)"></div></div>
+                  </div>
+                  <p class="t-meta muted">下次重置：今天 20:00 · 周额度周一重置</p>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ===== 快捷键 ===== -->
+          <div class="tab-panel" data-panel="shortcuts">
+            <section class="set-section">
+              <div class="col" style="gap:2px"><h3 class="set-section-title">对话输入</h3></div>
+              <div class="set-card">
+                <div class="kbd-row"><span class="t-body">发送消息</span><span class="kbd">Enter</span></div>
+                <div class="kbd-row"><span class="t-body">换行</span><span class="kbd">⇧Enter</span></div>
+                <div class="kbd-row"><span class="t-body">引用对话中的文件</span><span class="kbd">@</span></div>
+                <div class="kbd-row"><span class="t-body">添加本地文件（输入框为空时）</span><span class="kbd">/</span></div>
+              </div>
+            </section>
+            <section class="set-section">
+              <div class="col" style="gap:2px"><h3 class="set-section-title">全局与面板</h3></div>
+              <div class="set-card">
+                <div class="kbd-row"><span class="t-body">新对话</span><span class="kbd">⌘N</span></div>
+                <div class="kbd-row"><span class="t-body">收起 / 展开左侧导航</span><span class="kbd">⌘B</span></div>
+                <div class="kbd-row"><span class="t-body">打开设置</span><span class="kbd">⌘,</span></div>
+                <div class="kbd-row"><span class="t-body">快捷键一览</span><span class="kbd">⌘/</span></div>
+                <div class="kbd-row"><span class="t-body">搜索文件与对话</span><span class="kbd">⌘G</span></div>
+                <div class="kbd-row"><span class="t-body">打开 / 关闭文件面板</span><span class="kbd">⌘J</span></div>
+                <div class="kbd-row"><span class="t-body">打开 / 关闭右侧栏</span><span class="kbd">⌘⌥B</span></div>
+                <div class="kbd-row"><span class="t-body">在对话内查找</span><span class="kbd">⌘F</span></div>
+              </div>
+            </section>
+          </div>
+
+          <!-- ===== 关于 ===== -->
+          <div class="tab-panel" data-panel="about">
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">版本信息</h3>
+                <p class="set-section-desc">当前应用版本；桌面版可在此检查更新。</p>
+              </div>
+              <div class="set-card" style="padding:14px 16px">
+                <div class="row between">
+                  <span class="t-body"><strong>当前版本：</strong><span class="muted">v1.4.0</span></span>
+                  <button class="btn btn-outline btn-sm">检查更新</button>
+                </div>
+              </div>
+            </section>
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">运行环境</h3>
+                <p class="set-section-desc">基础功能（报销、薪税、对账、报表、知识库）开箱即用。复杂 Excel / PDF 的高级分析需要一次性安装分析组件。</p>
+              </div>
+              <div class="set-card" style="padding:14px 16px">
+                <div class="row between">
+                  <span class="row gap-2 t-body"><span class="tone-dot" style="--tone:var(--tone-ok)"></span>分析组件已安装</span>
+                  <button class="btn btn-outline btn-sm">重新检测</button>
+                </div>
+              </div>
+            </section>
+            <section class="set-section">
+              <div class="col" style="gap:2px">
+                <h3 class="set-section-title">数据与隐私</h3>
+                <p class="set-section-desc">将匿名运行指标（token 用量/耗时/成本/错误/路由）上报以改进产品，不含财务数据。默认开启，可随时关闭。</p>
+              </div>
+              <div class="set-card">
+                <div class="set-row">
+                  <div class="set-row-label">
+                    <span class="t-body">上报匿名使用数据</span>
+                    <span class="t-meta muted">不含任何财务内容</span>
+                  </div>
+                  <div class="set-row-control" style="align-items:center"><button class="switch" aria-checked="true"></button></div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="_icons.js" defer></script>
+<script src="_prototype.js" defer></script>
+<script>
+  // 分区 tab 切换 + 开关点击（原型交互）
+  document.addEventListener("DOMContentLoaded", function () {
+    var tabs = document.querySelectorAll("#set-tabs .nav-link");
+    var panels = document.querySelectorAll(".tab-panel");
+    var title = document.getElementById("set-title");
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        var key = tab.dataset.tab;
+        tabs.forEach(function (t) { t.classList.toggle("active", t === tab); });
+        panels.forEach(function (p) { p.classList.toggle("active", p.dataset.panel === key); });
+        title.textContent = tab.querySelector("span").textContent;
+      });
+    });
+    document.querySelectorAll(".switch").forEach(function (sw) {
+      sw.addEventListener("click", function () {
+        sw.setAttribute("aria-checked", sw.getAttribute("aria-checked") === "true" ? "false" : "true");
+      });
+    });
+    document.querySelectorAll(".seg button").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        btn.parentElement.querySelectorAll("button").forEach(function (b) { b.removeAttribute("aria-pressed"); });
+        btn.setAttribute("aria-pressed", "true");
+      });
+    });
+  });
+</script>
+</body>
+</html>

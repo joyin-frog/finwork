@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 · 知识库 Knowledge</title>
+  <link rel="stylesheet" href="_prototype.css">
+</head>
+<body>
+<div class="proto-shell">
+  <aside class="proto-sidebar">
+    <div class="brand"><span class="brand-mark">财</span><span>财务智能体</span></div>
+    <div class="nav-group">
+      <a class="nav-link"><svg class="ico"><use href="#i-chat-add"></use></svg><span>新对话</span><span class="nav-shortcut">⌘N</span></a>
+      <a class="nav-link"><svg class="ico"><use href="#i-dashboard"></use></svg><span>总览</span></a>
+      <a class="nav-link active"><svg class="ico"><use href="#i-library"></use></svg><span>知识库</span></a>
+      <a class="nav-link"><svg class="ico"><use href="#i-note"></use></svg><span>技能</span></a>
+    </div>
+    <div class="nav-scroll">
+      <div class="col gap-2">
+        <div class="nav-section-label"><span>智能体</span><span class="nav-badge">2</span></div>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-invoice)"></span>票据专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-payroll)"></span>薪酬专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-tax)"></span>税务专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-treasury)"></span>资金专员</a>
+      </div>
+    </div>
+    <div class="nav-group" style="padding-top:8px;border-top:1px solid var(--border)">
+      <a class="nav-link"><svg class="ico"><use href="#i-settings"></use></svg><span>设置</span></a>
+    </div>
+  </aside>
+
+  <main class="proto-main">
+    <header class="proto-header">
+      <svg class="ico muted"><use href="#i-sidebar-toggle"></use></svg>
+      <div class="text-tabs">
+        <span class="text-tab active">知识库</span>
+        <span class="text-tab-sep">｜</span>
+        <span class="text-tab">对话文件</span>
+      </div>
+      <div class="row gap-2 ml-auto">
+        <button class="btn btn-icon btn-ghost" title="重建语义索引"><svg class="ico"><use href="#i-database"></use></svg></button>
+        <button class="btn btn-icon btn-ghost" title="搜索"><svg class="ico"><use href="#i-search"></use></svg></button>
+        <span class="t-meta muted">12 份文档</span>
+        <button class="btn btn-icon btn-ghost" title="展开预览"><svg class="ico"><use href="#i-panel-right"></use></svg></button>
+      </div>
+    </header>
+
+    <!-- 分类筛选 -->
+    <div class="filter-chips">
+      <button class="filter-chip active">全部 <span class="count">12</span></button>
+      <button class="filter-chip">报销制度 <span class="count">2</span></button>
+      <button class="filter-chip">合同 <span class="count">4</span></button>
+      <button class="filter-chip">财务规范 <span class="count">3</span></button>
+      <button class="filter-chip">税务 <span class="count">2</span></button>
+      <button class="filter-chip">通用 <span class="count">1</span></button>
+      <button class="filter-chip">已归档 <span class="count">3</span></button>
+    </div>
+
+    <div class="flex-1" style="overflow:auto">
+      <div class="resource-grid">
+        <!-- 上传卡 -->
+        <button class="upload-card">
+          <svg class="ico" style="width:24px;height:24px"><use href="#i-add"></use></svg>
+          <span class="t-body">上传文档</span>
+        </button>
+
+        <!-- 文档卡 -->
+        <div class="res-card">
+          <span class="card-more"><svg class="ico ico-14"><use href="#i-more"></use></svg></span>
+          <div class="row gap-2" style="align-items:flex-start;padding-right:16px">
+            <span class="ft ft-pdf">PDF</span>
+            <span class="t-body" style="font-weight:500;line-height:1.35">员工差旅报销制度 2025.pdf</span>
+          </div>
+          <div class="row gap-2 t-meta muted" style="flex-wrap:wrap"><span>检索 8 次</span><span style="opacity:0.5">·</span><span>最近 2 天前</span></div>
+          <div class="res-card-dock"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg><span class="flex-1"></span><svg class="ico ico-14"><use href="#i-download"></use></svg></div>
+        </div>
+
+        <div class="res-card">
+          <span class="card-more"><svg class="ico ico-14"><use href="#i-more"></use></svg></span>
+          <div class="row gap-2" style="align-items:flex-start;padding-right:16px">
+            <span class="ft ft-doc">DOC</span>
+            <span class="t-body" style="font-weight:500;line-height:1.35">华东供应链采购合同.docx</span>
+          </div>
+          <div class="row gap-2 t-meta muted" style="flex-wrap:wrap">
+            <span>检索 3 次</span><span style="opacity:0.5">·</span><span>最近 5 天前</span>
+            <span class="tone-pill" style="--tone:var(--tone-warn)"><svg class="ico" style="width:10px;height:10px"><use href="#i-clock"></use></svg> 待确认</span>
+          </div>
+          <div class="res-card-dock"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg><span class="flex-1"></span><svg class="ico ico-14"><use href="#i-download"></use></svg></div>
+        </div>
+
+        <div class="res-card">
+          <span class="card-more"><svg class="ico ico-14"><use href="#i-more"></use></svg></span>
+          <div class="row gap-2" style="align-items:flex-start;padding-right:16px">
+            <span class="ft ft-xls">XLS</span>
+            <span class="t-body" style="font-weight:500;line-height:1.35">科目余额表模板.xlsx</span>
+          </div>
+          <div class="row gap-2 t-meta muted" style="flex-wrap:wrap">
+            <span>检索 15 次</span><span style="opacity:0.5">·</span><span>最近 刚刚</span>
+            <span class="tone-pill" style="--tone:var(--tone-ok)"><svg class="ico" style="width:10px;height:10px"><use href="#i-check-circle"></use></svg> 已确认</span>
+          </div>
+          <div class="res-card-dock"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg><span class="flex-1"></span><svg class="ico ico-14"><use href="#i-download"></use></svg></div>
+        </div>
+
+        <div class="res-card">
+          <span class="card-more"><svg class="ico ico-14"><use href="#i-more"></use></svg></span>
+          <div class="row gap-2" style="align-items:flex-start;padding-right:16px">
+            <span class="ft ft-pdf">PDF</span>
+            <span class="t-body" style="font-weight:500;line-height:1.35">小规模纳税人税收优惠汇编.pdf</span>
+          </div>
+          <div class="row gap-2 t-meta muted" style="flex-wrap:wrap"><span>检索 6 次</span><span style="opacity:0.5">·</span><span>最近 1 周前</span></div>
+          <div class="res-card-dock"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg><span class="flex-1"></span><svg class="ico ico-14"><use href="#i-download"></use></svg></div>
+        </div>
+
+        <div class="res-card">
+          <span class="card-more"><svg class="ico ico-14"><use href="#i-more"></use></svg></span>
+          <div class="row gap-2" style="align-items:flex-start;padding-right:16px">
+            <span class="ft ft-doc">DOC</span>
+            <span class="t-body" style="font-weight:500;line-height:1.35">费用报销审批流程.docx</span>
+          </div>
+          <div class="row gap-2 t-meta muted" style="flex-wrap:wrap"><span>更新于 3 周前</span>
+            <span class="tone-pill" style="--tone:var(--tone-warn)">长期未使用</span>
+          </div>
+          <div class="res-card-dock"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg><span class="flex-1"></span><svg class="ico ico-14"><use href="#i-download"></use></svg></div>
+        </div>
+
+        <div class="res-card">
+          <span class="card-more"><svg class="ico ico-14"><use href="#i-more"></use></svg></span>
+          <div class="row gap-2" style="align-items:flex-start;padding-right:16px">
+            <span class="ft ft-txt">MD</span>
+            <span class="t-body" style="font-weight:500;line-height:1.35">记账科目对照说明.md</span>
+          </div>
+          <div class="row gap-2 t-meta muted" style="flex-wrap:wrap"><span>未被检索</span><span style="opacity:0.5">·</span><span>更新于 昨天</span></div>
+          <div class="res-card-dock"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg><span class="flex-1"></span><svg class="ico ico-14"><use href="#i-download"></use></svg></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="_icons.js" defer></script>
+<script src="_prototype.js" defer></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".filter-chip").forEach(function (c) {
+      c.addEventListener("click", function () {
+        document.querySelectorAll(".filter-chip").forEach(function (x) { x.classList.remove("active"); });
+        c.classList.add("active");
+      });
+    });
+  });
+</script>
+</body>
+</html>

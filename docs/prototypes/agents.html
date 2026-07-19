@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 · 智能体 Agents</title>
+  <link rel="stylesheet" href="_prototype.css">
+</head>
+<body>
+<div class="proto-shell">
+  <aside class="proto-sidebar">
+    <div class="brand"><span class="brand-mark">财</span><span>财务智能体</span></div>
+    <div class="nav-group">
+      <a class="nav-link"><svg class="ico"><use href="#i-chat-add"></use></svg><span>新对话</span><span class="nav-shortcut">⌘N</span></a>
+      <a class="nav-link"><svg class="ico"><use href="#i-dashboard"></use></svg><span>总览</span></a>
+      <a class="nav-link"><svg class="ico"><use href="#i-library"></use></svg><span>知识库</span></a>
+      <a class="nav-link"><svg class="ico"><use href="#i-note"></use></svg><span>技能</span></a>
+    </div>
+    <div class="nav-scroll">
+      <div class="col gap-2">
+        <div class="nav-section-label"><span>智能体</span><span class="nav-badge">2</span></div>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-invoice)"></span>票据专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-payroll)"></span>薪酬专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-tax)"></span>税务专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-treasury)"></span>资金专员</a>
+      </div>
+    </div>
+    <div class="nav-group" style="padding-top:8px;border-top:1px solid var(--border)">
+      <a class="nav-link"><svg class="ico"><use href="#i-settings"></use></svg><span>设置</span></a>
+    </div>
+  </aside>
+
+  <main class="proto-main">
+    <header class="proto-header">
+      <svg class="ico muted"><use href="#i-sidebar-toggle"></use></svg>
+      <div class="text-tabs" id="view-toggle">
+        <button class="text-tab active" data-view="team">团队</button>
+        <span class="text-tab-sep">｜</span>
+        <button class="text-tab" data-view="board">本月任务</button>
+      </div>
+    </header>
+
+    <div class="proto-content col gap-section" id="view-team">
+
+      <!-- 等你拍板 -->
+      <section class="col gap-2">
+        <div class="row gap-2"><h2 class="t-title" style="font-weight:600">等你拍板</h2><span class="t-meta muted">2 项</span></div>
+        <div class="col gap-2">
+          <div class="surface row gap-3" style="padding:10px 16px">
+            <span class="tone-dot dot-pulse" style="--tone:var(--tone-alarm)"></span>
+            <span class="tone-pill" style="--tone:var(--tone-tax)">拍板 · 税务专员</span>
+            <span class="trust-badge">待确认</span>
+            <span class="t-body flex-1 truncate">6 月增值税申报表已生成，请确认后申报</span>
+            <a class="btn btn-outline btn-sm">去确认</a>
+          </div>
+          <div class="surface row gap-3" style="padding:10px 16px">
+            <span class="tone-dot" style="--tone:var(--tone-notice)"></span>
+            <span class="tone-pill" style="--tone:var(--tone-payroll)">拍板 · 薪酬专员</span>
+            <span class="trust-badge">待确认</span>
+            <span class="t-body flex-1 truncate">7 月工资表待复核：23 人，合计 ¥286,400</span>
+            <a class="btn btn-outline btn-sm">去复核</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- 在忙 · 待拍板 -->
+      <section class="col gap-2">
+        <h2 class="t-title" style="font-weight:600">在忙 · 待拍板</h2>
+        <div class="grid gap-3" style="grid-template-columns:repeat(2,1fr)">
+          <!-- 票据专员 -->
+          <div class="agent-card">
+            <div class="row gap-3" style="align-items:flex-start">
+              <span class="agent-avatar toned" style="--tone:var(--tone-invoice)">票</span>
+              <div class="flex-1" style="min-width:0">
+                <div class="row gap-2" style="flex-wrap:wrap">
+                  <span class="t-body" style="font-weight:600">票据专员</span>
+                  <span class="t-meta muted">发票</span>
+                  <span class="tone-pill" style="--tone:var(--tone-analysis)">进行中</span>
+                </div>
+                <p class="t-meta muted truncate">进项/销项发票核对、认证、开票</p>
+              </div>
+              <button class="switch" aria-checked="true"></button>
+            </div>
+            <div class="row between" style="padding-left:44px">
+              <span class="t-meta muted">18 次 · 12 分钟前</span>
+              <a class="btn btn-outline btn-sm">派活</a>
+            </div>
+          </div>
+          <!-- 薪酬专员 -->
+          <div class="agent-card">
+            <div class="row gap-3" style="align-items:flex-start">
+              <span class="agent-avatar toned" style="--tone:var(--tone-payroll)">薪</span>
+              <div class="flex-1" style="min-width:0">
+                <div class="row gap-2" style="flex-wrap:wrap">
+                  <span class="t-body" style="font-weight:600">薪酬专员</span>
+                  <span class="t-meta muted">薪酬</span>
+                  <span class="tone-pill" style="--tone:var(--tone-notice)">待拍板</span>
+                </div>
+                <p class="t-meta muted truncate">工资表、社保公积金、个税代扣</p>
+              </div>
+              <button class="switch" aria-checked="true"></button>
+            </div>
+            <div class="row between" style="padding-left:44px">
+              <span class="t-meta muted">9 次 · 2 小时前</span>
+              <a class="btn btn-outline btn-sm">派活</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 其他 -->
+      <section class="col gap-2">
+        <h2 class="t-title muted" style="font-weight:600">其他</h2>
+        <div class="grid gap-3" style="grid-template-columns:repeat(2,1fr)">
+          <div class="agent-card">
+            <div class="row gap-3" style="align-items:flex-start">
+              <span class="agent-avatar toned" style="--tone:var(--tone-tax)">税</span>
+              <div class="flex-1" style="min-width:0">
+                <div class="row gap-2" style="flex-wrap:wrap"><span class="t-body" style="font-weight:600">税务专员</span><span class="t-meta muted">税务</span></div>
+                <p class="t-meta muted truncate">增值税 / 个税申报、税务优惠发现</p>
+              </div>
+              <button class="switch" aria-checked="true"></button>
+            </div>
+            <div class="row between" style="padding-left:44px"><span class="t-meta muted">14 次 · 刚刚</span><a class="btn btn-outline btn-sm">派活</a></div>
+          </div>
+          <div class="agent-card">
+            <div class="row gap-3" style="align-items:flex-start">
+              <span class="agent-avatar toned" style="--tone:var(--tone-treasury)">资</span>
+              <div class="flex-1" style="min-width:0">
+                <div class="row gap-2" style="flex-wrap:wrap"><span class="t-body" style="font-weight:600">资金专员</span><span class="t-meta muted">资金</span></div>
+                <p class="t-meta muted truncate">收付款、资金计划、银行对账</p>
+              </div>
+              <button class="switch" aria-checked="true"></button>
+            </div>
+            <div class="row between" style="padding-left:44px"><span class="t-meta muted">5 次 · 昨天</span><a class="btn btn-outline btn-sm">派活</a></div>
+          </div>
+          <div class="agent-card dim">
+            <div class="row gap-3" style="align-items:flex-start">
+              <span class="agent-avatar toned" style="--tone:var(--tone-receivables)">应</span>
+              <div class="flex-1" style="min-width:0">
+                <div class="row gap-2" style="flex-wrap:wrap"><span class="t-body" style="font-weight:600">应收专员</span><span class="t-meta" style="padding:1px 6px;border-radius:4px;background:var(--muted);color:var(--muted-foreground)">尚未启用</span></div>
+                <p class="t-meta muted truncate">应收账款跟踪、回款提醒、账龄分析</p>
+              </div>
+            </div>
+            <div class="row between" style="padding-left:44px"><span class="t-meta muted"></span></div>
+          </div>
+          <div class="agent-card dim">
+            <div class="row gap-3" style="align-items:flex-start">
+              <span class="agent-avatar toned" style="--tone:var(--tone-analysis)">析</span>
+              <div class="flex-1" style="min-width:0">
+                <div class="row gap-2" style="flex-wrap:wrap"><span class="t-body" style="font-weight:600">分析专员</span><span class="t-meta" style="padding:1px 6px;border-radius:4px;background:var(--muted);color:var(--muted-foreground)">尚未启用</span></div>
+                <p class="t-meta muted truncate">经营分析、指标看板、预算对比</p>
+              </div>
+            </div>
+            <div class="row between" style="padding-left:44px"><span class="t-meta muted"></span></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 本月任务（看板） -->
+    <div class="proto-content" id="view-board" style="display:none">
+      <div class="grid gap-card" style="grid-template-columns:repeat(3,1fr);align-items:start">
+        <div class="col gap-2">
+          <div class="row gap-2"><span class="t-small" style="font-weight:600">待处理</span><span class="t-meta muted">3</span></div>
+          <div class="surface col gap-1" style="padding:10px 12px"><span class="t-body">7 月进项发票认证</span><span class="tone-pill" style="--tone:var(--tone-invoice)">票据专员</span></div>
+          <div class="surface col gap-1" style="padding:10px 12px"><span class="t-body">季度个税汇算准备</span><span class="tone-pill" style="--tone:var(--tone-tax)">税务专员</span></div>
+          <div class="surface col gap-1" style="padding:10px 12px"><span class="t-body">供应商对账单核对</span><span class="tone-pill" style="--tone:var(--tone-treasury)">资金专员</span></div>
+        </div>
+        <div class="col gap-2">
+          <div class="row gap-2"><span class="t-small" style="font-weight:600">进行中</span><span class="t-meta muted">1</span></div>
+          <div class="surface col gap-1" style="padding:10px 12px"><span class="t-body">6 月增值税进项核对</span><span class="tone-pill" style="--tone:var(--tone-analysis)">进行中 · 票据专员</span></div>
+        </div>
+        <div class="col gap-2">
+          <div class="row gap-2"><span class="t-small" style="font-weight:600">已完成</span><span class="t-meta muted">2</span></div>
+          <div class="surface col gap-1" style="padding:10px 12px;opacity:0.6"><span class="t-body">员工社保基数调整</span><span class="tone-pill" style="--tone:var(--tone-payroll)">薪酬专员</span></div>
+          <div class="surface col gap-1" style="padding:10px 12px;opacity:0.6"><span class="t-body">5 月银行流水对账</span><span class="tone-pill" style="--tone:var(--tone-treasury)">资金专员</span></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="_icons.js" defer></script>
+<script src="_prototype.js" defer></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var toggle = document.getElementById("view-toggle");
+    var team = document.getElementById("view-team");
+    var board = document.getElementById("view-board");
+    toggle.querySelectorAll("button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        toggle.querySelectorAll("button").forEach(function (x) { x.classList.remove("active"); });
+        b.classList.add("active");
+        var isBoard = b.dataset.view === "board";
+        team.style.display = isBoard ? "none" : "";
+        board.style.display = isBoard ? "" : "none";
+      });
+    });
+    document.querySelectorAll(".switch").forEach(function (sw) {
+      sw.addEventListener("click", function () { sw.setAttribute("aria-checked", sw.getAttribute("aria-checked") === "true" ? "false" : "true"); });
+    });
+  });
+</script>
+</body>
+</html>

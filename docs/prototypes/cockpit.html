@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 · 总览 Cockpit</title>
+  <link rel="stylesheet" href="_prototype.css">
+</head>
+<body>
+<div class="proto-shell">
+
+  <!-- ============ 侧栏 ============ -->
+  <aside class="proto-sidebar">
+    <div class="brand">
+      <span class="brand-mark">财</span>
+      <span>财务智能体</span>
+    </div>
+
+    <div class="nav-group">
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-chat-add"></use></svg><span>新对话</span>
+        <span class="nav-shortcut">⌘N</span>
+      </a>
+      <a class="nav-link active">
+        <svg class="ico"><use href="#i-dashboard"></use></svg><span>总览</span>
+      </a>
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-library"></use></svg><span>知识库</span>
+      </a>
+      <a class="nav-link">
+        <svg class="ico"><use href="#i-note"></use></svg><span>技能</span>
+      </a>
+    </div>
+
+    <div class="nav-scroll">
+      <div class="col gap-2">
+        <div class="nav-section-label">
+          <span>智能体</span>
+          <span class="nav-badge">2</span>
+        </div>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-invoice)"></span>票据专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-payroll)"></span>薪酬专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-tax)"></span>税务专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-treasury)"></span>资金专员</a>
+      </div>
+
+      <div class="col gap-2">
+        <div class="nav-section-label"><span>最近</span></div>
+        <a class="nav-sub truncate">6 月增值税申报核对</a>
+        <a class="nav-sub truncate">员工社保基数调整</a>
+        <a class="nav-sub truncate">华东项目回款跟进</a>
+        <a class="nav-sub truncate">差旅报销批量审核</a>
+      </div>
+    </div>
+
+    <div class="nav-group" style="padding-top:8px;border-top:1px solid var(--border)">
+      <a class="nav-link"><svg class="ico"><use href="#i-settings"></use></svg><span>设置</span></a>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="proto-main">
+    <header class="proto-header">
+      <svg class="ico muted"><use href="#i-sidebar-toggle"></use></svg>
+      <h1 class="t-title">总览</h1>
+      <span class="t-body muted">7月19日 周六</span>
+      <span class="tone-pill" style="--tone:var(--tone-warn)">报税期 · 距截止 3 天</span>
+      <button class="btn btn-icon btn-ghost ml-auto" title="刷新"><svg class="ico"><use href="#i-refresh"></use></svg></button>
+    </header>
+
+    <div class="proto-content">
+      <div class="col gap-section">
+
+        <!-- 角色动态条 -->
+        <div class="t-body muted" style="padding:4px">
+          税务专员 · 12 分钟前 · 已完成 6 月增值税进项发票勾选核对
+        </div>
+
+        <!-- 需要你关注 -->
+        <section class="col gap-3">
+          <div class="row gap-2">
+            <h2 class="t-title" style="font-weight:600">需要你关注</h2>
+            <span class="t-meta muted">3 项</span>
+          </div>
+
+          <div class="col gap-2">
+            <div class="surface row gap-3" style="padding:10px 16px">
+              <span class="tone-dot dot-pulse" style="--tone:var(--tone-alarm)"></span>
+              <span class="tone-pill" style="--tone:var(--tone-tax)">拍板 · 税务专员</span>
+              <span class="trust-badge">待确认</span>
+              <span class="t-body flex-1 truncate">6 月增值税申报表已生成，请你确认后申报（应纳税额 ¥18,600）</span>
+              <a class="btn btn-outline btn-sm">去确认</a>
+            </div>
+            <div class="surface row gap-3" style="padding:10px 16px">
+              <span class="tone-dot" style="--tone:var(--tone-notice)"></span>
+              <span class="tone-pill" style="--tone:var(--tone-payroll)">拍板 · 薪酬专员</span>
+              <span class="trust-badge">待确认</span>
+              <span class="t-body flex-1 truncate">7 月工资表待复核：23 人，合计 ¥286,400</span>
+              <a class="btn btn-outline btn-sm">去复核</a>
+            </div>
+            <div class="surface row gap-3" style="padding:10px 16px">
+              <span class="tone-dot" style="--tone:var(--tone-notice)"></span>
+              <span class="tone-pill" style="--tone:var(--tone-invoice)">发票</span>
+              <span class="t-body flex-1 truncate">3 张进项发票认证到期日临近（7 月 25 日前）</span>
+              <a class="btn btn-outline btn-sm">查看</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- 三列主网格 -->
+        <div class="grid gap-card" style="grid-template-columns:2fr 1fr">
+
+          <!-- 左列（占 2） -->
+          <div class="col gap-card">
+            <div class="grid gap-card" style="grid-template-columns:1fr 1fr">
+
+              <!-- 经营数据 -->
+              <div class="card col">
+                <div class="card-header">
+                  <span class="tone-tile toned" style="--tone:var(--tone-neutral)"><svg class="ico ico-13"><use href="#i-bar-chart"></use></svg></span>
+                  <span class="card-title">经营数据</span>
+                  <span class="trust-badge">用户口述</span>
+                  <div class="seg ml-auto">
+                    <button aria-pressed="true">月</button>
+                    <button>季</button>
+                    <button>年</button>
+                  </div>
+                </div>
+                <div class="card-content col gap-3">
+                  <div class="row between">
+                    <span class="t-meta muted">收入</span>
+                    <div class="row gap-2">
+                      <span class="t-meta muted row" style="gap:3px"><svg class="ico ico-11"><use href="#i-chart-up"></use></svg>+8.2%</span>
+                      <strong class="t-small tabular">128.5万</strong>
+                    </div>
+                  </div>
+                  <div class="row between">
+                    <span class="t-meta muted">利润</span>
+                    <div class="row gap-2">
+                      <span class="t-meta muted row" style="gap:3px"><svg class="ico ico-11"><use href="#i-chart-down"></use></svg>-3.1%</span>
+                      <strong class="t-small tabular" style="color:var(--tone-ok)">22.4万</strong>
+                    </div>
+                  </div>
+                  <p class="t-meta muted">2025 年 6 月</p>
+                </div>
+              </div>
+
+              <!-- 最近工作 -->
+              <div class="card col">
+                <div class="card-header"><span class="card-title">最近工作</span></div>
+                <div class="card-content col" style="gap:2px;padding:8px">
+                  <a class="nav-link" style="padding:8px 10px">
+                    <span class="tone-dot dot-pulse" style="--tone:var(--primary)"></span>
+                    <span class="t-body flex-1 truncate">6 月增值税申报核对</span>
+                    <span class="tone-pill" style="--tone:var(--tone-tax)">税务</span>
+                    <span class="t-meta muted tabular">刚刚</span>
+                  </a>
+                  <a class="nav-link" style="padding:8px 10px">
+                    <span class="tone-dot" style="--tone:var(--tone-ok)"></span>
+                    <span class="t-body flex-1 truncate">社保基数调整</span>
+                    <span class="tone-pill" style="--tone:var(--tone-payroll)">薪酬</span>
+                    <span class="t-meta muted tabular">2 小时前</span>
+                  </a>
+                  <a class="nav-link" style="padding:8px 10px">
+                    <span class="tone-dot" style="--tone:var(--tone-alarm)"></span>
+                    <span class="t-body flex-1 truncate">华东项目回款跟进</span>
+                    <span class="tone-pill" style="--tone:var(--tone-receivables)">应收</span>
+                    <span class="t-meta muted tabular">昨天</span>
+                  </a>
+                  <a class="nav-link" style="padding:8px 10px">
+                    <span class="tone-dot" style="--tone:var(--tone-ok)"></span>
+                    <span class="t-body flex-1 truncate">差旅报销批量审核</span>
+                    <span class="tone-pill" style="--tone:var(--tone-neutral)">费用</span>
+                    <span class="t-meta muted tabular">2 天前</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <!-- 合同收付总览 -->
+            <div class="card">
+              <div class="card-header">
+                <span class="tone-tile toned" style="--tone:var(--tone-invoice)"><svg class="ico ico-13"><use href="#i-invoice"></use></svg></span>
+                <span class="card-title">合同收付总览</span>
+                <a class="row gap-2 ml-auto t-meta muted" style="text-decoration:none">合同目录 <svg class="ico ico-12"><use href="#i-arrow-right"></use></svg></a>
+              </div>
+              <div class="card-content col gap-3">
+                <div class="grid gap-2" style="grid-template-columns:repeat(3,1fr)">
+                  <div class="surface-page surface col" style="padding:10px;gap:2px">
+                    <span class="t-meta muted">本月应付</span>
+                    <strong class="t-figure tabular" style="color:var(--tone-warn);line-height:1">4<span class="t-meta muted" style="font-weight:400"> 笔</span></strong>
+                    <em class="t-meta muted" style="font-style:normal">32.6万+ · 1 笔未填额</em>
+                  </div>
+                  <div class="surface-page surface col" style="padding:10px;gap:2px">
+                    <span class="t-meta muted">本月应收</span>
+                    <strong class="t-figure tabular" style="color:var(--tone-ok);line-height:1">6<span class="t-meta muted" style="font-weight:400"> 笔</span></strong>
+                    <em class="t-meta muted" style="font-style:normal">58.0万</em>
+                  </div>
+                  <div class="surface-page surface col" style="padding:10px;gap:2px">
+                    <span class="t-meta muted">待开票</span>
+                    <strong class="t-figure tabular" style="color:var(--tone-notice);line-height:1">2<span class="t-meta muted" style="font-weight:400"> 笔</span></strong>
+                    <em class="t-meta muted" style="font-style:normal">笔待开</em>
+                  </div>
+                </div>
+                <ul class="col gap-2" style="list-style:none;margin:0;padding:8px 0 0;border-top:1px solid var(--border)">
+                  <li class="row between t-body">
+                    <span class="muted truncate"><span class="tabular">07/22</span> 应付「华东供应链」12.0万</span>
+                    <span class="tone-pill" style="--tone:var(--tone-notice)">待付</span>
+                  </li>
+                  <li class="row between t-body">
+                    <span class="muted truncate"><span class="tabular">07/25</span> 应收「明志科技」28.0万</span>
+                    <span class="tone-pill" style="--tone:var(--tone-notice)">待收</span>
+                  </li>
+                  <li class="row between t-body" style="opacity:0.5">
+                    <span class="muted truncate"><span class="tabular">07/15</span> 应付「云图设计」6.5万</span>
+                    <span class="tone-pill" style="--tone:var(--tone-neutral)">已付</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右列（占 1） -->
+          <div class="col gap-card">
+
+            <!-- 智能体 -->
+            <div class="surface col gap-2" style="padding:14px 16px">
+              <h2 class="t-title" style="font-weight:600">智能体</h2>
+              <div class="col" style="gap:6px">
+                <div class="row gap-3" style="padding:4px 4px">
+                  <span class="tone-tile toned" style="--tone:var(--tone-invoice);width:28px;height:28px;border-radius:999px;font-weight:600">票</span>
+                  <span class="t-body flex-1" style="font-weight:500">票据专员</span>
+                  <span class="t-meta muted">18 次 · 12 分钟前</span>
+                  <button class="btn btn-icon btn-ghost" style="width:28px;height:28px" title="派活"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></button>
+                </div>
+                <div class="row gap-3" style="padding:4px 4px">
+                  <span class="tone-tile toned" style="--tone:var(--tone-payroll);width:28px;height:28px;border-radius:999px;font-weight:600">薪</span>
+                  <span class="t-body flex-1" style="font-weight:500">薪酬专员</span>
+                  <span class="t-meta muted">9 次 · 2 小时前</span>
+                  <button class="btn btn-icon btn-ghost" style="width:28px;height:28px" title="派活"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></button>
+                </div>
+                <div class="row gap-3" style="padding:4px 4px">
+                  <span class="tone-tile toned" style="--tone:var(--tone-tax);width:28px;height:28px;border-radius:999px;font-weight:600">税</span>
+                  <span class="t-body flex-1" style="font-weight:500">税务专员</span>
+                  <span class="t-meta muted">14 次 · 刚刚</span>
+                  <button class="btn btn-icon btn-ghost" style="width:28px;height:28px" title="派活"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></button>
+                </div>
+              </div>
+              <div style="padding-top:8px;border-top:1px solid var(--border)">
+                <a class="row gap-2 t-meta muted" style="text-decoration:none">查看看板 <svg class="ico ico-12"><use href="#i-arrow-right"></use></svg></a>
+              </div>
+            </div>
+
+            <!-- 财务日历 -->
+            <div class="card">
+              <div class="card-header">
+                <span class="tone-tile toned" style="--tone:var(--tone-warn)"><svg class="ico ico-13"><use href="#i-calendar"></use></svg></span>
+                <span class="card-title">财务日历</span>
+              </div>
+              <div class="card-content col gap-2">
+                <p class="t-body">当前处于 <strong>增值税申报期</strong></p>
+                <ul class="col gap-2" style="list-style:none;margin:0;padding:0">
+                  <li class="row between t-body">
+                    <span class="muted">增值税申报（15 日截止）</span>
+                    <span class="tone-pill tabular" style="--tone:var(--tone-warn)">还剩 3 天</span>
+                  </li>
+                  <li class="row between t-body">
+                    <span class="muted">个税申报（15 日截止）</span>
+                    <span class="tone-pill tabular" style="--tone:var(--tone-warn)">还剩 3 天</span>
+                  </li>
+                  <li class="row between t-body">
+                    <span class="muted">社保缴纳（25 日截止）</span>
+                    <span class="tone-pill tabular" style="--tone:var(--tone-neutral)">还剩 13 天</span>
+                  </li>
+                </ul>
+                <p class="t-meta muted">申报期内请留意逾期滞纳金风险。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="_icons.js" defer></script>
+<script src="_prototype.js" defer></script>
+</body>
+</html>

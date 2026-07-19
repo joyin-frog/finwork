@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>原型 · 技能 Skills</title>
+  <link rel="stylesheet" href="_prototype.css">
+</head>
+<body>
+<div class="proto-shell">
+  <aside class="proto-sidebar">
+    <div class="brand"><span class="brand-mark">财</span><span>财务智能体</span></div>
+    <div class="nav-group">
+      <a class="nav-link"><svg class="ico"><use href="#i-chat-add"></use></svg><span>新对话</span><span class="nav-shortcut">⌘N</span></a>
+      <a class="nav-link"><svg class="ico"><use href="#i-dashboard"></use></svg><span>总览</span></a>
+      <a class="nav-link"><svg class="ico"><use href="#i-library"></use></svg><span>知识库</span></a>
+      <a class="nav-link active"><svg class="ico"><use href="#i-note"></use></svg><span>技能</span></a>
+    </div>
+    <div class="nav-scroll">
+      <div class="col gap-2">
+        <div class="nav-section-label"><span>智能体</span><span class="nav-badge">2</span></div>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-invoice)"></span>票据专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-payroll)"></span>薪酬专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-tax)"></span>税务专员</a>
+        <a class="nav-sub"><span class="tone-dot" style="--tone:var(--tone-treasury)"></span>资金专员</a>
+      </div>
+    </div>
+    <div class="nav-group" style="padding-top:8px;border-top:1px solid var(--border)">
+      <a class="nav-link"><svg class="ico"><use href="#i-settings"></use></svg><span>设置</span></a>
+    </div>
+  </aside>
+
+  <main class="proto-main">
+    <header class="proto-header">
+      <svg class="ico muted"><use href="#i-sidebar-toggle"></use></svg>
+      <h1 class="t-title">技能</h1>
+      <div class="row gap-2 ml-auto">
+        <button class="btn btn-icon btn-ghost" title="搜索技能"><svg class="ico"><use href="#i-search"></use></svg></button>
+        <button class="btn btn-icon btn-ghost" title="新建技能"><svg class="ico"><use href="#i-add"></use></svg></button>
+      </div>
+    </header>
+
+    <div class="filter-chips">
+      <button class="filter-chip active">全部</button>
+      <button class="filter-chip">财务</button>
+      <button class="filter-chip">文件工具</button>
+      <button class="filter-chip">个人</button>
+    </div>
+
+    <div class="flex-1" style="overflow:auto">
+      <div class="resource-grid">
+        <div class="res-card">
+          <div class="row between gap-2"><span class="t-body" style="font-weight:500;line-height:1.35">报销单核对</span><span class="source-tag">内置</span></div>
+          <p class="t-meta muted" style="line-height:1.5">对照报销制度逐项核对报销单，标出超标、缺票、重复报销。</p>
+          <div class="res-card-dock" style="justify-content:flex-end"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></div>
+        </div>
+        <div class="res-card">
+          <div class="row between gap-2"><span class="t-body" style="font-weight:500;line-height:1.35">发票 OCR 识别</span><span class="source-tag">内置</span></div>
+          <p class="t-meta muted" style="line-height:1.5">从图片或 PDF 发票提取抬头、税号、金额、税率等要素。</p>
+          <div class="res-card-dock" style="justify-content:flex-end"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></div>
+        </div>
+        <div class="res-card">
+          <div class="row between gap-2"><span class="t-body" style="font-weight:500;line-height:1.35">增值税申报表填写</span><span class="source-tag">内置</span></div>
+          <p class="t-meta muted" style="line-height:1.5">按进销项数据生成增值税纳税申报表主表与附表。</p>
+          <div class="res-card-dock" style="justify-content:flex-end"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></div>
+        </div>
+        <div class="res-card">
+          <div class="row between gap-2"><span class="t-body" style="font-weight:500;line-height:1.35">银行流水对账</span><span class="source-tag">内置</span></div>
+          <p class="t-meta muted" style="line-height:1.5">银行流水与账面收付逐笔匹配，输出未达账项清单。</p>
+          <div class="res-card-dock" style="justify-content:flex-end"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></div>
+        </div>
+        <div class="res-card">
+          <div class="row between gap-2"><span class="t-body" style="font-weight:500;line-height:1.35">Excel 数据清洗</span><span class="source-tag">内置</span></div>
+          <p class="t-meta muted" style="line-height:1.5">去重、补空、统一格式、拆合并单元格，整理成规整表。</p>
+          <div class="res-card-dock" style="justify-content:flex-end"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></div>
+        </div>
+        <div class="res-card">
+          <div class="row between gap-2"><span class="t-body" style="font-weight:500;line-height:1.35">PDF 表格提取</span><span class="source-tag">内置</span></div>
+          <p class="t-meta muted" style="line-height:1.5">从 PDF 里抽取表格并还原成可编辑的 Excel。</p>
+          <div class="res-card-dock" style="justify-content:flex-end"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></div>
+        </div>
+        <div class="res-card">
+          <div class="row between gap-2"><span class="t-body" style="font-weight:500;line-height:1.35">我的月末结账清单</span><span class="source-tag" style="color:var(--tone-skill);border-color:color-mix(in oklch,var(--tone-skill) 40%,var(--border))">个人</span></div>
+          <p class="t-meta muted" style="line-height:1.5">按我司口径逐项走一遍月末结账检查项。</p>
+          <div class="res-card-dock" style="justify-content:flex-end"><svg class="ico ico-14"><use href="#i-dispatch"></use></svg></div>
+        </div>
+        <div class="res-card dim">
+          <div class="row between gap-2"><span class="t-body" style="font-weight:500;line-height:1.35">往来对账函生成</span><span class="source-tag" style="color:var(--tone-skill);border-color:color-mix(in oklch,var(--tone-skill) 40%,var(--border))">个人</span></div>
+          <p class="t-meta muted" style="line-height:1.5">（已停用）按模板生成往来单位对账函。</p>
+          <div class="res-card-dock" style="justify-content:flex-end"><svg class="ico ico-14" style="opacity:0.4"><use href="#i-dispatch"></use></svg></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="_icons.js" defer></script>
+<script src="_prototype.js" defer></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".filter-chip").forEach(function (c) {
+      c.addEventListener("click", function () {
+        document.querySelectorAll(".filter-chip").forEach(function (x) { x.classList.remove("active"); });
+        c.classList.add("active");
+      });
+    });
+  });
+</script>
+</body>
+</html>
