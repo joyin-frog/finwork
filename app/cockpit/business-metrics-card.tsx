@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { BarChartIcon, ChartDecreaseIcon, ChartIncreaseIcon } from "@hugeicons/core-free-icons";
+import { ChartDecreaseIcon, ChartIncreaseIcon } from "@hugeicons/core-free-icons";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrustBadge } from "@/app/shared/trust-badge";
 import { AnimatedNumber } from "@/app/shared/animated-number";
@@ -96,13 +96,6 @@ export function BusinessMetricsCard({ business }: { business: BusinessOverview |
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <div
-              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-              className="flex size-6 items-center justify-center rounded-md fa-toned"
-              style={{ "--tone": "var(--tone-neutral)" } as CSSProperties}
-            >
-              <HugeiconsIcon icon={BarChartIcon} size={13} aria-hidden />
-            </div>
             <CardTitle>经营数据</CardTitle>
             {hasData && trustTier && (
               <TrustBadge

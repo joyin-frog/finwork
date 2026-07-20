@@ -3,13 +3,14 @@
 import type { CSSProperties } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Surface } from "@/components/ui/surface";
+import { buttonVariants } from "@/components/ui/button";
+import { Surface, surfaceVariants } from "@/components/ui/surface";
 import { TrustBadge } from "@/app/shared/trust-badge";
 import type { AttentionItem } from "@/lib/domain/attention";
 import type { CalendarContext } from "@/lib/domain/tax-calendar";
 import { getCockpitSuggestions } from "@/lib/domain/cockpit-suggestions";
 import { ROLE_UI, ROLE_LABELS } from "@/lib/domain/role-ui";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_VISIBLE = 5;
 
@@ -19,15 +20,16 @@ function AttentionCard({ item }: { item: AttentionItem }) {
   const roleUi = isGate && item.roleId ? ROLE_UI[item.roleId as keyof typeof ROLE_UI] : null;
   const pillTone = roleUi ? roleUi.tone : "--tone-notice";
 
-  return (
-    <Surface level="card" edge="hairline" shape="control" className="flex items-center gap-3 px-4 py-2.5">
+  const body = (
+    <>
       <span
         className={`fa-tone-dot shrink-0 ${item.severity === "urgent" ? "fa-dot-pulse" : ""}`}
         style={{ "--tone": item.severity === "urgent" ? "var(--tone-alarm)" : "var(--tone-notice)" } as CSSProperties}
         aria-label={item.severity === "urgent" ? "紧急" : "普通"}
       />
       <span
-        className="fa-tone-pill text-meta shrink-0"
+        // 行首已有严重度点，胶囊去掉 ::before 色点，避免双点
+        className="fa-tone-pill text-meta shrink-0 before:hidden"
         style={{ "--tone": `var(${pillTone})` } as CSSProperties}
       >
         {item.sourceLabel}
@@ -38,15 +40,37 @@ function AttentionCard({ item }: { item: AttentionItem }) {
       )}
       <span className="text-body flex-1 min-w-0 truncate">{item.title}</span>
       {action && (
-        <Link
-          href={action.href}
-          className="shrink-0"
+        <span
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "pointer-events-none")}
         >
-          <Button variant="outline" size="sm">
-            {action.label}
-          </Button>
-        </Link>
+          {action.label}
+        </span>
       )}
+    </>
+  );
+
+  const rowClass = "flex items-center gap-3 px-4 py-2.5";
+
+  // 有主动作：整卡可点（单一入口，不嵌套按钮）
+  if (action) {
+    return (
+      <Link
+        href={action.href}
+        // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+        className={cn(
+          surfaceVariants({ level: "card", edge: "hairline", shape: "control" }),
+          rowClass,
+          "hover:bg-accent/40 transition-colors active:translate-y-px"
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <Surface level="card" edge="hairline" shape="control" className={rowClass}>
+      {body}
     </Surface>
   );
 }

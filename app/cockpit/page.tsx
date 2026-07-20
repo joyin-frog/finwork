@@ -85,8 +85,8 @@ export default function CockpitPage() {
             initial={reduce ? false : "hidden"}
             animate="visible"
           >
-            <motion.div variants={slideUpIn}>
-              <RoleActivityTicker calendar={calendar} />
+            <motion.div className="empty:hidden" variants={slideUpIn}>
+              <RoleActivityTicker />
             </motion.div>
             <motion.div variants={slideUpIn}>
               <AttentionSection items={summary?.attention ?? []} calendar={calendar} />

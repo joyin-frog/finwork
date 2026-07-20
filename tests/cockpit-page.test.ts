@@ -221,5 +221,22 @@ export const cockpitPageTestPromise = (async () => {
     "T10 FAIL: CockpitSummary types.ts 应含 team 字段"
   );
 
+  // ── T11: 卡头无装饰图标；动态条无活动不占位 ────────────────────────────
+  assert.ok(
+    pageSource.includes("empty:hidden") && pageSource.includes("RoleActivityTicker"),
+    "T11 FAIL: RoleActivityTicker 外层应 empty:hidden，无活动时不留 gap"
+  );
+  for (const file of [
+    "app/cockpit/business-metrics-card.tsx",
+    "app/cockpit/cash-obligations-card.tsx",
+    "app/cockpit/finance-calendar-card.tsx",
+  ] as const) {
+    const cardSrc = await readFile(file, "utf-8");
+    assert.ok(
+      !/size-6[^"]*fa-toned|fa-toned[^"]*size-6/.test(cardSrc),
+      `T11 FAIL: ${file} 卡头不应再有 size-6 fa-toned 装饰图标`
+    );
+  }
+
   console.log("cockpit-page (CV-1 + CV-2 + CV-3 + v3-P0): all checks passed ✓");
 })();
