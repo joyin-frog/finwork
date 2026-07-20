@@ -5,8 +5,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeholder, label, onSubmit }: {
+export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeholder, label, onSubmit, className }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   value: string;
@@ -14,6 +15,8 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
   placeholder: string;
   label: string;
   onSubmit?: () => void;
+  /** 覆盖外层左右缩进；设置侧栏应与菜单 nav 同为 px-2，使搜索宽与 hover 齐。 */
+  className?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,7 +41,7 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
   if (!open) return null;
 
   return (
-    <div className="flex shrink-0 justify-end border-b border-border px-3.5 py-2">
+    <div className={cn("flex shrink-0 justify-end border-b border-border px-3.5 py-2", className)}>
       <form
         role="search"
         // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则

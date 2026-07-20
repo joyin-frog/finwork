@@ -176,11 +176,6 @@ export function SkillEditor({ skill }: { skill: SkillSummary }) {
             />
           )}
         </div>
-        {!editable && (
-          <div className="px-4 py-2 shrink-0 border-t border-border text-meta text-muted-foreground">
-            系统技能内置启用、只读。如需定制,请「新建」一个个人技能。
-          </div>
-        )}
       </div>
 
       {/* 删除文件确认 */}

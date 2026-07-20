@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MessageAdd01Icon, ArrowExpand01Icon, Cancel01Icon, CornerDownLeftIcon } from "@hugeicons/core-free-icons";
+import { MessageCircle, ArrowExpand01Icon, Cancel01Icon, CornerDownLeftIcon } from "@hugeicons/core-free-icons";
 import { MarkdownMessage } from "@/app/chat/markdown-message";
 import { useChatStream, isFinished } from "@/app/shared/chat-stream";
 import type { StartTurnParams } from "@/app/shared/chat-stream";
@@ -156,9 +156,9 @@ export function ChatFloat() {
           aria-label="打开对话浮窗"
           onClick={() => setOpen((v) => !v)}
           // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-          className="fixed bottom-5 right-5 z-50 flex items-center justify-center w-11 h-11 rounded-full bg-primary text-primary-foreground shadow-[var(--elevation-2)] hover:opacity-90 transition-opacity"
+          className="fixed bottom-5 right-5 z-50 flex items-center justify-center w-11 h-11 rounded-full border border-border bg-card text-foreground shadow-[var(--elevation-2)] hover:bg-accent transition-colors"
         >
-          <HugeiconsIcon icon={MessageAdd01Icon} size={20} />
+          <HugeiconsIcon icon={MessageCircle} size={20} />
         </button>
       )}
 

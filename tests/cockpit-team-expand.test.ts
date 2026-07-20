@@ -133,6 +133,10 @@ export const cockpitTeamExpandTestPromise = (async () => {
       tpSrc.includes("chat-float:open"),
       "T2 FAIL: app/cockpit/team-panel.tsx 的「派活」次动作应 dispatch CustomEvent(\"chat-float:open\")（cockpit:prefill-dispatch 已退役）"
     );
+    assert.ok(
+      tpSrc.includes("ComputerUserIcon"),
+      "T2 FAIL: team-panel「派活」应使用 ComputerUserIcon"
+    );
 
     // 2f：dispatchEvent 或 CustomEvent（实际派发事件）
     assert.ok(

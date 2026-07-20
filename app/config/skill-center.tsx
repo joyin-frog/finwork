@@ -121,6 +121,7 @@ export default function SkillCenter({
             onValueChange={setQuery}
             placeholder="搜索设置"
             label="设置"
+            className="px-2"
           />
           {/* Tab list */}
           <nav className="flex flex-col gap-0.5 px-2 py-2 flex-1 overflow-y-auto">

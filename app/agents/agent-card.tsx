@@ -2,6 +2,8 @@
 
 import { useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ComputerUserIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Surface } from "@/components/ui/surface";
@@ -138,7 +140,10 @@ function DispatchButton({ cardName, roleId }: { cardName: string; roleId: string
     // 无模板：单按钮，原有行为
     return (
       <Link href={`/chat/new?prompt=${freePrompt}`} onClick={(e) => e.stopPropagation()} className="shrink-0">
-        <Button variant="outline" size="sm">派活</Button>
+        <Button variant="outline" size="sm">
+          <HugeiconsIcon icon={ComputerUserIcon} size={14} />
+          派活
+        </Button>
       </Link>
     );
   }
@@ -149,7 +154,10 @@ function DispatchButton({ cardName, roleId }: { cardName: string; roleId: string
     <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="shrink-0">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">派活</Button>
+          <Button variant="outline" size="sm">
+            <HugeiconsIcon icon={ComputerUserIcon} size={14} />
+            派活
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {templates.map((t) => {

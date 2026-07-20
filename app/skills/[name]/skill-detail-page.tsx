@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, BubbleChatAddIcon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SkillEditor } from "@/app/skills/skill-editor";
 import { api, SourceTag, IconButton } from "@/app/skills/skills-shared";
@@ -104,13 +103,12 @@ export function SkillDetailPage({ name }: { name: string }) {
           />
         )}
         {/* 停用的用户技能不进 SDK 白名单,带它进对话会让 agent 拿到加载不了的技能 → 停用时禁用入口 */}
-        {skill.enabled ? (
-          <Button asChild size="sm">
-            <Link href={`/chat/new?skill=${encodeURIComponent(skill.name)}`}>开始对话</Link>
-          </Button>
-        ) : (
-          <Button size="sm" disabled title="技能已停用，启用后可开始对话">开始对话</Button>
-        )}
+        <IconButton
+          icon={BubbleChatAddIcon}
+          label={skill.enabled ? "开始对话" : "技能已停用，启用后可开始对话"}
+          disabled={!skill.enabled}
+          onClick={() => router.push(`/chat/new?skill=${encodeURIComponent(skill.name)}`)}
+        />
         {skill.editable && (
           <IconButton
             icon={Delete02Icon}

@@ -13,26 +13,27 @@
  * 同构），预览顶边与页面顶对齐；只有工作页签且有选中任务时才带 preview。
  */
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { MessageAdd01Icon, BubbleChatIcon, Delete02Icon } from "@hugeicons/core-free-icons";
+import { ComputerUserIcon, BubbleChatIcon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SettingsRow } from "@/app/config/settings-ui";
 import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { useNavState } from "@/app/shared/nav-state";
 import { AgentTabSurface } from "@/app/agents/agent-tab-surface";
-import { ROLE_UI, ROLE_LABELS } from "@/lib/domain/role-ui";
+import { ROLE_LABELS } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
 import { useWorkspaceWorkTab } from "./workspace-work-tab";
 
@@ -101,8 +102,6 @@ export default function AgentWorkspacePage() {
 
   useEffect(() => { void fetchRole(); }, [fetchRole]);
 
-  const ui = role ? ROLE_UI[role.roleId as keyof typeof ROLE_UI] : undefined;
-  const tone = ui?.tone ?? "--tone-neutral";
   const isRunning = role?.status === "running";
   const isBlocked = (role?.blockedReason != null && role.blockedReason !== "") || (role?.reviewPending ?? false);
 
@@ -123,13 +122,6 @@ export default function AgentWorkspacePage() {
         <SidebarToggle />
         {role && (
           <>
-            <span
-              className="fa-toned shrink-0 flex items-center justify-center w-7 h-7 text-small font-semibold select-none"
-              style={{ "--tone": `var(${tone})`, borderRadius: "50%" } as CSSProperties}
-              aria-hidden="true"
-            >
-              {role.name.slice(0, 1)}
-            </span>
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-title font-semibold shrink-0">{role.name}</span>
               {isRunning && (
@@ -159,8 +151,8 @@ export default function AgentWorkspacePage() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link href={`/chat/new?prompt=${encodeURIComponent(`请${role.name}，`)}`} aria-label="派任务">
-                    <Button size="icon">
-                      <HugeiconsIcon icon={MessageAdd01Icon} size={16} />
+                    <Button size="icon" variant="ghost">
+                      <HugeiconsIcon icon={ComputerUserIcon} size={16} />
                     </Button>
                   </Link>
                 </TooltipTrigger>
@@ -265,89 +257,100 @@ function ProfileTabView({ role, onToggled }: { role: RoleDetail; onToggled: () =
     }
   }
 
-  return (
-    <AgentTabSurface pad="none">
-      <div className="flex flex-col gap-5 p-4">
-        <section>
-          <p className="text-meta font-semibold text-muted-foreground mb-1.5">职责</p>
-          <p className="text-body">{role.charter}</p>
-        </section>
-        <section>
-          <p className="text-meta font-semibold text-muted-foreground mb-1.5">数据权限</p>
-          <div className="flex flex-wrap gap-1.5">
-            {role.dataScope.map((scope) => (
-              <Surface key={scope} level="page" edge="hairline" shape="pill" className="text-meta px-2 py-0.5 bg-muted/50">
-                {scope}
-              </Surface>
-            ))}
-          </div>
-        </section>
-        {role.skills.length > 0 && (
-          <section>
-            <p className="text-meta font-semibold text-muted-foreground mb-1.5">会做的活</p>
-            <div className="flex flex-wrap gap-1.5">
-              {role.skills.map((skill) => (
-                <Surface
-                  key={skill.name}
-                  level="page"
-                  edge="hairline"
-                  shape="pill"
-                  className="text-meta px-2 py-0.5 bg-muted/50 cursor-help"
-                  title={skill.description}
-                >
-                  {skill.name}
-                </Surface>
-              ))}
-            </div>
-          </section>
-        )}
-        {role.boundaries && role.boundaries.length > 0 && (
-          <section>
-            <p className="text-meta font-semibold text-muted-foreground mb-1.5">边界</p>
-            <div className="flex flex-col gap-1.5">
-              {role.boundaries.map((boundary) => {
-                const targetName = ROLE_LABELS[boundary.transferTo] ?? boundary.transferTo;
-                return (
-                  <div key={boundary.cannot} className="flex items-start gap-2 text-body">
-                    <span
-                      className="shrink-0 text-meta font-semibold mt-0.5"
-                      style={{ color: "var(--tone-alarm)" }}
-                      aria-hidden="true"
-                    >
-                      ✗
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      {boundary.cannot}
-                      <span className="text-meta text-muted-foreground ml-1.5">→ 转交{targetName}</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+  // 卡内多段：与 SettingsSection 同款留缝发丝分隔（mx-4 + bg-border/50），不用 gap / 通栏 border。
+  const profileBlocks: ReactNode[] = [
+    <section key="charter">
+      <p className="text-meta font-semibold text-muted-foreground mb-1.5">职责</p>
+      <p className="text-body">{role.charter}</p>
+    </section>,
+    <section key="scope">
+      <p className="text-meta font-semibold text-muted-foreground mb-1.5">数据权限</p>
+      <div className="flex flex-wrap gap-1.5">
+        {role.dataScope.map((scope) => (
+          <Surface key={scope} level="page" edge="hairline" shape="pill" className="text-meta px-2 py-0.5 bg-muted/50">
+            {scope}
+          </Surface>
+        ))}
       </div>
-      <section className="border-t border-border p-4">
-        <p className="text-meta font-semibold text-muted-foreground mb-1.5">启用状态</p>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={enabled}
-            onCheckedChange={handleToggle}
-            disabled={toggling || !canToggle}
-            aria-label={enabled ? "停用该专员" : "启用该专员"}
-          />
-          <span className="text-body">
-            {enabled ? "已启用" : "已停用"}
-            <span className="text-meta text-muted-foreground ml-2">
-              {!canToggle
-                ? "该角色暂未开放"
-                : enabled
-                  ? "接受派发。停用后不再接受派发、侧栏置灰"
-                  : "不接受派发。开启后可再次派活"}
-            </span>
-          </span>
+    </section>,
+  ];
+  if (role.skills.length > 0) {
+    profileBlocks.push(
+      <section key="skills">
+        <p className="text-meta font-semibold text-muted-foreground mb-1.5">会做的活</p>
+        <div className="flex flex-wrap gap-1.5">
+          {role.skills.map((skill) => (
+            <Surface
+              key={skill.name}
+              level="page"
+              edge="hairline"
+              shape="pill"
+              className="text-meta px-2 py-0.5 bg-muted/50 cursor-help"
+              title={skill.description}
+            >
+              {skill.name}
+            </Surface>
+          ))}
         </div>
       </section>
+    );
+  }
+  if (role.boundaries && role.boundaries.length > 0) {
+    profileBlocks.push(
+      <section key="boundaries">
+        <p className="text-meta font-semibold text-muted-foreground mb-1.5">边界</p>
+        <div className="flex flex-col gap-1.5">
+          {role.boundaries.map((boundary) => {
+            const targetName = ROLE_LABELS[boundary.transferTo] ?? boundary.transferTo;
+            return (
+              <div key={boundary.cannot} className="flex items-start gap-2 text-body">
+                <span
+                  className="shrink-0 text-meta font-semibold mt-0.5"
+                  style={{ color: "var(--tone-alarm)" }}
+                  aria-hidden="true"
+                >
+                  ✗
+                </span>
+                <span className="flex-1 min-w-0">
+                  {boundary.cannot}
+                  <span className="text-meta text-muted-foreground ml-1.5">→ 转交{targetName}</span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+  profileBlocks.push(
+    <SettingsRow
+      key="enabled"
+      label="启用状态"
+      hint={
+        !canToggle
+          ? "该角色暂未开放"
+          : enabled
+            ? "接受派发。停用后不再接受派发、侧栏置灰"
+            : "不接受派发。开启后可再次派活"
+      }
+    >
+      <Switch
+        checked={enabled}
+        onCheckedChange={handleToggle}
+        disabled={toggling || !canToggle}
+        aria-label={enabled ? "停用该专员" : "启用该专员"}
+      />
+    </SettingsRow>
+  );
+
+  return (
+    <AgentTabSurface pad="none">
+      {profileBlocks.map((block, i) => (
+        <div key={(block as ReactElement).key ?? i}>
+          {i > 0 ? <div className="mx-4 h-px bg-border/50" aria-hidden /> : null}
+          <div className="px-4 py-4">{block}</div>
+        </div>
+      ))}
     </AgentTabSurface>
   );
 }
