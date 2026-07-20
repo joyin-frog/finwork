@@ -258,17 +258,15 @@ export const navV3TestPromise = (async () => {
     assert.equal(opened2.activeKey, "page:agents:bookkeeper", "F3 FAIL: 新开标签应激活自己");
   }
 
-  // ── 抛光: 侧栏角色行使用方形语义图标，只在有事时显示状态点 ──
+  // ── 抛光: 侧栏角色行使用中性 Hugeicons，只在有事时显示状态点 ──
   {
     const navSrc = src("app/shared/app-nav.tsx");
     const roleRowBody = navSrc.slice(navSrc.indexOf("function renderRoleRow"), navSrc.indexOf("function renderConversationRow"));
-    assert.ok(roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 角色图标应使用岗位 tone");
-    assert.ok(roleRowBody.includes("roleNavIcon"), "抛光 FAIL: 角色图标应经 roleNavIcon 按 ROLE_UI.iconName 解析");
+    assert.ok(roleRowBody.includes("roleNavIcon"), "抛光 FAIL: 侧栏角色行应走 roleNavIcon 中性图标");
+    assert.ok(!roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 侧栏角色行不应再上岗位 tone 字标");
+    assert.ok(!roleRowBody.includes('borderRadius: "50%"'), "抛光 FAIL: 侧栏角色不应再用圆形字标");
+    assert.ok(!roleRowBody.includes("r.name.slice(0, 1)"), "抛光 FAIL: 侧栏角色不应再取名称首字");
     assert.ok(!navSrc.includes("ROLE_NAV_ICONS"), "抛光 FAIL: 不得再维护与 ROLE_UI 脱节的 ROLE_NAV_ICONS");
-    const roleIconsSrc = src("lib/domain/role-icons.ts");
-    assert.ok(roleIconsSrc.includes("ROLE_UI"), "抛光 FAIL: role-icons 应以 ROLE_UI.iconName 为唯一来源");
-    assert.ok(roleRowBody.includes("rounded"), "抛光 FAIL: 角色图标槽应为轻圆角方形，不得使用圆形头像");
-    assert.ok(!roleRowBody.includes("r.name.slice(0, 1)"), "抛光 FAIL: 角色图标不应继续使用圆形汉字头像");
     assert.ok(!roleRowBody.includes('"var(--tone-neutral)"'), "抛光 FAIL: 空闲角色不应常显中性圆点");
     assert.ok(!roleRowBody.includes('"\u7a7a\u95f2"'), "抛光 FAIL: 空闲状态不应生成常显提示");
     assert.ok(roleRowBody.includes("dotTone &&"), "抛光 FAIL: 只有进行中或待拍板时才应显示状态点");
@@ -276,9 +274,9 @@ export const navV3TestPromise = (async () => {
     assert.ok(!navSrc.includes("AiBrain01Icon"), "抛光 FAIL: 智能体分组标题不应显示图标");
   }
 
-  // ── 契约 5a: app-nav.tsx「智能体」为常驻目录，子项直达角色工作台 ────────────
+  // ── 契约 5a: app-nav.tsx「智能体」为常驻目录（可折叠），子项直达角色工作台 ──
   // IA 重构（docs/spec/design-agents-ia.md）：父项不再导航到 /agents 落地页，
-  // 标题只承担目录标识；子列表始终渲染并直达 /agents/<roleId> 工作台。
+  // 标题只承担目录标识；子列表直达 /agents/<roleId> 工作台。分组始终在侧栏，可折叠。
   {
     const navSrc = src("app/shared/app-nav.tsx");
     const navStateSrc = src("app/shared/nav-state.tsx");
@@ -287,12 +285,12 @@ export const navV3TestPromise = (async () => {
       "C5a FAIL: app-nav.tsx 应含「智能体」文案"
     );
     assert.ok(
-      !navSrc.includes("setAgentsOpen") && !navSrc.includes("agentsOpen"),
-      "C5a FAIL: 「智能体」目录应常驻，不得保留折叠状态或开关"
+      navSrc.includes("setAgentsOpen(!agentsOpen)") && navSrc.includes('label="智能体"'),
+      "C5a FAIL: 「智能体」应可折叠，并与置顶/最近共用折叠标题"
     );
     assert.ok(
-      !navStateSrc.includes("setAgentsOpen") && !navStateSrc.includes("agentsOpen"),
-      "C5a FAIL: NavState 不得保留已废弃的智能体折叠状态"
+      navStateSrc.includes("const [agentsOpen, setAgentsOpen] = useState(true)"),
+      "C5a FAIL: NavState 应提供 agentsOpen，且默认展开"
     );
     assert.ok(
       navSrc.includes('data-nav-agent-directory="always"'),
@@ -336,11 +334,11 @@ export const navV3TestPromise = (async () => {
     assert.ok(!navStateSrc.includes('localStorage.setItem("conversation'), "JOY-10 FAIL: v1 不应持久化会话标签");
   }
 
-  // ── 契约 5b: 「智能体」作为常驻目录，位于「置顶」之前 ─────────────────────
+  // ── 契约 5b: 「智能体」作为常驻目录（可折叠），位于「置顶」之前 ───────────
   {
     const navSrc = src("app/shared/app-nav.tsx");
     const agentsIdx = navSrc.indexOf('data-nav-agent-directory="always"');
-    const pinnedIdx = navSrc.indexOf("setPinnedOpen(!pinnedOpen)");
+    const pinnedIdx = navSrc.indexOf('label="置顶"');
     assert.ok(
       agentsIdx !== -1,
       "C5b FAIL: app-nav.tsx 应含常驻智能体目录"
@@ -355,8 +353,12 @@ export const navV3TestPromise = (async () => {
     );
     const agentsHeader = navSrc.slice(agentsIdx, navSrc.indexOf("agentRoster.length", agentsIdx));
     assert.ok(
-      agentsHeader.includes("min-h-8") && agentsHeader.includes("px-3"),
-      "C5b FAIL: 「智能体」标题应使用 32px 高度与统一水平缩进"
+      agentsHeader.includes('label="智能体"') && agentsHeader.includes("setAgentsOpen(!agentsOpen)"),
+      "C5b FAIL: 「智能体」应使用可折叠分组标题"
+    );
+    assert.ok(
+      agentsHeader.includes("SectionFoldHeader") && agentsHeader.includes("CollapsibleSectionMotion"),
+      "C5b FAIL: 「智能体」应与置顶/最近共用折叠交互"
     );
     assert.ok(
       !agentsHeader.includes("UserGroupIcon"),
@@ -367,27 +369,54 @@ export const navV3TestPromise = (async () => {
       "C5b FAIL: 侧栏中部滚动区应使用 20px 大分组间距"
     );
     assert.ok(
-      navSrc.includes('className="flex flex-col gap-0 px-2 pb-5 shrink-0"'),
-      "C5b FAIL: 一级菜单行应连续排列，同时与智能体目录保留 20px 间距"
+      navSrc.includes('className="flex flex-col gap-0 px-3 pb-5 shrink-0"'),
+      "C5b FAIL: 一级菜单行应连续排列，选中缝左右 12px（px-3）"
+    );
+    assert.ok(
+      navSrc.includes("sidebar-nav-scroll") && navSrc.includes("pl-3") && !/sidebar-nav-scroll[^"]*pr-/.test(navSrc),
+      "C5b FAIL: 滚动区应 pl-3 + 右侧靠 scrollbar-gutter，不另写 pr"
     );
     // 一级导航以下共用一条滚动条：智能体与置顶/最近同在 data-nav-scroll 内。
     const scrollIdx = navSrc.indexOf('data-nav-scroll=""');
     const agentDirIdx = navSrc.indexOf('data-nav-agent-directory="always"');
-    const pinnedIdx2 = navSrc.indexOf("setPinnedOpen(!pinnedOpen)");
+    const pinnedIdx2 = navSrc.indexOf('label="置顶"');
     assert.ok(scrollIdx > -1 && agentDirIdx > scrollIdx, "C5b FAIL: 智能体应位于统一滚动容器内");
     assert.ok(pinnedIdx2 > agentDirIdx, "C5b FAIL: 置顶应与智能体同属统一滚动区且位于其后");
     assert.ok(
-      navSrc.includes("sidebar-nav-edge-top") && navSrc.includes("sidebar-nav-edge-bottom"),
-      "C5b FAIL: 滚动区应有上下边缘渐隐"
+      src("app/shared/nav-state.tsx").includes("const [agentsOpen, setAgentsOpen] = useState(true)"),
+      "C5b FAIL: NavState 应提供 agentsOpen，且智能体默认展开"
     );
     assert.ok(
       navSrc.includes("data-nav-scroll-top") && navSrc.includes("data-nav-scroll-bottom"),
       "C5b FAIL: 边缘渐隐应按滚动位置显隐"
     );
+    assert.ok(
+      !navSrc.includes("sidebar-nav-edge"),
+      "C5b FAIL: 侧栏边缘不应再用 blur 叠层，应走 mask 淡出"
+    );
     const globals = src("app/globals.css");
-    assert.match(globals, /\.sidebar-nav-edge-top/, "C5b FAIL: globals 应定义顶部边缘渐隐");
-    assert.match(globals, /\.sidebar-nav-edge-bottom/, "C5b FAIL: globals 应定义底部边缘渐隐");
-    assert.match(globals, /backdrop-filter:\s*blur/, "C5b FAIL: 边缘渐隐应含轻 blur");
+    assert.match(
+      globals,
+      /\[data-nav-scroll-top\].*\.sidebar-nav-scroll/s,
+      "C5b FAIL: globals 应对滚动未贴顶的侧栏加 mask 淡出"
+    );
+    assert.match(
+      globals,
+      /\[data-nav-scroll-bottom\].*\.sidebar-nav-scroll/s,
+      "C5b FAIL: globals 应对滚动未贴底的侧栏加 mask 淡出"
+    );
+    assert.ok(
+      globals.includes("scrollbar-gutter: stable"),
+      "C5b FAIL: 侧栏滚动区应 scrollbar-gutter:stable，避免有无滚动条时选中框跳动"
+    );
+    assert.ok(
+      globals.includes("border: 2px solid transparent") && globals.includes("background-clip: padding-box"),
+      "C5b FAIL: 全局滚动条可见 thumb 应为 8px（12px 槽 + 2px 透明边）"
+    );
+    assert.ok(
+      !/\.sidebar-nav-edge[\s{]/.test(globals) && !/sidebar-nav-edge.*backdrop-filter:\s*blur/.test(globals),
+      "C5b FAIL: 侧栏边缘不得再用 blur 叠层（会发黑）"
+    );
     // 「最近」默认策略：有置顶收起、无置顶展开。
     assert.ok(
       navSrc.includes("setRecentOpen(!hasPinnedNow)"),
@@ -408,7 +437,25 @@ export const navV3TestPromise = (async () => {
     assert.match(conventions, /渐隐/, "设计语言 FAIL: 应记录侧栏滚动区边缘渐隐");
     assert.match(conventions, /有置顶时/, "设计语言 FAIL: 应记录「最近」相对置顶的默认开合策略");
     assert.match(conventions, /双轴对齐/, "设计语言 FAIL: 应记录图形轴与文字轴对齐规则");
+    assert.match(conventions, /会话标题落在文字轴/, "设计语言 FAIL: 应记录会话标题落在文字轴");
     assert.match(conventions, /常驻目录/, "设计语言 FAIL: 应记录短目录默认常驻的原则");
+    assert.match(conventions, /ComputerUserIcon/, "设计语言 FAIL: 应记录派活入口统一 ComputerUserIcon");
+    assert.match(conventions, /mask/, "设计语言 FAIL: 应记录侧栏边缘用 mask 渐隐而非 blur");
+    assert.match(conventions, /可见 thumb 约 8px/, "设计语言 FAIL: 应记录全局滚动条可见宽度约 8px");
+    const navSrcDual = src("app/shared/app-nav.tsx");
+    const convStart = navSrcDual.indexOf("function renderConversationRow");
+    const convBody = navSrcDual.slice(convStart, navSrcDual.indexOf('data-nav-agent-directory="always"'));
+    assert.ok(convStart !== -1 && convBody.includes("graphicSlot"), "设计语言 FAIL: 会话行应有图形轴槽");
+    assert.ok(
+      convBody.includes("pl-2") && convBody.includes("size-5") && convBody.includes("gap-2"),
+      "设计语言 FAIL: 会话行应使用 pl-2 + 20px 槽 + gap-2 对齐文字轴"
+    );
+    assert.ok(!convBody.includes("pl-4"), "设计语言 FAIL: 会话行不得再用 pl-4 破坏文字轴");
+    assert.ok(convBody.includes("c.hasError"), "设计语言 FAIL: 会话红点应读落库 hasError（与最近工作同源）");
+    assert.ok(
+      convBody.includes("ContextMenu") && convBody.includes("ContextMenuTrigger"),
+      "设计语言 FAIL: 会话行应支持右键 ContextMenu（桌面 app）"
+    );
   }
 
   // ── 契约 5c: 「技能」为一级导航项（导航区含 href="/skills"）─────────────────

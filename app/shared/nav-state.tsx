@@ -15,6 +15,8 @@ type ConversationSummary = {
   pinned: boolean;
   /** 专员会话的角色 id（E 刀）；null/缺省 = 主管会话。 */
   roleId?: string | null;
+  /** 最新 trace 为 error 时 true；侧栏红点（与「最近工作」同源）。 */
+  hasError?: boolean;
 };
 
 /** 侧栏「智能体」子列表用的精简角色项（来自 /api/agents 的 roster，只取导航所需字段）。 */
@@ -325,6 +327,8 @@ type NavState = {
   setNavWidth: (v: number) => void;
   searchOpen: boolean;
   setSearchOpen: (v: boolean) => void;
+  agentsOpen: boolean;
+  setAgentsOpen: (v: boolean) => void;
   pinnedOpen: boolean;
   setPinnedOpen: (v: boolean) => void;
   recentOpen: boolean;
@@ -404,6 +408,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [searchOpen, setSearchOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(true);
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [recentOpen, setRecentOpen] = useState(false);
   const [agentRoster, setAgentRoster] = useState<AgentRosterLite[]>([]);
@@ -614,6 +619,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     collapsed, setCollapsed,
     navWidth, setNavWidth,
     searchOpen, setSearchOpen,
+    agentsOpen, setAgentsOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
     agentRoster, agentPendingCount, fetchAgentRoster,
@@ -631,6 +637,7 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
     collapsed, setCollapsed,
     navWidth, setNavWidth,
     searchOpen, setSearchOpen,
+    agentsOpen, setAgentsOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
     agentRoster, agentPendingCount, fetchAgentRoster,

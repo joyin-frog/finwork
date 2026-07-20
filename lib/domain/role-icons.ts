@@ -4,21 +4,21 @@
  */
 import type { IconSvgElement } from "@hugeicons/react";
 import {
-  BankIcon,
   ChartLineData01Icon,
+  DollarSquareIcon,
   Invoice01Icon,
+  NoteEditIcon,
   NoteIcon,
-  ReceiptTextIcon,
   TaxesIcon,
   UserAccountIcon,
 } from "@hugeicons/core-free-icons";
 import { ROLE_UI, type RoleId } from "@/lib/domain/role-ui";
 
 const ICONS_BY_NAME = {
-  receipt: ReceiptTextIcon,
+  "note-edit": NoteEditIcon,
   "user-account": UserAccountIcon,
   tax: TaxesIcon,
-  bank: BankIcon,
+  "dollar-square": DollarSquareIcon,
   invoice: Invoice01Icon,
   "chart-line-data-01": ChartLineData01Icon,
 } as const satisfies Record<string, IconSvgElement>;
