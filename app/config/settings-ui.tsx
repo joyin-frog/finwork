@@ -4,7 +4,7 @@ import { Children, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Surface } from "@/components/ui/surface";
 
-/** 设置分组:标题+说明在上,内容放圆角卡片,卡片内多项之间横线分隔(macOS/Codex 风格)。 */
+/** 设置分组:标题+说明在上,内容放圆角卡片;多项之间用首尾留缝的分隔线(与内容区同宽缩进)。 */
 export function SettingsSection({ title, description, children }: {
   title: string;
   description?: ReactNode;
@@ -19,8 +19,10 @@ export function SettingsSection({ title, description, children }: {
       </div>
       <Surface level="card" edge="hairline" shape="card" className="overflow-hidden">
         {items.map((child, i) => (
-          <div key={i} className={cn("px-4 py-3", i > 0 && "border-t border-border")}>
-            {child}
+          <div key={i}>
+            {/* 发丝分隔：1px + 半透明，比通栏 border 更轻；亚像素细线各端不一致，故用降不透明度 */}
+            {i > 0 ? <div className="mx-4 h-px bg-border/50" aria-hidden /> : null}
+            <div className="px-4 py-3">{child}</div>
           </div>
         ))}
       </Surface>
@@ -36,13 +38,16 @@ export function SettingsRow({ label, htmlFor, hint, wide, children }: {
   wide?: boolean;
   children: ReactNode;
 }) {
+  // 控件相对左侧整块（标题，或标题+说明）垂直居中。
   return (
-    <div className="flex items-start justify-between gap-6 py-0.5">
-      <label htmlFor={htmlFor} className="flex flex-col gap-0.5 min-w-0 pt-1.5">
+    <div className="flex items-center justify-between gap-6 py-0.5">
+      <label htmlFor={htmlFor} className="flex min-w-0 flex-col gap-0.5">
         <span className="text-body">{label}</span>
         {hint ? <span className="text-meta text-muted-foreground">{hint}</span> : null}
       </label>
-      <div className={cn("shrink-0 flex justify-end", wide ? "w-72 max-w-[60%]" : "w-44 max-w-[55%]")}>{children}</div>
+      <div className={cn("flex shrink-0 justify-end", wide ? "w-72 max-w-[60%]" : "w-44 max-w-[55%]")}>
+        {children}
+      </div>
     </div>
   );
 }

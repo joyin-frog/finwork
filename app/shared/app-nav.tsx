@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
@@ -29,6 +29,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
 import { ROLE_LABELS, ROLE_UI } from "@/lib/domain/role-ui";
@@ -57,6 +63,8 @@ type ConversationSummary = {
   pinned: boolean;
   /** 专员会话的角色 id（E 刀）；null/缺省 = 主管会话。 */
   roleId?: string | null;
+  /** 最新 trace 为 error 时 true；侧栏红点（与「最近工作」同源）。 */
+  hasError?: boolean;
 };
 
 type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" | "skills";
@@ -90,12 +98,45 @@ function CollapsibleSectionMotion({
           animate={{ opacity: 1, transform: "translateY(0px)" }}
           exit={reduce ? undefined : { opacity: 0, transform: "translateY(-4px)" }}
           transition={{ duration: reduce ? 0 : 0.18, ease: [0.23, 1, 0.32, 1] }}
-          className="flex flex-col gap-1"
+          className="flex flex-col gap-0"
         >
           {children}
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/** 侧栏可折叠分组标题：箭头贴标题，默认隐藏，hover / 键盘焦点时再显示。 */
+function SectionFoldHeader({
+  label,
+  open,
+  onToggle,
+  trailing,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="group/fold flex min-h-8 w-full items-center gap-1 pl-2 pr-2 text-meta font-medium text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <span>{label}</span>
+      <HugeiconsIcon
+        icon={ArrowDown01Icon}
+        size={12}
+        className={cn(
+          "opacity-0 transition-[opacity,transform] group-hover/fold:opacity-100 group-focus-visible/fold:opacity-100 motion-reduce:transition-none",
+          open && "rotate-180"
+        )}
+      />
+      {trailing ? <span className="ml-auto flex items-center gap-1.5">{trailing}</span> : null}
+    </button>
   );
 }
 
@@ -123,6 +164,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   const {
     collapsed,
     navWidth, setNavWidth,
+    agentsOpen, setAgentsOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
     agentRoster, agentPendingCount,
@@ -196,7 +238,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   // 内容高度变化后重算上下边缘渐隐（折叠开合、花名册加载等）。
   useEffect(() => {
     updateScrollEdges();
-  }, [agentRoster.length, conversations.length, pinnedOpen, recentOpen, hasPinned, updateScrollEdges]);
+  }, [agentRoster.length, conversations.length, agentsOpen, pinnedOpen, recentOpen, hasPinned, updateScrollEdges]);
 
   async function handleConfirmDelete() {
     const result = await confirmDelete();
@@ -208,20 +250,27 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   const navLinkClass = (isActive: boolean) =>
     cn(
-      "relative isolate flex items-center gap-3 px-3 min-h-[36px] rounded-md text-body transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
+      // pl-2 = gap-2：图标距左缘 = 图标距标题；20px 槽 + gap-2 = 28px 图形列。
+      "relative isolate flex items-center gap-2 pl-2 pr-3 min-h-[36px] rounded-md text-body transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
       isActive
         ? "text-primary font-medium"
         : "text-foreground hover:bg-accent hover:text-accent-foreground"
     );
+
+  function NavGlyph({ icon }: { icon: typeof ChatAddIcon }) {
+    return (
+      <span className="flex size-5 shrink-0 items-center justify-center">
+        <HugeiconsIcon icon={icon} size={16} aria-hidden="true" />
+      </span>
+    );
+  }
 
   function renderRoleRow(r: { roleId: string; name: string; available: boolean; userDisabled: boolean; status: string | null; blockedReason: string | null; reviewPending: boolean }) {
     const isActive = currentRoleId === r.roleId;
     const isRunning = r.status === "running";
     const isBlocked = (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending;
     const disabled = !r.available || r.userDisabled;
-    const roleTone = ROLE_UI[r.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral";
-    const roleIcon = roleNavIcon(r.roleId);
-    // 方形语义图标负责岗位识别；状态点只在进行中/待拍板时出现，避免空闲圆点常驻造成噪声。
+    // 中性线性图标（与一级导航同阶）；状态点只在进行中/待拍板时出现。
     const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;
     const dotLabel = isRunning ? "在忙" : "待拍板";
     return (
@@ -230,19 +279,17 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         href={`/agents/${r.roleId}`}
         title={r.name}
         className={cn(
-          "group relative flex items-center gap-2 rounded-[var(--radius)] pl-3 pr-2 min-h-[32px] text-small transition-colors",
+          // 正文阶默认 400；悬停只换底色，不加深字色。选中态加 medium。
+          "group relative flex items-center gap-2 rounded-[var(--radius)] pl-2 pr-2 min-h-[32px] text-body transition-colors",
           isActive
             ? "bg-primary/10 text-primary font-medium"
             : disabled
-              ? "text-muted-foreground/50 hover:bg-accent hover:text-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              ? "text-muted-foreground/50 hover:bg-accent"
+              : "text-foreground hover:bg-accent"
         )}
       >
-        <span
-          className="fa-toned relative shrink-0 flex size-5 items-center justify-center rounded select-none"
-          style={{ "--tone": `var(${roleTone})` } as CSSProperties}
-        >
-          <HugeiconsIcon icon={roleIcon} size={14} aria-hidden="true" />
+        <span className="relative shrink-0 flex size-5 items-center justify-center">
+          <HugeiconsIcon icon={roleNavIcon(r.roleId)} size={16} aria-hidden="true" />
           {dotTone && (
             <span
               className={cn("fa-tone-dot absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar", isRunning && "fa-dot-pulse")}
@@ -260,16 +307,59 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   function renderConversationRow(c: ConversationSummary) {
     const isActive = activeConversationId === c.id;
-    // 状态点:仅在"非当前查看"的会话上显示(点是离开后的提醒);统一走 --tone-* token:
-    // 进行中=主色(呼吸,与对话内运行指示同色)、完成=ok 绿、未正常完成=alarm 红。
-    const status = isActive ? undefined : statusByConversationId[c.id];
+    // 状态点（--tone-*）：
+    // 红 = 落库最新 trace 为 error（与「最近工作」同源），或本回合 live error/stopped；查看后仍保留。
+    // 绿/进行中 = 仅 live、离开后的提醒（当前会话不标）。
+    const live = statusByConversationId[c.id];
+    const status =
+      live === "streaming" || live === "done"
+        ? isActive
+          ? undefined
+          : live
+        : live === "error" || live === "stopped"
+          ? live
+          : c.hasError
+            ? "error"
+            : undefined;
     const dot = status === "streaming"
       ? { tone: "var(--primary)", pulse: true, label: "正在生成" }
       : status === "done"
         ? { tone: "var(--tone-ok)", pulse: false, label: "已完成，点击查看" }
         : status === "error" || status === "stopped"
-          ? { tone: "var(--tone-alarm)", pulse: false, label: "未正常完成，点击查看" }
+          ? { tone: "var(--tone-alarm)", pulse: false, label: "未正常完成" }
           : null;
+    // 双轴：pl-2 = gap-2（图标距左缘 = 距标题）；20px 槽 + gap-2 = 28px 图形列。
+    const graphicSlot = (
+      <span className="relative shrink-0 flex size-5 items-center justify-center">
+        {c.roleId ? (
+          // 专员会话（E 刀）：15px 角色小头像落在图形轴，区分直聊会话
+          <span
+            className="fa-toned flex size-[15px] items-center justify-center text-[9px] font-semibold select-none"
+            style={{ "--tone": `var(${ROLE_UI[c.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral"})`, borderRadius: "50%" } as CSSProperties}
+            aria-hidden="true"
+          >
+            {(ROLE_LABELS[c.roleId] ?? c.roleId).slice(0, 1)}
+          </span>
+        ) : null}
+        {dot && renamingId !== c.id && (
+          <span
+            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+            className={cn(
+              "pointer-events-none size-1.5 rounded-full",
+              c.roleId ? "absolute -right-0.5 -bottom-0.5" : "",
+              dot.pulse && "animate-pulse"
+            )}
+            style={{ backgroundColor: dot.tone }}
+            title={dot.label}
+            aria-label={dot.label}
+            role="status"
+          />
+        )}
+      </span>
+    );
+    const pinLabel = c.pinned ? "取消置顶" : "置顶";
+    const pinIcon = c.pinned ? PinOffIcon : PinIcon;
+    // 桌面 app：右键整行与悬停 ⋯ 共用同一套操作（置顶 / 重命名 / 删除）。
     return (
       <motion.div
         key={c.id}
@@ -282,87 +372,92 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           // 底色/边框作用在整行:标题 + 编辑按钮共用同一底,选中/悬停时是一个整体。
           // 注:不在此行叠 active:scale——本行是 layout 动画的 motion.div,transform 由 motion 逐帧驱动,
           // 再挂 CSS transition-transform 会盖掉 transition-colors 并与 layout 动画抢 transform。按压反馈只放导航链接。
-          "group relative flex items-center rounded-md transition-colors",
+          // 与智能体目录同阶：正文默认 400；悬停只换底色，不加深字色。选中态加 medium。
+          "group relative flex items-center rounded-md text-body transition-colors",
           renamingId === c.id
             ? ""
             : isActive
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              ? "bg-primary/10 text-primary font-medium"
+              : "text-foreground hover:bg-accent"
         )}
       >
-        {dot && renamingId !== c.id && (
-          <span
-            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-          className={cn("pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 size-1.5 rounded-full", dot.pulse && "animate-pulse")}
-            style={{ backgroundColor: dot.tone }}
-            title={dot.label}
-            aria-label={dot.label}
-            role="status"
-          />
-        )}
-        {renamingId === c.id ? (
-          <Input
-            ref={renameInputRef}
-            className="mx-2 h-7 flex-1 px-2 py-1 text-body"
-            value={renameDraft}
-            onChange={(e) => setRenameDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitRename(c);
-              if (e.key === "Escape") cancelRename();
-            }}
-            onBlur={() => commitRename(c)}
-          />
-        ) : (
-          <Link
-            href={`/chat/recent?id=${c.id}`}
-            title={c.roleId ? `${ROLE_LABELS[c.roleId] ?? c.roleId} · 专员会话 · ${c.title}` : c.title}
-            className="flex-1 min-w-0 pl-4 pr-3 py-1 text-small truncate flex items-center gap-1.5"
-          >
-            {c.roleId && (
-              // 专员会话（E 刀）：15px 角色小头像区分直聊会话
-              <span
-                className="fa-toned shrink-0 flex items-center justify-center w-[15px] h-[15px] text-[9px] font-semibold select-none"
-                style={{ "--tone": `var(${ROLE_UI[c.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral"})`, borderRadius: "50%" } as CSSProperties}
-                aria-hidden="true"
-              >
-                {(ROLE_LABELS[c.roleId] ?? c.roleId).slice(0, 1)}
-              </span>
-            )}
-            <span className="min-w-0 truncate">{c.title}</span>
-          </Link>
-        )}
-        {renamingId !== c.id && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={`${c.title} 更多操作`}
-              // 共用整行底色;悬停到按钮本身时再叠一层略深的底,单独高亮。
-              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-              className="opacity-0 group-hover:opacity-100 mr-1 p-1 rounded text-muted-foreground transition hover:bg-foreground/10"
-            >
-              <HugeiconsIcon icon={MoreHorizontalIcon} size={14} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-32">
-            <DropdownMenuItem onClick={() => doPin(c)}>
-              {c.pinned ? <HugeiconsIcon icon={PinOffIcon} size={13} /> : <HugeiconsIcon icon={PinIcon} size={13} />}
-              {c.pinned ? "取消置顶" : "置顶"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => startRename(c)}>
+        <ContextMenu>
+          <ContextMenuTrigger asChild disabled={renamingId === c.id}>
+            <div className="flex min-h-[32px] min-w-0 flex-1 items-center">
+              {renamingId === c.id ? (
+                <div className="flex min-h-[32px] flex-1 min-w-0 items-center gap-2 pl-2 pr-2">
+                  {graphicSlot}
+                  <Input
+                    ref={renameInputRef}
+                    className="h-7 flex-1 px-2 py-1 text-body"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitRename(c);
+                      if (e.key === "Escape") cancelRename();
+                    }}
+                    onBlur={() => commitRename(c)}
+                  />
+                </div>
+              ) : (
+                <Link
+                  href={`/chat/recent?id=${c.id}`}
+                  title={c.roleId ? `${ROLE_LABELS[c.roleId] ?? c.roleId} · 专员会话 · ${c.title}` : c.title}
+                  className="flex min-h-[32px] flex-1 min-w-0 items-center gap-2 pl-2 pr-2 py-1"
+                >
+                  {graphicSlot}
+                  <span className="min-w-0 truncate">{c.title}</span>
+                </Link>
+              )}
+              {renamingId !== c.id && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`${c.title} 更多操作`}
+                      // 共用整行底色;悬停到按钮本身时再叠一层略深的底,单独高亮。
+                      // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+                      className="opacity-0 group-hover:opacity-100 mr-1 p-1 rounded text-muted-foreground transition hover:bg-foreground/10"
+                    >
+                      <HugeiconsIcon icon={MoreHorizontalIcon} size={14} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-32">
+                    <DropdownMenuItem onClick={() => doPin(c)}>
+                      <HugeiconsIcon icon={pinIcon} size={13} />
+                      {pinLabel}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => startRename(c)}>
+                      <HugeiconsIcon icon={Edit02Icon} size={13} />
+                      重命名
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => startDelete(c)}
+                    >
+                      <HugeiconsIcon icon={Delete02Icon} size={13} />
+                      删除
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-32">
+            <ContextMenuItem onSelect={() => doPin(c)}>
+              <HugeiconsIcon icon={pinIcon} size={13} />
+              {pinLabel}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => startRename(c)}>
               <HugeiconsIcon icon={Edit02Icon} size={13} />
               重命名
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => startDelete(c)}
-            >
+            </ContextMenuItem>
+            <ContextMenuItem variant="destructive" onSelect={() => startDelete(c)}>
               <HugeiconsIcon icon={Delete02Icon} size={13} />
               删除
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        )}
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
       </motion.div>
     );
   }
@@ -397,31 +492,31 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       </div>
 
         <>
-          <div className="flex flex-col gap-0 px-2 pb-5 shrink-0">
+          <div className="flex flex-col gap-0 px-3 pb-5 shrink-0">
             <Link href="/chat/new" onClick={() => trackFeature("nav.chat")} className={cn(navLinkClass(active === "chat" && chatActive === "new"), "group")}>
               {active === "chat" && chatActive === "new" && <NavActivePill reduce={reduce} />}
-              <HugeiconsIcon icon={ChatAddIcon} size={16} />
+              <NavGlyph icon={ChatAddIcon} />
               <span>新对话</span>
               <NavShortcut combo="mod+n" />
             </Link>
             <Link href="/cockpit" onClick={() => trackFeature("nav.cockpit")} className={navLinkClass(active === "cockpit")}>
               {active === "cockpit" && <NavActivePill reduce={reduce} />}
-              <HugeiconsIcon icon={DashboardSquare02Icon} size={16} />
+              <NavGlyph icon={DashboardSquare02Icon} />
               <span>总览</span>
             </Link>
             <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
               {(active === "files" || active === "knowledge") && <NavActivePill reduce={reduce} />}
-              <HugeiconsIcon icon={LibraryIcon} size={16} />
+              <NavGlyph icon={LibraryIcon} />
               <span>知识库</span>
             </Link>
             <Link href="/skills" onClick={() => trackFeature("nav.skills")} className={navLinkClass(active === "skills")}>
               {active === "skills" && <NavActivePill reduce={reduce} />}
-              <HugeiconsIcon icon={NoteIcon} size={16} />
+              <NavGlyph icon={NoteIcon} />
               <span>技能</span>
             </Link>
           </div>
 
-          {/* 一级导航以下共用一条滚动条；上下边缘在可滚时渐隐模糊，避免内容硬切。 */}
+          {/* 一级导航以下共用一条滚动条；scrollbar-gutter 固定右槽，选中框左右恒为 12px。 */}
           <div
             className="relative flex min-h-0 flex-1 flex-col"
             data-nav-scroll-top={scrollEdges.top ? "" : undefined}
@@ -432,14 +527,16 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               aria-label="主导航"
               onScroll={handleScroll}
               data-nav-scroll=""
-              className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-2"
+              className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pl-3"
             >
-              {/* 智能体是短而稳定的核心目录，始终渲染；徽标是唯一的“有事”信号。 */}
+              {/* 智能体目录常驻侧栏（可折叠，默认展开）；徽标是唯一的“有事”信号。 */}
               <div data-nav-agent-directory="always" className="flex flex-col gap-1">
-                <div className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground">
-                  <span>智能体</span>
-                  <span className="ml-auto flex items-center gap-1.5">
-                    {agentPendingCount > 0 && (
+                <SectionFoldHeader
+                  label="智能体"
+                  open={agentsOpen}
+                  onToggle={() => setAgentsOpen(!agentsOpen)}
+                  trailing={
+                    agentPendingCount > 0 ? (
                       <span
                         className="fa-toned text-meta font-medium px-1.5 tabular-nums"
                         style={{ "--tone": "var(--tone-notice)", borderRadius: "999px" } as CSSProperties}
@@ -447,28 +544,24 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                       >
                         {agentPendingCount}
                       </span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
+                    ) : null
+                  }
+                />
+                <CollapsibleSectionMotion open={agentsOpen} reduce={reduce}>
                   {agentRoster.length === 0 ? (
-                    <span className="pl-8 pr-2 py-1 text-meta text-muted-foreground">加载中…</span>
+                    <span className="flex items-center gap-2 pl-2 pr-2 py-1 text-meta text-muted-foreground">
+                      <span className="size-5 shrink-0" aria-hidden />
+                      加载中…
+                    </span>
                   ) : (
                     agentRoster.map(renderRoleRow)
                   )}
-                </div>
+                </CollapsibleSectionMotion>
               </div>
 
               {hasPinned && (
                 <div className="flex flex-col gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setPinnedOpen(!pinnedOpen)}
-                    className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <span>置顶</span>
-                    <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", pinnedOpen && "rotate-180")} />
-                  </button>
+                  <SectionFoldHeader label="置顶" open={pinnedOpen} onToggle={() => setPinnedOpen(!pinnedOpen)} />
                   <CollapsibleSectionMotion open={pinnedOpen} reduce={reduce}>
                       <AnimatePresence initial={false}>
                         {pinnedConversations.map(renderConversationRow)}
@@ -478,26 +571,19 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               )}
 
               <div className="flex flex-col gap-1">
-                <button
-                  type="button"
-                  onClick={() => setRecentOpen(!recentOpen)}
-                  className="flex min-h-8 items-center justify-between px-3 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <span>最近</span>
-                  <HugeiconsIcon icon={ArrowDown01Icon} size={12} className={cn("transition-transform motion-reduce:transition-none", recentOpen && "rotate-180")} />
-                </button>
+                <SectionFoldHeader label="最近" open={recentOpen} onToggle={() => setRecentOpen(!recentOpen)} />
                 <CollapsibleSectionMotion open={recentOpen} reduce={reduce}>
                     {recentConversations.length === 0 && loaded ? (
                       loadError ? (
                         <button
                           type="button"
                           onClick={() => void fetchConversations(0)}
-                          className="px-3 py-2 text-meta text-muted-foreground hover:bg-muted rounded text-left"
+                          className="pl-2 pr-2 py-2 text-meta text-muted-foreground hover:bg-muted rounded text-left"
                         >
                           加载失败，点此重试
                         </button>
                       ) : (
-                        <span className="px-3 py-2 text-meta text-muted-foreground">还没有对话。点上方「新对话」开始</span>
+                        <span className="pl-2 pr-2 py-2 text-meta text-muted-foreground">还没有对话。点上方「新对话」开始</span>
                       )
                     ) : (
                       <AnimatePresence initial={false}>
@@ -507,11 +593,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                 </CollapsibleSectionMotion>
               </div>
             </nav>
-            <div aria-hidden className="sidebar-nav-edge sidebar-nav-edge-top" />
-            <div aria-hidden className="sidebar-nav-edge sidebar-nav-edge-bottom" />
           </div>
 
-          <div className="flex flex-col gap-0.5 px-2 py-2 shrink-0">
+          <div className="flex flex-col gap-0.5 px-3 py-2 shrink-0">
             {/* 与上方对话列表隔一条发丝线 */}
             <div className="mx-1 mb-1 border-t border-border" />
             {/* 用户头像行:左侧头像+名字,右侧保留「设置」齿轮图标;整行点击打开设置。

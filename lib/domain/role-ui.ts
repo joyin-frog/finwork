@@ -76,7 +76,7 @@ export function dataScopeLabel(raw: string): string {
 export const ROLE_UI: Record<RoleId, RoleUiSpec> = {
   "bookkeeper": {
     tone: "--tone-invoice",
-    iconName: "receipt",
+    iconName: "note-edit",
   },
   "payroll-officer": {
     tone: "--tone-payroll",
@@ -88,7 +88,7 @@ export const ROLE_UI: Record<RoleId, RoleUiSpec> = {
   },
   "treasury-officer": {
     tone: "--tone-treasury",
-    iconName: "bank",
+    iconName: "dollar-square",
   },
   "receivables-officer": {
     tone: "--tone-receivables",

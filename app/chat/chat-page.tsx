@@ -453,6 +453,8 @@ export default function ChatPage({
         setReferencedSkills(out.referencedSkills);
         if (turn.status === "error" && out.text) { setDraft(out.text); persistDraft(out.text); }
       }
+      // 刷新侧栏：落库 trace error → ConversationSummary.hasError，红点与「最近工作」对齐
+      void refreshConversations();
       // 失败时给一个明确的恢复动作:配置类→去配置;瞬时类→已还原输入,提示重试
       if (turn.status === "error") {
         if (turn.errorAction === "config") {

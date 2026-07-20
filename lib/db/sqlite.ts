@@ -516,16 +516,47 @@ export type ConversationSummary = {
   pinned: boolean;
   /** 专员会话的角色 id（E 刀，侧栏角色小头像用）；null = 主管会话。 */
   roleId: string | null;
+  /** 最新一条 agent_traces.status === 'error'（与「最近工作」同源，供侧栏红点）。 */
+  hasError: boolean;
 };
 
 export function listRecentConversationSummaries(limit = 5, offset = 0): ConversationSummary[] {
   const db = getDb();
   const rows = db
     .prepare(
-      "SELECT id, title, updated_at, pinned, role_id FROM chat_conversations ORDER BY pinned DESC, updated_at DESC, id DESC LIMIT ? OFFSET ?"
+      `SELECT
+         c.id,
+         c.title,
+         c.updated_at,
+         c.pinned,
+         c.role_id,
+         (
+           SELECT at.status
+           FROM agent_traces at
+           WHERE at.conversation_id = c.id
+           ORDER BY at.started_at DESC
+           LIMIT 1
+         ) AS trace_status
+       FROM chat_conversations c
+       ORDER BY c.pinned DESC, c.updated_at DESC, c.id DESC
+       LIMIT ? OFFSET ?`
     )
-    .all(limit, offset) as Array<{ id: number; title: string; updated_at: string; pinned: number; role_id: string | null }>;
-  return rows.map((row) => ({ id: row.id, title: row.title, updatedAt: row.updated_at, pinned: row.pinned === 1, roleId: row.role_id ?? null }));
+    .all(limit, offset) as Array<{
+      id: number;
+      title: string;
+      updated_at: string;
+      pinned: number;
+      role_id: string | null;
+      trace_status: string | null;
+    }>;
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    updatedAt: row.updated_at,
+    pinned: row.pinned === 1,
+    roleId: row.role_id ?? null,
+    hasError: row.trace_status === "error",
+  }));
 }
 
 export function updateChatConversationTitle(conversationId: number, title: string) {

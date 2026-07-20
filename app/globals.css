@@ -573,7 +573,7 @@ html button.composer-send-button.stop {
 .dark { --sb-thumb: rgba(255, 255, 255, 0.30); --sb-thumb-hover: rgba(255, 255, 255, 0.48); }
 /* 只用 ::-webkit-scrollbar(Chromium + WKWebView 都支持):
    关键——不要同时写标准 scrollbar-width/scrollbar-color,否则现代 Chromium 会忽略本伪元素、退回默认黑条。 */
-/* 可见 thumb 粗细 = width - 2×border(border 是透明留白)。12 - 2×2 = 8px。 */
+/* 滚动槽 12px；可见 thumb = 12 − 2×2 = 8px。 */
 ::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
 ::-webkit-scrollbar-track { background: transparent; }
 /* 默认透明(藏起来);transition 让浮现/淡出平滑。
@@ -599,43 +599,37 @@ html button.composer-send-button.stop {
 ::-webkit-scrollbar-thumb:horizontal:hover { background-color: var(--sb-thumb-hover); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
-/* 侧栏对话列表:细滚动条 + 轨道上下内收——条更细(可见 ~4px)、只占中间一段,
-   右侧留白更小、更贴近左侧,不再是一条贯穿到底的粗条。仅作用侧栏列表,不改全局。 */
-.sidebar-nav-scroll::-webkit-scrollbar { width: 8px; }
-.sidebar-nav-scroll::-webkit-scrollbar-track { margin-block: 28px; }
+/* 侧栏滚动列表：始终预留滚动槽（与全局 12px 槽宽一致），有无溢出时 hover 选中框右缘都不跳。
+   左 pad 12px + 右 gutter 12px → 与一级导航 px-3 的左右 12px 选中缝对齐。 */
+.sidebar-nav-scroll {
+  scrollbar-gutter: stable;
+}
 
-/* 侧栏中部滚动区上下边缘渐隐模糊：有溢出且未贴边时显现，内容滚入/滚出不硬切。
-   表面色走 --sidebar，与侧栏面板同色；mask 让 blur 只落在边缘带。 */
-.sidebar-nav-edge {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 1.5rem;
-  z-index: 1;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 160ms ease;
+/* 侧栏中部滚动区上下边缘渐隐：与总览 `.content-fade-top` 同思路——mask 淡出，不用
+   backdrop blur（模糊会把底下图标/文字糊成发黑的脏带）。有溢出且未贴边时才加 mask。 */
+[data-nav-scroll-top] > .sidebar-nav-scroll {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
 }
-.sidebar-nav-edge-top {
-  top: 0;
-  background: linear-gradient(to bottom, var(--sidebar) 35%, transparent);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-  -webkit-mask-image: linear-gradient(to bottom, #000 25%, transparent);
-  mask-image: linear-gradient(to bottom, #000 25%, transparent);
+[data-nav-scroll-bottom] > .sidebar-nav-scroll {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent 100%);
 }
-.sidebar-nav-edge-bottom {
-  bottom: 0;
-  background: linear-gradient(to top, var(--sidebar) 35%, transparent);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-  -webkit-mask-image: linear-gradient(to top, #000 25%, transparent);
-  mask-image: linear-gradient(to top, #000 25%, transparent);
-}
-[data-nav-scroll-top] > .sidebar-nav-edge-top { opacity: 1; }
-[data-nav-scroll-bottom] > .sidebar-nav-edge-bottom { opacity: 1; }
-@media (prefers-reduced-motion: reduce) {
-  .sidebar-nav-edge { transition: none; }
+[data-nav-scroll-top][data-nav-scroll-bottom] > .sidebar-nav-scroll {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 20px,
+    #000 calc(100% - 20px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 20px,
+    #000 calc(100% - 20px),
+    transparent 100%
+  );
 }
 
 /* Windows 自绘标题栏(见 WindowTitleBar):横贯全窗,左侧品牌、右侧三键,不覆盖业务页面 header,

@@ -182,7 +182,7 @@ export type StreamTurnOperations = {
 
 type ChatStreamApi = StreamTurnOperations & {
   startTurn: (params: StartTurnParams) => void;
-  /** 按 conversationId 索引的进行中/刚结束回合状态,供侧栏渲染状态点(streaming=蓝/done=绿/error=红)。 */
+  /** 按 conversationId 索引的进行中/刚结束回合状态,供侧栏渲染状态点。 */
   statusByConversationId: Record<number, TurnStatus>;
   /** 当前是否存在未结束的回合;供 CloseGuard 判断是否弹关窗确认。 */
   hasActiveTurns: boolean;
@@ -405,6 +405,7 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
   }
 
   // 按会话索引状态:同一会话取最新一条回合的状态(已 consume 的回合不在 turns 里 → 自然无点)。
+  // 持久化红点走 ConversationSummary.hasError（与「最近工作」同源），不在此层粘。
   const statusByConversationId = useMemo(() => {
     const map: Record<number, TurnStatus> = {};
     for (const t of Object.values(turns)) {

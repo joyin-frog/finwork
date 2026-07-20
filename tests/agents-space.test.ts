@@ -276,6 +276,10 @@ export const agentsSpaceTestPromise = (async () => {
       agentsFeatureSrc.includes("派活"),
       "T4 FAIL: agents 页应含「派活」入口"
     );
+    assert.ok(
+      agentsFeatureSrc.includes("ComputerUserIcon"),
+      "T4 FAIL: 派活入口应统一 ComputerUserIcon（ui-conventions）"
+    );
 
     // 4e：单一事实源守卫——app/agents/ 下不得硬编码任何角色名
     // 检查 page.tsx 本身（子组件由 glob 覆盖）

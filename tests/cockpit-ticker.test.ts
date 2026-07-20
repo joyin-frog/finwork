@@ -7,7 +7,7 @@
  * - B3  app/cockpit/role-activity-ticker.tsx 存在
  * - B4  ticker 三条克制规则源码断言：
  *         B4a  轮换不横滚——不含 marquee / translateX 循环动画
- *         B4b  无活动不装忙——无近期派发时渲染 getCockpitSuggestions 一句话
+ *         B4b  无活动不占位——无近期派发时 return null（不塞日历提示）
  *         B4c  每条可点进原会话——conversationId 有则 Link /chat/recent?id=
  * - B5  lib/db/dispatch-store.ts 新增 listRecentDispatchActivity（行为测试）：
  *         全角色按 started_at 降序；limit 参数有效；返回字段完整
@@ -104,22 +104,18 @@ export const cockpitTickerTestPromise = (async () => {
     );
   }
 
-  // ─── B4b: 无活动不装忙——无近期派发时渲染 getCockpitSuggestions 一句话 ────
+  // ─── B4b: 无活动不占位——无近期派发时 return null ─────────────────────────
   {
     assert.ok(
-      tickerSrc.includes("getCockpitSuggestions"),
-      "B4b FAIL: role-activity-ticker.tsx 应引用 getCockpitSuggestions（无活动时渲染日历上下文一句话，不装忙）"
+      !tickerSrc.includes("getCockpitSuggestions") && !tickerSrc.includes("attentionEmptyHint"),
+      "B4b FAIL: role-activity-ticker.tsx 无活动时不应再渲染日历提示（getCockpitSuggestions / attentionEmptyHint）"
     );
 
-    // 空态/无活动的条件判断
+    // 空态：activities.length === 0 时 return null
     assert.ok(
-      tickerSrc.includes("length === 0") ||
-      tickerSrc.includes("length == 0") ||
-      tickerSrc.includes("!items") ||
-      tickerSrc.includes("items.length") ||
-      tickerSrc.includes("activities.length") ||
-      tickerSrc.includes("rows.length"),
-      "B4b FAIL: role-activity-ticker.tsx 应有无活动时的空态判断（无近期派发时不编造动态）"
+      (tickerSrc.includes("length === 0") || tickerSrc.includes("length == 0")) &&
+      tickerSrc.includes("return null"),
+      "B4b FAIL: role-activity-ticker.tsx 应在无活动时 return null（不占位）"
     );
   }
 

@@ -113,6 +113,20 @@ export const cockpitAttentionUiTestPromise = (async () => {
       asSrc.includes("ROLE_UI") || asSrc.includes("roleId") || asSrc.includes("role-ui"),
       "B6 FAIL: AttentionSection 源码应引用角色 tone（通过 ROLE_UI 或 roleId 映射）"
     );
+
+    // 有主动作时整卡为 Link，不嵌套 Button
+    assert.ok(
+      asSrc.includes("hover:bg-accent/40") && asSrc.includes("action.href"),
+      "B6 FAIL: 有主动作时应整卡可点（Link + hover:bg-accent/40）"
+    );
+    assert.ok(
+      asSrc.includes("pointer-events-none") && asSrc.includes("buttonVariants"),
+      "B6 FAIL: 动作文案应保留 outline 外观且 pointer-events-none，避免嵌套可点控件"
+    );
+    assert.ok(
+      !/import\s*\{\s*Button\s*\}/.test(asSrc) && !/import\s*\{\s*Button,/.test(asSrc),
+      "B6 FAIL: AttentionSection 不应再 import Button（整卡 Link 后动作仅为外观）"
+    );
   }
 
   // ── B7: 派活入口已随 D1 退役,位置由角色动态条接替（裁决修订 2026-07-02,

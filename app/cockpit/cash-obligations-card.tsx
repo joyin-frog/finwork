@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Invoice01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Surface } from "@/components/ui/surface";
 import { formatAmount, summarizeObligations, type CashObligation, type ObligationTotals } from "@/lib/domain/cash-obligations";
@@ -34,15 +34,13 @@ export function CashObligationsCard({ obligations }: { obligations: CashObligati
   return (
     <Card>
       <CardHeader>
-        {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
-        <div className="flex size-6 items-center justify-center rounded-md fa-toned" style={{ "--tone": "var(--tone-invoice)" } as CSSProperties}>
-          <HugeiconsIcon icon={Invoice01Icon} size={13} aria-hidden />
+        <div className="flex items-center gap-2">
+          <CardTitle>合同收付总览</CardTitle>
+          <Link href="/knowledge" className="ml-auto flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground">
+            合同目录
+            <HugeiconsIcon icon={ArrowRight01Icon} size={12} aria-hidden />
+          </Link>
         </div>
-        <CardTitle>合同收付总览</CardTitle>
-        <Link href="/knowledge" className="ml-auto flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground">
-          合同目录
-          <HugeiconsIcon icon={ArrowRight01Icon} size={12} aria-hidden />
-        </Link>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {obligations.length > 0 ? (

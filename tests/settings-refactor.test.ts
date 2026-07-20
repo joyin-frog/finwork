@@ -79,8 +79,14 @@ export const settingsRefactorTestPromise = (async () => {
   // ── F7: 设置页卡片边界收敛 ──────────────────────────────────────────────
   const shortcuts = src("app/config/shortcuts/shortcuts-settings.tsx");
   assert.ok(
-    shortcuts.includes('className="-mx-4 flex flex-col"') && shortcuts.includes("px-4 py-2 border-b"),
-    "F7-1 FAIL: 快捷键分隔线应延伸至卡片两侧，内容内边距放到行上",
+    shortcuts.includes("SettingsSection") &&
+      !shortcuts.includes("-mx-4") &&
+      !shortcuts.includes("border-b border-border"),
+    "F7-1 FAIL: 快捷键应作为 SettingsSection 直接子项，走卡内留缝分隔，不再 -mx-4 通栏线",
+  );
+  assert.ok(
+    settingsUi.includes("mx-4 h-px bg-border/50") && settingsUi.includes("items-center justify-between"),
+    "F7-1 FAIL: SettingsSection 应留缝发丝分隔；SettingsRow 控件相对左侧整块垂直居中",
   );
   assert.ok(
     about.includes('className="flex flex-col gap-3"') && !about.includes('</div>\n        <UpdaterBody />'),

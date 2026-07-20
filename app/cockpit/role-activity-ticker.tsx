@@ -6,15 +6,13 @@
  * 接替 dispatch-input 的位置。
  * - fetch GET /api/agents/activity 获取最近派发活动
  * - 有活动：定时（约 5s）淡入轮换单条「{角色名} {相对时间} {label/summary 首行}」
- * - 无活动：渲染 getCockpitSuggestions(calendar).attentionEmptyHint 一句话
+ * - 无活动：不渲染（不占位、不塞日历提示）
  * - 淡入淡出轮换，不横滚；prefers-reduced-motion 降级直接切换
  */
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ROLE_LABELS } from "@/lib/domain/role-ui";
-import { getCockpitSuggestions } from "@/lib/domain/cockpit-suggestions";
-import type { CalendarContext } from "@/lib/domain/tax-calendar";
 
 type ActivityRow = {
   id: number;
@@ -50,7 +48,7 @@ function formatRow(row: ActivityRow): string {
   return [roleName, time, desc].filter(Boolean).join(" · ");
 }
 
-export function RoleActivityTicker({ calendar }: { calendar: CalendarContext | null }) {
+export function RoleActivityTicker() {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [visible, setVisible] = useState(true);
@@ -67,7 +65,7 @@ export function RoleActivityTicker({ calendar }: { calendar: CalendarContext | n
           setCurrentIdx(0);
         }
       } catch {
-        // 静默失败，降级到无活动空态
+        // 静默失败，降级到无活动（不渲染）
       }
     }
     void load();
@@ -88,16 +86,8 @@ export function RoleActivityTicker({ calendar }: { calendar: CalendarContext | n
     return () => clearInterval(timer);
   }, [activities.length]);
 
-  // 无活动：渲染 getCockpitSuggestions 一句话
-  if (activities.length === 0) {
-    const hint = calendar ? getCockpitSuggestions(calendar).attentionEmptyHint : null;
-    if (!hint) return null;
-    return (
-      <p className="text-body text-muted-foreground px-1 py-1">
-        {hint}
-      </p>
-    );
-  }
+  // 无活动：不占位
+  if (activities.length === 0) return null;
 
   const row = activities[currentIdx];
   const text = formatRow(row);

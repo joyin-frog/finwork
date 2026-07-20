@@ -50,6 +50,7 @@ export function IconButton({
   label,
   onClick,
   active,
+  disabled,
   tone = "default",
   size = 16,
 }: {
@@ -57,6 +58,7 @@ export function IconButton({
   label: string;
   onClick: () => void;
   active?: boolean;
+  disabled?: boolean;
   tone?: "default" | "destructive";
   size?: number;
 }) {
@@ -67,9 +69,10 @@ export function IconButton({
           type="button"
           onClick={onClick}
           aria-label={label}
+          disabled={disabled}
           className={cn(
             // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            "inline-grid place-items-center size-7 rounded-md transition-colors",
+            "inline-grid place-items-center size-7 rounded-md transition-colors disabled:pointer-events-none disabled:opacity-50",
             tone === "destructive"
               ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               : active

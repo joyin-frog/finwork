@@ -158,6 +158,25 @@ export const cockpitRecentWorkTestPromise = (async () => {
         assert.ok(typeof item.updatedAt === "string", "T1 FAIL: updatedAt 应为字符串");
       }
 
+      // 侧栏摘要 hasError 与最近工作同源（最新 trace === error）
+      const { listRecentConversationSummaries } = mod;
+      const summaries = listRecentConversationSummaries(10);
+      assert.equal(
+        summaries.find((s) => s.id === 3)?.hasError,
+        true,
+        "T1 FAIL: conv3 最新 trace=error → 侧栏摘要 hasError 应为 true"
+      );
+      assert.equal(
+        summaries.find((s) => s.id === 2)?.hasError,
+        false,
+        "T1 FAIL: conv2 最新 trace=ok → 侧栏摘要 hasError 应为 false"
+      );
+      assert.equal(
+        summaries.find((s) => s.id === 1)?.hasError,
+        false,
+        "T1 FAIL: conv1 无 trace → 侧栏摘要 hasError 应为 false"
+      );
+
       console.log("cockpit-recent-work T1: listRecentWorkItems 行为 ✓");
     } finally {
       if (savedDbPath === undefined) delete process.env.FINANCE_AGENT_DB_PATH;

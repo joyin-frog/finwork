@@ -10,7 +10,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { BubbleChatAddIcon } from "@hugeicons/core-free-icons";
+import { ComputerUserIcon } from "@hugeicons/core-free-icons";
 import type { TeamRoleItem } from "./types";
 import { Surface } from "@/components/ui/surface";
 import { ROLE_UI } from "@/lib/domain/role-ui";
@@ -198,7 +198,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
                   className="shrink-0 inline-grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                   onClick={handleDispatch}
                 >
-                  <HugeiconsIcon icon={BubbleChatAddIcon} size={14} />
+                  <HugeiconsIcon icon={ComputerUserIcon} size={14} />
                 </button>
               </div>
 
