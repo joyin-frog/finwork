@@ -1,5 +1,6 @@
 import { readClaudeSettings } from "@/lib/settings/claude-settings";
 import { buildMessagesUrl } from "@/lib/agent/router";
+import { modelConfigFromSettings, resolveExecutionModel } from "@/lib/settings/model-config";
 
 const TITLE_TIMEOUT_MS = 10_000;
 
@@ -53,8 +54,9 @@ export async function generateConversationTitle(
 
   if (!settings.apiKey.trim()) return null;
 
-  // 与 router.ts 保持同一 cheap 档模型与网关
-  const model = settings.routerModel || "claude-haiku-4-5-20251001";
+  const config = modelConfigFromSettings(settings);
+  if (!config) return null;
+  const model = resolveExecutionModel({ config, purpose: "title" }).modelId;
   const url = buildMessagesUrl(settings.apiUrl);
 
   const systemPrompt =

@@ -25,6 +25,8 @@ export type RoleModels = {
 
 export type ModelTokens = {
   model: string;
+  /** 调用时的执行档位；有则优先于槽位字符串匹配（相同模型 ID 多槽时正确归档） */
+  executionTier?: "fast" | "reasoning";
   inputTokens?: number;
   outputTokens?: number;
   cacheReadTokens?: number;
@@ -47,13 +49,19 @@ export type WindowUsage = {
 };
 
 /**
- * 模型名归档:命中 router 槽 → 快档;其余(含未知/对不上任何槽)→ 推理(贵)档。偏保守。
- * 推理槽优先:模型若也命中主/subagent 槽(同一模型多槽共享、或子串误命中),一律推理档,
- * 避免把主 agent 的 token 误乘 FAST_WEIGHT 而少算配额、迟拦。
+ * 档位判定：优先用本次调用的 executionTier；无则按槽位回退。
+ * v2 语义：main → reasoning；router/subagent → fast。未知 → reasoning(偏保守)。
+ * 相同模型 ID 占多槽时，若无 executionTier，main 优先于 fast 槽。
  */
-export function classifyTier(model: string, roles: RoleModels): "fast" | "reasoning" {
-  if (matchesSlot(model, roles.mainModel) || matchesSlot(model, roles.subagentModel)) return "reasoning";
-  return matchesSlot(model, roles.routerModel) ? "fast" : "reasoning";
+export function classifyTier(
+  model: string,
+  roles: RoleModels,
+  executionTier?: "fast" | "reasoning",
+): "fast" | "reasoning" {
+  if (executionTier === "fast" || executionTier === "reasoning") return executionTier;
+  if (matchesSlot(model, roles.mainModel)) return "reasoning";
+  if (matchesSlot(model, roles.routerModel) || matchesSlot(model, roles.subagentModel)) return "fast";
+  return "reasoning";
 }
 
 /** 槽名为空一律不命中;否则双向子串匹配,容忍网关返回的限定名与配置名略有出入。 */
@@ -64,8 +72,8 @@ function matchesSlot(model: string, slot: string | undefined): boolean {
   return m === s || m.includes(s) || s.includes(m);
 }
 
-function tierWeight(model: string, roles: RoleModels): number {
-  return classifyTier(model, roles) === "fast" ? FAST_WEIGHT : 1.0;
+function tierWeight(entry: ModelTokens, roles: RoleModels): number {
+  return classifyTier(entry.model, roles, entry.executionTier) === "fast" ? FAST_WEIGHT : 1.0;
 }
 
 /** 单条 trace 的成本加权计费 token:逐模型分档,token 类型按成本比折算后求和。 */
@@ -77,7 +85,7 @@ export function billableTokensForTrace(trace: UsageTrace, roles: RoleModels): nu
       OUTPUT_WEIGHT * (m.outputTokens ?? 0) +
       CACHE_WRITE_WEIGHT * (m.cacheCreationTokens ?? 0) +
       CACHE_READ_WEIGHT * (m.cacheReadTokens ?? 0);
-    total += tierWeight(m.model, roles) * raw;
+    total += tierWeight(m, roles) * raw;
   }
   return total;
 }

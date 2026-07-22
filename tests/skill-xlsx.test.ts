@@ -21,6 +21,11 @@ export const skillXlsxTestPromise = (async () => {
   assert.match(skillMd, /^---[\s\S]*?\nname:\s*xlsx\b/m, "AC-X1 FAIL: SKILL.md frontmatter 应含 name: xlsx");
   assert.match(skillMd, /\ndescription:\s*\S/, "AC-X1 FAIL: SKILL.md 应有 description");
   assert.ok(existsSync(recalcScript), "AC-X1 FAIL: 应存在 scripts/recalc.py");
+  assert.ok(!/没有LibreOffice\s*就跳过/.test(skillMd), "AC-X1 FAIL: SKILL 不得再写「没有 LibreOffice 就跳过」");
+  assert.ok(!/没有 LibreOffice 就跳过/.test(skillMd), "AC-X1 FAIL: SKILL 不得再写跳过重算引导");
+  // Forbid instructing the agent to run pip; mentioning "不要 pip" as a prohibition is ok.
+  assert.ok(!/^\s*[-*].*pip install/im.test(skillMd), "AC-X1 FAIL: SKILL 不得引导 pip install");
+  assert.ok(/Spreadsheet Runtime|产品.*Runtime|recalc_unavailable/.test(skillMd), "AC-X1 FAIL: SKILL 应指向产品 Runtime");
 
   // ── AC-X2: SDK 加载配置正确(内置 plugin + 隔离 ambient + 支持工具)──
   const cfg = await getSkillPluginConfig();

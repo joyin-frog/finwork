@@ -20,6 +20,9 @@ process.on("unhandledRejection", (err) => {
   const { usageQuotaTestPromise } = await import("./usage-quota.test.ts");
   await usageQuotaTestPromise;
 
+  const { modelConfigTestPromise } = await import("./model-config.test.ts");
+  await modelConfigTestPromise;
+
   const { usageStoreTestPromise } = await import("./usage-store.test.ts");
   await usageStoreTestPromise;
 
@@ -120,6 +123,12 @@ process.on("unhandledRejection", (err) => {
 
   const { pythonInstallerTestPromise } = await import("./python-installer.test.ts");
   await pythonInstallerTestPromise;
+
+  const { libreofficeResolverTestPromise } = await import("./libreoffice-resolver.test.ts");
+  await libreofficeResolverTestPromise;
+
+  const { spreadsheetProbeTestPromise } = await import("./spreadsheet-probe.test.ts");
+  await spreadsheetProbeTestPromise;
 
   const { taxCalendarTestPromise } = await import("./tax-calendar.test.ts");
   await taxCalendarTestPromise;

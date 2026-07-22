@@ -85,6 +85,8 @@ export const recapSummaryTestPromise = (async () => {
       apiKey: "fake-key",
       apiUrl: "https://api.anthropic.com/v1",
       mainModel: "claude-sonnet-4-5",
+      routerModel: "claude-haiku-4-5",
+      subagentModel: "claude-haiku-4-5",
     };
 
     const result = await buildStructuredRecap(longHistory, lastPrompt, fakeSettings);
@@ -122,6 +124,8 @@ export const recapSummaryTestPromise = (async () => {
         apiKey: "sk-test-key",
         apiUrl: "https://api.anthropic.com/v1",
         mainModel: "claude-sonnet-4-5",
+        routerModel: "claude-haiku-4-5",
+        subagentModel: "claude-haiku-4-5",
       };
       const result = await buildStructuredRecap(longHistory, lastPrompt, fakeSettings);
 
@@ -177,7 +181,12 @@ export const recapSummaryTestPromise = (async () => {
   {
     const recapSrc = src("lib/agent/recap-summary.ts");
 
-    assert.ok(recapSrc.includes("settings.mainModel"), "T5a FAIL: summarizeHistory 应优先使用 mainModel");
+    assert.ok(
+      recapSrc.includes("purpose: \"summary\"") || recapSrc.includes('purpose: "summary"'),
+      "T5a FAIL: summarizeHistory 应经 resolver purpose=summary 取 mainModel",
+    );
+    assert.ok(recapSrc.includes("resolveExecutionModel"), "T5a FAIL: 应使用 resolveExecutionModel");
+    assert.ok(!recapSrc.includes("settings.mainModel || settings.model"), "T5a FAIL: 不应再回退 settings.model");
     assert.ok(recapSrc.includes("## 目标"), "T5b FAIL: prompt 应含 ## 目标");
     assert.ok(recapSrc.includes("## 进展"), "T5c FAIL: prompt 应含 ## 进展");
     assert.ok(recapSrc.includes("## 关键决策"), "T5d FAIL: prompt 应含 ## 关键决策");

@@ -1,0 +1,26 @@
+{
+  "status": "not_run",
+  "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set",
+  "typeContract": {
+    "streamInput": "Query.streamInput(stream: AsyncIterable<SDKUserMessage>): Promise<void>",
+    "promptUnion": "query({ prompt: string | AsyncIterable<SDKUserMessage> })",
+    "controlPrerequisite": "Control requests only supported when streaming input/output is used",
+    "priority": "SDKUserMessage.priority?: 'now' | 'next' | 'later' — typed delivery hint, runtime unproven here",
+    "shouldQuery": "SDKUserMessage.shouldQuery?: boolean — when false, append without triggering assistant turn; merge into next querying user message",
+    "roadmapAR5": "ROADMAP AR5-spike: verify when streamInput enters context (after current tools? before next model request?)"
+  },
+  "reasonedHypothesis": [
+    "priority='now'|'next'|'later' suggests intentional scheduling knobs — likely maps to AR5 timing question, but must not treat as proven.",
+    "shouldQuery=false enables non-triggering context append — useful for steering notes without forcing a turn.",
+    "finwork adapter today does not keep an open input stream; each HTTP request is a new query() with string/array prompt."
+  ],
+  "platform": {
+    "platform": "darwin arm64",
+    "release": "25.1.0",
+    "node": "v24.13.0",
+    "cwd": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "spikeRoot": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "sdkVersion": "0.3.193",
+    "timestamp": "2026-07-21T09:10:53.471Z"
+  }
+}

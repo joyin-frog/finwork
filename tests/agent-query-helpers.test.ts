@@ -36,10 +36,16 @@ export const agentQueryHelpersTestPromise = (async () => {
   assert.equal(injectSkillHint(onlyAssistant, ["pdf"]), onlyAssistant, "无 user 消息应原样返回");
 
   // ── resolveModelByTier ─────────────────────────────────────────────
-  const settings = { routerModel: "haiku-x", subagentModel: "sonnet-x" };
+  const settings = { routerModel: "haiku-x", mainModel: "sonnet-x", subagentModel: "haiku-x" };
   assert.equal(resolveModelByTier("fast", settings), "haiku-x");
-  assert.equal(resolveModelByTier("reasoning", settings), "sonnet-x");
-  assert.equal(resolveModelByTier("fast", { routerModel: "", subagentModel: "" }), undefined, "空槽返回 undefined");
+  assert.equal(resolveModelByTier("reasoning", settings), "sonnet-x", "reasoning → mainModel");
+  assert.equal(resolveModelByTier("fast", { routerModel: "", subagentModel: "", mainModel: "" }), undefined, "空槽返回 undefined");
+  // 旧配置仅 subagent=推理 + router=快速 → 迁移后 reasoning 取 main(=旧 subagent)
+  assert.equal(
+    resolveModelByTier("reasoning", { routerModel: "haiku-x", subagentModel: "sonnet-x" }),
+    "sonnet-x",
+    "旧 subagent 推理应经迁移可供 reasoning 档",
+  );
 
   // ── normalizeTier:默认快速,只有显式 reasoning 才推理 ───────────────
   assert.equal(normalizeTier("reasoning"), "reasoning");

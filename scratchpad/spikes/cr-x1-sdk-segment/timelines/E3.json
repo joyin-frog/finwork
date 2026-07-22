@@ -1,0 +1,49 @@
+{
+  "experimentId": "E3",
+  "writtenAt": "2026-07-21T09:10:53.403Z",
+  "events": [
+    {
+      "tMs": 0,
+      "label": "not_run",
+      "detail": {
+        "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "query with maxTurns: 1 (or 2) and a task that needs more turns"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Capture result subtype (expect error_max_turns) and session_id"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Resume same session WITHOUT injecting a fake user 'continue' if possible"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Compare resume vs new sessionId rebuild (adapter already retries stale resume)"
+      }
+    }
+  ],
+  "status": "not_run",
+  "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set",
+  "plannedSteps": [
+    "query with maxTurns: 1 (or 2) and a task that needs more turns",
+    "Capture result subtype (expect error_max_turns) and session_id",
+    "Resume same session WITHOUT injecting a fake user 'continue' if possible",
+    "Compare resume vs new sessionId rebuild (adapter already retries stale resume)"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "experimentId": "E4",
+  "writtenAt": "2026-07-21T09:10:53.470Z",
+  "events": [
+    {
+      "tMs": 0,
+      "label": "not_run",
+      "detail": {
+        "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Open AsyncIterable prompt stream (keep open)"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Let model enter a tool phase"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Deliver a second user message via Query.streamInput with priority variants"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Observe whether input lands in current turn, next turn, or is rejected"
+      }
+    }
+  ],
+  "status": "not_run",
+  "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set",
+  "plannedSteps": [
+    "Open AsyncIterable prompt stream (keep open)",
+    "Let model enter a tool phase",
+    "Deliver a second user message via Query.streamInput with priority variants",
+    "Observe whether input lands in current turn, next turn, or is rejected"
+  ]
+}

@@ -134,12 +134,15 @@ function main() {
   assert.equal(buildMessagesUrl("https://api.anthropic.com"), "https://api.anthropic.com/v1/messages");
   assert.equal(buildMessagesUrl("https://gw.example.com/v1/"), "https://gw.example.com/v1/messages");
 
-  // ── AC3: pickAgentModel(按 intent 难度选模型:复杂任务 → 推理模型,普通任务 → 主模型) ──
-  assert.equal(pickAgentModel({ intent: "complex_workflow" }, { subagentModel: "deepseek-v4-pro" }), "deepseek-v4-pro", "AC3 FAIL: 复杂任务应升到推理模型");
-  assert.equal(pickAgentModel({ intent: "tool_task" }, { subagentModel: "deepseek-v4-pro" }), undefined, "AC3 FAIL: 普通工具任务不应 override(用默认主模型)");
-  assert.equal(pickAgentModel({ intent: "rag_qa" }, { subagentModel: "deepseek-v4-pro" }), undefined, "AC3 FAIL: RAG 问答不应 override");
-  assert.equal(pickAgentModel({ intent: "complex_workflow" }, {}), undefined, "AC3 FAIL: 未配推理模型不应 override");
-  assert.equal(pickAgentModel({ intent: "complex_workflow" }, { subagentModel: "  " }), undefined);
+  // ── AC3: pickAgentModel(复杂任务 → mainModel 推理档) ──
+  assert.equal(pickAgentModel({ intent: "complex_workflow" }, { mainModel: "deepseek-v4-pro", routerModel: "fast", subagentModel: "fast" }), "deepseek-v4-pro", "AC3 FAIL: 复杂任务应升到 mainModel");
+  assert.equal(pickAgentModel({ intent: "tool_task" }, { mainModel: "deepseek-v4-pro", routerModel: "fast", subagentModel: "fast" }), undefined, "AC3 FAIL: 普通工具任务不应 override");
+  assert.equal(pickAgentModel({ intent: "rag_qa" }, { mainModel: "deepseek-v4-pro", routerModel: "fast", subagentModel: "fast" }), undefined, "AC3 FAIL: RAG 问答不应 override");
+  assert.equal(pickAgentModel({ intent: "complex_workflow" }, {}), undefined, "AC3 FAIL: 未配模型不应 override");
+  assert.equal(pickAgentModel({ intent: "complex_workflow" }, { mainModel: "  ", routerModel: "fast", subagentModel: "fast" }), undefined);
+  // 旧 UI 把推理写在 subagentModel：迁移后 pick 仍应拿到推理模型
+  assert.equal(pickAgentModel({ intent: "complex_workflow" }, { subagentModel: "legacy-reason", routerModel: "fast" }), "legacy-reason", "AC3 FAIL: 旧 subagent 推理应经迁移进入 main");
+
 
   // ── AC5: matchTrivialMessage ──
 

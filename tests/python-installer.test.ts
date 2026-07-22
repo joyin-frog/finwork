@@ -224,5 +224,37 @@ export const pythonInstallerTestPromise = (async () => {
     if (origProxy === undefined) delete process.env.FINANCE_AGENT_GH_PROXY; else process.env.FINANCE_AGENT_GH_PROXY = origProxy;
   }
 
+  // ── lock + --require-hashes preference ───────────────────────────────
+  {
+    const { resolveRuntimeLockPath, computePythonRuntimeStamp, PYTHON_RUNTIME_VER, PYTHON_RUNTIME_TAG } =
+      await import("../lib/runtime/python-installer.ts");
+    const lock = resolveRuntimeLockPath();
+    assert.ok(existsSync(lock), "lock FAIL: current host lock should exist");
+    const stamp = computePythonRuntimeStamp();
+    assert.ok(stamp.includes(PYTHON_RUNTIME_VER) && stamp.includes(PYTHON_RUNTIME_TAG));
+    assert.ok(stamp.split("+").length >= 3, "lock FAIL: stamp should include lock hash segment");
+
+    let sawRequireHashes = false;
+    let pipTarget = "";
+    let extracted = false;
+    process.env.FINANCE_AGENT_PYTHON_ARCHIVE = "/fake/bundled/python-runtime.tar.gz";
+    const r = await installPythonRuntime({
+      steps: {
+        download: async () => {},
+        extract: async () => { extracted = true; },
+        pipInstall: async (_py, req, opts) => {
+          pipTarget = req;
+          sawRequireHashes = Boolean(opts?.requireHashes);
+        },
+        exists: (p) => p === "/fake/bundled/python-runtime.tar.gz" || p === lock || extracted || p.endsWith("python3") || p.endsWith("python.exe"),
+        readText: () => null,
+        writeText: () => {},
+      },
+    });
+    assert.equal(r.ok, true, "lock-pip FAIL: install should succeed");
+    assert.equal(pipTarget, lock, "lock-pip FAIL: should install from platform lock");
+    assert.equal(sawRequireHashes, true, "lock-pip FAIL: must pass requireHashes when lock exists");
+  }
+
   console.log("python-installer: all checks passed ✓");
 })();

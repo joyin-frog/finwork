@@ -6,6 +6,7 @@
 
 import * as fs from "node:fs";
 import * as os from "node:os";
+import * as crypto from "node:crypto";
 import path from "node:path";
 import { execFile, spawnSync } from "node:child_process";
 import { pipeline } from "node:stream/promises";
@@ -19,7 +20,8 @@ export type InstallResult = { ok: boolean; pythonPath?: string; detail: string }
 export type InstallSteps = {
   download: (url: string, destFile: string) => Promise<void>;
   extract: (archive: string, destDir: string) => Promise<void>;
-  pipInstall: (pythonPath: string, requirementsPath: string) => Promise<void>;
+  /** requirementsOrLockPath may be requirements.txt or a hashed runtime-lock file. */
+  pipInstall: (pythonPath: string, requirementsOrLockPath: string, opts?: { requireHashes?: boolean }) => Promise<void>;
   exists?: (p: string) => boolean;
   /** 读文本文件；缺省用 fs。单测可注入，避免碰真实 app data。 */
   readText?: (p: string) => string | null;
@@ -30,7 +32,56 @@ export type InstallSteps = {
 /** 与 resolvePythonAssetUrl 同源：升级后戳不一致则强制重解压。 */
 export const PYTHON_RUNTIME_TAG = "20240814";
 export const PYTHON_RUNTIME_VER = "3.12.5";
-export const PYTHON_RUNTIME_STAMP = `${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}`;
+
+/** Platform id used for runtime-lock/<platform>-<arch>.txt */
+export function runtimeLockPlatformId(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch
+): string {
+  return `${platform}-${arch}`;
+}
+
+/** Absolute path to platform lock file when present. */
+export function resolveRuntimeLockPath(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  projectRoot: string = getProjectRoot()
+): string {
+  return path.join(projectRoot, "runtime-lock", `${runtimeLockPlatformId(platform, arch)}.txt`);
+}
+
+/** sha256 of lock file contents; empty string when lock missing. */
+export function runtimeLockSha256(
+  lockPath: string,
+  readText: (p: string) => string | null = defaultReadText
+): string {
+  const text = readText(lockPath);
+  if (text == null) return "";
+  return crypto.createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * Runtime stamp = pythonVersion + runtimeTag + sha256(platformLock).
+ * When no lock exists yet, falls back to ver+tag (dev / incomplete checkout).
+ */
+export function computePythonRuntimeStamp(opts?: {
+  platform?: NodeJS.Platform;
+  arch?: string;
+  projectRoot?: string;
+  readText?: (p: string) => string | null;
+}): string {
+  const lockPath = resolveRuntimeLockPath(
+    opts?.platform ?? process.platform,
+    opts?.arch ?? process.arch,
+    opts?.projectRoot ?? getProjectRoot()
+  );
+  const lockHash = runtimeLockSha256(lockPath, opts?.readText ?? defaultReadText);
+  if (!lockHash) return `${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}`;
+  return `${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}+${lockHash.slice(0, 16)}`;
+}
+
+/** Eager stamp for current host (tests / callers that need a constant-like value). */
+export const PYTHON_RUNTIME_STAMP = computePythonRuntimeStamp();
 
 const STAMP_FILENAME = ".fa-python-runtime-stamp";
 
@@ -106,14 +157,16 @@ export async function installPythonRuntime(opts: {
   const readText = opts.steps.readText ?? defaultReadText;
   const writeText = opts.steps.writeText ?? defaultWriteText;
   const dir = getInstalledPythonDir();
+  // Stamp always reflects on-disk platform lock (not test-injected stamp readers).
+  const expectedStamp = computePythonRuntimeStamp();
   try {
     const pythonPath = pythonExeIn(dir);
     const stampFile = stampPath(dir);
     // 自检常见修复场景是「Python 已在、版本戳匹配、只缺 pip 依赖」。复用现有运行时，
     // 避免 Windows 上递归删除被存活 Python 进程加载的 DLL 而报 EPERM。
-    // 戳不一致（升级换了 bundled CPython）或 pip 失败时再走一次强制重装出口。
+    // 戳不一致（升级换了 bundled CPython / lock）或 pip 失败时再走一次强制重装出口。
     let installed =
-      exists(pythonPath) && readText(stampFile)?.trim() === PYTHON_RUNTIME_STAMP;
+      exists(pythonPath) && readText(stampFile)?.trim() === expectedStamp;
     let reusedExisting = installed;
     let lastError: unknown;
 
@@ -177,10 +230,13 @@ export async function installPythonRuntime(opts: {
       throw lastError ?? new Error("下载失败:所有候选源均不可用");
     }
 
+    const lockPath = resolveRuntimeLockPath();
     const requirementsPath = path.join(getProjectRoot(), "requirements.txt");
-    onProgress({ phase: "pip", message: "正在安装依赖…" });
+    const useLock = exists(lockPath);
+    const depFile = useLock ? lockPath : requirementsPath;
+    onProgress({ phase: "pip", message: useLock ? "正在按锁定依赖安装…" : "正在安装依赖…" });
     try {
-      await opts.steps.pipInstall(pythonPath, requirementsPath);
+      await opts.steps.pipInstall(pythonPath, depFile, { requireHashes: useLock });
     } catch (pipError) {
       if (!reusedExisting) throw pipError;
       // 复用路径下 pip 失败：半残/漂移运行时。强制重解压一次后再 pip（仍可能因 EPERM 失败，错误对人话降级）。
@@ -190,12 +246,12 @@ export async function installPythonRuntime(opts: {
       lastError = pipError;
       await materialize();
       if (!installed) throw lastError ?? pipError;
-      onProgress({ phase: "pip", message: "正在安装依赖…" });
-      await opts.steps.pipInstall(pythonPath, requirementsPath);
+      onProgress({ phase: "pip", message: useLock ? "正在按锁定依赖安装…" : "正在安装依赖…" });
+      await opts.steps.pipInstall(pythonPath, depFile, { requireHashes: useLock });
     }
 
     try {
-      writeText(stampFile, PYTHON_RUNTIME_STAMP);
+      writeText(stampFile, expectedStamp);
     } catch {
       // 戳写失败不阻断已成功的 pip；下次可能多解压一次，可接受。
     }
@@ -228,10 +284,14 @@ export const defaultInstallSteps: InstallSteps = {
     fs.mkdirSync(destDir, { recursive: true });
     await execFileAsync("tar", ["-xzf", archive, "-C", destDir, "--strip-components=1"]);
   },
-  pipInstall: async (pythonPath, requirementsPath) => {
+  pipInstall: async (pythonPath, requirementsOrLockPath, opts) => {
     // 默认走清华 PyPI 镜像(国内稳),非国内可用 FINANCE_AGENT_PIP_INDEX_URL 覆盖(如官方 https://pypi.org/simple)。
+    // 有 platform lock 时强制 --require-hashes（构建/设置页修复与 lock 同源）。
     const indexUrl = process.env.FINANCE_AGENT_PIP_INDEX_URL?.trim() || "https://pypi.tuna.tsinghua.edu.cn/simple";
-    await execFileAsync(pythonPath, ["-m", "pip", "install", "-i", indexUrl, "-r", requirementsPath], pythonSpawnEnv());
+    const args = ["-m", "pip", "install", "-i", indexUrl];
+    if (opts?.requireHashes) args.push("--require-hashes");
+    args.push("-r", requirementsOrLockPath);
+    await execFileAsync(pythonPath, args, pythonSpawnEnv());
   }
 };
 

@@ -1,0 +1,229 @@
+{
+  "status": "ran",
+  "platform": {
+    "platform": "darwin arm64",
+    "release": "25.1.0",
+    "node": "v24.13.0",
+    "cwd": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "spikeRoot": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "sdkVersion": "0.3.193",
+    "timestamp": "2026-07-21T09:11:01.603Z"
+  },
+  "liveGate": {
+    "skipLlm": true,
+    "runLive": false,
+    "hasRealKey": false,
+    "allowed": false,
+    "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set"
+  },
+  "sdkPackage": {
+    "name": "@anthropic-ai/claude-agent-sdk",
+    "version": "0.3.193",
+    "main": "sdk.mjs",
+    "types": "sdk.d.ts",
+    "exports": {
+      ".": {
+        "types": "./sdk.d.ts",
+        "default": "./sdk.mjs"
+      },
+      "./extract": {
+        "types": "./extractFromBunfs.d.ts",
+        "default": "./extractFromBunfs.js"
+      },
+      "./browser": {
+        "types": "./browser-sdk.d.ts",
+        "default": "./browser-sdk.js"
+      },
+      "./bridge": {
+        "types": "./bridge.d.ts",
+        "default": "./bridge.mjs"
+      },
+      "./sdk-tools": {
+        "types": "./sdk-tools.d.ts"
+      },
+      "./sdk-tools.js": {
+        "types": "./sdk-tools.d.ts"
+      }
+    },
+    "engines": {
+      "node": ">=18.0.0"
+    },
+    "type": "module",
+    "author": "Anthropic <support@anthropic.com>",
+    "license": "SEE LICENSE IN README.md",
+    "description": "SDK for building AI agents with Claude Code's capabilities. Programmatically interact with Claude to build autonomous agents that can understand codebases, edit files, and execute workflows.",
+    "homepage": "https://github.com/anthropics/claude-agent-sdk-typescript",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/anthropics/claude-agent-sdk-typescript.git"
+    },
+    "bugs": {
+      "url": "https://github.com/anthropics/claude-agent-sdk-typescript/issues"
+    },
+    "keywords": [
+      "ai",
+      "agent",
+      "sdk",
+      "claude",
+      "anthropic",
+      "automation",
+      "code-generation"
+    ],
+    "peerDependencies": {
+      "@anthropic-ai/sdk": ">=0.93.0",
+      "@modelcontextprotocol/sdk": "^1.29.0",
+      "zod": "^4.0.0"
+    },
+    "optionalDependencies": {
+      "@anthropic-ai/claude-agent-sdk-linux-x64": "0.3.193",
+      "@anthropic-ai/claude-agent-sdk-linux-arm64": "0.3.193",
+      "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "0.3.193",
+      "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "0.3.193",
+      "@anthropic-ai/claude-agent-sdk-darwin-x64": "0.3.193",
+      "@anthropic-ai/claude-agent-sdk-darwin-arm64": "0.3.193",
+      "@anthropic-ai/claude-agent-sdk-win32-x64": "0.3.193",
+      "@anthropic-ai/claude-agent-sdk-win32-arm64": "0.3.193"
+    },
+    "files": [
+      "sdk.mjs",
+      "sdk.d.ts",
+      "sdk-tools.d.ts",
+      "agentSdkTypes.d.ts",
+      "bridge.mjs",
+      "bridge.d.ts",
+      "browser-sdk.js",
+      "browser-sdk.d.ts",
+      "extractFromBunfs.js",
+      "extractFromBunfs.d.ts",
+      "manifest.json",
+      "manifest.zst.json"
+    ],
+    "claudeCodeVersion": "2.1.193"
+  },
+  "typeSurface": {
+    "Query.interrupt": true,
+    "Query.streamInput": true,
+    "Query.close": true,
+    "Options.maxTurns": true,
+    "Options.resume": true,
+    "Options.abortController": true,
+    "Options.persistSession": true,
+    "Options.forkSession": true,
+    "SDKResultError.error_max_turns": true,
+    "TerminalReason.max_turns": true,
+    "TerminalReason.aborted_streaming": true,
+    "TerminalReason.aborted_tools": true,
+    "SDKUserMessage.priority": true,
+    "SDKUserMessage.shouldQuery": true,
+    "control_requires_streaming_input": true,
+    "control_requests_streaming_io": true
+  },
+  "queryMethodsFromTypes": [
+    "interrupt",
+    "setPermissionMode",
+    "setMcpPermissionModeOverride",
+    "setModel",
+    "setMaxThinkingTokens",
+    "applyFlagSettings",
+    "initializationResult",
+    "supportedCommands",
+    "supportedModels",
+    "supportedAgents",
+    "mcpServerStatus",
+    "getContextUsage",
+    "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET",
+    "readFile",
+    "reloadPlugins",
+    "reloadSkills",
+    "accountInfo",
+    "rewindFiles",
+    "seedReadState",
+    "reconnectMcpServer",
+    "toggleMcpServer",
+    "setMcpServers",
+    "streamInput",
+    "stopTask",
+    "backgroundTasks",
+    "close"
+  ],
+  "runtimeMethods": [
+    "accountInfo",
+    "addCleanupCallback",
+    "applyFlagSettings",
+    "askSideQuestion",
+    "backgroundTasks",
+    "cancelAsyncMessage",
+    "claudeAuthenticate",
+    "claudeOAuthCallback",
+    "claudeOAuthWaitForCompletion",
+    "cleanup",
+    "close",
+    "connectSdkMcpServer",
+    "disconnectSdkMcpServer",
+    "enableChannel",
+    "enableRemoteControl",
+    "generateSessionTitle",
+    "getContextUsage",
+    "getSettings",
+    "handleControlCancelRequest",
+    "handleControlRequest",
+    "handleHookCallbacks",
+    "handleMcpControlRequest",
+    "hasBidirectionalNeeds",
+    "initializationResult",
+    "initialize",
+    "interrupt",
+    "isClosed",
+    "launchUltrareview",
+    "mcpAuthenticate",
+    "mcpClearAuth",
+    "mcpServerStatus",
+    "mcpSubmitOAuthCallbackUrl",
+    "messageRated",
+    "next",
+    "performCleanup",
+    "processControlRequest",
+    "processPendingPermissionRequests",
+    "processPendingUserDialogRequests",
+    "readFile",
+    "readMessages",
+    "readSdkMessages",
+    "reconnectMcpServer",
+    "reloadPlugins",
+    "reloadSkills",
+    "reportMirrorError",
+    "request",
+    "return",
+    "rewindFiles",
+    "seedReadState",
+    "sendMcpServerMessageToCli",
+    "setError",
+    "setIsSingleUserTurn",
+    "setMaxThinkingTokens",
+    "setMcpPermissionModeOverride",
+    "setMcpServers",
+    "setModel",
+    "setPermissionMode",
+    "setTranscriptMirrorBatcher",
+    "stopTask",
+    "streamInput",
+    "submitFeedback",
+    "supportedAgents",
+    "supportedCommands",
+    "supportedModels",
+    "throw",
+    "toggleMcpServer",
+    "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET",
+    "waitForFirstResult"
+  ],
+  "controlProbe": {
+    "status": "failed",
+    "detail": "supportedCommands timeout 15s"
+  },
+  "notes": [
+    "Control requests (interrupt/setModel/...) docs say: only supported when streaming input/output is used.",
+    "Current finwork claude-adapter uses string prompt + AbortController, not Query.interrupt / streamInput.",
+    "SDKUserMessage.priority ('now'|'next'|'later') and shouldQuery exist — type-level hint for streamInput delivery, live timing still unknown.",
+    "error_max_turns is an SDKResultError subtype; TerminalReason includes max_turns / aborted_streaming / aborted_tools."
+  ]
+}

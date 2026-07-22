@@ -1,0 +1,291 @@
+{
+  "experimentId": "E0",
+  "writtenAt": "2026-07-21T09:11:22.910Z",
+  "events": [
+    {
+      "tMs": 0,
+      "label": "platform",
+      "detail": {
+        "platform": "darwin arm64",
+        "release": "25.1.0",
+        "node": "v24.13.0",
+        "cwd": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+        "spikeRoot": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+        "sdkVersion": "0.3.193",
+        "timestamp": "2026-07-21T09:11:01.603Z"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "type_present",
+      "detail": {
+        "id": "Query.interrupt"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "type_present",
+      "detail": {
+        "id": "Query.streamInput"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "type_present",
+      "detail": {
+        "id": "Query.close"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "type_present",
+      "detail": {
+        "id": "Options.maxTurns"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "type_present",
+      "detail": {
+        "id": "Options.resume"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "type_present",
+      "detail": {
+        "id": "Options.abortController"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "type_present",
+      "detail": {
+        "id": "Options.persistSession"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "Options.forkSession"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "SDKResultError.error_max_turns"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "TerminalReason.max_turns"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "TerminalReason.aborted_streaming"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "TerminalReason.aborted_tools"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "SDKUserMessage.priority"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "SDKUserMessage.shouldQuery"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "control_requires_streaming_input"
+      }
+    },
+    {
+      "tMs": 2,
+      "label": "type_present",
+      "detail": {
+        "id": "control_requests_streaming_io"
+      }
+    },
+    {
+      "tMs": 3,
+      "label": "query_methods_from_types",
+      "detail": {
+        "methods": [
+          "interrupt",
+          "setPermissionMode",
+          "setMcpPermissionModeOverride",
+          "setModel",
+          "setMaxThinkingTokens",
+          "applyFlagSettings",
+          "initializationResult",
+          "supportedCommands",
+          "supportedModels",
+          "supportedAgents",
+          "mcpServerStatus",
+          "getContextUsage",
+          "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET",
+          "readFile",
+          "reloadPlugins",
+          "reloadSkills",
+          "accountInfo",
+          "rewindFiles",
+          "seedReadState",
+          "reconnectMcpServer",
+          "toggleMcpServer",
+          "setMcpServers",
+          "streamInput",
+          "stopTask",
+          "backgroundTasks",
+          "close"
+        ]
+      }
+    },
+    {
+      "tMs": 110,
+      "label": "sdk_imported",
+      "detail": {
+        "exports": [
+          "AbortError",
+          "DirectConnectError",
+          "DirectConnectTransport",
+          "EXIT_REASONS",
+          "HOOK_EVENTS",
+          "InMemorySessionStore",
+          "SYSTEM_PROMPT_DYNAMIC_BOUNDARY",
+          "createSdkMcpServer",
+          "deleteSession",
+          "filterEscalatingDefaultMode",
+          "foldSessionSummary",
+          "forkSession",
+          "getSessionInfo",
+          "getSessionMessages",
+          "getSubagentMessages",
+          "importSessionToStore",
+          "listSessions",
+          "listSubagents",
+          "parseDirectConnectUrl",
+          "query",
+          "renameSession",
+          "resolveSettings",
+          "startup",
+          "tagSession",
+          "tool"
+        ]
+      }
+    },
+    {
+      "tMs": 130,
+      "label": "runtime_query_methods",
+      "detail": {
+        "methods": [
+          "accountInfo",
+          "addCleanupCallback",
+          "applyFlagSettings",
+          "askSideQuestion",
+          "backgroundTasks",
+          "cancelAsyncMessage",
+          "claudeAuthenticate",
+          "claudeOAuthCallback",
+          "claudeOAuthWaitForCompletion",
+          "cleanup",
+          "close",
+          "connectSdkMcpServer",
+          "disconnectSdkMcpServer",
+          "enableChannel",
+          "enableRemoteControl",
+          "generateSessionTitle",
+          "getContextUsage",
+          "getSettings",
+          "handleControlCancelRequest",
+          "handleControlRequest",
+          "handleHookCallbacks",
+          "handleMcpControlRequest",
+          "hasBidirectionalNeeds",
+          "initializationResult",
+          "initialize",
+          "interrupt",
+          "isClosed",
+          "launchUltrareview",
+          "mcpAuthenticate",
+          "mcpClearAuth",
+          "mcpServerStatus",
+          "mcpSubmitOAuthCallbackUrl",
+          "messageRated",
+          "next",
+          "performCleanup",
+          "processControlRequest",
+          "processPendingPermissionRequests",
+          "processPendingUserDialogRequests",
+          "readFile",
+          "readMessages",
+          "readSdkMessages",
+          "reconnectMcpServer",
+          "reloadPlugins",
+          "reloadSkills",
+          "reportMirrorError",
+          "request",
+          "return",
+          "rewindFiles",
+          "seedReadState",
+          "sendMcpServerMessageToCli",
+          "setError",
+          "setIsSingleUserTurn",
+          "setMaxThinkingTokens",
+          "setMcpPermissionModeOverride",
+          "setMcpServers",
+          "setModel",
+          "setPermissionMode",
+          "setTranscriptMirrorBatcher",
+          "stopTask",
+          "streamInput",
+          "submitFeedback",
+          "supportedAgents",
+          "supportedCommands",
+          "supportedModels",
+          "throw",
+          "toggleMcpServer",
+          "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET",
+          "waitForFirstResult"
+        ]
+      }
+    },
+    {
+      "tMs": 15139,
+      "label": "supportedCommands_failed",
+      "detail": {
+        "error": "supportedCommands timeout 15s"
+      }
+    },
+    {
+      "tMs": 21302,
+      "label": "interrupt_called"
+    },
+    {
+      "tMs": 21304,
+      "label": "close_called"
+    }
+  ],
+  "status": "ran",
+  "evidencePath": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment/evidence/E0-api-surface.json"
+}

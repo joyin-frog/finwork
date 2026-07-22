@@ -1,0 +1,6 @@
+node_modules/
+evidence/*.txt
+evidence/*.bin
+evidence/E2-marker.txt
+evidence/E2-sdk-py.txt
+evidence/E6-watch.bin

@@ -1,0 +1,41 @@
+{
+  "experimentId": "E5",
+  "writtenAt": "2026-07-21T09:10:53.530Z",
+  "events": [
+    {
+      "tMs": 0,
+      "label": "not_run",
+      "detail": {
+        "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Create session with short prompt, persistSession true"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Resume same sessionId three times with incremental prompts"
+      }
+    },
+    {
+      "tMs": 0,
+      "label": "planned_step",
+      "detail": {
+        "step": "Check context continuity, usage accumulation, tool idempotency, session invalidation"
+      }
+    }
+  ],
+  "status": "not_run",
+  "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set",
+  "plannedSteps": [
+    "Create session with short prompt, persistSession true",
+    "Resume same sessionId three times with incremental prompts",
+    "Check context continuity, usage accumulation, tool idempotency, session invalidation"
+  ]
+}

@@ -3,6 +3,11 @@ import { isMockAgentEnabled } from "./mock-agent";
 import type { AgentMessage } from "./claude-adapter";
 import { getDb } from "@/lib/db/sqlite";
 import { redact } from "@/lib/safety/pii";
+import {
+  modelConfigFromSettings,
+  resolveExecutionModel,
+  type LegacyModelFields,
+} from "@/lib/settings/model-config";
 
 export type RouterDecision = {
   intent: "greeting" | "trivial_qa" | "rag_qa" | "tool_task" | "complex_workflow";
@@ -196,7 +201,13 @@ export async function runRouter(
       ' "needs_rag":false,"rag_queries":[],"reasoning":"一句话"}',
     ].join("\n");
 
-    const routerModel = settings.routerModel || "claude-haiku-4-5-20251001";
+    const config = modelConfigFromSettings(settings);
+    if (!config) {
+      const latencyMs = Date.now() - startedAt;
+      logRouterDecision(message, fallbackDecision, "fallback", latencyMs, traceId, "model config incomplete", context?.conversationId);
+      return { decision: fallbackDecision, path: "fallback", latencyMs };
+    }
+    const routerModel = resolveExecutionModel({ config, purpose: "router" }).modelId;
     const response = await fetch(buildMessagesUrl(settings.apiUrl), {
       method: "POST",
       headers: {
@@ -328,29 +339,40 @@ export function parseRouterResponse(payload: unknown): RouterDecision | null {
   };
 }
 
-/** 按任务难度(router 的 intent)选模型,对齐配置页三档「快速/主/推理」:
- * - complex_workflow(多步/多工具/先分析再产出的复杂活)→ 升到「推理模型」(subagentModel)跑主 agent;
- *   router 失败兜底时 intent 也是 complex_workflow → 同样上推理模型(拿不准从严上强模型)。
- * - 其余(tool_task / rag_qa 等普通活)→ 不 override,adapter 用默认「主模型」(settings.model)。
- * - 未配推理模型则不 override。(旧实现按 main/subagent tier 选,导致简单活用强模型、复杂活用弱模型,已弃。) */
+/** 按任务难度(router 的 intent)选模型,对齐配置页「快速/推理」:
+ * - complex_workflow → mainModel(推理档)
+ * - 其余 → 不 override(由 resolveModelByTier / 调用方决定)
+ * - 配置未就绪 → undefined */
 export function pickAgentModel(
   decision: { intent?: string },
-  settings: { subagentModel?: string }
+  settings: LegacyModelFields
 ): string | undefined {
-  return decision?.intent === "complex_workflow" && settings.subagentModel?.trim()
-    ? settings.subagentModel.trim()
-    : undefined;
+  const config = modelConfigFromSettings(settings);
+  if (!config) return undefined;
+  if (decision?.intent !== "complex_workflow") return undefined;
+  return resolveExecutionModel({
+    config,
+    purpose: "task",
+    intent: "complex_workflow",
+    tier: "fast",
+  }).modelId;
 }
 
-/** 用户在输入框显式选的推理强度档位 → 模型 id(对齐配置页「快速/推理」)。
- * - fast → 快速模型(routerModel);reasoning → 推理模型(subagentModel)。
- * - 该档位未配模型则返回 undefined,由调用方回落到主模型(adapter 内 mainModel)。 */
+/** 用户在输入框显式选的推理强度档位 → 模型 id。
+ * - fast → routerModel；reasoning → mainModel。
+ * - 配置未就绪返回 undefined。 */
 export function resolveModelByTier(
   tier: "fast" | "reasoning",
-  settings: { routerModel?: string; subagentModel?: string }
+  settings: LegacyModelFields
 ): string | undefined {
-  const slot = tier === "fast" ? settings.routerModel : settings.subagentModel;
-  return slot?.trim() || undefined;
+  const config = modelConfigFromSettings(settings);
+  if (!config) return undefined;
+  return resolveExecutionModel({
+    config,
+    purpose: "task",
+    tier,
+    intent: "tool_task",
+  }).modelId;
 }
 
 /** 把前端传来的档位归一:只有显式 "reasoning"(深度思考开)才推理,其余一律快速(默认)。

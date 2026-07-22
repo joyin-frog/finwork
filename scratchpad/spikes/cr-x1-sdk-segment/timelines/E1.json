@@ -1,0 +1,57 @@
+{
+  "experimentId": "E1",
+  "writtenAt": "2026-07-21T09:10:52.250Z",
+  "events": [
+    {
+      "tMs": 1,
+      "label": "not_run",
+      "detail": {
+        "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "planned_step",
+      "detail": {
+        "step": "Start query with streaming AsyncIterable prompt (required for interrupt semantics)"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "planned_step",
+      "detail": {
+        "step": "Ask model to emit a long continuous response"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "planned_step",
+      "detail": {
+        "step": "After first partial/assistant event, call query.interrupt()"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "planned_step",
+      "detail": {
+        "step": "Record last event type/subtype, result subtype, session_id"
+      }
+    },
+    {
+      "tMs": 1,
+      "label": "planned_step",
+      "detail": {
+        "step": "Attempt resume with options.resume = session_id"
+      }
+    }
+  ],
+  "status": "not_run",
+  "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set",
+  "plannedSteps": [
+    "Start query with streaming AsyncIterable prompt (required for interrupt semantics)",
+    "Ask model to emit a long continuous response",
+    "After first partial/assistant event, call query.interrupt()",
+    "Record last event type/subtype, result subtype, session_id",
+    "Attempt resume with options.resume = session_id"
+  ]
+}
