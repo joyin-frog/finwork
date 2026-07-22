@@ -1,28 +1,42 @@
 "use client";
 
 import { AttachmentCard, ImageLightbox, useImageLightbox, isRenderableImage } from "@/app/chat/attachment-card";
+import { FolderCard, openLocalFolder } from "@/app/chat/folder-card";
 import { formatBytes } from "@/app/chat/chat-file-browser";
-import type { ChatAttachment, ReferencedFile } from "@/app/chat/chat-types";
+import type { ChatAttachment, FolderRef, ReferencedFile } from "@/app/chat/chat-types";
 
 export function FileTray({
   attachments,
   referencedAttachments,
+  folderRefs,
   onPreviewAttachment,
   onPreviewReference,
   removeAttachment,
-  removeReference
+  removeReference,
+  removeFolder,
 }: {
   attachments: ChatAttachment[];
   referencedAttachments: ReferencedFile[];
+  folderRefs: FolderRef[];
   onPreviewAttachment: (attachment: ChatAttachment) => void;
   onPreviewReference: (file: ReferencedFile) => void;
   removeAttachment: (id: string) => void;
   removeReference: (storagePath: string) => void;
+  removeFolder: (id: string) => void;
 }) {
   const { lightbox, openImage, closeImage } = useImageLightbox();
-  if (!attachments.length && !referencedAttachments.length) return null;
+  if (!attachments.length && !referencedAttachments.length && !folderRefs.length) return null;
   return (
     <div className="attachment-tray" aria-label="已添加文件">
+      {folderRefs.map((folder) => (
+        <FolderCard
+          key={folder.id}
+          name={folder.name}
+          path={folder.path}
+          onOpen={() => void openLocalFolder(folder.path)}
+          onRemove={() => removeFolder(folder.id)}
+        />
+      ))}
       {attachments.map((attachment) => (
         <AttachmentCard
           key={attachment.id}

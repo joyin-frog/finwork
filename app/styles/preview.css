@@ -17,8 +17,8 @@
 .composer-send-button {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--primary);
   border-radius: 50%;
   color: var(--primary-foreground);
@@ -58,12 +58,21 @@
   overflow-wrap: break-word;
   color: var(--text);
   pointer-events: none;
+  /* 与 textarea 锁同一套排版,避免 caret/选区按另一字号错位 */
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  font-weight: var(--text-body--font-weight);
 }
 
-.composer-textarea {
+/* Textarea 基座带 md:text-meta(12px),tailwind-merge 清不掉响应式变体;
+   双类抬优先级强制跟镜像层同字号,否则 caret/原生选区会偏在可见文字中间。 */
+.composer-textarea.composer-textarea {
   position: relative;
   color: transparent;
   caret-color: var(--text);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  font-weight: var(--text-body--font-weight);
 }
 
 .attachment-tray {
@@ -266,15 +275,15 @@
   padding: 12px;
 }
 
-/* 技能选择浮层:定位同 mention-popup,但每行是 技能名(主)+ 一行截断说明(次)。 */
+/* 技能选择浮层:定位同 mention-popup;行内两行——名称主、说明次(最多两行)。 */
 .skill-popup {
   position: absolute;
   left: -1rem;
   right: -1rem;
   bottom: calc(100% + 14px);
-  max-height: 320px;
+  max-height: 360px;
   overflow: hidden auto;
-  padding: 4px;
+  padding: 6px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
@@ -283,15 +292,19 @@
 
 .skill-popup button {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 10px 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--text);
   text-align: left;
+}
+
+.skill-popup button + button {
+  margin-top: 2px;
 }
 
 .skill-popup button.selected,
@@ -300,34 +313,59 @@
   box-shadow: inset 0 0 0 1px var(--border);
 }
 
-/* 名称为主、不收缩;说明小一号、占余宽、超长省略;标签贴最右。 */
-.skill-popup .skill-name {
+.skill-popup .skill-icon {
   flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--text-2);
+}
+
+.skill-popup .skill-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.skill-popup .skill-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.skill-popup .skill-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--text-small);
   font-weight: 500;
+  line-height: var(--text-small--line-height);
   color: var(--text);
 }
 
 .skill-popup .skill-desc {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: var(--text-meta);
+  font-weight: var(--text-meta--font-weight);
+  line-height: var(--text-meta--line-height);
+  color: var(--text-2);
 }
 
 .skill-popup .skill-tag {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--text-meta);
+  line-height: var(--text-meta--line-height);
   color: var(--text-2);
 }
 
 .skill-empty {
   padding: 12px;
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 /* 只读代码文件的整页渲染:不用 .md-content 里给聊天短代码片段设计的卡片(限高 240px + 圆角边框),

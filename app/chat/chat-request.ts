@@ -1,6 +1,7 @@
 import type { AgentEvent, ChatAttachment, Conversation, GeneratedAttachment, Message, ModelTier, ReferencedFile, SkillRef } from "@/app/chat/chat-types";
 import { contractToLegacyEvents } from "@/lib/agent/runtime-events";
 import type { AgentEventEnvelope } from "@/lib/agent/runtime-events";
+export { formatFolderPathLine, folderNameFromPath, splitFolderPathLines, FOLDER_PATH_LINE_PREFIX } from "@/app/chat/folder-path";
 
 export async function submitAgentRequest(params: {
   messages: Message[];
@@ -54,16 +55,6 @@ export function buildUserContent(text: string, attachments: ChatAttachment[], re
   if (text.trim()) return text.trim();
   if (attachments.length || references.length) return "请分析这些文件。";
   return "";
-}
-
-/**
- * 选文件夹后把本地绝对路径格式化成一行插入输入框,意图由用户自行表达。
- * 空/纯空白路径返回 ""。
- */
-export function formatFolderPathLine(folderPath: string): string {
-  const p = folderPath.trim();
-  if (!p) return "";
-  return `文件夹路径:${p}`;
 }
 
 export async function readAttachment(file: File): Promise<ChatAttachment> {

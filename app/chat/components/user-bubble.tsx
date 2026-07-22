@@ -7,12 +7,14 @@ import { Undo03Icon } from "@hugeicons/core-free-icons";
 import { CopyIcon, SuccessIcon } from "@/lib/icons";
 import { messageTimestamp } from "@/app/chat/message-timestamp";
 import { AttachmentCard, ImageLightbox, useImageLightbox, isRenderableImage } from "@/app/chat/attachment-card";
+import { FolderCard, openLocalFolder } from "@/app/chat/folder-card";
 import {
   formatBytes,
   getConversationFileUrl,
   type PreviewableConversationFile
 } from "@/app/chat/chat-file-browser";
 import { MarkdownMessage } from "@/app/chat/markdown-message";
+import { splitFolderPathLines } from "@/app/chat/folder-path";
 import type { Message, DisplayFile } from "@/app/chat/chat-types";
 import { getDisplayContent } from "./assistant-turn";
 import { surfaceVariants } from "@/components/ui/surface";
@@ -40,13 +42,16 @@ export function UserBubble({
   const { lightbox, openImage, closeImage } = useImageLightbox();
   // 无对应 DisplayFile 的遗留 imageDataUrls(仅在没有 files 时兜底展示)
   const legacyImages = files.length ? [] : (message.imageDataUrls ?? []);
-  const hasAttachments = files.length > 0 || legacyImages.length > 0;
+  const { folders } = splitFolderPathLines(message.content);
+  const displayText = getDisplayContent(message);
+  const hasAttachments = files.length > 0 || legacyImages.length > 0 || folders.length > 0;
 
   async function copyMessage() {
     const text = getDisplayContent(message);
-    if (!text.trim()) return;
+    if (!text.trim() && !folders.length) return;
+    const copyText = [text.trim(), ...folders.map((f) => f.path)].filter(Boolean).join("\n");
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(copyText);
       setCopied(true);
       toast.success("已复制");
       setTimeout(() => setCopied(false), 1500);
@@ -60,6 +65,14 @@ export function UserBubble({
       {/* 附件统一成同尺寸卡片,置于消息上方(参考 Claude);图片点击直接看,文件点击去预览页 */}
       {hasAttachments ? (
         <div className="flex flex-wrap gap-2 justify-end">
+          {folders.map((folder) => (
+            <FolderCard
+              key={folder.path}
+              name={folder.name}
+              path={folder.path}
+              onOpen={() => void openLocalFolder(folder.path)}
+            />
+          ))}
           {files.map((file) => {
             const src = file.dataUrl ?? (file.storagePath && conversationId ? getConversationFileUrl(conversationId, file.storagePath) : "");
             return (
@@ -88,13 +101,13 @@ export function UserBubble({
           ))}
         </div>
       ) : null}
-      {message.content.trim() ? (
+      {displayText.trim() ? (
         <div className={cn(surfaceVariants({ level: "page", edge: "none", shape: "overlay" }), "md-content bg-primary/8 px-4 py-2")}>
-          <MarkdownMessage content={getDisplayContent(message)} conversationId={conversationId} files={files} onPreviewFile={onPreviewFile} />
+          <MarkdownMessage content={displayText} conversationId={conversationId} files={files} onPreviewFile={onPreviewFile} />
         </div>
       ) : null}
       {lightbox ? <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeImage} /> : null}
-      {/* 消息工具条：hover 淡入，右对齐；顺序：复制 → 撤回（放回输入框）→ 时间 */}
+      {/* 消息工具条：hover / 焦点才淡入；流式未返回时不渲染撤回（避免 disabled:opacity 压过隐藏）。 */}
       <div className="flex items-center gap-1">
         <button
           type="button"
@@ -110,14 +123,13 @@ export function UserBubble({
         >
           <HugeiconsIcon icon={copied ? SuccessIcon : CopyIcon} size={13} />
         </button>
-        {onRetract ? (
+        {onRetract && !retractDisabled ? (
           <button
             type="button"
             // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            className="msg-toolbar-btn-fade flex items-center gap-1 px-2 py-1 rounded text-meta text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-colors transition-opacity hover:text-foreground hover:bg-muted disabled:opacity-50 disabled:pointer-events-none"
+            className="msg-toolbar-btn-fade flex items-center gap-1 px-2 py-1 rounded text-meta text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-colors transition-opacity hover:text-foreground hover:bg-muted"
             aria-label="撤回到输入框"
             onClick={onRetract}
-            disabled={retractDisabled}
           >
             <HugeiconsIcon icon={Undo03Icon} size={13} />
           </button>

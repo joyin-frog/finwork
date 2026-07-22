@@ -15,7 +15,7 @@ type ConversationSummary = {
   pinned: boolean;
   /** 专员会话的角色 id（E 刀）；null/缺省 = 主管会话。 */
   roleId?: string | null;
-  /** 最新 trace 为 error 时 true；侧栏红点（与「最近工作」同源）。 */
+  /** 最新 trace 为 error 时 true；侧栏警告标（与「最近工作」同源）。 */
   hasError?: boolean;
 };
 

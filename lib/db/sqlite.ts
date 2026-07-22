@@ -516,7 +516,7 @@ export type ConversationSummary = {
   pinned: boolean;
   /** 专员会话的角色 id（E 刀，侧栏角色小头像用）；null = 主管会话。 */
   roleId: string | null;
-  /** 最新一条 agent_traces.status === 'error'（与「最近工作」同源，供侧栏红点）。 */
+  /** 最新一条 agent_traces.status === 'error'（与「最近工作」同源，供侧栏警告标）。 */
   hasError: boolean;
 };
 
