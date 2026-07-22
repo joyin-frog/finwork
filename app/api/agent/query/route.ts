@@ -41,6 +41,7 @@ import {
   type RunPersistenceContext,
 } from "@/lib/agent/run-event-persistence";
 import type { ResolvedModel } from "@/lib/settings/model-config";
+import { deriveTaskContractForTurn } from "@/lib/agent/run-contract";
 
 const log = createLogger("agent-query");
 
@@ -286,6 +287,10 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     roleId: params.roleId,
     signal: params.signal,
     resolveUserQuestion: params.resolveUserQuestion,
+    taskContract: deriveTaskContractForTurn({
+      intent: routerResult.decision.intent,
+      attachments,
+    }),
     // 主 Agent 事件走主 emitter
     emit: (event) => handleEmit(event, mainEmitter),
     // 子代理事件：每个子代理有唯一 instanceId，用 per-instance emitter 包装

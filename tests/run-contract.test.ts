@@ -17,6 +17,7 @@ export const runContractTestPromise = (async () => {
     completionGateSatisfied,
     validateRunCheckpoint,
     assertNotTerminationReason,
+    deriveTaskContractForTurn,
   } = await import("../lib/agent/run-contract.ts");
 
   // AR2a settled 三值映射
@@ -68,6 +69,14 @@ export const runContractTestPromise = (async () => {
     expectationSnapshot: {},
   });
   assert.equal(badEmpty.ok, false);
+
+  const textEmpty = validateTaskContract({
+    version: 1,
+    taskKind: "text",
+    requiredDeliverables: [],
+    expectationSnapshot: {},
+  });
+  assert.equal(textEmpty.ok, true);
 
   const badProfile = validateTaskContract({
     version: 1,
@@ -150,6 +159,32 @@ export const runContractTestPromise = (async () => {
     capturedAt: "2026-01-01T00:00:00Z",
   });
   assert.equal(okCp.ok, true);
+
+  // deriveTaskContractForTurn
+  {
+    const text = deriveTaskContractForTurn({ intent: "direct", attachments: [] });
+    assert.equal(text.taskKind, "text");
+    assert.equal(text.requiredDeliverables.length, 0);
+    assert.equal(validateTaskContract(text).ok, true);
+
+    const sheet = deriveTaskContractForTurn({
+      intent: "tool_use",
+      attachments: [{ name: "a.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
+    });
+    assert.equal(sheet.taskKind, "spreadsheet");
+    assert.equal(sheet.requiredDeliverables[0]?.id, "workbook");
+    assert.equal(sheet.requiredDeliverables[0]?.qualityProfile, "generic");
+    assert.equal(validateTaskContract(sheet).ok, true);
+
+    const complex = deriveTaskContractForTurn({
+      intent: "complex_workflow",
+      attachments: [{ name: "legacy.xls" }],
+    });
+    assert.equal(complex.taskKind, "financial_consolidation");
+    assert.equal(complex.spreadsheetRequirement?.needsLegacyXlsRead, true);
+    assert.equal(complex.requiredDeliverables[0]?.qualityProfile, "financial_consolidation");
+    assert.equal(validateTaskContract(complex).ok, true);
+  }
 
   // runtime-events：run_state_changed 不进 chat_agent_events；settled 三值不变
   const { contractToLegacyEvents, createEmitter } = await import("../lib/agent/runtime-events.ts");

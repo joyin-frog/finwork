@@ -87,6 +87,8 @@ export type ClaudeAgentRunOptions = {
   /** 专员会话（E 刀）：非空时本回合以该角色身份运行——角色系统提示+独立记忆、
    *  角色工具白名单 + role-scope hook 边界、不注入 spawn_subagent。NULL/缺省 = 主管会话。 */
   roleId?: string | null;
+  /** CR-Q1：本回合冻结的 TaskContract；注入 finalize_deliverable。 */
+  taskContract?: import("./run-contract").TaskContract | null;
 };
 
 /**
@@ -220,7 +222,10 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     outputDir,
     requestId,
     runOptions.conversationId != null ? String(runOptions.conversationId) : undefined,
-    runOptions.onSubagentEvent
+    runOptions.onSubagentEvent,
+    runOptions.taskContract
+      ? { finalize: { taskContract: runOptions.taskContract, runId: requestId } }
+      : undefined,
   );
   // 静态工具全集(含 Bash/Write 供 skill 脚本);不再按 skill 收敛,高风险工具经确认门兜底。
   // 专员会话：免确认放行名单收窄到角色白名单（域内高风险工具不在其中 → 经确认门弹卡）。

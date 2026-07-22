@@ -57,11 +57,11 @@ export async function finalizeDeliverables(
 
   const fallback = new MemoryDeliverableStore();
   const store = deps.store ?? fallback;
+  const maybeSink = store as unknown as Partial<CompletionEvidenceSink>;
   const sink: CompletionEvidenceSink =
     deps.evidenceSink ??
-    (typeof (store as CompletionEvidenceSink).submit === "function" &&
-    typeof (store as CompletionEvidenceSink).list === "function"
-      ? (store as CompletionEvidenceSink)
+    (typeof maybeSink.submit === "function" && typeof maybeSink.list === "function"
+      ? (store as unknown as CompletionEvidenceSink)
       : fallback);
 
   if (!ctx.taskContract) {

@@ -35,9 +35,9 @@ FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true npx tsx tests/generated-files.test.ts
 
 ## Gaps / 接线
 
-1. **TaskContract 注入**：`buildFinanceMcpServers(..., { finalize: { taskContract } })` 尚未由 Query Pipeline 调用；缺省 finalize → `missing_task_contract`。
+1. ~~**TaskContract 注入**~~ — 已补：`deriveTaskContractForTurn` + query route / claude-adapter → finalize（follow-up）。
 2. **UI 状态组件**：提供 `AttachmentQualityState` 数据合同；CR-R2 负责接权威 Run 完成态展示。
-3. **未 commit**：与 R1 共享 `migrations.ts` / `mcp-tools/index.ts` / `all.test.ts`，按指示留待合并协调。
+3. ~~**未 commit**~~ — 已与 R1 合入 `8629e4d`；TaskContract 接线另提交。
 
 ## 合并注意
 

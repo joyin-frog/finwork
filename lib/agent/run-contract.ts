@@ -222,7 +222,10 @@ export function validateTaskContract(input: unknown): TaskContractValidation {
   if (!(TASK_KINDS as readonly string[]).includes(String(raw.taskKind))) {
     errors.push("unknown taskKind");
   }
-  if (!Array.isArray(raw.requiredDeliverables) || raw.requiredDeliverables.length === 0) {
+  const taskKind = String(raw.taskKind) as TaskKind;
+  if (!Array.isArray(raw.requiredDeliverables)) {
+    errors.push("requiredDeliverables must be an array");
+  } else if (raw.requiredDeliverables.length === 0 && taskKind !== "text") {
     errors.push("requiredDeliverables must be a non-empty array");
   } else {
     for (const [i, d] of raw.requiredDeliverables.entries()) {
@@ -402,4 +405,62 @@ export function validateRunCheckpoint(input: unknown): CheckpointValidation {
 
   if (errors.length) return { ok: false, errors };
   return { ok: true, checkpoint: raw as unknown as RunCheckpoint };
+}
+
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/**
+ * 从本回合附件与 Router intent 冻结 TaskContract（CR-Q1 接线）。
+ * 模型 / finalize 不得覆盖；信息不足时仍给出可执行合同，不静默降级为「无交付」。
+ */
+export function deriveTaskContractForTurn(input: {
+  intent?: string | null;
+  attachments?: Array<{ name?: string; mimeType?: string }>;
+}): TaskContract {
+  const intent = (input.intent ?? "").trim();
+  const attachments = input.attachments ?? [];
+  const names = attachments.map((a) => (a.name ?? "").toLowerCase());
+  const mimes = attachments.map((a) => (a.mimeType ?? "").toLowerCase());
+
+  const hasLegacyXls =
+    names.some((n) => n.endsWith(".xls") && !n.endsWith(".xlsx") && !n.endsWith(".xlsm")) ||
+    mimes.some((m) => m.includes("ms-excel") && !m.includes("openxml") && !m.includes("macroenabled"));
+  const hasSpreadsheet =
+    hasLegacyXls ||
+    names.some((n) => /\.(xlsx|xlsm|csv)$/i.test(n)) ||
+    mimes.some((m) => /spreadsheet|excel|csv/i.test(m));
+  const complex = intent === "complex_workflow";
+
+  if (!hasSpreadsheet && !complex) {
+    return {
+      version: 1,
+      taskKind: "text",
+      requiredDeliverables: [],
+      expectationSnapshot: {},
+    };
+  }
+
+  const qualityProfile: QualityProfile = complex ? "financial_consolidation" : "generic";
+  const taskKind: TaskKind = complex ? "financial_consolidation" : "spreadsheet";
+
+  return {
+    version: 1,
+    taskKind,
+    spreadsheetRequirement: {
+      needsLegacyXlsRead: hasLegacyXls,
+      needsWrite: true,
+      needsRecalc: true,
+      needsRender: complex,
+      needsMacroPreservation: false,
+    },
+    requiredDeliverables: [
+      {
+        id: "workbook",
+        mime: XLSX_MIME,
+        count: 1,
+        qualityProfile,
+      },
+    ],
+    expectationSnapshot: {},
+  };
 }
