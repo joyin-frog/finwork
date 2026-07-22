@@ -22,6 +22,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { addColumnIfMissing, initializeSchema } from "./schema";
 import { deriveCashObligations } from "../domain/cash-obligations";
+import { upDeliverablesV22 } from "../deliverable/schema-v22";
 
 export type Migration = {
   version: number;
@@ -965,6 +966,77 @@ export const MIGRATIONS: Migration[] = [
       if (tableExists) {
         addColumnIfMissing(db, "subagent_dispatches", "instructions", "TEXT");
       }
+    },
+  },
+  // CR-R1：持久 Run 账本。三查（2026-07-22）：链尾原为 20；共享 Finwork 库 user_version=20。
+  //   v22 由 CR-Q1 deliverable registry 占用（并行落地，保持连续）。
+  {
+    version: 21,
+    name: "agent_runs_and_run_events",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_runs (
+          run_id TEXT PRIMARY KEY,
+          trace_id TEXT NOT NULL,
+          conversation_id INTEGER,
+          status TEXT NOT NULL,
+          termination_reason TEXT,
+          quality_status TEXT NOT NULL DEFAULT 'not_applicable',
+          session_id TEXT,
+          model_used TEXT,
+          model_role TEXT,
+          execution_tier TEXT,
+          model_fallback_reason TEXT,
+          started_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          ended_at TEXT,
+          heartbeat_at TEXT,
+          turns_used INTEGER NOT NULL DEFAULT 0,
+          active_ms INTEGER NOT NULL DEFAULT 0,
+          waiting_ms INTEGER NOT NULL DEFAULT 0,
+          last_event_id INTEGER,
+          latest_checkpoint_json TEXT,
+          error_code TEXT,
+          error_message TEXT
+        )
+      `);
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_conversation ON agent_runs(conversation_id, started_at DESC)"
+      );
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status, updated_at DESC)"
+      );
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_agent_runs_trace ON agent_runs(trace_id)"
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS run_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id TEXT NOT NULL,
+          conversation_id INTEGER,
+          instance_id TEXT,
+          event_type TEXT NOT NULL,
+          event_json TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (run_id) REFERENCES agent_runs(run_id)
+        )
+      `);
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_run_events_run_id ON run_events(run_id, id)"
+      );
+      // 每 Run 恰好一条 canonical settled（AR2a outcome 三值不变）
+      db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_events_settled_once ON run_events(run_id) WHERE event_type = 'run_settled'"
+      );
+    },
+  },
+  // CR-Q1：deliverable registry + completion_evidence（依赖 R1 v21 已在链上）。
+  {
+    version: 22,
+    name: "deliverable_registry",
+    up: (db) => {
+      upDeliverablesV22(db);
     },
   },
 ];

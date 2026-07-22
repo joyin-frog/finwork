@@ -56,7 +56,15 @@ export function createPathSafetyHook(): Hook {
     async before(ctx): Promise<BeforeToolResult> {
       if (!["Write", "Edit", "MultiEdit"].includes(ctx.toolName)) return { action: "allow" };
       const filePath = getToolFilePath(ctx.input);
-      if (filePath && !isInsidePath(filePath, ctx.outputDir)) {
+      if (!filePath) return { action: "allow" };
+      // CR-Q1：delivered/ 不可变区，模型工具永不写
+      if (isDeliveredPath(filePath, ctx.outputDir)) {
+        return {
+          action: "deny",
+          reason: "不能写入不可变交付目录 delivered/（正式附件只读）。",
+        };
+      }
+      if (!isInsidePath(filePath, ctx.outputDir)) {
         return {
           action: "deny",
           reason: `只能把生成文件写入本次会话输出目录：${ctx.outputDir}`,
@@ -65,6 +73,16 @@ export function createPathSafetyHook(): Hook {
       return { action: "allow" };
     },
   };
+}
+
+/** delivered/ 与 generate/ 同级；也拒绝对 outputDir 内误建的 delivered 子路径写入。 */
+function isDeliveredPath(filePath: string, outputDir: string): boolean {
+  const abs = path.resolve(filePath);
+  const parts = abs.split(path.sep);
+  if (parts.includes("delivered")) return true;
+  const genParent = path.dirname(path.resolve(outputDir));
+  const deliveredRoot = path.join(genParent, "delivered");
+  return abs === deliveredRoot || abs.startsWith(deliveredRoot + path.sep);
 }
 
 /** 未接线工具的机制兜底:不依赖 skill 配置正确性,Bash 一律拒绝。 */

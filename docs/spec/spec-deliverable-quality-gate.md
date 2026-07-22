@@ -1,7 +1,7 @@
 # Spec：通用交付物质量门与不可变交付
 
 > ID：CR-Q1  
-> 状态：**Ready for Agent**（CR-R0 Frozen + CR-S1 Runtime Core 已 ship）  
+> 状态：**已ship** · `audit-deliverable-quality-gate.md`（migration v22）  
 > 日期：2026-07-21  
 > 前置依赖：CR-R0、CR-S1  
 > 下游：CR-Q2、CR-R2

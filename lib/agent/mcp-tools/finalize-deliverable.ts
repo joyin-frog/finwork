@@ -1,47 +1,165 @@
 import { z } from "zod/v4";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { randomUUID } from "node:crypto";
+import type { TaskContract } from "@/lib/agent/run-contract";
+import {
+  FINALIZED_MARKER,
+  finalizeDeliverables,
+  MemoryDeliverableStore,
+  SqliteDeliverableStore,
+  type DeliverableStore,
+  type FinalizeDeps,
+  type FinalizeFile,
+} from "@/lib/deliverable";
 import type { SdkLike } from "./sdk-types";
 
 type Sdk = SdkLike;
 
-/** 收尾时写到输出目录的声明标记(dotfile → 不被当作产物、不进时间线);成功收尾时据此清掉本回合未声明的中间文件。 */
-export const FINALIZED_MARKER = ".finalized.json";
+export { FINALIZED_MARKER };
 
-export function createFinalizeDeliverableTool(sdk: Sdk, outputDir: string) {
+export type FinalizeDeliverableToolOptions = {
+  runId?: string;
+  taskContract?: TaskContract | (() => TaskContract | null | undefined);
+  conversationFilesDir?: string;
+  conversationId?: number;
+  messageId?: number;
+  deps?: FinalizeDeps;
+};
+
+function defaultStore(): DeliverableStore {
+  try {
+    // 延迟 import，避免工具加载期强依赖 DB 初始化顺序
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getDb } = require("@/lib/db/sqlite") as typeof import("@/lib/db/sqlite");
+    const db = getDb();
+    const has = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='deliverables'")
+      .get();
+    if (has) return new SqliteDeliverableStore(db);
+  } catch {
+    /* fall through */
+  }
+  return new MemoryDeliverableStore();
+}
+
+/**
+ * finalize_deliverable — CR-Q1 质量门。
+ * 入参 FinalizeFile{name, contractDeliverableId}；只提交 CompletionEvidence，绝不写 Run completed。
+ */
+export function createFinalizeDeliverableTool(
+  sdk: Sdk,
+  outputDir: string,
+  options: FinalizeDeliverableToolOptions = {}
+) {
   return sdk.tool(
     "finalize_deliverable",
     [
-      "一次回答结束、文件产物已定稿时调用,声明本次真正交付给用户的最终文件(只写文件名,可多个)。",
-      "声明后,本回合内生成但未被声明的中间/试错文件会在收尾时自动清理,只留你声明的成品,保持产物目录干净。",
-      "只影响本回合新生成的文件,不碰用户上传的输入、也不碰往次回答的产物;不调用则本回合产物全部保留(保守)。",
-      "每次回答最多调用一次,放在最后一步。"
+      "一次回答结束、文件产物已定稿时调用：声明最终交付文件及其合同 deliverable id。",
+      "系统按 TaskContract 做存在性/类型/可打开性/表格重算等校验，通过后复制到不可变 delivered/ 并提交 CompletionEvidence。",
+      "不要传 kind/profile/mime 覆盖字段——质量档位以合同为准。",
+      "验证失败时工作文件与报告保留；未通过质量门的文件不会成为正式附件。",
+      "每次回答最多调用一次，放在最后一步。",
     ].join("\n"),
     {
       files: z
-        .array(z.string().min(1))
+        .array(
+          z.object({
+            name: z.string().min(1).describe("最终交付文件名（basename，不要写路径）"),
+            contractDeliverableId: z
+              .string()
+              .min(1)
+              .describe("TaskContract.requiredDeliverables[].id"),
+          })
+        )
         .min(1)
-        .describe('最终交付的文件名(basename,可含中文,不要写路径或目录),如 ["科目表差异汇总.xlsx"]'),
+        .describe('如 [{ "name": "科目表差异汇总.xlsx", "contractDeliverableId": "workbook" }]'),
     },
-    async (args: { files: string[] }) => {
+    async (args: { files: FinalizeFile[] }) => {
       try {
-        const names = args.files.map((f) => path.basename(String(f).trim())).filter(Boolean);
-        if (!names.length) {
-          return { content: [{ type: "text" as const, text: "未提供有效文件名,未记录,也未做清理。" }], isError: true as const };
+        const contract =
+          typeof options.taskContract === "function"
+            ? options.taskContract()
+            : options.taskContract;
+        if (!contract) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "TaskContract 未接线，无法 finalize。请由系统注入合同后再声明交付物。",
+              },
+            ],
+            isError: true as const,
+            structuredContent: { code: "missing_task_contract" },
+          };
         }
-        const markerPath = path.join(outputDir, FINALIZED_MARKER);
-        let existing: string[] = [];
-        if (existsSync(markerPath)) {
-          try { existing = JSON.parse(readFileSync(markerPath, "utf8")) as string[]; } catch { existing = []; }
+
+        const runId = options.runId?.trim() || `run-${randomUUID()}`;
+        const store = options.deps?.store ?? defaultStore();
+        const evidenceSink =
+          options.deps?.evidenceSink ??
+          (typeof (store as { submit?: unknown }).submit === "function"
+            ? (store as MemoryDeliverableStore)
+            : new MemoryDeliverableStore());
+        const result = await finalizeDeliverables(
+          args.files,
+          {
+            runId,
+            outputDir,
+            conversationFilesDir: options.conversationFilesDir,
+            taskContract: contract,
+            conversationId: options.conversationId,
+            messageId: options.messageId,
+          },
+          { ...options.deps, store, evidenceSink }
+        );
+
+        if (!result.ok) {
+          const detail =
+            result.failures
+              ?.map(
+                (f) =>
+                  `${f.name}(${f.contractDeliverableId}): ${f.errors.map((e) => e.message).join("; ")}`
+              )
+              .join("\n") ?? result.error;
+          return {
+            content: [{ type: "text" as const, text: `交付质量门未通过：${detail}` }],
+            isError: true as const,
+            structuredContent: {
+              code: result.code,
+              error: result.error,
+              failures: result.failures,
+            },
+          };
         }
-        const merged = Array.from(new Set([...existing, ...names]));
-        writeFileSync(markerPath, JSON.stringify(merged), "utf8");
+
+        const gateNote =
+          result.gate.ok
+            ? "合同所需交付物证据已齐。"
+            : `证据未齐，缺少: ${result.gate.missing.join(", ")}（Run 完成态由 CompletionGate 决定，本工具不写 completed）。`;
+
         return {
-          content: [{ type: "text" as const, text: `已记录最终交付:${names.join("、")}。本回合其余中间/试错文件将在收尾时自动清理。` }],
-          structuredContent: { finalized: merged },
+          content: [
+            {
+              type: "text" as const,
+              text: `已验证并交付: ${result.declaredNames.join("、")}。${gateNote}`,
+            },
+          ],
+          structuredContent: {
+            finalized: result.finalized,
+            evidences: result.evidences,
+            gate: result.gate,
+            // 明确：不包含 runStatus / completed
+          },
         };
       } catch (error) {
-        return { content: [{ type: "text" as const, text: `声明最终产物失败:${error instanceof Error ? error.message : String(error)}` }], isError: true as const };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `声明最终产物失败:${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+          isError: true as const,
+        };
       }
     }
   );

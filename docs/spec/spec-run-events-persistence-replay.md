@@ -2,7 +2,7 @@
 
 > ID：CR-R1  
 > 对应 ROADMAP：AR2b  
-> 状态：**Ready for Agent**（CR-R0 Frozen 2026-07-22）  
+> 状态：**已ship** · `audit-run-events-persistence-replay.md`（migration v21）  
 > 日期：2026-07-21  
 > 前置依赖：AR2a、CR-M1、CR-R0  
 > 下游：CR-R2、CR-P1

@@ -28,7 +28,13 @@ export function loadRecentUsageTraces(sinceMs: number, db: DatabaseSync = getDb(
   for (const row of rows) {
     const startedAt = Date.parse(row.started_at);
     if (Number.isNaN(startedAt)) continue;
-    let parsed: Record<string, { inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }>;
+    let parsed: Record<string, {
+      inputTokens?: number;
+      outputTokens?: number;
+      cacheReadInputTokens?: number;
+      cacheCreationInputTokens?: number;
+      executionTier?: "fast" | "reasoning";
+    }>;
     try {
       parsed = JSON.parse(row.model_usage_json);
     } catch {
@@ -40,6 +46,9 @@ export function loadRecentUsageTraces(sinceMs: number, db: DatabaseSync = getDb(
       outputTokens: u?.outputTokens ?? 0,
       cacheReadTokens: u?.cacheReadInputTokens ?? 0,
       cacheCreationTokens: u?.cacheCreationInputTokens ?? 0,
+      ...(u?.executionTier === "fast" || u?.executionTier === "reasoning"
+        ? { executionTier: u.executionTier }
+        : {}),
     }));
     traces.push({ startedAt, models });
   }

@@ -130,8 +130,9 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   const settings = await readClaudeSettings();
   const startedAt = Date.now();
 
-  // 生效模型 = 「深度思考」档位 override 优先;日志必须打真实生效值,否则排障会被误导
-  const effectiveModel = runOptions.modelOverride || settings.mainModel || settings.model;
+  // CR-R1：生效模型以 Query 传入的 resolveExecutionModel 结果（modelOverride）为准；
+  // 禁止再回落到遗留 settings.model。无 override 时用已校验的 mainModel。
+  const effectiveModel = runOptions.modelOverride || settings.mainModel || "";
   log.info("start", {
     traceId: requestId,
     messageCount: messages.length,

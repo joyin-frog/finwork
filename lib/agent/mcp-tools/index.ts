@@ -15,7 +15,7 @@ import { createSalesInvoiceTools } from "../tools/finance/sales-invoices";
 import { createReconciliationTools } from "../tools/finance/reconciliation";
 import { createRecordDocumentMetadataTool } from "./document-metadata";
 import { createUpdateCompanyProfileTool } from "./profile";
-import { createFinalizeDeliverableTool } from "./finalize-deliverable";
+import { createFinalizeDeliverableTool, type FinalizeDeliverableToolOptions } from "./finalize-deliverable";
 import { createEmitChecklistTool } from "./emit-checklist";
 import { createRunFilingPrecheckBatchTool } from "./filing-precheck-batch";
 import { createRunBankReconBatchTool } from "./bank-recon-batch";
@@ -23,10 +23,31 @@ import { createUndoLastWriteTool } from "./undo-write";
 import { createProposeTransferTool } from "./propose-transfer";
 import type { SdkLike } from "./sdk-types";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
+import { getConversationFilesDir } from "@/lib/runtime/paths";
 
 type Sdk = SdkLike & { createSdkMcpServer: NonNullable<SdkLike["createSdkMcpServer"]> };
 
-export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string, onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void) {
+export type FinanceMcpServerOptions = {
+  /** CR-Q1：由宿主注入 TaskContract（R1 Query Pipeline 接线）；缺省则 finalize 拒绝声明。 */
+  finalize?: FinalizeDeliverableToolOptions;
+};
+
+export async function createFinanceMcpServer(
+  sdk: Sdk,
+  outputDir: string,
+  traceId?: string,
+  conversationId?: string,
+  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
+  serverOptions?: FinanceMcpServerOptions,
+) {
+  const cidNum = conversationId != null && conversationId !== "" ? Number(conversationId) : undefined;
+  const finalizeOpts: FinalizeDeliverableToolOptions = {
+    runId: traceId,
+    conversationId: Number.isFinite(cidNum) ? cidNum : undefined,
+    conversationFilesDir:
+      cidNum != null && Number.isFinite(cidNum) ? getConversationFilesDir(cidNum) : undefined,
+    ...serverOptions?.finalize,
+  };
   return sdk.createSdkMcpServer({
     name: "finance_worker",
     version: "0.1.0",
@@ -50,8 +71,8 @@ export async function createFinanceMcpServer(sdk: Sdk, outputDir: string, traceI
       createRecordDocumentMetadataTool(sdk),
       // P3: 公司画像
       createUpdateCompanyProfileTool(sdk),
-      // 收尾声明最终产物 → 成功收尾时清掉本回合未声明的中间/试错文件
-      createFinalizeDeliverableTool(sdk, outputDir),
+      // CR-Q1: 质量门 + 不可变 delivered/；只提交 CompletionEvidence
+      createFinalizeDeliverableTool(sdk, outputDir, finalizeOpts),
       // WP14a: 把清单产物物化为可勾选工件
       createEmitChecklistTool(sdk, undefined, conversationId),
       // 功能4首刀: 申报前复核批跑（增值税+个税并行派发）
@@ -80,9 +101,17 @@ export async function buildFinanceMcpServers(
   traceId?: string,
   conversationId?: string,
   onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
+  serverOptions?: FinanceMcpServerOptions,
 ) {
   return {
-    finance_worker: await createFinanceMcpServer(sdk, outputDir, traceId, conversationId, onSubagentEvent),
+    finance_worker: await createFinanceMcpServer(
+      sdk,
+      outputDir,
+      traceId,
+      conversationId,
+      onSubagentEvent,
+      serverOptions,
+    ),
     kingdee_worker: await createKingdeeMcpServer(sdk, outputDir),
   };
 }

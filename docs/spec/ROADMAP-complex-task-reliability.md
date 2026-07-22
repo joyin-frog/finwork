@@ -103,8 +103,8 @@ Run 状态映射：
 | CR-M1 | `spec-model-routing-v2.md` | **已ship（Batch 0）** · `audit-model-routing-v2.md` | 无 | 模型配置、UI/API、纯 resolver |
 | CR-R0 | `spec-run-contract-v2.md` | **Frozen** · `lib/agent/run-contract.ts` · `audit-run-contract-v2.md` | AR2a 已 ship | 共享 Run/Task/Completion 类型 |
 | CR-S1 | `spec-spreadsheet-runtime-preflight.md` | **Runtime Core 已ship**；合同接线仍 Blocked · `audit-spreadsheet-runtime-preflight.md` | CR-R0 扩展点 | Python 依赖、能力探测、系统 LO |
-| CR-R1 | `spec-run-events-persistence-replay.md` | **Ready for Agent**（CR-R0 Frozen） | CR-R0 | AR2b、run_events、checkpoint、replay |
-| CR-Q1 | `spec-deliverable-quality-gate.md` | **Ready for Agent**（CR-R0 Frozen + CR-S1 Core） | CR-R0、CR-S1 | 通用 validator registry、不可变交付 |
+| CR-R1 | `spec-run-events-persistence-replay.md` | **已ship（v21）** · `audit-run-events-persistence-replay.md` | CR-R0 | AR2b、run_events、checkpoint、replay |
+| CR-Q1 | `spec-deliverable-quality-gate.md` | **已ship（v22）** · `audit-deliverable-quality-gate.md` | CR-R0、CR-S1 | 通用 validator registry、不可变交付 |
 | CR-Q2 | `spec-consolidation-workbook-validator.md` | Blocked | CR-Q1 | 合并报表领域 Profile |
 | CR-R2 | `spec-run-state-recovery-ui.md` | Blocked | CR-R1 | AR2c + AR4、状态恢复、UI 切换 |
 | CR-P1 | `spec-run-scoped-python-capability.md` | Blocked | CR-R1、CR-R2 | Run 级权限、路径边界、TTL |

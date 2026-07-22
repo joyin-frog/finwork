@@ -26,6 +26,9 @@ process.on("unhandledRejection", (err) => {
   const { runContractTestPromise } = await import("./run-contract.test.ts");
   await runContractTestPromise;
 
+  const { deliverableQualityGateTestPromise } = await import("./deliverable-quality-gate.test.ts");
+  await deliverableQualityGateTestPromise;
+
   const { usageStoreTestPromise } = await import("./usage-store.test.ts");
   await usageStoreTestPromise;
 
@@ -699,6 +702,9 @@ process.on("unhandledRejection", (err) => {
 
   const { runtimeEventsTestPromise } = await import("./runtime-events.test.ts");
   await runtimeEventsTestPromise;
+
+  const { runEventsPersistenceTestPromise } = await import("./run-events-persistence.test.ts");
+  await runEventsPersistenceTestPromise;
 
   const { coerceJsonTestPromise } = await import("./coerce-json.test.ts");
   await coerceJsonTestPromise;
