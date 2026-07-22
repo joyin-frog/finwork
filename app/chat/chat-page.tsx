@@ -458,6 +458,7 @@ export default function ChatPage({
         setAttachments(out.attachments);
         setReferencedAttachments(out.referencedAttachments);
         setReferencedSkills(out.referencedSkills);
+        setFolderRefs(out.folderRefs ?? []);
         if (turn.status === "error" && out.text) { setDraft(out.text); persistDraft(out.text); }
       }
       // 刷新侧栏：落库 trace error → ConversationSummary.hasError，警告标与「最近工作」对齐
@@ -963,6 +964,7 @@ export default function ChatPage({
         attachments: outgoingAttachments,
         referencedAttachments: outgoingRefAttachments,
         referencedSkills: outgoingSkills,
+        folderRefs: outgoingFolders,
       },
     });
   }

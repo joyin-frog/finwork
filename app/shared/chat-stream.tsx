@@ -9,6 +9,7 @@ import type {
   AgentEvent,
   ChatAttachment,
   Conversation,
+  FolderRef,
   GeneratedAttachment,
   Message,
   ReferencedFile,
@@ -38,6 +39,8 @@ export type StreamRetryPayload = {
   attachments: ChatAttachment[];
   referencedAttachments: ReferencedFile[];
   referencedSkills: SkillRef[];
+  /** 发送时选中的文件夹卡片；失败恢复时一并还原。 */
+  folderRefs?: FolderRef[];
 };
 
 export type StreamTurn = {
