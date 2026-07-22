@@ -85,7 +85,7 @@ export function UsageRing({ usage }: { usage: UsageData | null }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted"
           aria-label={`用量 ${maxPct}%，点击查看额度`}
           title={`用量 ${maxPct}%`}
         >

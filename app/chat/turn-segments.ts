@@ -31,6 +31,22 @@ export type TurnSegments = {
 };
 
 /**
+ * 答案气泡该显示什么。
+ * - 有摘出的最终回答 → 用它
+ * - 否则若 timeline 已有 text 段(过程旁白) → 空串,避免把 join("") 后的 message.content 再当答案粘成一坨
+ * - 纯直答/无事件历史 → 回退 message.content
+ */
+export function resolveAnswerContent(
+  answerText: string,
+  hasTimelineText: boolean,
+  messageContent: string,
+): string {
+  if (answerText.trim()) return answerText;
+  if (hasTimelineText) return "";
+  return messageContent;
+}
+
+/**
  * Coalesce a new text chunk into an event list (mutates in place).
  * If the last event is a {type:"text"}, appends content; otherwise pushes a new one.
  */

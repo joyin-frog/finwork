@@ -9,6 +9,7 @@ import type {
   AgentEvent,
   ChatAttachment,
   Conversation,
+  FolderRef,
   GeneratedAttachment,
   Message,
   ReferencedFile,
@@ -38,6 +39,8 @@ export type StreamRetryPayload = {
   attachments: ChatAttachment[];
   referencedAttachments: ReferencedFile[];
   referencedSkills: SkillRef[];
+  /** 发送时选中的文件夹卡片；失败恢复时一并还原。 */
+  folderRefs?: FolderRef[];
 };
 
 export type StreamTurn = {
@@ -405,7 +408,7 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
   }
 
   // 按会话索引状态:同一会话取最新一条回合的状态(已 consume 的回合不在 turns 里 → 自然无点)。
-  // 持久化红点走 ConversationSummary.hasError（与「最近工作」同源），不在此层粘。
+  // 持久化警告标走 ConversationSummary.hasError（与「最近工作」同源），不在此层粘。
   const statusByConversationId = useMemo(() => {
     const map: Record<number, TurnStatus> = {};
     for (const t of Object.values(turns)) {

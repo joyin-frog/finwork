@@ -37,8 +37,12 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
-import { ROLE_LABELS, ROLE_UI } from "@/lib/domain/role-ui";
+import { ROLE_LABELS } from "@/lib/domain/role-ui";
 import { roleNavIcon } from "@/lib/domain/role-icons";
+import {
+  ConversationStatusMark,
+  resolveConversationStatus,
+} from "@/app/shared/conversation-status-mark";
 import { surfaceVariants } from "@/components/ui/surface";
 import { Input } from "@/components/ui/input";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -63,7 +67,7 @@ type ConversationSummary = {
   pinned: boolean;
   /** 专员会话的角色 id（E 刀）；null/缺省 = 主管会话。 */
   roleId?: string | null;
-  /** 最新 trace 为 error 时 true；侧栏红点（与「最近工作」同源）。 */
+  /** 最新 trace 为 error 时 true；侧栏警告标（与「最近工作」同源）。 */
   hasError?: boolean;
 };
 
@@ -307,54 +311,19 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   function renderConversationRow(c: ConversationSummary) {
     const isActive = activeConversationId === c.id;
-    // 状态点（--tone-*）：
-    // 红 = 落库最新 trace 为 error（与「最近工作」同源），或本回合 live error/stopped；查看后仍保留。
-    // 绿/进行中 = 仅 live、离开后的提醒（当前会话不标）。
-    const live = statusByConversationId[c.id];
-    const status =
-      live === "streaming" || live === "done"
-        ? isActive
-          ? undefined
-          : live
-        : live === "error" || live === "stopped"
-          ? live
-          : c.hasError
-            ? "error"
-            : undefined;
-    const dot = status === "streaming"
-      ? { tone: "var(--primary)", pulse: true, label: "正在生成" }
-      : status === "done"
-        ? { tone: "var(--tone-ok)", pulse: false, label: "已完成，点击查看" }
-        : status === "error" || status === "stopped"
-          ? { tone: "var(--tone-alarm)", pulse: false, label: "未正常完成" }
-          : null;
+    // 状态标统一走 ConversationStatusMark；无特殊态也画灰色实心（idle），避免空槽看不见。
+    const statusMark =
+      renamingId === c.id
+        ? null
+        : resolveConversationStatus({
+            live: statusByConversationId[c.id],
+            hasError: c.hasError,
+            isActive,
+          });
     // 双轴：pl-2 = gap-2（图标距左缘 = 距标题）；20px 槽 + gap-2 = 28px 图形列。
     const graphicSlot = (
       <span className="relative shrink-0 flex size-5 items-center justify-center">
-        {c.roleId ? (
-          // 专员会话（E 刀）：15px 角色小头像落在图形轴，区分直聊会话
-          <span
-            className="fa-toned flex size-[15px] items-center justify-center text-[9px] font-semibold select-none"
-            style={{ "--tone": `var(${ROLE_UI[c.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral"})`, borderRadius: "50%" } as CSSProperties}
-            aria-hidden="true"
-          >
-            {(ROLE_LABELS[c.roleId] ?? c.roleId).slice(0, 1)}
-          </span>
-        ) : null}
-        {dot && renamingId !== c.id && (
-          <span
-            // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            className={cn(
-              "pointer-events-none size-1.5 rounded-full",
-              c.roleId ? "absolute -right-0.5 -bottom-0.5" : "",
-              dot.pulse && "animate-pulse"
-            )}
-            style={{ backgroundColor: dot.tone }}
-            title={dot.label}
-            aria-label={dot.label}
-            role="status"
-          />
-        )}
+        <ConversationStatusMark status={statusMark} size={14} />
       </span>
     );
     const pinLabel = c.pinned ? "取消置顶" : "置顶";

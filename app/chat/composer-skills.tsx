@@ -6,15 +6,31 @@ import { NoteIcon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import type { SkillRef } from "@/app/chat/chat-types";
 
-/** 浮层里的技能项:比引用 chip 多一个来源,用于右侧「系统/个人」标签。 */
-export type PickerSkill = { name: string; description: string; source: "bundled" | "user" };
+/** 浮层里的技能项:summary 给人扫选用;description 仍留给引用/Agent。 */
+export type PickerSkill = {
+  name: string;
+  description: string;
+  /** 短说明(SKILL.md summary);缺省时弹窗回退到 description 首句。 */
+  summary?: string;
+  source: "bundled" | "user";
+};
 
 /** 技能名 slug 校验(与后端 skills-store 同口径),供 / 弹窗的自由输入判断是否可引用。 */
 export function isValidSkillName(name: string): boolean {
   return /^[a-z0-9][a-z0-9-]{0,63}$/.test(name);
 }
 
-/** 技能选择浮层(参考 Claude 技能选单):一行 = 名称 + 右侧小一号截断说明 + 最右「系统/个人」。 */
+/** 弹窗短说明:优先 summary;否则取 description 首句(到 。！？.!? 或换行)。 */
+export function skillPickerBlurb(summary: string | undefined, description: string): string {
+  const short = summary?.trim();
+  if (short) return short;
+  const full = description.trim();
+  if (!full) return "";
+  const m = full.match(/^[^。！？.!?\n]+[。！？.!?]?/);
+  return (m?.[0] ?? full).trim();
+}
+
+/** 技能选择浮层:名称 + 一行短说明(summary);完整 description 仍随引用传给 Agent。 */
 export function SkillPopup({
   skills,
   customName,
@@ -34,6 +50,7 @@ export function SkillPopup({
     index: number,
     name: string,
     description: string,
+    blurb: string,
     tag: string | null,
   ) => (
     <button
@@ -45,18 +62,31 @@ export function SkillPopup({
       onClick={() => selectSkill({ name, description })}
       onMouseEnter={() => setSelectedIndex(index)}
     >
-      <HugeiconsIcon icon={NoteIcon} size={16} className="shrink-0 text-muted-foreground" />
-      <span className="skill-name">{name}</span>
-      <span className="skill-desc">{description}</span>
-      {tag ? <span className="skill-tag">{tag}</span> : null}
+      <HugeiconsIcon icon={NoteIcon} size={16} className="skill-icon" />
+      <span className="skill-body">
+        <span className="skill-head">
+          <span className="skill-name">{name}</span>
+          {tag ? <span className="skill-tag">{tag}</span> : null}
+        </span>
+        {blurb ? <span className="skill-desc">{blurb}</span> : null}
+      </span>
     </button>
   );
   return (
     <div className="skill-popup" role="listbox" aria-label="选择技能">
       {skills.length || customName ? (
         <>
-          {skills.map((s, index) => row(s.name, index, s.name, s.description, s.source === "user" ? "个人" : "系统"))}
-          {customName ? row(`__custom_${customName}`, customIndex, customName, "自定义引用", null) : null}
+          {skills.map((s, index) =>
+            row(
+              s.name,
+              index,
+              s.name,
+              s.description,
+              skillPickerBlurb(s.summary, s.description),
+              s.source === "user" ? "个人" : null,
+            ),
+          )}
+          {customName ? row(`__custom_${customName}`, customIndex, customName, "", "自定义引用", null) : null}
         </>
       ) : (
         <div className="skill-empty">暂无可用技能,可在 技能 页里管理</div>
@@ -137,7 +167,7 @@ export function DeepThinkToggle({
         aria-pressed={!active}
         onClick={() => onToggle(false)}
         className={cn(
-          "rounded-full px-2.5 py-1 transition-colors",
+          "rounded-full px-2 py-0.5 transition-colors",
           !active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
         )}
       >
@@ -148,7 +178,7 @@ export function DeepThinkToggle({
         aria-pressed={active}
         onClick={() => onToggle(true)}
         className={cn(
-          "rounded-full px-2.5 py-1 transition-colors",
+          "rounded-full px-2 py-0.5 transition-colors",
           active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
         )}
       >

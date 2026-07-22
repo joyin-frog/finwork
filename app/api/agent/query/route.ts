@@ -243,8 +243,9 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     const thinkingMs = Math.max(0, (firstOutputAt ?? Date.now()) - runStart);
     collector.collectedEvents.push({ type: "system", subtype: "thinking_duration", message: String(thinkingMs) });
   }
-  // 最终正文以过滤后拼接为准
-  const filteredContent = collector.collectedChunks.join("") || filterIdentity(data.content ?? "");
+  // 最终正文:按 text 事件空行拼接(避免多段过程旁白 join("") 粘成一坨)
+  const filteredContent = assembleAssistantContent(collector.collectedEvents, collector.collectedChunks)
+    || filterIdentity(data.content ?? "");
   return { result: { ...data, content: filteredContent, direct: false }, collector };
 }
 
@@ -281,7 +282,7 @@ function persistAgentTurn(
   }
 
   let messageId: number | undefined;
-  const fullContent = result.content || collector.collectedChunks.join("");
+  const fullContent = result.content || assembleAssistantContent(collector.collectedEvents, collector.collectedChunks);
   if (conversationId && fullContent.trim()) {
     // 持久化本回合实际处理时长(墙钟)
     collector.collectedEvents.push({
@@ -315,13 +316,13 @@ function persistIncompleteTurn(
 ): { messageId?: number; fullContent: string; generatedAttachments: ReturnType<typeof recordNewGeneratedFiles> } {
   const { conversationId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage, modelUsage } = params;
 
-  const fullContent = collector.collectedChunks.join("");
+  const fullContent = assembleAssistantContent(collector.collectedEvents, collector.collectedChunks);
   const hasWork = fullContent.trim().length > 0 || collector.collectedEvents.some((e) => e.type === "tool_use");
   let messageId: number | undefined;
   if (conversationId && hasWork) {
     collector.collectedEvents.push({ type: "system", subtype: "turn_incomplete", message: errorMessage });
     collector.collectedEvents.push({ type: "system", subtype: "turn_duration", message: String(Math.max(0, Date.now() - startedAt)) });
-    messageId = insertAssistantTurn(conversationId, fullContent.trim() || "（本回合未完成，已保留已做的部分，可发「继续」让我接着做）", collector, traceId);
+    messageId = insertAssistantTurn(conversationId, fullContent.trim() || "**本回合未完成，已保留已做的部分，可发「继续」让我接着做**", collector, traceId);
   }
 
   const generatedAttachments = recordNewGeneratedFiles(conversationId, messageId, beforeGenerate);
@@ -346,6 +347,22 @@ function coalesceTextIntoEvents(
   } else {
     events.push({ type: "text", content });
   }
+}
+
+/**
+ * 助手正文落库:按已 coalesce 的 text 事件用空行拼接(过程旁白彼此分开);
+ * 无 text 事件时回退 chunk 流拼接(直答/过滤尾包)。
+ */
+function assembleAssistantContent(
+  events: Array<{ type: string; [key: string]: unknown }>,
+  chunks: string[],
+): string {
+  const fromEvents = events
+    .filter((e) => e.type === "text")
+    .map((e) => String((e as { content?: unknown }).content ?? "").trim())
+    .filter(Boolean)
+    .join("\n\n");
+  return fromEvents || chunks.join("");
 }
 
 // ─── streaming ──────────────────────────────────────────────────────

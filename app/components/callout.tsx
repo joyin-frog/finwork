@@ -7,7 +7,7 @@ import { Surface } from "@/components/ui/surface";
 
 export type CalloutVariant = "info" | "ok" | "warn" | "neutral";
 
-// 统一的提示块语言:卡片底 + 细边 + 微影,语义色只落在图标(+可选标题),描述统一灰。
+// 统一的提示块语言:卡片底 + 细边、无抬起阴影,语义色只落在图标(+可选标题),描述统一灰。
 // 手写 div(不基于 shadcn Alert:其 *:[svg]:text-current 会把语义图标色拉回灰)。
 // accent 用字面 Tailwind 任意值类(Tailwind 需字面串才能生成,故每档枚举)。
 const VARIANTS: Record<CalloutVariant, { icon: IconSvgElement; accent: string }> = {
@@ -34,7 +34,7 @@ export function Callout({
   const { icon: defaultIcon, accent } = VARIANTS[variant];
   return (
     <Surface
-      level="card"
+      level="page"
       edge="hairline"
       shape="card"
       role={variant === "warn" ? "alert" : "status"}

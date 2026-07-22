@@ -27,7 +27,7 @@ import type {
   DisplayFile,
   GeneratedAttachment,
 } from "@/app/chat/chat-types";
-import { buildTurnSegments } from "@/app/chat/turn-segments";
+import { buildTurnSegments, resolveAnswerContent } from "@/app/chat/turn-segments";
 import { buildReimbursementProvenance } from "@/app/chat/provenance";
 import { ProvenancePanel } from "@/app/chat/provenance-panel";
 import {
@@ -420,8 +420,8 @@ export function AssistantTurn({
           );
         })
       )}
-      {/* 答案正文:占位态(还没产出)不渲染;answerText=最后一段无工具的 text,否则回退 message.content。
-          流式期间文本已进过程段时不回退 message.content(避免与过程块里中间文本重复)。 */}
+      {/* 答案正文:占位态(还没产出)不渲染;answerText=最后一段无工具的 text。
+          无最终回答时若 timeline 已有过程 text,不回退 message.content(那是各段 join(""),会粘成一坨)。 */}
       {(() => {
         // 用量超限:走与 TurnError 同一个全宽 Callout(warn),视觉与其它提示统一,不再是裸红字。
         if (usageBlockedMessage) {
@@ -433,7 +433,7 @@ export function AssistantTurn({
         }
         if (isActive && message.content === "...") return null;
         const hasTextSegments = timeline.some((t) => t.event.type === "text");
-        const candidateContent = answerText || (hasTextSegments && isActive ? "" : getDisplayContent(message));
+        const candidateContent = resolveAnswerContent(answerText, hasTextSegments, getDisplayContent(message));
         const displayContent = isIncomplete && isRawIncompleteErrorContent(candidateContent, incompleteError)
           ? ""
           : candidateContent;
