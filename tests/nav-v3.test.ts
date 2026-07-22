@@ -451,7 +451,15 @@ export const navV3TestPromise = (async () => {
       "设计语言 FAIL: 会话行应使用 pl-2 + 20px 槽 + gap-2 对齐文字轴"
     );
     assert.ok(!convBody.includes("pl-4"), "设计语言 FAIL: 会话行不得再用 pl-4 破坏文字轴");
-    assert.ok(convBody.includes("c.hasError"), "设计语言 FAIL: 会话红点应读落库 hasError（与最近工作同源）");
+    assert.ok(convBody.includes("c.hasError"), "设计语言 FAIL: 会话状态标应读落库 hasError（与最近工作同源）");
+    assert.ok(
+      convBody.includes("ConversationStatusMark") || convBody.includes("resolveConversationStatus"),
+      "设计语言 FAIL: 会话行状态标应走统一 ConversationStatusMark"
+    );
+    assert.ok(
+      !convBody.includes("slice(0, 1)"),
+      "设计语言 FAIL: 会话行不应再画角色字头像"
+    );
     assert.ok(
       convBody.includes("ContextMenu") && convBody.includes("ContextMenuTrigger"),
       "设计语言 FAIL: 会话行应支持右键 ContextMenu（桌面 app）"

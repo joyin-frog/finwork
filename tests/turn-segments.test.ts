@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildTurnSegments, coalesceTextEvent } from "../app/chat/turn-segments.ts";
+import { buildTurnSegments, coalesceTextEvent, resolveAnswerContent } from "../app/chat/turn-segments.ts";
 import type { TimelineItem } from "../app/components/tool-call-step.ts";
 
 function makeItem(type: string, extra: Record<string, unknown> = {}, id?: string): TimelineItem {
@@ -178,5 +178,25 @@ export const turnSegmentsTestPromise = (async () => {
     assert.equal(b.kind === "thinking" && b.content, "答后思考", "T10 FAIL: 第二段内容");
   }
 
-  console.log("turn-segments: all 10 checks passed ✓");
+  // ── T11: 无最终回答时不把粘连的 message.content 当答案(过程旁白已在 timeline) ──
+  {
+    const glued = "先扫一下。docx 读不了。Index 更新完。";
+    assert.equal(
+      resolveAnswerContent("", true, glued),
+      "",
+      "T11a FAIL: 有 timeline text 且无 answerText 时应空",
+    );
+    assert.equal(
+      resolveAnswerContent("最终结论。", true, glued),
+      "最终结论。",
+      "T11b FAIL: 有 answerText 时优先用它",
+    );
+    assert.equal(
+      resolveAnswerContent("", false, "纯直答正文"),
+      "纯直答正文",
+      "T11c FAIL: 无 timeline text 时应回退 message.content",
+    );
+  }
+
+  console.log("turn-segments: all 11 checks passed ✓");
 })();

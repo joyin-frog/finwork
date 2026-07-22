@@ -29,6 +29,7 @@ import {
   formatFolderPathLine,
   getClipboardFiles,
 } from "@/app/chat/chat-request";
+import { folderNameFromPath, splitFolderPathLines } from "@/app/chat/folder-path";
 import {
   getMessageFiles,
   getPersistedTimeline,
@@ -42,6 +43,7 @@ import type {
   Conversation,
   SkillRef,
   ModelTier,
+  FolderRef,
 } from "@/app/chat/chat-types";
 import type { ChatQuickPrompt } from "@/lib/domain/tax-calendar";
 import { ChatPreviewSidebar } from "@/app/chat/chat-preview-sidebar";
@@ -185,6 +187,8 @@ export default function ChatPage({
   const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0);
   // 技能引用:/ 弹窗选/输入技能 → 以 chip 呈现并随消息发给 agent。
   const [referencedSkills, setReferencedSkills] = useState<SkillRef[]>(initialSkill ? [initialSkill] : []);
+  // 本地文件夹:专属卡片进托盘;发送时写成「文件夹路径:」行给 Agent(气泡里不再展示纯路径)。
+  const [folderRefs, setFolderRefs] = useState<FolderRef[]>([]);
   const [composerSkills, setComposerSkills] = useState<PickerSkill[]>([]);
   const [composerSkillsLoaded, setComposerSkillsLoaded] = useState(false);
   const [skillMenuActive, setSkillMenuActive] = useState(false);
@@ -197,6 +201,8 @@ export default function ChatPage({
   const threadRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerHighlightRef = useRef<HTMLDivElement>(null);
+  /** 输入区+@ /技能浮层容器:点外面收起浮层时排除此范围。 */
+  const composerPickersRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -362,6 +368,7 @@ export default function ChatPage({
     setSidebarMaximized(false);
     setSidebarCollapsed(true);
     setTrustedTools([]);
+    setFolderRefs([]);
   }, [conversationId]);
 
   // 会话切换：先把旧会话未落盘的草稿冲刷到旧 key，再载入新会话的草稿（含空串=清空）。
@@ -453,7 +460,7 @@ export default function ChatPage({
         setReferencedSkills(out.referencedSkills);
         if (turn.status === "error" && out.text) { setDraft(out.text); persistDraft(out.text); }
       }
-      // 刷新侧栏：落库 trace error → ConversationSummary.hasError，红点与「最近工作」对齐
+      // 刷新侧栏：落库 trace error → ConversationSummary.hasError，警告标与「最近工作」对齐
       void refreshConversations();
       // 失败时给一个明确的恢复动作:配置类→去配置;瞬时类→已还原输入,提示重试
       if (turn.status === "error") {
@@ -691,9 +698,16 @@ export default function ChatPage({
     if (composerSkillsLoaded) return;
     try {
       const res = await fetch("/api/skills");
-      const json = (await res.json()) as { ok: boolean; data?: Array<{ name: string; description: string; enabled: boolean; source: "bundled" | "user" }> };
+      const json = (await res.json()) as {
+        ok: boolean;
+        data?: Array<{ name: string; description: string; summary?: string; enabled: boolean; source: "bundled" | "user" }>;
+      };
       if (json.ok && json.data) {
-        setComposerSkills(json.data.filter((s) => s.enabled).map((s) => ({ name: s.name, description: s.description, source: s.source })));
+        setComposerSkills(
+          json.data
+            .filter((s) => s.enabled)
+            .map((s) => ({ name: s.name, description: s.description, summary: s.summary, source: s.source })),
+        );
       }
     } catch {
       // 拉取失败:列表为空,/ 弹窗给"暂无可用技能"提示,不阻塞输入。
@@ -705,7 +719,12 @@ export default function ChatPage({
   const getFilteredSkills = useCallback(() => {
     const q = skillFilter.trim().toLowerCase();
     if (!q) return composerSkills;
-    return composerSkills.filter((s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
+    return composerSkills.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        (s.summary ?? "").toLowerCase().includes(q),
+    );
   }, [composerSkills, skillFilter]);
 
   // 自由输入:filter 是合法技能名且不在列表里 → 提供"引用自定义技能"行。
@@ -724,6 +743,25 @@ export default function ChatPage({
     setSkillMenuActive(true);
     void ensureComposerSkillsLoaded();
   }
+
+  // 点浮层/输入区外收起 @ 与 / 选单(Escape 仍由 handleKeyDown 处理)。
+  useEffect(() => {
+    if (!skillMenuActive && !mentionActive) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const node = event.target as Node | null;
+      if (node && composerPickersRef.current?.contains(node)) return;
+      setSkillMenuActive(false);
+      setMentionActive(false);
+    };
+    // 延后绑定,避免「+ → 引用技能」同一次点击立刻关掉刚打开的浮层。
+    const timer = window.setTimeout(() => {
+      document.addEventListener("pointerdown", onPointerDown);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [skillMenuActive, mentionActive]);
 
   function selectSkill(skill: SkillRef) {
     // 两条路径都把规范 token 写进正文(引用靠正文里的 /name 存活,见上方剪枝 effect):
@@ -834,22 +872,24 @@ export default function ChatPage({
     }
   }
 
-  // 选文件夹:桌面端选本地目录,把路径插入输入框,不自动发送。
-  // 用户接着在输入框打字表达意图,主 agent 自行路由。
+  // 选文件夹:桌面端选本地目录 → 专属卡片进托盘,不自动发送。
+  // 用户可再打字表达意图;路径在发送时写入消息正文供 Agent 读取。
   async function pickReceiptFolder() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const folder = await open({ directory: true, multiple: false, title: "选择文件夹" });
       if (!folder || typeof folder !== "string") return;
-      const line = formatFolderPathLine(folder);
-      if (!line) return;
-      const newDraft = draft ? `${draft}\n${line}\n` : `${line}\n`;
-      setDraft(newDraft);
+      const path = folder.trim();
+      if (!path) return;
+      setFolderRefs((prev) => {
+        if (prev.some((f) => f.path === path)) return prev;
+        return [
+          ...prev,
+          { id: `folder-${path}-${crypto.randomUUID()}`, path, name: folderNameFromPath(path) },
+        ];
+      });
       setMentionActive(false);
       setSkillMenuActive(false);
-      const caret = newDraft.length;
-      const el = textareaRef.current;
-      requestAnimationFrame(() => el?.setSelectionRange(caret, caret));
       textareaRef.current?.focus();
     } catch (err) {
       console.error("[pick-folder] failed", err);
@@ -862,12 +902,15 @@ export default function ChatPage({
     const outgoingAttachments = attachments;
     const outgoingRefAttachments = referencedAttachments;
     const outgoingSkills = referencedSkills;
+    const outgoingFolders = folderRefs;
     const baseMessages = messages;
 
-    const hasContent = value || outgoingAttachments.length || outgoingRefAttachments.length;
+    const folderLines = outgoingFolders.map((f) => formatFolderPathLine(f.path)).filter(Boolean);
+    const textWithFolders = [value, ...folderLines].filter(Boolean).join("\n");
+    const hasContent = textWithFolders || outgoingAttachments.length || outgoingRefAttachments.length;
     if (!hasContent || loading) return;
 
-    const userContent = buildUserContent(value, outgoingAttachments, outgoingRefAttachments);
+    const userContent = buildUserContent(textWithFolders, outgoingAttachments, outgoingRefAttachments);
     const imageDataUrls = outgoingAttachments.filter((a) => a.mimeType.startsWith("image/")).map((a) => a.dataUrl);
     const displayFiles: DisplayFile[] = [
       ...outgoingAttachments.map((file) => ({
@@ -899,6 +942,7 @@ export default function ChatPage({
     setAttachments([]);
     setReferencedAttachments([]);
     setReferencedSkills([]);
+    setFolderRefs([]);
     setMentionActive(false);
     setSkillMenuActive(false);
 
@@ -941,10 +985,18 @@ export default function ChatPage({
    */
   function retractMessage(message: Message) {
     if (turnKey) return; // 流式进行中禁止撤回
-    // 文本退回 draft（纯文件消息的占位串「请分析这些文件。」替换为空）
-    const content = message.content === "请分析这些文件。" ? "" : message.content;
+    // 文本退回 draft；文件夹路径行拆回托盘卡片(不再塞进输入框)。
+    const { folders, text } = splitFolderPathLines(message.content);
+    const content = text === "请分析这些文件。" ? "" : text;
     setDraft(content);
     persistDraft(content);
+    setFolderRefs(
+      folders.map((f) => ({
+        id: `folder-${f.path}-${crypto.randomUUID()}`,
+        path: f.path,
+        name: f.name,
+      })),
+    );
     // 用该消息的附件「完整替换」composer，并清掉其它已暂存的本地上传/技能引用——
     // 否则撤回时残留的无关上传会在下次发送时被一起带上，让 agent 处理错文件。
     setReferencedAttachments(filesToReferenced(getMessageFiles(message, conversationFiles)));
@@ -1146,14 +1198,16 @@ export default function ChatPage({
                       event.target.value = "";
                     }}
                   />
-                  <div className="flex flex-col gap-2 relative">
+                  <div className="flex flex-col gap-2 relative" ref={composerPickersRef}>
                     <FileTray
                       attachments={attachments}
                       referencedAttachments={referencedAttachments}
+                      folderRefs={folderRefs}
                       onPreviewAttachment={previewDraftAttachment}
                       onPreviewReference={previewReferencedAttachment}
                       removeAttachment={removeAttachment}
                       removeReference={(storagePath) => setReferencedAttachments((prev) => prev.filter((item) => item.storagePath !== storagePath))}
+                      removeFolder={(id) => setFolderRefs((prev) => prev.filter((f) => f.id !== id))}
                     />
                     <div className="composer-highlight-wrap">
                       <ComposerHighlightOverlay text={draft} skills={referencedSkills} ref={composerHighlightRef} />
@@ -1197,7 +1251,7 @@ export default function ChatPage({
                       />
                     ) : null}
                   </div>
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-1">
                     <DropdownMenu>
                       <ShortcutHint label="技能与文件" combo="/" side="top">
                         <DropdownMenuTrigger asChild>
@@ -1207,11 +1261,11 @@ export default function ChatPage({
                             size="icon"
                             className={cn(
                               surfaceVariants({ level: "page", edge: "none", shape: "pill" }),
-                              "size-10 text-muted-foreground"
+                              "size-8 text-muted-foreground"
                             )}
                             aria-label="添加内容"
                           >
-                            <HugeiconsIcon icon={Add01Icon} size={20} />
+                            <HugeiconsIcon icon={Add01Icon} size={16} />
                           </Button>
                         </DropdownMenuTrigger>
                       </ShortcutHint>
@@ -1230,7 +1284,7 @@ export default function ChatPage({
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5">
                       <DeepThinkToggle active={modelTier === "reasoning"} onToggle={(on) => setModelTier(on ? "reasoning" : "fast")} />
                       <UsageRing usage={usage} />
                       {loading ? (
@@ -1243,11 +1297,11 @@ export default function ChatPage({
                           <span className="inline-flex">
                             <button
                               className="composer-send-button disabled:pointer-events-none"
-                              disabled={!draft.trim() && !attachments.length && !referencedAttachments.length}
+                              disabled={!draft.trim() && !attachments.length && !referencedAttachments.length && !folderRefs.length}
                               type="submit"
                               aria-label="发送"
                             >
-                              <HugeiconsIcon icon={ArrowUp02Icon} size={18} />
+                              <HugeiconsIcon icon={ArrowUp02Icon} size={16} />
                             </button>
                           </span>
                         </ShortcutHint>

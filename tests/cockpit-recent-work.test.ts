@@ -203,10 +203,17 @@ export const cockpitRecentWorkTestPromise = (async () => {
       "T2 FAIL: recent-work-card.tsx 应含空态文案「还没有工作记录」"
     );
 
-    // 状态点：running / done / error 三种语义（宽松断言：含这三个单词）
-    assert.ok(src.includes("running"), "T2 FAIL: recent-work-card.tsx 应处理 running 状态");
+    // 状态标：统一 ConversationStatusMark（running→streaming / done / error）
+    assert.ok(
+      src.includes("ConversationStatusMark"),
+      "T2 FAIL: recent-work-card.tsx 应使用统一 ConversationStatusMark"
+    );
+    assert.ok(
+      src.includes("conversationStatusFromWorkItem") || src.includes("running"),
+      "T2 FAIL: recent-work-card.tsx 应映射 RecentWorkItem 的 running/done/error"
+    );
     assert.ok(src.includes("done"), "T2 FAIL: recent-work-card.tsx 应处理 done 状态");
-    assert.ok(src.includes("error"), "T2 FAIL: recent-work-card.tsx 应处理 error 状态");
+    assert.ok(src.includes("error") || src.includes("出错"), "T2 FAIL: recent-work-card.tsx 应处理 error 状态");
 
     // 角色 chip 用 ROLE_UI（从 lib/domain/role-ui 导入）
     assert.ok(

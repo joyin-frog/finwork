@@ -1,6 +1,7 @@
 import type { StoredAgentEvent, StoredChatAttachment } from "@/lib/db/sqlite";
 import type { TimelineItem } from "@/app/components/tool-call-step";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
+import { FOLDER_PATH_LINE_PREFIX } from "@/app/chat/folder-path";
 
 export type ChatMode = "new" | "recent";
 
@@ -31,6 +32,13 @@ export type ChatAttachment = {
   size: number;
   dataUrl: string;
   text?: string;
+};
+
+/** 输入框草稿区选中的本地文件夹(展示为专属卡片;发送时写入「文件夹路径:」行给 Agent)。 */
+export type FolderRef = {
+  id: string;
+  path: string;
+  name: string;
 };
 
 export type ReferencedFile = {
@@ -98,7 +106,11 @@ export function getDisplayContent(message: Message) {
 }
 
 export function stripAttachmentSummary(content: string) {
-  return content
+  const withoutFolders = content
+    .split("\n")
+    .filter((line) => !line.startsWith(FOLDER_PATH_LINE_PREFIX))
+    .join("\n");
+  return withoutFolders
     .replace(/\n{0,2}上传文件：[\s\S]*?(?=\n{2,}\S|$)/g, "")
     .replace(/\n{0,2}引用文件：[\s\S]*?(?=\n{2,}\S|$)/g, "")
     .trim();
