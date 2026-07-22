@@ -2,7 +2,7 @@
 
 > ID：CR-R1  
 > 对应 ROADMAP：AR2b  
-> 状态：Blocked — 等待 CR-R0 合同通过  
+> 状态：**Ready for Agent**（CR-R0 Frozen 2026-07-22）  
 > 日期：2026-07-21  
 > 前置依赖：AR2a、CR-M1、CR-R0  
 > 下游：CR-R2、CR-P1

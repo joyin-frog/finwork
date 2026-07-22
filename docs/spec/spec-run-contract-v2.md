@@ -1,8 +1,9 @@
 # Spec：持久 Run 共享合同 v2
 
 > ID：CR-R0  
-> 状态：Ready for Review  
+> 状态：**Frozen / Ready for Agent（下游可消费）**  
 > 日期：2026-07-21  
+> 冻结实现：`lib/agent/run-contract.ts` · 测试 `tests/run-contract.test.ts` · audit `audit-run-contract-v2.md`  
 > 前置依赖：AR2a 已 ship  
 > 下游：CR-R1、CR-Q1、CR-R2、CR-P1  
 > 性质：共享合同与最小类型落地；不实现持久执行、UI 恢复或自动分段

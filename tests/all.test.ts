@@ -23,6 +23,9 @@ process.on("unhandledRejection", (err) => {
   const { modelConfigTestPromise } = await import("./model-config.test.ts");
   await modelConfigTestPromise;
 
+  const { runContractTestPromise } = await import("./run-contract.test.ts");
+  await runContractTestPromise;
+
   const { usageStoreTestPromise } = await import("./usage-store.test.ts");
   await usageStoreTestPromise;
 
