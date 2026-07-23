@@ -1,7 +1,8 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { AgentMessage, ClaudeAgentRunOptions } from "./claude-adapter";
 import type { AgentRuntimeEvent } from "./runtime-events";
+import { conversationDirFromOutputDir, getDeliveredDir } from "@/lib/deliverable/scope";
 
 /**
  * 确定性模拟 Agent —— 给 e2e 用。
@@ -64,6 +65,18 @@ export async function runMockAgent(
       for (const f of [fileName, "示例演示.pptx", "示例说明.docx"]) {
         writeFileSync(path.join(runOptions.outputDir, f), "mock-bytes");
       }
+      // 真 Agent 会在 finalize_deliverable 通过后把成品复制到 delivered/<runId>/。
+      // mock 绕过 MCP 工具，也必须复现这个正式附件边界，否则 working 文件按 CR-Q1
+      // 不会登记到回答/文件面板，E2E 测到的就不再是真实交付链。
+      const deliveredDir = getDeliveredDir(
+        conversationDirFromOutputDir(runOptions.outputDir),
+        runOptions.requestId ?? "mock-run"
+      );
+      mkdirSync(deliveredDir, { recursive: true });
+      copyFileSync(
+        path.join(runOptions.outputDir, fileName),
+        path.join(deliveredDir, fileName)
+      );
     }
     emitEvent({ type: "tool_completed", toolCallId: "mock-gen-1", toolName: "run_python", content: `已生成 ${fileName}`, durationMs: 6 });
     await say(`已生成 ${fileName},可在下方查看。`);
