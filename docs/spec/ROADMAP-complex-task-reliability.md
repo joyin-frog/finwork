@@ -106,7 +106,7 @@ Run 状态映射：
 | CR-R1 | `spec-run-events-persistence-replay.md` | **已ship（v21）** · `audit-run-events-persistence-replay.md` | CR-R0 | AR2b、run_events、checkpoint、replay |
 | CR-Q1 | `spec-deliverable-quality-gate.md` | **已ship（v22）** · `audit-deliverable-quality-gate.md` | CR-R0、CR-S1 | 通用 validator registry、不可变交付 |
 | CR-Q2 | `spec-consolidation-workbook-validator.md` | Blocked | CR-Q1 | 合并报表领域 Profile |
-| CR-R2 | `spec-run-state-recovery-ui.md` | Blocked | CR-R1 | AR2c + AR4、状态恢复、UI 切换 |
+| CR-R2 | `spec-run-state-recovery-ui.md` | **已ship（核心）** · `audit-run-state-recovery-ui.md`；resume API / 重连订阅仍后续 | CR-R1 | AR2c + AR4、状态恢复、UI 切换 |
 | CR-P1 | `spec-run-scoped-python-capability.md` | Blocked | CR-R1、CR-R2 | Run 级权限、路径边界、TTL |
 | CR-X1 | `spike-sdk-segment-control.md` | **Spike 完成：PARTIAL** · `spike-sdk-segment-control-findings.md` | 无 | SDK interrupt/resume/quiesce 可行性 |
 | CR-X2 | `spike-managed-libreoffice-distribution.md` | Ready for Agent | 无 | 三平台 LO 分发可行性 |
@@ -129,7 +129,7 @@ Run 状态映射：
 
 ### Batch 2：用户体验与领域质量
 
-- CR-R2 实现断线恢复和权威完成态 UI。
+- ~~CR-R2 实现断线恢复和权威完成态 UI。~~ **核心已完成**（disconnect≠abort、stop API、CompletionGate 收口、权威横幅/附件质量徽标、预算放宽）；显式 resume API 与断线后重订 SSE 仍待补。
 - CR-P1 基于持久 Run 实现任务级权限。
 - CR-Q2 实现合并报表 Profile。
 

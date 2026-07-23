@@ -109,7 +109,8 @@ export type SSECallbacks = {
   onChunk: (text: string) => void;
   /** AR2a: instanceId 为子代理实例标识（主对话 = null；历史/未知 = undefined）。 */
   onAgentEvent: (event: AgentEvent, instanceId?: string | null) => void;
-  onMeta?: (conversationId: number) => void;
+  /** conversationId 可选；runId（CR-R2）在 meta / run_started 时下发。 */
+  onMeta?: (conversationId: number | null, runId?: string | null) => void;
   /** agent 提炼标题落定后由服务端推来(done 之后、关流之前);更新标题单一源,header 与侧栏同步。 */
   onTitle?: (conversationId: number, title: string) => void;
   onDone: (payload: { conversationId?: number; conversation?: Conversation; generatedAttachments?: GeneratedAttachment[] }) => void | Promise<void>;
@@ -140,9 +141,13 @@ export async function dispatchSSEEvent(
       return true;
     }
 
-    // run_started with conversationId → onMeta
-    if (event.type === "run_started" && typeof (event as { conversationId?: unknown }).conversationId === "number") {
-      callbacks.onMeta?.((event as { conversationId: number }).conversationId);
+    // run_started with conversationId → onMeta；envelope.runId 一并下发
+    if (event.type === "run_started") {
+      const cid = (event as { conversationId?: unknown }).conversationId;
+      callbacks.onMeta?.(
+        typeof cid === "number" ? cid : null,
+        typeof envelope.runId === "string" ? envelope.runId : null,
+      );
       return true;
     }
 
@@ -181,10 +186,17 @@ export async function dispatchSSEEvent(
     questionId?: string; question?: unknown; answer?: string;
     conversationId?: number; conversation?: Conversation;
     generatedAttachments?: GeneratedAttachment[]; message?: string; title?: string;
+    runId?: string;
   };
   if (event.type === "chunk" && event.content) { callbacks.onChunk(event.content); return true; }
   if (event.type === "agent_event" && event.event) { callbacks.onAgentEvent(event.event); return true; }
-  if (event.type === "meta" && typeof event.conversationId === "number") { callbacks.onMeta?.(event.conversationId); return true; }
+  if (event.type === "meta") {
+    callbacks.onMeta?.(
+      typeof event.conversationId === "number" ? event.conversationId : null,
+      typeof event.runId === "string" ? event.runId : null,
+    );
+    return true;
+  }
   if (event.type === "ask_user" && event.questionId && event.question) {
     callbacks.onAgentEvent({ type: "ask_user", questionId: event.questionId, question: event.question as Extract<AgentEvent, { type: "ask_user" }>["question"] });
     return true;

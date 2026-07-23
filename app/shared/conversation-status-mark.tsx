@@ -8,38 +8,37 @@ import { cn } from "@/lib/utils";
 /**
  * 会话状态标（侧栏 / 总览「最近工作」等共用）。
  *
- * idle → 灰色实心小圆（默认，始终可见）
+ * idle / done → 灰色空心小圆（已完成与默认态同外观，不另标）
  * streaming|running → 中性转圈
- * done → 蓝色实心小圆（离开后「已完成」提醒；当前会话回落 idle）
  * error|stopped → 警告三角
- *
- * Hugeicons CircleSmallIcon 是空心描边；实心圆用手写 filled 圆点。
  */
 export type ConversationStatusKind = "idle" | "streaming" | "done" | "error";
 
 const LABELS: Record<ConversationStatusKind, string> = {
   idle: "",
   streaming: "正在生成",
-  done: "已完成，点击查看",
+  done: "",
   error: "未正常完成",
 };
 
-/** 侧栏：live / hasError / 当前会话 → 状态；无特殊态时回落 idle（保证图形槽有标）。 */
+/** 侧栏：live / hasError / 当前会话 → 状态；done 与 idle 同外观。 */
 export function resolveConversationStatus(opts: {
   live?: string | null;
   hasError?: boolean;
   isActive?: boolean;
 }): ConversationStatusKind {
   const { live, hasError, isActive } = opts;
-  if (live === "streaming" || live === "done") {
-    return isActive ? "idle" : live;
+  if (live === "streaming") {
+    return isActive ? "idle" : "streaming";
   }
+  // 已完成不再用蓝点提醒，与默认空闲同标
+  if (live === "done") return "idle";
   if (live === "error" || live === "stopped") return "error";
   if (hasError) return "error";
   return "idle";
 }
 
-/** 总览 RecentWorkItem：running→转圈，error→警告，done→灰色实心（非未读蓝点）。 */
+/** 总览 RecentWorkItem：running→转圈，error→警告，done→idle 空心。 */
 export function conversationStatusFromWorkItem(
   status: "running" | "done" | "error",
 ): ConversationStatusKind {
@@ -67,16 +66,19 @@ export function ConversationStatusMark({
         ? "streaming"
         : status === "stopped"
           ? "error"
-          : status;
+          : status === "done"
+            ? "idle"
+            : status;
 
   if (!kind) return null;
 
   const text = label === undefined ? LABELS[kind] : label;
-  const solidPx = Math.max(6, Math.round(size * 0.5));
-  const solidDot = (
+  const dotPx = Math.max(6, Math.round(size * 0.5));
+  // idle（及已折叠的 done）：空心描边，占位但不抢眼
+  const hollowDot = (
     <span
-      className="rounded-full bg-current"
-      style={{ width: solidPx, height: solidPx }}
+      className="rounded-full border border-current opacity-40"
+      style={{ width: dotPx, height: dotPx }}
       aria-hidden
     />
   );
@@ -87,8 +89,7 @@ export function ConversationStatusMark({
     ) : kind === "error" ? (
       <HugeiconsIcon icon={WarningIcon} size={size} />
     ) : (
-      // idle（灰）与 done（蓝）都是实心圆
-      solidDot
+      hollowDot
     );
 
   return (
@@ -96,7 +97,6 @@ export function ConversationStatusMark({
       className={cn(
         "inline-flex shrink-0 items-center justify-center pointer-events-none",
         (kind === "idle" || kind === "streaming") && "text-muted-foreground",
-        kind === "done" && "text-primary",
         kind === "error" && "text-[color:var(--tone-alarm)]",
         className,
       )}

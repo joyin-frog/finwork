@@ -174,6 +174,7 @@ export const runContractTestPromise = (async () => {
     assert.equal(sheet.taskKind, "spreadsheet");
     assert.equal(sheet.requiredDeliverables[0]?.id, "workbook");
     assert.equal(sheet.requiredDeliverables[0]?.qualityProfile, "generic");
+    assert.equal(sheet.spreadsheetRequirement?.needsRecalc, false);
     assert.equal(validateTaskContract(sheet).ok, true);
 
     const complex = deriveTaskContractForTurn({
@@ -182,8 +183,17 @@ export const runContractTestPromise = (async () => {
     });
     assert.equal(complex.taskKind, "financial_consolidation");
     assert.equal(complex.spreadsheetRequirement?.needsLegacyXlsRead, true);
+    assert.equal(complex.spreadsheetRequirement?.needsRecalc, true);
     assert.equal(complex.requiredDeliverables[0]?.qualityProfile, "financial_consolidation");
     assert.equal(validateTaskContract(complex).ok, true);
+
+    // CR-R2：无表格附件时，complex intent 也不得强加 workbook
+    const complexTextOnly = deriveTaskContractForTurn({
+      intent: "complex_workflow",
+      attachments: [],
+    });
+    assert.equal(complexTextOnly.taskKind, "text");
+    assert.equal(complexTextOnly.requiredDeliverables.length, 0);
   }
 
   // runtime-events：run_state_changed 不进 chat_agent_events；settled 三值不变

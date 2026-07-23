@@ -34,6 +34,7 @@ import {
   OpenableFileRow,
   type PreviewableConversationFile
 } from "@/app/chat/chat-file-browser";
+import type { AttachmentQualityState } from "@/lib/deliverable/types";
 import { ThinkingSpark } from "@/app/shared/thinking-spark";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Input } from "@/components/ui/input";
@@ -146,6 +147,7 @@ export function AssistantTurn({
   onContinue,
   feedback,
   onFeedback,
+  qualityForFile,
 }: {
   message: Message;
   generatedFiles: GeneratedAttachment[];
@@ -160,6 +162,8 @@ export function AssistantTurn({
   onContinue?: () => void;
   feedback?: { rating: "up" | "down"; reason: string | null };
   onFeedback?: (messageId: number, rating: "up" | "down", reason?: string) => void;
+  /** CR-R2：按文件名/路径查附件质量；无则不显示徽标。 */
+  qualityForFile?: (fileName: string, storagePath?: string | null) => AttachmentQualityState | null;
 }) {
   // 同一生成文件可能同时来自 DB 会话附件(files)和 done 回合产物(generatedFiles),
   // 两者 storagePath 都是 `generate/<名>`,直接拼接会出现重复行 + React 重复 key 报错。按 storagePath 去重。
@@ -228,6 +232,21 @@ export function AssistantTurn({
     () => timeline.some((t) => t.event.type === "tool_use" || t.event.type === "tool_result" || t.event.type === "text" || t.event.type === "thinking"),
     [timeline]
   );
+  // 回合墙钟起点：消息创建时间，否则最早 timeline 事件。进行中用于「正在处理 / 星芒」旁实时总时长。
+  const turnStartedAt = useMemo(() => {
+    if (message.createdAt) {
+      const t = Date.parse(message.createdAt);
+      if (Number.isFinite(t) && t > 0) return t;
+    }
+    let min = Infinity;
+    for (const item of timeline) {
+      if (item.createdAt > 0 && item.createdAt < min) min = item.createdAt;
+    }
+    return Number.isFinite(min) ? min : undefined;
+  }, [message.createdAt, timeline]);
+  const liveTurnMs = useLiveElapsed(isActive ? turnStartedAt : undefined);
+  const liveTurnLabel = isActive && liveTurnMs >= 1000 ? formatDuration(liveTurnMs) : "";
+
   // 本回合是否未完成(出错收尾落库时标的 turn_incomplete):仅在最新一条且非进行中时给「继续」入口。
   const isIncomplete = useMemo(
     () => (message.agentEvents ?? []).some((e) => (e.payload as { subtype?: string } | undefined)?.subtype === "turn_incomplete"),
@@ -376,6 +395,19 @@ export function AssistantTurn({
                   />
                 );
               }
+              if (seg.kind === "ask") {
+                // 按时序插在工具/正文之间;待答且回合进行中 → 输入框上方浮层,过程区不重复。
+                const ev = seg.item.event as Extract<AgentEvent, { type: "ask_user" }>;
+                const ans = askAnswers.get(ev.questionId);
+                if (ans === undefined && isActive) return null;
+                return (
+                  <AskAnsweredSummary
+                    key={`ask-${ev.questionId}`}
+                    header={ev.question.header}
+                    answer={ans}
+                  />
+                );
+              }
               // 跨段恢复信号:该段之后所有 tools 段的事件(失败与重试成功常被 thinking 段隔开)
               const laterToolItems = processSegments
                 .slice(segIdx + 1)
@@ -388,18 +420,6 @@ export function AssistantTurn({
                     <TimelineRow key={item.id} item={item} />
                   ))}
                 </div>
-              );
-            })}
-            {/* 已答的确认项折叠在过程块内(它们是过程的一部分);待答且回合进行中 → 输入框上方浮层,不在此重复 */}
-            {askUserItems.map((item) => {
-              const ans = askAnswers.get(item.event.questionId);
-              if (ans === undefined && isActive) return null;
-              return (
-                <AskAnsweredSummary
-                  key={item.event.questionId}
-                  header={item.event.question.header}
-                  answer={ans}
-                />
               );
             })}
           </div>
@@ -447,8 +467,11 @@ export function AssistantTurn({
       {/* 「还活着」跟随星芒:已开始产出、回合未结束且没有工具在跑(答案流式 / 处理空档)→ 底部动的星芒。
           思考行已不渲染,尾巴是思考段时星芒统一落底部,不再有"落在思考行"的分支。 */}
       {isActive && !anyToolRunning && hasOutput ? (
-        <div className="flex items-center gap-2 py-0.5" role="status" aria-label="处理中">
+        <div className="flex items-center gap-3 py-0.5" role="status" aria-label={liveTurnLabel ? `处理中 ${liveTurnLabel}` : "处理中"}>
           <ThinkingSpark size={18} />
+          {liveTurnLabel ? (
+            <span className="text-meta text-muted-foreground/70 tabular-nums pl-0.5">{liveTurnLabel}</span>
+          ) : null}
         </div>
       ) : null}
       {reimbursementProvenance ? <ProvenancePanel provenance={reimbursementProvenance} /> : null}
@@ -468,6 +491,7 @@ export function AssistantTurn({
               onPreviewFile={onPreviewFile}
               bordered
               voucherChips={voucherChipsMap.get(file.name) ?? null}
+              qualityState={qualityForFile?.(file.name, file.storagePath) ?? null}
             />
           ))}
         </div>

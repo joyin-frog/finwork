@@ -411,7 +411,10 @@ const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 
 /**
  * 从本回合附件与 Router intent 冻结 TaskContract（CR-Q1 接线）。
- * 模型 / finalize 不得覆盖；信息不足时仍给出可执行合同，不静默降级为「无交付」。
+ * 模型 / finalize 不得覆盖。
+ *
+ * CR-R2 校准：仅有 complex_workflow intent、无表格附件时，不得强加 workbook 交付——
+ * Router fallback 常把纯文本问答标成 complex，否则 CompletionGate 会把正常对话误判为验证失败。
  */
 export function deriveTaskContractForTurn(input: {
   intent?: string | null;
@@ -431,7 +434,7 @@ export function deriveTaskContractForTurn(input: {
     mimes.some((m) => /spreadsheet|excel|csv/i.test(m));
   const complex = intent === "complex_workflow";
 
-  if (!hasSpreadsheet && !complex) {
+  if (!hasSpreadsheet) {
     return {
       version: 1,
       taskKind: "text",
@@ -449,7 +452,8 @@ export function deriveTaskContractForTurn(input: {
     spreadsheetRequirement: {
       needsLegacyXlsRead: hasLegacyXls,
       needsWrite: true,
-      needsRecalc: true,
+      // 合并报表才硬要求 LO 重算/渲染；generic 表格以可打开+结构为准（无 LO 环境仍可交付）
+      needsRecalc: complex,
       needsRender: complex,
       needsMacroPreservation: false,
     },

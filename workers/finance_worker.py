@@ -4,10 +4,93 @@ import contextlib
 import io
 import json
 import os
+import re
 import sys
 import traceback
 from collections import defaultdict
 from pathlib import Path
+
+# 禁止 run_python 拉起办公软件 GUI（真机曾反复弹出 WPS：agent 用 subprocess 调 wpsoffice 重算公式）。
+_GUI_OFFICE_CODE_RE = re.compile(
+    r"(?is)"
+    r"(wpsoffice|wps\.exe|et\.exe|wpp\.exe|wps\s*office|"
+    r"Microsoft\s*Excel|Excel\.app|Numbers\.app|"
+    r"win32com\.client|Dispatch\(\s*['\"]Excel\.Application|"
+    r"xlwings|"
+    r"open\s+-a\s+|osascript\s+)"
+)
+_GUI_OFFICE_CMD_RE = re.compile(
+    r"(?is)(wpsoffice|wps\.exe|et\.exe|wpp\.exe|"
+    r"Microsoft Excel\.app|Excel\.app|Numbers\.app|"
+    r"/Applications/[^\"'\s]*WPS[^\"'\s]*\.app|"
+    r"/Applications/[^\"'\s]*Excel[^\"'\s]*\.app)"
+)
+_GUI_OFFICE_DENY_MSG = (
+    "禁止通过 run_python 启动 WPS/Excel/Numbers 等图形界面程序。"
+    "公式重算请用本产品的 spreadsheet runtime / LibreOffice；读写表格用 openpyxl 或 xlsx skill。"
+)
+
+
+def _reject_gui_office_code(code: str) -> None:
+    if _GUI_OFFICE_CODE_RE.search(code):
+        raise SystemExit(_GUI_OFFICE_DENY_MSG)
+
+
+def _cmd_looks_like_gui_office(cmd) -> bool:
+    if isinstance(cmd, (list, tuple)):
+        text = " ".join(str(x) for x in cmd)
+    else:
+        text = str(cmd)
+    return bool(_GUI_OFFICE_CMD_RE.search(text))
+
+
+def _install_no_gui_office_exec_guard() -> None:
+    """运行时再拦一层，防止字符串拆开绕过源码静态检查。"""
+    import subprocess as _sp
+
+    _orig_run = _sp.run
+    _orig_popen = _sp.Popen
+    _orig_call = _sp.call
+    _orig_check_call = _sp.check_call
+    _orig_check_output = _sp.check_output
+    _orig_system = os.system
+
+    def _guard_cmd(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_run(cmd, *args, **kwargs)
+
+    def _guard_popen(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_popen(cmd, *args, **kwargs)
+
+    def _guard_call(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_call(cmd, *args, **kwargs)
+
+    def _guard_check_call(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_check_call(cmd, *args, **kwargs)
+
+    def _guard_check_output(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_check_output(cmd, *args, **kwargs)
+
+    def _guard_system(command):
+        if _cmd_looks_like_gui_office(command):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_system(command)
+
+    _sp.run = _guard_cmd  # type: ignore[method-assign]
+    _sp.Popen = _guard_popen  # type: ignore[misc,assignment]
+    _sp.call = _guard_call  # type: ignore[method-assign]
+    _sp.check_call = _guard_check_call  # type: ignore[method-assign]
+    _sp.check_output = _guard_check_output  # type: ignore[method-assign]
+    os.system = _guard_system  # type: ignore[assignment]
 
 
 # ── CSV 分析域 ──────────────────────────────────────────────
@@ -693,6 +776,9 @@ def cmd_run():
     code = sys.stdin.read()
     if not code.strip():
         raise SystemExit("no code provided on stdin")
+
+    _reject_gui_office_code(code)
+    _install_no_gui_office_exec_guard()
 
     # 防覆盖守卫的版本化基线 = 「本回合开始前」就存在的文件,而非「本次 run_python 调用前」。
     # 否则同一回合里先建的文件,对后一次调用(独立 worker 进程、各拍各的 before)就成了"上一版",

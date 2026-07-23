@@ -68,31 +68,30 @@ export const agentConfirmFlowTestPromise = (async () => {
     "deny",
     "AC1b FAIL: update_company_profile 无确认通道应拒绝(ALWAYS_CONFIRM 路径守卫)"
   );
-  // run_python 是 high-risk，每次必须确认；子 Agent 无确认通道时 fail-closed。
+  // run_python：默认授权，无确认卡（含子 Agent 无 resolver 场景）。
   const runPython = "mcp__finance_worker__run_python";
   assert.equal(
     (await runBeforeHooks(chain, ctxFor(runPython, undefined))).behavior,
-    "deny",
-    "AC1b FAIL: run_python 无确认通道必须拒绝"
+    "allow",
+    "AC1b FAIL: run_python 应默认放行、不弹确认卡"
   );
-  let runPythonPrompt = "";
-  const confirmedPython = await runBeforeHooks(chain, ctxFor(runPython, async (q) => {
-    runPythonPrompt = q.question;
+  let pythonResolverCalled = false;
+  const allowedPython = await runBeforeHooks(chain, ctxFor(runPython, async () => {
+    pythonResolverCalled = true;
     return "确认";
   }));
-  assert.equal(confirmedPython.behavior, "allow", "AC1b FAIL: run_python 明确确认后应放行");
-  assert.match(runPythonPrompt, /读取.*修改.*本机文件.*执行代码/s, "AC1b FAIL: run_python 文案应明确本机文件与代码执行风险");
-  assert.ok(!runPythonPrompt.includes("mcp__"), "AC1b FAIL: run_python 文案不应暴露内部 MCP 名称");
+  assert.equal(allowedPython.behavior, "allow", "AC1b FAIL: run_python 有 resolver 时也应直接放行");
+  assert.equal(pythonResolverCalled, false, "AC1b FAIL: run_python 不应调用确认 resolver");
 
   // 放行类:无 resolver 也 allow(证明不需确认)。Read(safe)/Skill(未登记→默认medium)
-  for (const tool of ["Read", "Skill", "mcp__finance_worker__search_knowledge"]) {
+  for (const tool of ["Read", "Skill", "mcp__finance_worker__search_knowledge", runPython]) {
     const r = await runBeforeHooks(chain, ctxFor(tool, undefined));
     assert.equal(r.behavior, "allow", `AC1b FAIL: ${tool} 应直接放行,不需确认`);
   }
-  // Bash 在真实链里由 createUnwiredToolHook 直接 deny(不再靠确认门豁免)
+  // Bash：默认放行（与 run_python 同策略，不弹确认卡）
   assert.equal(
-    (await runBeforeHooks(chain, ctxFor("Bash", undefined))).behavior, "deny",
-    "AC1b FAIL: Bash 应被 unwired-tool hook 拒绝"
+    (await runBeforeHooks(chain, ctxFor("Bash", undefined))).behavior, "allow",
+    "AC1b FAIL: Bash 应直接放行"
   );
 
   // ── AC1d: 确认 prompt 是人话(动作摘要 + 不可逆后果),不暴露 raw 工具名 ──

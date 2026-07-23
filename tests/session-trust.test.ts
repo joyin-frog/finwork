@@ -1,13 +1,16 @@
 /**
- * session-trust.test.ts — run_python 会话级信任功能测试
+ * session-trust.test.ts — 会话级信任存储 + 确认链行为
  *
- * 覆盖范围(对应 spec §3 步骤 1 的 a-e):
- * (a) 存储:trust/isTrusted、conversationId 隔离、未知对话 false
- * (b) risk-confirm:已信任+有 resolver → allow 且不弹卡;未信任 → confirm+trustable=true;
- *     其他高风险工具 → confirm+trustable falsy
- * (c) chain.ts:sentinel → allow+写信任;普通「确认」→ allow 不写信任;「取消」→ deny
- * (d) 安全不变量:resolver=undefined 时即便已信任仍 deny
- * (e) 组件源码契约:ask-user-panel.tsx 含勾选项与 sentinel 提交分支
+ * run_python 已改为默认授权（不弹确认卡）；信任存储 / sentinel / revoke / trust API
+ * 仍保留，供历史勾选路径与其它可 trustable 工具使用。
+ *
+ * (a) 存储:trust/isTrusted、conversationId 隔离
+ * (b) risk-confirm:run_python 一律 allow；其它高风险仍 confirm 且 trustable falsy
+ * (c) chain.ts:对仍需确认的工具 — sentinel → allow+写信任;普通确认不写;取消 deny
+ * (d) 无 resolver 时：run_python 仍 allow；其它高风险仍 deny
+ * (e) 组件源码契约
+ * (f) revoke / list
+ * (g) trust route
  */
 
 import assert from "node:assert/strict";
@@ -78,35 +81,26 @@ export const sessionTrustTestPromise = (async () => {
   const hook = createRiskConfirmHook();
   const chain = [createUnwiredToolHook(), createRiskConfirmHook()];
 
-  // run_python 未信任 + 有 resolver → confirm 且 trustable=true
+  // run_python：默认放行，不弹卡、不调 resolver
   {
-    const result = await hook.before!(makeCtx(RUN_PYTHON, { conversationId: 10, resolver: async () => "确认" }));
-    assert.equal(result.action, "confirm", "ST-b1: 未信任 run_python 应返回 confirm");
-    assert.equal(
-      (result as { action: "confirm"; trustable?: boolean }).trustable,
-      true,
-      "ST-b2: run_python confirm 应有 trustable=true"
-    );
-  }
-
-  // run_python 已信任 + 有 resolver → 走完整链应直接 allow 且不调 resolver
-  {
-    clearTrustStore();
-    trustToolForConversation(10, RUN_PYTHON);
     let resolverCalled = false;
     const result = await runBeforeHooks(chain, makeCtx(RUN_PYTHON, {
       conversationId: 10,
       resolver: async () => { resolverCalled = true; return "确认"; },
     }));
-    assert.equal(result.behavior, "allow", "ST-b3: 已信任 run_python 应直接 allow");
-    assert.equal(resolverCalled, false, "ST-b4: 已信任 run_python 不应调用 resolver");
-    clearTrustStore();
+    assert.equal(result.behavior, "allow", "ST-b1: run_python 应默认 allow");
+    assert.equal(resolverCalled, false, "ST-b2: run_python 不应调用 resolver");
+
+    const noResolver = await runBeforeHooks(chain, makeCtx(RUN_PYTHON, {
+      conversationId: 10,
+      resolver: undefined,
+    }));
+    assert.equal(noResolver.behavior, "allow", "ST-b3: run_python 无 resolver 也应 allow");
   }
 
-  // 其他高风险工具 → confirm 且 trustable falsy（even if run_python 在同 conversationId 已信任）
+  // 其他高风险工具 → confirm 且 trustable falsy
   {
     clearTrustStore();
-    trustToolForConversation(10, RUN_PYTHON);
 
     const r1 = await hook.before!(makeCtx(OTHER_HIGH, { conversationId: 10 }));
     assert.equal(r1.action, "confirm", "ST-b5: calculate_payroll_batch 仍需 confirm");
@@ -119,19 +113,19 @@ export const sessionTrustTestPromise = (async () => {
     clearTrustStore();
   }
 
-  // ── (c) chain.ts：sentinel 写信任、普通确认不写、取消 deny ─────────────────
+  // ── (c) chain.ts：sentinel 写信任、普通确认不写、取消 deny（用仍需确认的工具）──
   const sentinelChain = [createUnwiredToolHook(), createRiskConfirmHook()];
 
   // sentinel → allow + 写信任
   {
     clearTrustStore();
     const convId = 20;
-    const result = await runBeforeHooks(sentinelChain, makeCtx(RUN_PYTHON, {
+    const result = await runBeforeHooks(sentinelChain, makeCtx(OTHER_HIGH, {
       conversationId: convId,
       resolver: async () => SESSION_TRUST_CONFIRM_ANSWER,
     }));
     assert.equal(result.behavior, "allow", "ST-c1: sentinel 应 allow");
-    assert.equal(isToolTrustedForConversation(convId, RUN_PYTHON), true, "ST-c2: sentinel 应写入信任");
+    assert.equal(isToolTrustedForConversation(convId, OTHER_HIGH), true, "ST-c2: sentinel 应写入信任");
     clearTrustStore();
   }
 
@@ -139,19 +133,19 @@ export const sessionTrustTestPromise = (async () => {
   {
     clearTrustStore();
     const convId = 21;
-    const result = await runBeforeHooks(sentinelChain, makeCtx(RUN_PYTHON, {
+    const result = await runBeforeHooks(sentinelChain, makeCtx(OTHER_HIGH, {
       conversationId: convId,
       resolver: async () => "确认",
     }));
     assert.equal(result.behavior, "allow", "ST-c3: 普通确认应 allow");
-    assert.equal(isToolTrustedForConversation(convId, RUN_PYTHON), false, "ST-c4: 普通确认不应写信任");
+    assert.equal(isToolTrustedForConversation(convId, OTHER_HIGH), false, "ST-c4: 普通确认不应写信任");
     clearTrustStore();
   }
 
   // 取消 → deny
   {
     clearTrustStore();
-    const result = await runBeforeHooks(sentinelChain, makeCtx(RUN_PYTHON, {
+    const result = await runBeforeHooks(sentinelChain, makeCtx(OTHER_HIGH, {
       conversationId: 22,
       resolver: async () => "取消",
     }));
@@ -163,30 +157,33 @@ export const sessionTrustTestPromise = (async () => {
   {
     clearTrustStore();
     const result = await runBeforeHooks(sentinelChain, {
-      toolName: RUN_PYTHON,
-      input: {},
+      toolName: OTHER_HIGH,
+      input: { year: 2026, month: 6 },
       outputDir: "/tmp",
       resolveUserQuestion: async () => SESSION_TRUST_CONFIRM_ANSWER,
       // 无 conversationId
     });
     assert.equal(result.behavior, "allow", "ST-c6: 无 conversationId 的 sentinel 仍应 allow");
-    assert.equal(isToolTrustedForConversation(undefined, RUN_PYTHON), false, "ST-c7: 无 conversationId sentinel 不写信任");
+    assert.equal(isToolTrustedForConversation(undefined, OTHER_HIGH), false, "ST-c7: 无 conversationId sentinel 不写信任");
     clearTrustStore();
   }
 
-  // ── (d) 安全不变量：resolver=undefined 时即便已信任仍 deny ──────────────────
+  // ── (d) 无 resolver：run_python allow；其它高风险 deny ──────────────────────
   {
     clearTrustStore();
     const convId = 30;
-    trustToolForConversation(convId, RUN_PYTHON);
-    assert.equal(isToolTrustedForConversation(convId, RUN_PYTHON), true, "ST-d-pre: 信任应已写入");
 
-    // 无 resolver（子代理场景）→ 仍 deny
-    const result = await runBeforeHooks(sentinelChain, makeCtx(RUN_PYTHON, {
+    const py = await runBeforeHooks(sentinelChain, makeCtx(RUN_PYTHON, {
       conversationId: convId,
       resolver: undefined,
     }));
-    assert.equal(result.behavior, "deny", "ST-d: 即便已信任，无 resolver 仍应 deny（硬不变量）");
+    assert.equal(py.behavior, "allow", "ST-d1: run_python 无 resolver 应 allow");
+
+    const high = await runBeforeHooks(sentinelChain, makeCtx(OTHER_HIGH, {
+      conversationId: convId,
+      resolver: undefined,
+    }));
+    assert.equal(high.behavior, "deny", "ST-d2: 高风险财务工具无 resolver 仍应 deny");
     clearTrustStore();
   }
 

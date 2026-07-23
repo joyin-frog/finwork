@@ -246,6 +246,9 @@ process.on("unhandledRejection", (err) => {
   await agentPipelineTestPromise;
 
   await import("./hooks-guard.test.ts");
+  await import("./run-state-recovery-ui.test.ts");
+  await import("./run-budget-status-abort.test.ts");
+  await import("./run-state-ui-wiring.test.ts");
 
   await import("./injection-defense.test.ts");
 

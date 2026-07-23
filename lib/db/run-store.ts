@@ -402,3 +402,21 @@ export function countSettledEvents(runId: string): number {
   ).get(runId) as { c: number };
   return row.c;
 }
+
+/**
+ * CR-R2：进程重启后，将仍标为 running/queued/waiting_* 的孤儿 Run 标为 paused/process_crash。
+ * 不宣称恢复子进程；只让状态可解释。
+ */
+export function pauseOrphanRunsOnBoot(reason: TerminationReason = "process_crash"): number {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = db.prepare(
+    `UPDATE agent_runs SET
+       status = 'paused',
+       termination_reason = ?,
+       updated_at = ?,
+       heartbeat_at = ?
+     WHERE status IN ('queued', 'running', 'waiting_user', 'waiting_dependency')`
+  ).run(reason, now, now);
+  return Number(result.changes ?? 0);
+}

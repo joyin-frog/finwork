@@ -89,6 +89,8 @@ export type ClaudeAgentRunOptions = {
   roleId?: string | null;
   /** CR-Q1：本回合冻结的 TaskContract；注入 finalize_deliverable。 */
   taskContract?: import("./run-contract").TaskContract | null;
+  /** CR-R2：执行档位 → maxTurns / hard timeout。缺省按 fast。 */
+  executionTier?: import("@/lib/settings/model-config").ExecutionTier | null;
 };
 
 /**
@@ -207,12 +209,13 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     runOptions.signal.addEventListener("abort", () => abortController.abort(), { once: true });
     if (runOptions.signal.aborted) abortController.abort();
   }
-  // 慢网关上多步/多工具财务任务常 >5min,原 5min 硬超时会把复杂任务掐成空响应(golden 认证实测 complex 多条空串)。
-  // 放宽到 10min:财务任务宁可慢、不可半途空手而归。简单/cheap 路径本就秒级,不受影响。
+  // CR-R2：按 executionTier 放宽硬超时（fast 20m / reasoning 60m）；不再固定 10m。
+  const { runBudgetForTier } = await import("./run-budget");
+  const budget = runBudgetForTier(runOptions.executionTier);
   const timeout = setTimeout(() => {
-    log.error("timeout", { traceId: requestId, claudeSessionId });
+    log.error("timeout", { traceId: requestId, claudeSessionId, hardTimeoutMs: budget.hardTimeoutMs });
     abortController.abort();
-  }, 600_000);
+  }, budget.hardTimeoutMs);
 
   const outputDir = runOptions.outputDir ?? path.join(tmpdir(), `finance-agent-output-${requestId}`);
   mkdirSync(outputDir, { recursive: true });
@@ -326,7 +329,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       PostCompact: [{ hooks: [createPostCompactHookCallback(requestId, writeSpan)] }],
     },
     includePartialMessages: true,
-    maxTurns: 30,
+    maxTurns: budget.maxTurns,
     permissionMode: "acceptEdits",
     persistSession: true,
     // SDK 子进程 stderr:汇聚后单条落 span,使路由/鉴权/网关类故障在 trace 可见

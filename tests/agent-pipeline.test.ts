@@ -22,13 +22,12 @@ export const agentPipelineTestPromise = (async () => {
   assert.ok(routeSource.includes("resolveModelByTier"), "AC5 FAIL: 模型分层应已接线(resolveModelByTier)");
   assert.ok(routeSource.includes("normalizeTier"), "AC5 FAIL: 模型分层应已接线(normalizeTier)");
 
-  // ── AC6: Bash 机制兜底 ──
+  // ── AC6: Bash 默认放行；Read / run_python 也不被 unwired 拦 ──
   const chain = [createUnwiredToolHook()];
   const ctx = (toolName: string) => ({ toolName, input: {}, activeSkills: [], outputDir: "/tmp" });
 
   const bash = await runBeforeHooks(chain, ctx("Bash"));
-  assert.equal(bash.behavior, "deny", "AC6 FAIL: Bash 必须被机制性拒绝");
-  assert.ok(bash.message?.includes("run_python"), "AC6 FAIL: 拒绝提示应指向 run_python");
+  assert.equal(bash.behavior, "allow", "AC6 FAIL: Bash 应默认放行");
 
   const read = await runBeforeHooks(chain, ctx("Read"));
   assert.equal(read.behavior, "allow", "AC6 FAIL: Read 不应被拦截");

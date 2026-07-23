@@ -41,7 +41,13 @@ import {
   type RunPersistenceContext,
 } from "@/lib/agent/run-event-persistence";
 import type { ResolvedModel } from "@/lib/settings/model-config";
-import { deriveTaskContractForTurn } from "@/lib/agent/run-contract";
+import { deriveTaskContractForTurn, isTerminalRunStatus, type TaskContract } from "@/lib/agent/run-contract";
+import {
+  registerRunAbort,
+  unregisterRunAbort,
+} from "@/lib/agent/run-abort-registry";
+import { decideSettleFromCompletionGate } from "@/lib/agent/completion-gate-settle";
+import { getAgentRun, updateAgentRunStatus } from "@/lib/db/run-store";
 
 const log = createLogger("agent-query");
 
@@ -108,6 +114,10 @@ export async function POST(request: Request) {
       status: "queued",
     });
 
+    const taskContract = deriveTaskContractForTurn({
+      intent: routerResult.decision.intent,
+      attachments,
+    });
     const turnParams: AgentTurnParams = {
       traceId, agentMessages, claudeSessionId, existingClaudeSessionId,
       attachments, outputDir, routerResult, conversationId,
@@ -116,6 +126,8 @@ export async function POST(request: Request) {
       // 专员会话（E 刀）:以会话绑定的角色身份运行本回合
       roleId: sessionRoleId,
       runPersist,
+      taskContract,
+      executionTier: resolvedModel?.executionTier ?? null,
     };
     const persistParams: PersistTurnParams = {
       conversationId, existingClaudeSessionId, beforeGenerate,
@@ -142,10 +154,27 @@ export async function POST(request: Request) {
     const { generatedAttachments } = persistAgentTurn({ ...persistParams, result, collector });
     {
       const emitter = createEmitter(traceId, conversationId ?? null);
-      const endedEnv = emitter.wrap({ type: "run_ended", kind: "complete" });
+      const gateDecision = decideSettleFromCompletionGate(traceId, turnParams.taskContract);
+      const endedEnv = emitter.wrap({
+        type: "run_ended",
+        kind: gateDecision.outcome === "completed" ? "complete" : "incomplete",
+        message: gateDecision.gateMessage,
+      });
       persistRuntimeEnvelope(endedEnv, runPersist);
-      const settledEnv = emitter.wrap({ type: "run_settled", outcome: "completed" });
+      const settledEnv = emitter.wrap({
+        type: "run_settled",
+        outcome: gateDecision.outcome,
+        error: gateDecision.gateMessage,
+      });
       persistRuntimeEnvelope(settledEnv, runPersist);
+      const after = getAgentRun(traceId);
+      if (after) {
+        updateAgentRunStatus(traceId, after.status, {
+          qualityStatus: gateDecision.qualityStatus,
+          terminationReason: gateDecision.terminationReason ?? null,
+          errorMessage: gateDecision.gateMessage ?? null,
+        });
+      }
     }
     if (conversationId) void improveConversationTitle(conversationId).catch(() => {});
     log.info("done", { traceId, durationMs: Date.now() - startedAt });
@@ -209,6 +238,10 @@ type AgentTurnParams = {
   runCounter?: { next: () => number };
   /** CR-R1：持久 Run 上下文；有则 durable 事件落 run_events。 */
   runPersist?: RunPersistenceContext;
+  /** CR-Q1/R2：冻结合同；CompletionGate 收口用。 */
+  taskContract?: TaskContract | null;
+  /** CR-R2：执行档位 → budget。 */
+  executionTier?: import("@/lib/settings/model-config").ExecutionTier | null;
 };
 
 type AgentTurnResult =
@@ -287,10 +320,11 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     roleId: params.roleId,
     signal: params.signal,
     resolveUserQuestion: params.resolveUserQuestion,
-    taskContract: deriveTaskContractForTurn({
+    taskContract: params.taskContract ?? deriveTaskContractForTurn({
       intent: routerResult.decision.intent,
       attachments,
     }),
+    executionTier: params.executionTier,
     // 主 Agent 事件走主 emitter
     emit: (event) => handleEmit(event, mainEmitter),
     // 子代理事件：每个子代理有唯一 instanceId，用 per-instance emitter 包装
@@ -467,10 +501,12 @@ function createStreamingResponse(params: {
   const stream = new ReadableStream({
     async start(controller) {
       let streamClosed = false;
+      // CR-R2：Run 生命周期独立于 SSE 订阅；仅显式 stop / 硬超时 abort 此 controller。
+      const runAbort = new AbortController();
+      registerRunAbort(traceId, runAbort, conversationId ?? null);
+
       requestSignal?.addEventListener("abort", () => {
-        // 关闭 SSE 订阅；当前仍把 requestSignal 传给 runAgentTurn（断开即 abort）。
-        // CR-R2 再解耦「订阅生命周期」与「Run 执行」。
-        cancelPendingQuestions(traceId);
+        // 只关订阅；不 cancelPendingQuestions（断线后 Run 继续，用户可重连再答）。
         streamClosed = true;
         try { controller.close(); } catch { /* ok */ }
       }, { once: true });
@@ -496,8 +532,9 @@ function createStreamingResponse(params: {
       // settle / ask_user 等旁路事件：先持久再 SSE（与 handleEmit 对称；delta 仍不落库）
       const emitAndPersist = withRunEventPersistence(enqueueEnvelope, runPersist);
 
-      // 新会话:一开始就把 conversationId 下发（保留 meta 帧兼容旧客户端）
-      if (conversationId) enqueue({ type: "meta", conversationId });
+      // 新会话:一开始就把 conversationId + runId 下发（保留 meta 帧兼容旧客户端）
+      if (conversationId) enqueue({ type: "meta", conversationId, runId: traceId });
+      else enqueue({ type: "meta", runId: traceId });
 
       // CR-R1：run_started + queued→running（持久 + SSE）
       {
@@ -509,8 +546,11 @@ function createStreamingResponse(params: {
       // 确认事件在回合执行中产生，先本地收集，回合结束后并入 collector 落库
       const askEvents: Array<{ type: string; [key: string]: unknown }> = [];
 
-      /** AR2a: 三路径共用收口 —— 发 run_ended + run_settled（CR-R1 同时落库）。 */
+      /** AR2a: 三路径共用收口 —— 发 run_ended + run_settled（CR-R1 同时落库）。
+       *  若 stop API 已写终态，则幂等跳过。 */
       const settleRun = (outcome: "completed" | "aborted" | "error", opts?: { message?: string }) => {
+        const existing = getAgentRun(traceId);
+        if (existing && isTerminalRunStatus(existing.status)) return;
         const endedEnv = streamEmitter.wrap({
           type: "run_ended",
           kind: outcome === "completed" ? "complete" : "incomplete",
@@ -524,7 +564,7 @@ function createStreamingResponse(params: {
       try {
         const { result, collector } = await runAgentTurn({
           ...turnParams,
-          signal: requestSignal,
+          signal: runAbort.signal,
           // handleEmit 已 persist；此处只推 SSE，避免 double-write
           emitEnvelope: enqueueEnvelope,
           runCounter, // B2 修复：流式路径共享计数器
@@ -547,10 +587,32 @@ function createStreamingResponse(params: {
         const { generatedAttachments } = persistAgentTurn({ ...persistParams, result, collector });
         writeSpan({ traceId, spanType: "stream", name: "SSE stream", startedAt, durationMs: Date.now() - startedAt });
 
-        // AR2a: 三路径收口 — 成功路径
-        settleRun("completed");
-        // 向前兼容：继续发送旧帧 done，chat-stream.tsx onDone 由此驱动（含 conversation/attachments）
-        enqueue({ type: "done", conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined });
+        // CR-R2：CompletionGate —— 有交付合同则不得仅凭 agent 结束标 completed
+        const gateDecision = decideSettleFromCompletionGate(traceId, turnParams.taskContract);
+        settleRun(gateDecision.outcome, gateDecision.gateMessage ? { message: gateDecision.gateMessage } : undefined);
+        {
+          const after = getAgentRun(traceId);
+          if (after) {
+            updateAgentRunStatus(traceId, after.status, {
+              qualityStatus: gateDecision.qualityStatus,
+              terminationReason: gateDecision.terminationReason ?? null,
+              errorMessage: gateDecision.gateMessage ?? null,
+            });
+          }
+        }
+
+        // 向前兼容：继续发送旧帧 done / incomplete（gate 失败走 incomplete，避免 UI 假成功）
+        if (gateDecision.outcome === "completed") {
+          enqueue({ type: "done", conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined });
+        } else {
+          enqueue({
+            type: "incomplete",
+            conversationId,
+            conversation: conversationId ? getChatConversation(conversationId) : null,
+            generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined,
+            message: gateDecision.gateMessage,
+          });
+        }
         // 标题异步提炼，settled 已发（前端不阻塞），title_updated 随后到达（conversation 级，不进 run_events）
         try {
           if (conversationId) {
@@ -569,14 +631,17 @@ function createStreamingResponse(params: {
         void appendServerLog(`[agent-query/stream] failed traceId=${traceId} ${redact(error instanceof Error ? error.stack ?? error.message : String(error))}`);
         const collector = (error as { __collector?: AgentTurnCollector }).__collector;
         const partialUsage = (error as { __modelUsage?: Record<string, ModelUsage> }).__modelUsage;
-        // AR2a: 三路径收口 — abort 路径 vs 错误路径
+        // AR2a: 三路径收口 — abort 路径 vs 错误路径（stop API 已 settle 则跳过）
         const isAbort = error instanceof Error && error.name === "AbortError";
+        const already = getAgentRun(traceId);
+        const skipClientFrames = already && isTerminalRunStatus(already.status) && already.terminationReason === "user_stop";
         if (collector) {
           collector.collectedEvents.push(...askEvents);
           const { generatedAttachments } = persistIncompleteTurn({ ...persistParams, collector, errorMessage: msg, modelUsage: partialUsage });
           settleRun(isAbort ? "aborted" : "error", { message: redact(msg) });
-          // 向前兼容：发旧帧 incomplete，chat-stream.tsx onIncomplete 由此驱动
-          enqueue({ type: "incomplete", conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined, message: redact(msg) });
+          if (!skipClientFrames) {
+            enqueue({ type: "incomplete", conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined, message: redact(msg) });
+          }
         } else {
           writeAgentTrace({
             traceId, conversationId, startedAt,
@@ -587,10 +652,13 @@ function createStreamingResponse(params: {
             executionTier: persistParams.resolvedModel?.executionTier,
           });
           settleRun(isAbort ? "aborted" : "error", { message: redact(msg) });
-          // 向前兼容：发旧帧 error
-          enqueue({ type: "error", message: redact(msg) });
+          if (!skipClientFrames) {
+            enqueue({ type: "error", message: redact(msg) });
+          }
         }
         try { controller.close(); } catch { /* already closed */ }
+      } finally {
+        unregisterRunAbort(traceId);
       }
     }
   });

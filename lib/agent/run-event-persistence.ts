@@ -7,6 +7,7 @@ import {
   appendDurableRunEvent,
   createAgentRun,
   isDurableRunEventType,
+  pauseOrphanRunsOnBoot,
   updateAgentRunStatus,
   upsertRunCheckpoint,
   type CreateAgentRunInput,
@@ -20,6 +21,8 @@ import {
 import { createLogger } from "@/lib/runtime/logger";
 
 const log = createLogger("run-events");
+
+let orphansPaused = false;
 
 const CHECKPOINT_TRIGGERS = new Set<AgentRuntimeEvent["type"]>([
   "tool_completed",
@@ -44,6 +47,15 @@ export type RunPersistenceContext = {
 export function createRunPersistenceContext(
   input: CreateAgentRunInput,
 ): RunPersistenceContext {
+  // 进程内首次建 Run 时清理上一进程遗留的 running 孤儿
+  if (!orphansPaused) {
+    orphansPaused = true;
+    try {
+      pauseOrphanRunsOnBoot();
+    } catch {
+      /* best-effort */
+    }
+  }
   createAgentRun(input);
   return {
     runId: input.runId,

@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 import type { StoredChatAttachment } from "@/lib/db/sqlite";
 import { FileTypeIcon } from "@/app/shared/file-type-icon";
 import { getFileTypeLabel } from "@/app/chat/file-type-label";
+import { AttachmentQualityBadge } from "@/app/chat/components/attachment-quality-badge";
+import type { AttachmentQualityState } from "@/lib/deliverable/types";
 
 type OpenWithApp = {
   name: string;
@@ -89,6 +91,7 @@ export function OpenableFileRow({
   onPreviewFile,
   showOpenWith = true,
   voucherChips,
+  qualityState,
 }: {
   menuKey: string;
   /** 会话附件 id;给定时多一个「加入知识库」入口(只有真正落库的附件才有 id,内联产物没有)。 */
@@ -107,6 +110,8 @@ export function OpenableFileRow({
   showOpenWith?: boolean;
   /** export_voucher_list 摘要 chips:来自 tool_result 中的结构化数据,旧会话无此数据时不显示。 */
   voucherChips?: { sheets: number; voucherCount: number } | null;
+  /** CR-R2：附件质量态；缺省不显示徽标。 */
+  qualityState?: AttachmentQualityState | null;
 }) {
   const menuOpen = openMenuKey === menuKey;
   const [apps, setApps] = useState<OpenWithApp[] | null>(null);
@@ -171,7 +176,10 @@ export function OpenableFileRow({
         {getFileIcon(mimeType, name)}
         {bordered ? (
           <span className="min-w-0 flex-1 flex flex-col gap-0.5">
-            <span className="truncate text-small text-foreground">{name}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-small text-foreground">{name}</span>
+              {qualityState ? <AttachmentQualityBadge state={qualityState} /> : null}
+            </span>
             <span className="truncate text-caption text-muted-foreground">
               {getFileTypeLabel(mimeType, name, sizeBytes)}
               {voucherChips ? (
@@ -188,7 +196,10 @@ export function OpenableFileRow({
             </span>
           </span>
         ) : (
-          <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground">{name}</span>
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-meta text-muted-foreground">{name}</span>
+            {qualityState ? <AttachmentQualityBadge state={qualityState} /> : null}
+          </span>
         )}
       </button>
       {showOpenWith ? (

@@ -90,5 +90,42 @@ export const pythonWorkerTestPromise = (async () => {
     assert.equal(failed, true, "openpyxl must fail on .xls (routing justification)");
   }
 
+  // 禁止 run_python 拉起 WPS/Excel GUI（静态检查 + 运行时 guard）
+  {
+    const dir = mkdtempSync(path.join(tmpdir(), "fa-nogui-"));
+    try {
+      let blocked = false;
+      let errText = "";
+      try {
+        execFileSync(pythonPath, [workerPath, "run"], {
+          encoding: "utf-8",
+          cwd: dir,
+          env: { ...process.env, FINANCE_AGENT_OUTPUT_DIR: dir },
+          input: 'import subprocess\nsubprocess.run(["/Applications/wpsoffice.app/Contents/MacOS/wpsoffice", "x.xlsx"])\n',
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch (e) {
+        blocked = true;
+        const err = e as { stderr?: string; stdout?: string; message?: string };
+        errText = `${err.stderr ?? ""}\n${err.stdout ?? ""}\n${err.message ?? ""}`;
+      }
+      assert.equal(blocked, true, "wpsoffice launch via run_python must be rejected");
+      assert.match(errText, /禁止.*WPS|图形界面/, "deny message should mention GUI/WPS ban");
+
+      // 正常 print 仍可通过
+      const ok = execFileSync(pythonPath, [workerPath, "run"], {
+        encoding: "utf-8",
+        cwd: dir,
+        env: { ...process.env, FINANCE_AGENT_OUTPUT_DIR: dir },
+        input: "print(1+1)\n",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const parsed = JSON.parse(ok) as { stdout: string };
+      assert.match(parsed.stdout, /2/, "innocent python must still run");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   console.log("python-worker: all checks passed ✓");
 })();

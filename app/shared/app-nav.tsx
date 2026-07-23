@@ -311,7 +311,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
   function renderConversationRow(c: ConversationSummary) {
     const isActive = activeConversationId === c.id;
-    // 状态标统一走 ConversationStatusMark；无特殊态也画灰色实心（idle），避免空槽看不见。
+    // 状态标统一走 ConversationStatusMark；无特殊态画灰色空心（idle），占位但不抢眼。
     const statusMark =
       renamingId === c.id
         ? null

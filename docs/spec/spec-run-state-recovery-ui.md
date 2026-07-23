@@ -2,8 +2,8 @@
 
 > ID：CR-R2  
 > 对应 ROADMAP：AR2c + AR4  
-> 状态：Blocked — 等待 CR-R1  
-> 日期：2026-07-21  
+> 状态：**已ship（核心）** — 见 `audit-run-state-recovery-ui.md`；resume / 重连订阅后续  
+> 日期：2026-07-22  
 > 前置依赖：CR-R0、CR-R1；自动分段能力另依赖 CR-X1 结论  
 > 下游：CR-P1
 

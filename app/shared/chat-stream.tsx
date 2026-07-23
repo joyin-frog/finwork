@@ -47,6 +47,8 @@ export type StreamTurn = {
   /** 会话维度的 key:已有会话用 `c:${id}`,新会话用 `new:${uuid}`(落库拿到真实 id 后由 chat-page 收尾)。 */
   key: string;
   conversationId: number | null;
+  /** CR-R2：持久 Run id（=traceId）；stop / 权威状态 / 附件质量由此拉取。 */
+  runId?: string | null;
   status: TurnStatus;
   /** 本回合用户发出的消息(用于在历史之上叠加渲染)。 */
   userMessage: Message;
@@ -267,6 +269,11 @@ export function createStreamTurnOperations(deps: StreamTurnOperationsDeps): Stre
     },
     stopTurn(key) {
       const plan = planStreamTurnOperation(deps.getTurns(), key, "stop");
+      const turn = plan.turn;
+      // CR-R2：显式 stop API 是停止唯一入口；再 abort 本地 SSE 订阅。
+      if (turn?.runId) {
+        void fetch(`/api/agent/runs/${encodeURIComponent(turn.runId)}/stop`, { method: "POST" }).catch(() => {});
+      }
       if (plan.abortKey) deps.getControllers()[plan.abortKey]?.abort();
     },
     consumeTurn(key) {
@@ -354,7 +361,12 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
         await readSSEStream(response, {
           onChunk: (chunk) => update(key, (turn) => reduceChunk(turn, chunk, Date.now())),
           onAgentEvent: (event, instanceId) => update(key, (turn) => reduceAgentEvent(turn, event, Date.now(), instanceId ?? null)),
-          onMeta: (cid) => update(key, (turn) => (turn.conversationId === cid ? turn : { ...turn, conversationId: cid })),
+          onMeta: (cid, runId) =>
+            update(key, (turn) => ({
+              ...turn,
+              conversationId: cid ?? turn.conversationId,
+              runId: runId ?? turn.runId,
+            })),
           onTitle: (cid, title) => updateTitleRef.current(cid, title),
           onDone: (payload) =>
             update(key, (turn) => ({
