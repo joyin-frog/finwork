@@ -20,6 +20,15 @@ process.on("unhandledRejection", (err) => {
   const { usageQuotaTestPromise } = await import("./usage-quota.test.ts");
   await usageQuotaTestPromise;
 
+  const { modelConfigTestPromise } = await import("./model-config.test.ts");
+  await modelConfigTestPromise;
+
+  const { runContractTestPromise } = await import("./run-contract.test.ts");
+  await runContractTestPromise;
+
+  const { deliverableQualityGateTestPromise } = await import("./deliverable-quality-gate.test.ts");
+  await deliverableQualityGateTestPromise;
+
   const { usageStoreTestPromise } = await import("./usage-store.test.ts");
   await usageStoreTestPromise;
 
@@ -120,6 +129,12 @@ process.on("unhandledRejection", (err) => {
 
   const { pythonInstallerTestPromise } = await import("./python-installer.test.ts");
   await pythonInstallerTestPromise;
+
+  const { libreofficeResolverTestPromise } = await import("./libreoffice-resolver.test.ts");
+  await libreofficeResolverTestPromise;
+
+  const { spreadsheetProbeTestPromise } = await import("./spreadsheet-probe.test.ts");
+  await spreadsheetProbeTestPromise;
 
   const { taxCalendarTestPromise } = await import("./tax-calendar.test.ts");
   await taxCalendarTestPromise;
@@ -231,6 +246,9 @@ process.on("unhandledRejection", (err) => {
   await agentPipelineTestPromise;
 
   await import("./hooks-guard.test.ts");
+  await import("./run-state-recovery-ui.test.ts");
+  await import("./run-budget-status-abort.test.ts");
+  await import("./run-state-ui-wiring.test.ts");
 
   await import("./injection-defense.test.ts");
 
@@ -687,6 +705,9 @@ process.on("unhandledRejection", (err) => {
 
   const { runtimeEventsTestPromise } = await import("./runtime-events.test.ts");
   await runtimeEventsTestPromise;
+
+  const { runEventsPersistenceTestPromise } = await import("./run-events-persistence.test.ts");
+  await runEventsPersistenceTestPromise;
 
   const { coerceJsonTestPromise } = await import("./coerce-json.test.ts");
   await coerceJsonTestPromise;

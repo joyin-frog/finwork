@@ -87,6 +87,10 @@ export type ClaudeAgentRunOptions = {
   /** 专员会话（E 刀）：非空时本回合以该角色身份运行——角色系统提示+独立记忆、
    *  角色工具白名单 + role-scope hook 边界、不注入 spawn_subagent。NULL/缺省 = 主管会话。 */
   roleId?: string | null;
+  /** CR-Q1：本回合冻结的 TaskContract；注入 finalize_deliverable。 */
+  taskContract?: import("./run-contract").TaskContract | null;
+  /** CR-R2：执行档位 → maxTurns / hard timeout。缺省按 fast。 */
+  executionTier?: import("@/lib/settings/model-config").ExecutionTier | null;
 };
 
 /**
@@ -130,8 +134,9 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
   const settings = await readClaudeSettings();
   const startedAt = Date.now();
 
-  // 生效模型 = 「深度思考」档位 override 优先;日志必须打真实生效值,否则排障会被误导
-  const effectiveModel = runOptions.modelOverride || settings.mainModel || settings.model;
+  // CR-R1：生效模型以 Query 传入的 resolveExecutionModel 结果（modelOverride）为准；
+  // 禁止再回落到遗留 settings.model。无 override 时用已校验的 mainModel。
+  const effectiveModel = runOptions.modelOverride || settings.mainModel || "";
   log.info("start", {
     traceId: requestId,
     messageCount: messages.length,
@@ -204,12 +209,13 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     runOptions.signal.addEventListener("abort", () => abortController.abort(), { once: true });
     if (runOptions.signal.aborted) abortController.abort();
   }
-  // 慢网关上多步/多工具财务任务常 >5min,原 5min 硬超时会把复杂任务掐成空响应(golden 认证实测 complex 多条空串)。
-  // 放宽到 10min:财务任务宁可慢、不可半途空手而归。简单/cheap 路径本就秒级,不受影响。
+  // CR-R2：按 executionTier 放宽硬超时（fast 20m / reasoning 60m）；不再固定 10m。
+  const { runBudgetForTier } = await import("./run-budget");
+  const budget = runBudgetForTier(runOptions.executionTier);
   const timeout = setTimeout(() => {
-    log.error("timeout", { traceId: requestId, claudeSessionId });
+    log.error("timeout", { traceId: requestId, claudeSessionId, hardTimeoutMs: budget.hardTimeoutMs });
     abortController.abort();
-  }, 600_000);
+  }, budget.hardTimeoutMs);
 
   const outputDir = runOptions.outputDir ?? path.join(tmpdir(), `finance-agent-output-${requestId}`);
   mkdirSync(outputDir, { recursive: true });
@@ -219,7 +225,10 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
     outputDir,
     requestId,
     runOptions.conversationId != null ? String(runOptions.conversationId) : undefined,
-    runOptions.onSubagentEvent
+    runOptions.onSubagentEvent,
+    runOptions.taskContract
+      ? { finalize: { taskContract: runOptions.taskContract, runId: requestId } }
+      : undefined,
   );
   // 静态工具全集(含 Bash/Write 供 skill 脚本);不再按 skill 收敛,高风险工具经确认门兜底。
   // 专员会话：免确认放行名单收窄到角色白名单（域内高风险工具不在其中 → 经确认门弹卡）。
@@ -320,7 +329,7 @@ export async function runClaudeAgent(messages: AgentMessage[], runOptions: Claud
       PostCompact: [{ hooks: [createPostCompactHookCallback(requestId, writeSpan)] }],
     },
     includePartialMessages: true,
-    maxTurns: 30,
+    maxTurns: budget.maxTurns,
     permissionMode: "acceptEdits",
     persistSession: true,
     // SDK 子进程 stderr:汇聚后单条落 span,使路由/鉴权/网关类故障在 trace 可见

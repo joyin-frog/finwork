@@ -2,7 +2,6 @@ import path from "node:path";
 import type { Hook, BeforeToolResult } from "./types";
 import { getToolRiskLevel } from "@/lib/agent/tools/registry";
 import { getToolSummary } from "@/lib/agent/tools/renderers";
-import { isToolTrustedForConversation } from "./session-trust";
 import { getRoleDefinition, resolveRoleScopeTools } from "@/lib/agent/roles/registry";
 
 // 高风险工具确认时,除了"做什么"还要点明"会有什么后果"(尤其不可逆/锁定类),
@@ -56,7 +55,15 @@ export function createPathSafetyHook(): Hook {
     async before(ctx): Promise<BeforeToolResult> {
       if (!["Write", "Edit", "MultiEdit"].includes(ctx.toolName)) return { action: "allow" };
       const filePath = getToolFilePath(ctx.input);
-      if (filePath && !isInsidePath(filePath, ctx.outputDir)) {
+      if (!filePath) return { action: "allow" };
+      // CR-Q1：delivered/ 不可变区，模型工具永不写
+      if (isDeliveredPath(filePath, ctx.outputDir)) {
+        return {
+          action: "deny",
+          reason: "不能写入不可变交付目录 delivered/（正式附件只读）。",
+        };
+      }
+      if (!isInsidePath(filePath, ctx.outputDir)) {
         return {
           action: "deny",
           reason: `只能把生成文件写入本次会话输出目录：${ctx.outputDir}`,
@@ -67,16 +74,29 @@ export function createPathSafetyHook(): Hook {
   };
 }
 
-/** 未接线工具的机制兜底:不依赖 skill 配置正确性,Bash 一律拒绝。 */
+/** delivered/ 与 generate/ 同级；也拒绝对 outputDir 内误建的 delivered 子路径写入。 */
+function isDeliveredPath(filePath: string, outputDir: string): boolean {
+  const abs = path.resolve(filePath);
+  const parts = abs.split(path.sep);
+  if (parts.includes("delivered")) return true;
+  const genParent = path.dirname(path.resolve(outputDir));
+  const deliveredRoot = path.join(genParent, "delivered");
+  return abs === deliveredRoot || abs.startsWith(deliveredRoot + path.sep);
+}
+
+/**
+ * 历史「未接线工具」闸。Bash 已默认放行（用户可用性要求）；
+ * hook 仍挂在链上，便于日后按名拒绝其它工具。Python 仍应优先走 run_python。
+ */
 export function createUnwiredToolHook(): Hook {
-  const blocked = new Set(["Bash"]);
+  const blocked = new Set<string>([]);
   return {
     name: "unwired-tool",
     async before(ctx): Promise<BeforeToolResult> {
       if (!blocked.has(ctx.toolName)) return { action: "allow" };
       return {
         action: "deny",
-        reason: `${ctx.toolName} 未接入本产品。需要执行 Python 请使用 run_python（每次需要用户确认，60s 超时）。`,
+        reason: `${ctx.toolName} 未接入本产品。需要执行 Python 请使用 run_python。`,
       };
     },
   };
@@ -105,14 +125,13 @@ export function createReadGuardHook(): Hook {
   };
 }
 
-/** stuck-guard:本回合反复试错(连续报错 / 代码执行次数过多)时断路,逼 agent 停下来求助或交付,
- * 而不是闷头烧到 maxTurns。链每请求新建 → 计数天然按回合隔离。只盯 run_python(Bash 已被 unwired 拦)。 */
+/** stuck-guard:同一工具连续同等错误且无进展时断路（CR-R2：删除成功调用次数上限）。
+ * 链每请求新建 → 计数天然按回合隔离。只盯 run_python。 */
 export function createStuckGuardHook(): Hook {
-  let pythonCalls = 0;
   let consecutiveErrors = 0;
+  let lastErrorKey = "";
   let interrupts = 0;
-  const MAX_PY = 15;        // 单回合代码执行体量上限(超过=该和用户对一下)
-  const MAX_ERR = 3;        // 连续报错
+  const MAX_ERR = 5;        // CR-R2：连续同错 ≥5 才断
   const MAX_INTERRUPTS = 2; // 一回合最多打断 2 次,避免反复弹
   const isPython = (n: string) => n.includes("run_python");
 
@@ -120,27 +139,37 @@ export function createStuckGuardHook(): Hook {
     name: "stuck-guard",
     async before(ctx): Promise<BeforeToolResult> {
       if (!isPython(ctx.toolName)) return { action: "allow" };
-      const stuck = consecutiveErrors >= MAX_ERR || pythonCalls >= MAX_PY;
+      const stuck = consecutiveErrors >= MAX_ERR;
       if (!stuck) return { action: "allow" };
       if (interrupts >= MAX_INTERRUPTS) {
         return { action: "deny", reason: "本回合已多次反复尝试仍无进展。立即停止重试:用 AskUserQuestion 说明卡在哪、给可选项,或如实报告并交付已完成的部分,不要再调用 run_python。" };
       }
       interrupts += 1;
-      const why = consecutiveErrors >= MAX_ERR ? `连续 ${consecutiveErrors} 次执行报错` : `本回合已执行 ${pythonCalls} 次代码`;
+      const why = `连续 ${consecutiveErrors} 次同类执行报错`;
       if (ctx.resolveUserQuestion) {
         const ans = (await ctx.resolveUserQuestion({
           header: "反复没进展",
           question: `我${why}、仍没到位。你想怎么办?回复「继续」我换个思路再试;「停下」我说明卡在哪、等你定;「先交付」我把已完成的部分先给你。`,
         })).trim();
-        if (/继续|再试|换/.test(ans)) { consecutiveErrors = 0; pythonCalls = 0; return { action: "allow" }; }
+        if (/继续|再试|换/.test(ans)) { consecutiveErrors = 0; lastErrorKey = ""; return { action: "allow" }; }
         return { action: "deny", reason: `用户选择「${ans}」。停止重试:据此向用户说明卡点或交付已完成部分,不要再用同样的方式硬试 run_python。` };
       }
       return { action: "deny", reason: `${why}、仍未成功。停止重试,改用 AskUserQuestion 说明卡点并给选项,或如实报告;不要继续盲试。` };
     },
     async after(ctx) {
       if (!isPython(ctx.toolName)) return;
-      pythonCalls += 1;
-      if (ctx.isError) consecutiveErrors += 1; else consecutiveErrors = 0;
+      if (ctx.isError) {
+        const key = String(ctx.result ?? "").slice(0, 200).replace(/\s+/g, " ").trim().toLowerCase();
+        if (key && key === lastErrorKey) {
+          consecutiveErrors += 1;
+        } else {
+          lastErrorKey = key;
+          consecutiveErrors = 1;
+        }
+      } else {
+        consecutiveErrors = 0;
+        lastErrorKey = "";
+      }
     },
   };
 }
@@ -191,8 +220,11 @@ export const ALWAYS_CONFIRM_TOOLS = new Set([
   "mcp__finance_worker__update_company_profile",
 ]);
 
-// Bash 由 createUnwiredToolHook 在链首 deny,无需确认门豁免。
-const CONFIRM_EXEMPT_TOOLS = new Set<string>([]);
+// Bash / run_python：默认授权（不弹确认卡）；其余 high-risk 财务写操作仍确认。
+const CONFIRM_EXEMPT_TOOLS = new Set<string>([
+  "Bash",
+  "mcp__finance_worker__run_python",
+]);
 
 /**
  * 高风险动作确认门(工具级)。迁移到 SDK 原生 skill 后,确认不再按 skill 配置,
@@ -223,19 +255,18 @@ export function createRiskConfirmHook(): Hook {
         }
         return { action: "confirm", prompt: buildRiskConfirmPrompt(ctx.toolName, ctx.input) };
       }
-      if (CONFIRM_EXEMPT_TOOLS.has(ctx.toolName)) return { action: "allow" };
-      const riskLevel = getToolRiskLevel(ctx.toolName);
-      if (riskLevel !== "high") return { action: "allow" };
-      // run_python 会话级信任：有交互通道且同对话已被信任时直接放行，省去每次确认。
-      const isPython = ctx.toolName.includes("run_python");
-      if (isPython && ctx.resolveUserQuestion && isToolTrustedForConversation(ctx.conversationId, ctx.toolName)) {
+      // 精确名或含 run_python 的 MCP 工具名一律默认放行
+      if (
+        CONFIRM_EXEMPT_TOOLS.has(ctx.toolName) ||
+        ctx.toolName.includes("run_python")
+      ) {
         return { action: "allow" };
       }
+      const riskLevel = getToolRiskLevel(ctx.toolName);
+      if (riskLevel !== "high") return { action: "allow" };
       return {
         action: "confirm",
         prompt: buildRiskConfirmPrompt(ctx.toolName, ctx.input),
-        // 仅 run_python 携带 trustable，让前端渲染「本次对话不再询问」勾选项。
-        ...(isPython ? { trustable: true } : {}),
       };
     },
   };

@@ -16,6 +16,7 @@ import * as _dispatchStore from "@/lib/db/dispatch-store";
 import { getRoleMemoryForPrompt } from "@/lib/db/role-memory-store";
 import type { AgentRuntimeEvent } from "./runtime-events";
 import { getToolSummary } from "./tools/renderers";
+import { modelConfigFromSettings, resolveExecutionModel } from "@/lib/settings/model-config";
 
 export type SubagentTask = {
   roleId: string;
@@ -218,11 +219,17 @@ export async function runSubagent(
 
     const sdk = await import("@anthropic-ai/claude-agent-sdk");
 
+    const modelConfig = modelConfigFromSettings(settings);
+    const resolvedSubagent = modelConfig
+      ? resolveExecutionModel({ config: modelConfig, purpose: "subagent" })
+      : null;
+    const subagentModelId = resolvedSubagent?.modelId;
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       ANTHROPIC_BASE_URL: settings.apiUrl,
       ANTHROPIC_API_KEY: settings.apiKey,
-      ANTHROPIC_MODEL: settings.subagentModel || settings.model,
+      ...(subagentModelId ? { ANTHROPIC_MODEL: subagentModelId } : {}),
       CLAUDE_AGENT_SDK_CLIENT_APP: "finance-agent/0.1.0",
       // 子代理 persistSession:false 不写 transcript,但 CLI 仍会在 CLAUDE_CONFIG_DIR 写
       // .claude.json/backups 等杂项——与主 Agent 一致重定向,别漏进用户 ~/.claude。
@@ -310,7 +317,7 @@ export async function runSubagent(
       maxTurns: 15,
       permissionMode: "acceptEdits",
       persistSession: false,
-      ...(settings.subagentModel || settings.model ? { model: settings.subagentModel || settings.model } : {}),
+      ...(subagentModelId ? { model: subagentModelId } : {}),
     };
 
     const chunks: string[] = [];

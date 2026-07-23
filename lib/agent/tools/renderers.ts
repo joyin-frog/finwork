@@ -169,7 +169,10 @@ const summaries: Record<string, SummaryFn> = {
   // ─── 收尾:声明最终产物 ───
   finalize_deliverable: (i) => {
     const files = Array.isArray((i as Record<string, unknown>)?.files) ? (i as Record<string, unknown>).files as unknown[] : [];
-    const names = files.map((f) => String(f)).filter(Boolean);
+    const names = files.map((f) => {
+      if (f && typeof f === "object" && "name" in (f as object)) return String((f as { name: unknown }).name);
+      return String(f);
+    }).filter(Boolean);
     if (names.length === 1) return `确定交付 ${names[0]}`;
     return names.length ? `确定交付 ${names.length} 个文件` : "确定最终交付";
   },

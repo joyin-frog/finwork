@@ -349,10 +349,10 @@ function ToolCallStep({ pair, degraded = false, threaded = false, conversationId
           </motion.span>
         )}
         {running && liveElapsed >= 1000 && (
-          <span className="shrink-0 tabular-nums text-primary/70">{formatMs(liveElapsed)}</span>
+          <span className="shrink-0 text-meta tabular-nums text-primary/70">{formatMs(liveElapsed)}</span>
         )}
         {pair.durationMs != null && pair.durationMs >= STEP_DURATION_FLOOR_MS && pair.status !== "running" && (
-          <span className="shrink-0 tabular-nums text-muted-foreground/60">{formatMs(pair.durationMs)}</span>
+          <span className="shrink-0 text-meta tabular-nums text-muted-foreground/60">{formatMs(pair.durationMs)}</span>
         )}
       </button>
 

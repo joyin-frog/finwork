@@ -81,8 +81,14 @@ description: 任何时候，当电子表格文件是主要输入或输出时，�
 
 ### 重要要求
 
-**公式重算需要 LibreOffice**：您可以假设已安装 LibreOffice，可使用 `scripts/recalc.py` 脚本重新计算公式值。该脚本在首次运行时自动配置 LibreOffice，包括在 Unix 套接字受限的沙箱环境中（由 `scripts/office/soffice.py` 处理）
-**没有LibreOffice 就跳过吧**
+**公式重算由产品 Runtime 负责**：不要通过 Bash 调用 `scripts/recalc.py`，也不要在任务中临时安装公式库或自行寻找 `soffice`。
+
+当工作簿包含需要求值的公式、或正式交付依赖计算后的单元格值时：
+1. 使用产品 Spreadsheet Runtime 的 `recalc` / `probe` 能力（由应用提供，不依赖 Agent 猜环境）。
+2. 若 Runtime 报告 LibreOffice 不可用（`recalc_unavailable`），停止公式型交付并提示用户安装 LibreOffice；**不要跳过重算后假装已算完**。
+3. 静态只读分析可以在无 LibreOffice 时进行，但必须说明公式缓存可能过期。
+
+Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测不属于本 skill。
 ---
 
 ## 读取和分析数据
@@ -150,14 +156,10 @@ sheet['D20'] = '=AVERAGE(D2:D19)'
 2. **创建/加载**：创建新工作簿或加载现有文件
 3. **修改**：添加/编辑数据、公式和格式
 4. **保存**：写入文件
-5. **重算公式（如果使用了公式则为强制步骤）**：使用 scripts/recalc.py 脚本
-   ```bash
-   python scripts/recalc.py output.xlsx
-   ```
+5. **重算公式（如果使用了公式则为强制步骤）**：调用产品 Spreadsheet Runtime `recalc`（不要用 Bash / 临时 pip / 直接 `soffice`）
 6. **验证并修复任何错误**：
-   - 脚本返回包含错误详情的 JSON
-   - 如果 `status` 为 `errors_found`，检查 `error_summary` 获取具体的错误类型和位置
-   - 修复已识别的错误并再次重算
+   - Runtime 返回包含错误详情的结果
+   - 如果发现 `#REF!` / `#DIV/0!` / `#VALUE!` / `#NAME?` 等，修复后再次重算
    - 需要修复的常见错误：
      - `#REF!`：无效的单元格引用
      - `#DIV/0!`：除以零
@@ -228,23 +230,17 @@ wb.save('modified.xlsx')
 
 ## 重算公式
 
-由 openpyxl 创建或修改的 Excel 文件包含作为字符串的公式，但没有计算后的值。使用提供的 `scripts/recalc.py` 脚本重算公式：
+由 openpyxl 创建或修改的 Excel 文件包含作为字符串的公式，但没有计算后的值。**必须**通过产品 Spreadsheet Runtime 重算（`spreadsheet_runtime recalc` / 应用暴露的等价接口）：
 
-```bash
-python scripts/recalc.py <excel_file> [timeout_seconds]
-```
+- Runtime 使用系统 LibreOffice，并创建独立临时 UserInstallation
+- 在工作副本上重算，不原地修改用户上传文件
+- 超时、非零退出、输出未更新均视为失败
+- 缺 LibreOffice 时返回 `recalc_unavailable`——此时不得用 Python 硬编码结果冒充公式值
 
-示例：
-```bash
-python scripts/recalc.py output.xlsx 30
-```
-
-该脚本：
-- 首次运行时自动设置 LibreOffice 宏
-- 重算所有工作表中的所有公式
-- 扫描所有单元格中的 Excel 错误（#REF!、#DIV/0! 等）
-- 返回包含详细错误位置和计数的 JSON
-- 在 Linux 和 macOS 上均可运行
+不要：
+- 通过 Bash 执行 `scripts/recalc.py` 或直接调用 `soffice`
+- 在任务中临时安装公式计算库做兜底
+- 在缺少重算能力时跳过并声称「已计算」
 
 ---
 
@@ -272,14 +268,14 @@ python scripts/recalc.py output.xlsx 30
 
 ---
 
-### 解读 scripts/recalc.py 输出
-脚本返回包含错误详情的 JSON：
+### 解读重算结果
+产品 Runtime 返回包含错误详情的结构，例如：
 ```json
 {
-  "status": "success",           // 或 "errors_found"
-  "total_errors": 0,              // 总错误数
-  "total_formulas": 42,           // 文件中的公式数量
-  "error_summary": {              // 仅在发现错误时存在
+  "status": "success",
+  "total_errors": 0,
+  "total_formulas": 42,
+  "error_summary": {
     "#REF!": {
       "count": 2,
       "locations": ["Sheet1!B5", "Sheet1!C10"]
@@ -301,7 +297,7 @@ python scripts/recalc.py output.xlsx 30
 - 使用 `data_only=True` 读取计算后的值：`load_workbook('file.xlsx', data_only=True)`
 - **警告**：如果以 `data_only=True` 打开并保存，公式将被替换为值并永久丢失
 - 对于大文件：读取时使用 `read_only=True`，写入时使用 `write_only=True`
-- 公式被保留但不会被求值——使用 scripts/recalc.py 更新值
+- 公式被保留但不会被求值——使用产品 Spreadsheet Runtime 重算更新值
 
 ### 使用 pandas
 - 指定数据类型以避免推断问题：`pd.read_excel('file.xlsx', dtype={'id': str})`

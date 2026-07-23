@@ -16,15 +16,30 @@ export function writeAgentTrace(params: {
   totalCostUsd?: number;
   numTurns?: number;
   toolCallCount: number;
+  /** CR-R1：写入 model_usage_json 供用量按 executionTier 归档 */
+  executionTier?: "fast" | "reasoning";
 }) {
   try {
-    const { traceId, conversationId, startedAt, modelUsed, routerPath, errorMessage, userMessage, finalAnswer, roleMode, modelUsage, totalCostUsd, numTurns, toolCallCount } = params;
+    const { traceId, conversationId, startedAt, modelUsed, routerPath, errorMessage, userMessage, finalAnswer, roleMode, modelUsage, totalCostUsd, numTurns, toolCallCount, executionTier } = params;
     const totalMs = Date.now() - startedAt;
     const status = errorMessage ? "error" : (totalMs > 5000 ? "slow" : "ok");
     const inputTokens = modelUsage ? Object.values(modelUsage).reduce((sum, m) => sum + m.inputTokens, 0) : 0;
     const outputTokens = modelUsage ? Object.values(modelUsage).reduce((sum, m) => sum + m.outputTokens, 0) : 0;
     const cacheRead = modelUsage ? Object.values(modelUsage).reduce((sum, m) => sum + m.cacheReadInputTokens, 0) : 0;
     const cacheWrite = modelUsage ? Object.values(modelUsage).reduce((sum, m) => sum + m.cacheCreationInputTokens, 0) : 0;
+
+    let modelUsageJson: string | null = null;
+    if (modelUsage) {
+      if (executionTier) {
+        const annotated: Record<string, ModelUsage & { executionTier?: "fast" | "reasoning" }> = {};
+        for (const [k, v] of Object.entries(modelUsage)) {
+          annotated[k] = { ...v, executionTier };
+        }
+        modelUsageJson = JSON.stringify(annotated);
+      } else {
+        modelUsageJson = JSON.stringify(modelUsage);
+      }
+    }
 
     const db = getDb();
     db.prepare(`
@@ -40,7 +55,7 @@ export function writeAgentTrace(params: {
       redact(userMessage).slice(0, 500), redact(finalAnswer).slice(0, 300), status, roleMode,
       totalCostUsd ?? null, inputTokens || null, outputTokens || null, cacheRead || null, cacheWrite || null,
       inputTokens || null, outputTokens || null, 1, numTurns ?? null,
-      modelUsage ? JSON.stringify(modelUsage) : null,
+      modelUsageJson,
     );
   } catch (err) {
     console.warn("[trace] write failed", err);

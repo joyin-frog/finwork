@@ -25,9 +25,12 @@ export const generatedFilesTestPromise = (async () => {
 
   const before = snapshotGeneratedFiles(cid);
 
-  // 回合中模型产出:① 写到输入旁边(upload/) ② 规范地写到 generate/
+  // 回合中模型产出:① 写到输入旁边(upload/) ② 规范地写到 generate/ ③ 正式 delivered/
   writeFileSync(path.join(uploadDir, "营业预测-更新.pptx"), "out1");
   writeFileSync(path.join(generateDir, "汇总.xlsx"), "out2");
+  const deliveredDir = path.join(convDir, "delivered", "run-1");
+  mkdirSync(deliveredDir, { recursive: true });
+  writeFileSync(path.join(deliveredDir, "正式交付.xlsx"), "formal");
 
   // messageId 传 undefined → 只走 fs 差集,不写库(核心是差集逻辑)
   const recorded = recordNewGeneratedFiles(cid, undefined, before);
@@ -35,13 +38,21 @@ export const generatedFilesTestPromise = (async () => {
 
   assert.deepEqual(
     names,
-    ["营业预测-更新.pptx", "汇总.xlsx"].sort(),
-    `应追踪 upload/ 与 generate/ 里的新增产物,实际:${JSON.stringify(names)}`
+    ["营业预测-更新.pptx", "汇总.xlsx", "正式交付.xlsx"].sort(),
+    `应追踪 upload/、generate/ 与 delivered/ 新增文件,实际:${JSON.stringify(names)}`
   );
   assert.ok(!names.includes("营业预测.xlsx"), "上传的输入文件不应被误记为产物");
   assert.ok(!names.includes(".DS_Store"), "点文件/系统文件不应被当成产物");
+  assert.ok(
+    recorded.filter((f) => f.name === "正式交付.xlsx").every((f) => f.formal === true),
+    "delivered/ 应标记 formal"
+  );
+  assert.ok(
+    recorded.filter((f) => f.name !== "正式交付.xlsx").every((f) => f.formal !== true),
+    "working 文件不得标记为 formal"
+  );
 
-  // ── syncGeneratedAttachments:用户上传不应被误登记成生成(bug 修复回归)──
+  // ── syncGeneratedAttachments:仅 delivered/ 可成正式 assistant 附件 ──
   const { randomUUID } = await import("node:crypto");
   const { createChatConversation, insertChatMessage, insertChatAttachment, getDb } = await import("../lib/db/sqlite.ts");
   const { syncGeneratedAttachments } = await import("../lib/chat/generated-files.ts");
@@ -53,8 +64,10 @@ export const generatedFilesTestPromise = (async () => {
   const conv2 = path.join(appData, "files", String(cid2));
   mkdirSync(path.join(conv2, "upload"), { recursive: true });
   mkdirSync(path.join(conv2, "generate"), { recursive: true });
+  mkdirSync(path.join(conv2, "delivered", "run-x"), { recursive: true });
   writeFileSync(path.join(conv2, "upload", "输入.xlsx"), "u");
   writeFileSync(path.join(conv2, "generate", "产出.xlsx"), "g");
+  writeFileSync(path.join(conv2, "delivered", "run-x", "正式.xlsx"), "d");
   // 上传文件已登记为 user 附件(模拟 query route 行为)
   insertChatAttachment({ id: randomUUID(), messageId: umsg, fileName: "输入.xlsx", mimeType: XLSX_MIME, sizeBytes: 1, storagePath: "upload/输入.xlsx", role: "user" });
 
@@ -67,7 +80,8 @@ export const generatedFilesTestPromise = (async () => {
   `).all(cid2) as Array<{ role: string; storage_path: string }>;
   const assistantPaths = arows.filter((r) => r.role === "assistant").map((r) => r.storage_path);
   assert.ok(!assistantPaths.includes("upload/输入.xlsx"), "上传文件不应被 sync 误登记成生成(assistant)");
-  assert.ok(assistantPaths.includes("generate/产出.xlsx"), "真实生成文件应被 sync 登记成 assistant");
+  assert.ok(!assistantPaths.includes("generate/产出.xlsx"), "CR-Q1: working 文件不得自动成正式附件");
+  assert.ok(assistantPaths.includes("delivered/run-x/正式.xlsx"), "delivered/ 正式副本应被 sync 登记");
 
   // ── migration v2:清理已有的"上传被误记成生成"分身,仅删行、不动 user 行 ──
   const { MIGRATIONS } = await import("../lib/db/migrations.ts");

@@ -34,6 +34,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: strin
       "【禁用 Bash 跑 Python】严禁用 Bash 执行 Python(python -c、python - <<heredoc、python xxx.py 一律禁止);那会绕过本工具的紧凑读表与防覆盖守卫,引发一张表分多步读、_v2_v2 版本爆炸、回合超时。要跑 Python 就调本工具、把代码放进 code 参数。",
       "【读表格式】读取表格数据用紧凑格式(df.to_csv() 或只打印值),禁止逐格带 (值,坐标) 形式输出——那会让输出翻倍、逼模型分很多次才能读完一张表。",
       "【路径约束】生成的文件必须保存到 output_dir 变量指向的目录(已固定为本会话输出目录);不要自行拼接 /tmp、/var 等临时路径,否则文件会丢失、用户看不到。",
+      "【禁止启动 GUI】严禁用 subprocess/os.system/open -a 启动 WPS、Excel、Numbers 等办公软件图形界面；公式重算走产品 spreadsheet runtime / LibreOffice，读写表用 openpyxl 或 xlsx skill。",
       "【openpyxl】画图时图表系列标题(series.tx)必须用 SeriesLabel 或单元格 Reference,勿直接赋字符串,否则 TypeError。"
     ].join("\n"),
     { code: z.string().describe("要执行的 Python 代码") },

@@ -27,13 +27,16 @@ export const usageQuotaTestPromise = (async () => {
   {
     equal(classifyTier("claude-haiku-4-5", roles), "fast", "T1 FAIL: router 槽模型应为快档");
     equal(classifyTier("claude-opus-4-8", roles), "reasoning", "T1 FAIL: 主模型应为推理档");
-    equal(classifyTier("claude-sonnet-4-6", roles), "reasoning", "T1 FAIL: subagent 应为推理档");
+    equal(classifyTier("claude-sonnet-4-6", roles), "fast", "T1 FAIL: v2 subagent 应为快档");
     equal(classifyTier("some-unknown-gateway-model", roles), "reasoning", "T1 FAIL: 未知模型应落推理(贵)档");
     // router 槽为空时绝不误判为快档(偏保守)
     equal(classifyTier("anything", { routerModel: "", mainModel: "x" }), "reasoning", "T1 FAIL: 空 router 槽不应命中快档");
-    // 推理槽优先(P2):同一模型既填 router 又填主槽 → 推理档,不误乘 FAST_WEIGHT
-    equal(classifyTier("claude-opus-4-8", { routerModel: "claude-opus-4-8", mainModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 多槽共享模型应推理档");
-    // 推理槽优先于 router 子串误命中:router='claude' 子串会命中 opus,但主槽全名应把它拉回推理档
+    // 推理槽优先(无 executionTier):同一模型既填 router 又填主槽 → 推理档
+    equal(classifyTier("claude-opus-4-8", { routerModel: "claude-opus-4-8", mainModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 多槽共享模型无 tier 时应推理档");
+    // executionTier 优先于槽位匹配：同 ID 按调用角色归档
+    equal(classifyTier("shared", { routerModel: "shared", mainModel: "shared" }, "fast"), "fast", "T1 FAIL: executionTier=fast 应覆盖槽位");
+    equal(classifyTier("shared", { routerModel: "shared", mainModel: "shared" }, "reasoning"), "reasoning", "T1 FAIL: executionTier=reasoning 应覆盖槽位");
+    // 推理槽优先于 router 子串误命中
     equal(classifyTier("claude-opus-4-8", { routerModel: "claude", mainModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 推理槽应优先于 router 子串命中");
   }
 
@@ -55,6 +58,20 @@ export const usageQuotaTestPromise = (async () => {
     };
     // raw = 1000 + 5*1000 = 6000;快档 ×FAST_WEIGHT
     equal(billableTokensForTrace(trace, roles), 6000 * FAST_WEIGHT, "T3 FAIL: 快档应乘 FAST_WEIGHT");
+
+    // subagent 槽模型在 v2 也是快档
+    const subTrace: UsageTrace = {
+      startedAt: 1_000_000_000_000,
+      models: [{ model: "claude-sonnet-4-6", inputTokens: 1000 }],
+    };
+    equal(billableTokensForTrace(subTrace, roles), 1000 * FAST_WEIGHT, "T3 FAIL: subagent 槽应为快档");
+
+    // 显式 executionTier 覆盖同 ID
+    const shared: UsageTrace = {
+      startedAt: 1_000_000_000_000,
+      models: [{ model: "claude-opus-4-8", executionTier: "fast", inputTokens: 100 }],
+    };
+    equal(billableTokensForTrace(shared, roles), 100 * FAST_WEIGHT, "T3 FAIL: executionTier 应覆盖主槽匹配");
   }
 
   // ── T4: 多模型一行分别归档求和 ──────────────────────────────────

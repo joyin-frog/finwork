@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSettingsPath } from "@/lib/runtime/paths";
 import { getApiKeySecret, setApiKeySecret } from "@/lib/settings/secret-store";
+import { migrateModelConfig, type ModelConfigV2 } from "@/lib/settings/model-config";
 
 export type RoleMode = "daily" | "tech";
 
@@ -112,17 +113,36 @@ export async function readClaudeSettings(): Promise<ClaudeSettings> {
     }
   }
 
+  // CR-M1: 旧三槽/legacy model → 原子 ModelConfig v2；不完整则为空槽(null 语义)。
+  const migrated = migrateModelConfig({
+    mainModel: source.mainModel,
+    routerModel: source.routerModel,
+    subagentModel: source.subagentModel,
+    model: source.model,
+  });
+  const modelSlots = migrated ?? { mainModel: "", routerModel: "", subagentModel: "" };
+
+  // 迁移成功且磁盘仍是旧形态时，幂等写回完整 v2(best-effort)。
+  if (migrated && needsModelConfigPersist(source, migrated)) {
+    try {
+      await persistMigratedModelConfig(parsed, source, migrated, telemetryInstallId);
+    } catch {
+      // best-effort
+    }
+  }
+
   return {
     apiUrl: source.apiUrl || defaultSettings.apiUrl,
     apiKey,
+    // settings.model 只参与一次迁移；运行时选择不再读它。保留原值供兼容展示。
     model: source.model || "",
     companyName: source.companyName || "",
     agentName: source.agentName || defaultSettings.agentName,
     userName: source.userName || "",
     userAvatar: normalizeAvatar(source.userAvatar),
-    routerModel: source.routerModel || defaultSettings.routerModel,
-    subagentModel: source.subagentModel || defaultSettings.subagentModel,
-    mainModel: source.mainModel || defaultSettings.mainModel,
+    routerModel: modelSlots.routerModel,
+    subagentModel: modelSlots.subagentModel,
+    mainModel: modelSlots.mainModel,
     roleMode: source.roleMode === "daily" || source.roleMode === "tech" ? source.roleMode : defaultSettings.roleMode,
     // §17.2 默认开:已存设置明确写了 false 就尊重;未配置(undefined)退到 default(true)。
     telemetryEnabled: source.telemetryEnabled !== undefined ? source.telemetryEnabled === true : defaultSettings.telemetryEnabled,
@@ -135,6 +155,7 @@ export async function readClaudeSettings(): Promise<ClaudeSettings> {
 export async function writeClaudeSettings(next: Partial<ClaudeSettings>) {
   const current = await readClaudeSettings();
   const settingsPath = getSettingsPath();
+  const modelSlots = resolveAtomicModelWrite(next, current);
   const settings: ClaudeSettings = {
     apiUrl: normalizeApiUrl(next.apiUrl ?? current.apiUrl),
     apiKey: (next.apiKey ?? current.apiKey).trim(),
@@ -143,9 +164,9 @@ export async function writeClaudeSettings(next: Partial<ClaudeSettings>) {
     agentName: next.agentName?.trim() || current.agentName || defaultSettings.agentName,
     userName: next.userName?.trim() ?? current.userName,
     userAvatar: next.userAvatar !== undefined ? normalizeAvatar(next.userAvatar) : current.userAvatar,
-    routerModel: (next.routerModel || current.routerModel || defaultSettings.routerModel).trim(),
-    subagentModel: (next.subagentModel || current.subagentModel || defaultSettings.subagentModel).trim(),
-    mainModel: (next.mainModel || current.mainModel || defaultSettings.mainModel).trim(),
+    routerModel: modelSlots.routerModel,
+    subagentModel: modelSlots.subagentModel,
+    mainModel: modelSlots.mainModel,
     roleMode: next.roleMode === "daily" || next.roleMode === "tech" ? next.roleMode : (current.roleMode || defaultSettings.roleMode),
     telemetryEnabled: next.telemetryEnabled !== undefined ? next.telemetryEnabled : current.telemetryEnabled,
     telemetryEndpoint: (next.telemetryEndpoint ?? current.telemetryEndpoint).trim(),
@@ -229,6 +250,62 @@ function normalizeApiUrl(value: string) {
 
 function normalizeModel(value: string) {
   return value.trim();
+}
+
+/**
+ * 原子模型写入：
+ * - 未传任何模型字段 → 保留当前三槽
+ * - 传入任一模型字段 → 必须三槽齐全(调用方 API 已校验)；禁止用旧值填空伪装成功
+ */
+function resolveAtomicModelWrite(
+  next: Partial<ClaudeSettings>,
+  current: ClaudeSettings,
+): Pick<ClaudeSettings, "mainModel" | "routerModel" | "subagentModel"> {
+  const touching =
+    next.mainModel !== undefined || next.routerModel !== undefined || next.subagentModel !== undefined;
+  if (!touching) {
+    return {
+      mainModel: current.mainModel,
+      routerModel: current.routerModel,
+      subagentModel: current.subagentModel,
+    };
+  }
+  // API 保证要么完整 v2、要么根本不写；此处不再用 current 填空。
+  return {
+    mainModel: (next.mainModel ?? "").trim(),
+    routerModel: (next.routerModel ?? "").trim(),
+    subagentModel: (next.subagentModel ?? "").trim(),
+  };
+}
+
+function needsModelConfigPersist(
+  source: Partial<ClaudeSettings>,
+  migrated: ModelConfigV2,
+): boolean {
+  return (
+    source.mainModel !== migrated.mainModel ||
+    source.routerModel !== migrated.routerModel ||
+    source.subagentModel !== migrated.subagentModel
+  );
+}
+
+async function persistMigratedModelConfig(
+  parsed: (Partial<ClaudeSettings> & { claude?: Partial<ClaudeSettings> }) | null,
+  source: Partial<ClaudeSettings>,
+  migrated: ModelConfigV2,
+  telemetryInstallId: string,
+): Promise<void> {
+  const nextSource = {
+    ...source,
+    mainModel: migrated.mainModel,
+    routerModel: migrated.routerModel,
+    subagentModel: migrated.subagentModel,
+    telemetryInstallId,
+  };
+  const out = parsed && parsed.claude ? { ...parsed, claude: nextSource } : { claude: nextSource };
+  const settingsPath = getSettingsPath();
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  await fs.writeFile(settingsPath, `${JSON.stringify(out, null, 2)}\n`, "utf-8");
 }
 
 // 头像只接受小图 data URL(客户端已压到 ~96px);非 data:image/ 前缀或超过 512KB 一律丢弃,

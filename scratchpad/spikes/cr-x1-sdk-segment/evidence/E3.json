@@ -1,0 +1,27 @@
+{
+  "status": "not_run",
+  "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set",
+  "typeContract": {
+    "option": "Options.maxTurns?: number — Maximum number of conversation turns before the query stops",
+    "resultSubtype": "SDKResultError.subtype includes 'error_max_turns'",
+    "terminalReason": "TerminalReason includes 'max_turns'",
+    "sessionField": "SDKResultError includes session_id: string — type allows resume attempt after max turns",
+    "resumeApi": "options.resume?: string loads conversation history",
+    "resumeSessionAt": "options.resumeSessionAt?: string for message-uuid scoped resume",
+    "openQuestion": "Types do not prove whether resume after error_max_turns continues cleanly without a synthetic user continue message — needs live E3."
+  },
+  "adapterToday": {
+    "maxTurns": 30,
+    "resume": "claude-adapter passes resume: claudeSessionId when resumeSession true",
+    "staleRetry": "shouldRetryStaleSession rebuilds on 'No conversation found'"
+  },
+  "platform": {
+    "platform": "darwin arm64",
+    "release": "25.1.0",
+    "node": "v24.13.0",
+    "cwd": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "spikeRoot": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "sdkVersion": "0.3.193",
+    "timestamp": "2026-07-21T09:10:53.404Z"
+  }
+}

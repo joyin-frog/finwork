@@ -35,30 +35,37 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
   const [installAttempts, setInstallAttempts] = useState(0);
   const autoStarted = useRef(false);
 
-  // ② 连模型(只主模型)
+  // ② 连模型（快速 + 推理；可填同一 ID）
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("");
+  const [fastModel, setFastModel] = useState("");
+  const [reasoningModel, setReasoningModel] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [keyError, setKeyError] = useState("");
 
   const runSelfCheck = useCallback(async () => {
     try {
       const doctor = (await (await fetch("/api/settings/doctor")).json()) as {
-        data?: { python?: DoctorResult; apiKeyConfigured?: boolean };
+        data?: {
+          python?: DoctorResult;
+          apiKeyConfigured?: boolean;
+          modelConfigReady?: boolean;
+        };
       };
       const keyOk = doctor.data?.apiKeyConfigured === true;
+      const modelOk = doctor.data?.modelConfigReady === true;
       const py = doctor.data?.python;
       const pyOk = !py || py.ok;
 
       const keySkipped = Boolean(sessionStorage.getItem(SESSION_KEY_PROMPTED));
       const installSkipped = Boolean(sessionStorage.getItem(SESSION_OK));
 
-      setKeyStep(keyOk ? "done" : "needed");
+      // Key 已配但仍缺模型槽 → 仍需进入连模型步
+      setKeyStep(keyOk && modelOk ? "done" : "needed");
       setInstallStep(pyOk ? "done" : "needed");
       if (!pyOk) setInstallMissing(py?.missing ?? []);
 
-      const needKey = !keyOk && !keySkipped;
+      const needKey = (!keyOk || !modelOk) && !keySkipped;
       const needInstall = !pyOk && !installSkipped;
       if (!(needKey || needInstall)) return;
 
@@ -68,9 +75,20 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
       // 连模型需要时预填当前 URL/模型(用户可能填过一半)
       if (needKey) {
         try {
-          const s = (await (await fetch("/api/settings/claude")).json()) as { data?: { apiUrl?: string; model?: string } };
+          const s = (await (await fetch("/api/settings/claude")).json()) as {
+            data?: {
+              apiUrl?: string;
+              mainModel?: string;
+              routerModel?: string;
+              subagentModel?: string;
+              model?: string;
+            };
+          };
           setApiUrl(s.data?.apiUrl || "https://api.anthropic.com");
-          setModel(s.data?.model || "");
+          const reasoning = s.data?.mainModel || s.data?.model || "";
+          const fast = s.data?.routerModel || s.data?.subagentModel || s.data?.model || "";
+          setReasoningModel(reasoning);
+          setFastModel(fast);
         } catch { setApiUrl("https://api.anthropic.com"); }
       }
       setOpen(true);
@@ -142,14 +160,32 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
 
   async function finishModel() {
     if (!apiKey.trim()) { closeGate(); return; }
+    const fast = fastModel.trim();
+    const reasoning = reasoningModel.trim();
+    if (!fast || !reasoning) {
+      setKeyError("请填写快速模型与推理模型（可用同一型号）。");
+      return;
+    }
     setConnecting(true);
     setKeyError("");
     try {
-      await fetch("/api/settings/claude", {
+      const res = await fetch("/api/settings/claude", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ apiUrl: apiUrl.trim(), apiKey: apiKey.trim(), model: model.trim() }),
+        body: JSON.stringify({
+          apiUrl: apiUrl.trim(),
+          apiKey: apiKey.trim(),
+          fastModel: fast,
+          reasoningModel: reasoning,
+        }),
       });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string; fields?: Record<string, string> } | null;
+        const fieldMsg = body?.fields ? Object.values(body.fields).join("；") : "";
+        setKeyError(fieldMsg || body?.error || "保存失败,可点「跳过」稍后在设置里配置。");
+        setConnecting(false);
+        return;
+      }
       closeGate();
     } catch {
       setKeyError("保存失败,可点「跳过」稍后在设置里配置。");
@@ -200,8 +236,11 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
               <div className="flex flex-col gap-2 pl-7">
                 <Input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="API URL，如 https://api.anthropic.com" />
                 <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API Key（sk-...）" />
-                <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="主模型，如 claude-opus-4-8 / deepseek-v4-pro" />
-                <p className="text-meta text-muted-foreground">快速 / 推理模型用默认,可稍后在 设置 → 模型 调整。</p>
+                <Input value={fastModel} onChange={(e) => setFastModel(e.target.value)} placeholder="快速模型（Router / 子代理）" />
+                <Input value={reasoningModel} onChange={(e) => setReasoningModel(e.target.value)} placeholder="推理模型（复杂任务）" />
+                {fastModel.trim() && reasoningModel.trim() && fastModel.trim() === reasoningModel.trim() && (
+                  <p className="text-meta text-muted-foreground">当前没有实际模型分层（快速与推理相同）。</p>
+                )}
                 {keyError && <p className="text-meta text-[color:var(--tone-alarm)]">{keyError}</p>}
               </div>
             )}

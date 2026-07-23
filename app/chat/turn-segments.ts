@@ -5,9 +5,10 @@
  * - 若最后一个 text 段之后再无 tool_use/tool_result 事件，该 text 段为最终回答
  *   (answerText)，其余为过程段；
  * - 否则 answerText 为空（全部都是过程，最终回答取 message.content）；
- * - 过程段保持真实时间顺序：thinking / text 与工具按原序交错,连续工具(含 system)归并为
+ * - 过程段保持真实时间顺序：thinking / text / ask_user 与工具按原序交错,连续工具(含 system)归并为
  *   一个 tools 段,连续 thinking 合并为一个 thinking 段(空行分隔、空白跳过);
- * - ask_user / ask_user_answered 不进过程段(走专门的交互卡片)。
+ * - ask_user 进过程段(kind:"ask")按时序落点;ask_user_answered 不进段(答案由渲染侧查表)。
+ * - 待答的 ask_user 仍由输入框上方浮层处理,过程区只渲染已答/超时摘要。
  */
 
 
@@ -23,7 +24,8 @@ export type ProcessSegment =
   | { kind: "text"; content: string; id: string }
   | { kind: "thinking"; content: string; id: string }
   | { kind: "tools"; items: SegmentTimelineItem[] }
-  | { kind: "subagent"; label: string; items: SegmentTimelineItem[] };
+  | { kind: "subagent"; label: string; items: SegmentTimelineItem[] }
+  | { kind: "ask"; item: SegmentTimelineItem; questionId: string };
 
 export type TurnSegments = {
   processSegments: ProcessSegment[];
@@ -95,8 +97,9 @@ export function buildTurnSegments(timeline: SegmentTimelineItem[]): TurnSegments
     answerIdx = lastTextIdx;
   }
 
-  // 按真实顺序:text 成段;连续 thinking 合并为一个 thinking 段;连续工具(及 system)归并为一个 tools 段。
-  // 答案项(answerIdx)与 ask_user 不进过程段:答案走答案气泡、ask_user 走专门的交互卡片。
+  // 按真实顺序:text 成段;连续 thinking 合并为一个 thinking 段;连续工具(及 system)归并为一个 tools 段;
+  // ask_user 单独成段并打断工具归并,落在真实时序位置。答案项(answerIdx)不进过程段。
+  // ask_user_answered 不进段(渲染侧用 questionId 查答案)。
   const segments: ProcessSegment[] = [];
   let pendingTools: SegmentTimelineItem[] = [];
   // 摘出答案后其两侧的 thinking 会变相邻,但语义上是被答案隔开的两次思考 → 在摘出处打断合并链。
@@ -116,7 +119,14 @@ export function buildTurnSegments(timeline: SegmentTimelineItem[]): TurnSegments
       breakThinkingMerge = true;
       continue;
     }
-    if (type === "ask_user" || type === "ask_user_answered") continue;
+    if (type === "ask_user_answered") continue;
+    if (type === "ask_user") {
+      flushTools();
+      const questionId = typeof item.event.questionId === "string" ? item.event.questionId : item.id;
+      segments.push({ kind: "ask", item, questionId });
+      breakThinkingMerge = false;
+      continue;
+    }
     if (type === "text") {
       flushTools();
       const textEvent = item.event as { type: "text"; content: string };

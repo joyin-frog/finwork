@@ -31,10 +31,9 @@ export default function SkillCenter({
 }) {
   const [claudeSettings, setClaudeSettings] = useState(initialClaudeSettings);
   const [apiUrl, setApiUrl] = useState(initialClaudeSettings.apiUrl);
-  const [model, setModel] = useState(initialClaudeSettings.model);
   const [apiKey, setApiKey] = useState("");
-  const [routerModel, setRouterModel] = useState(initialClaudeSettings.routerModel);
-  const [subagentModel, setSubagentModel] = useState(initialClaudeSettings.subagentModel);
+  const [fastModel, setFastModel] = useState(initialClaudeSettings.routerModel);
+  const [reasoningModel, setReasoningModel] = useState(initialClaudeSettings.mainModel);
   const [companyName, setCompanyName] = useState(initialClaudeSettings.companyName);
   const [agentName, setAgentName] = useState(initialClaudeSettings.agentName);
   const [userName, setUserName] = useState(initialClaudeSettings.userName);
@@ -59,17 +58,38 @@ export default function SkillCenter({
   async function saveClaudeSettings(clearApiKey = false) {
     setSaveStatus("saving");
     try {
+      const fast = fastModel.trim();
+      const reasoning = reasoningModel.trim();
+      // 双空 = 尚未配置模型 → omit，不挡其他设置落盘；单填或不完整 → 交给 API 400。
+      const modelFields = !fast && !reasoning ? {} : { fastModel, reasoningModel };
       const res = await fetch("/api/settings/claude", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ apiUrl, model, apiKey: apiKey.trim() || undefined, clearApiKey, routerModel, subagentModel, companyName, agentName, userName, userAvatar, roleMode }),
+        body: JSON.stringify({
+          apiUrl,
+          apiKey: apiKey.trim() || undefined,
+          clearApiKey,
+          ...modelFields,
+          companyName,
+          agentName,
+          userName,
+          userAvatar,
+          roleMode,
+        }),
       });
-      const payload = (await res.json()) as { data: PublicClaudeSettings };
+      if (!res.ok) {
+        setSaveStatus("error");
+        return;
+      }
+      const payload = (await res.json()) as { ok?: boolean; data: PublicClaudeSettings };
+      if (!payload.data) {
+        setSaveStatus("error");
+        return;
+      }
       setClaudeSettings(payload.data);
       setApiUrl(payload.data.apiUrl);
-      setModel(payload.data.model);
-      setRouterModel(payload.data.routerModel);
-      setSubagentModel(payload.data.subagentModel);
+      setFastModel(payload.data.routerModel);
+      setReasoningModel(payload.data.mainModel);
       setCompanyName(payload.data.companyName);
       setAgentName(payload.data.agentName);
       setUserName(payload.data.userName);
@@ -179,18 +199,16 @@ export default function SkillCenter({
             {activeTab === "model" && (
               <ModelSettings
                 apiUrl={apiUrl}
-                model={model}
                 apiKey={apiKey}
                 apiKeyConfigured={claudeSettings.apiKeyConfigured}
                 apiKeyPreview={claudeSettings.apiKeyPreview}
-                routerModel={routerModel}
-                subagentModel={subagentModel}
+                fastModel={fastModel}
+                reasoningModel={reasoningModel}
                 onApiUrlChange={(v) => { setApiUrl(v); scheduleClaudeSave(); }}
-                onModelChange={(v) => { setModel(v); scheduleClaudeSave(); }}
                 onApiKeyChange={setApiKey}
                 onApiKeyBlur={() => { if (apiKey.trim()) void saveClaudeSettings(false); }}
-                onRouterModelChange={(v) => { setRouterModel(v); scheduleClaudeSave(); }}
-                onSubagentModelChange={(v) => { setSubagentModel(v); scheduleClaudeSave(); }}
+                onFastModelChange={(v) => { setFastModel(v); scheduleClaudeSave(); }}
+                onReasoningModelChange={(v) => { setReasoningModel(v); scheduleClaudeSave(); }}
               />
             )}
             {activeTab === "shortcuts" && <ShortcutsSettings />}

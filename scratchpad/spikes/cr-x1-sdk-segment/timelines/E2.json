@@ -1,0 +1,57 @@
+{
+  "experimentId": "E2",
+  "writtenAt": "2026-07-21T09:10:53.315Z",
+  "events": [
+    {
+      "tMs": 3,
+      "label": "local_child_spawned",
+      "detail": {
+        "pid": 11455
+      }
+    },
+    {
+      "tMs": 604,
+      "label": "before_kill",
+      "detail": {
+        "bytes": 14,
+        "preview": "tick-1\ntick-2"
+      }
+    },
+    {
+      "tMs": 1012,
+      "label": "after_kill",
+      "detail": {
+        "exitCode": {
+          "code": null,
+          "signal": "SIGTERM"
+        },
+        "bytes": 14,
+        "grew": false
+      }
+    }
+  ],
+  "status": "ran_local_only",
+  "conclusion": "Host owns subprocess lifecycle. SDK interrupt type docs do not claim to kill tool child processes; finwork must kill run_python / Bash children for quiesce.",
+  "exitCode": {
+    "code": null,
+    "signal": "SIGTERM"
+  },
+  "beforeBytes": 14,
+  "afterBytes": 14,
+  "sdkLive": "not_run",
+  "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set",
+  "typeNotes": [
+    "Query.interrupt stops query processing; no typed guarantee about in-flight Bash/Python children.",
+    "Query.stopTask / backgroundTasks exist for task control, separate from interrupt.",
+    "TerminalReason includes aborted_tools — suggests abort path aware of tools, still not a kill contract."
+  ],
+  "platform": {
+    "platform": "darwin arm64",
+    "release": "25.1.0",
+    "node": "v24.13.0",
+    "cwd": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "spikeRoot": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "sdkVersion": "0.3.193",
+    "timestamp": "2026-07-21T09:10:53.314Z"
+  }
+}

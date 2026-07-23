@@ -23,9 +23,13 @@ export const sdkPreToolUseTestPromise = (async () => {
   const callback = createSdkPreToolUseHook(outputDir);
   const options = { signal: new AbortController().signal };
 
-  const bash = await callback(preToolInput("Bash", { command: "echo unsafe" }), "bash-1", options);
-  assert.equal(bash.hookSpecificOutput?.hookEventName, "PreToolUse", "SPT-1 FAIL: 应返回 PreToolUse 输出");
-  assert.equal(bash.hookSpecificOutput?.permissionDecision, "deny", "SPT-1 FAIL: Bash 必须由原生 hook 拒绝");
+  const bash = await callback(preToolInput("Bash", { command: "echo hello" }), "bash-1", options);
+  assert.equal(bash.continue, true, "SPT-1 FAIL: Bash 应继续");
+  assert.equal(
+    bash.hookSpecificOutput?.permissionDecision,
+    undefined,
+    "SPT-1 FAIL: Bash 已默认放行，原生 hook 不得抢先 deny"
+  );
 
   const outsideWrite = await callback(
     preToolInput("Write", { file_path: path.join(projectRoot, "outside.txt"), content: "x" }),

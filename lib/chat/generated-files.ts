@@ -3,19 +3,24 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs
 import path from "node:path";
 import { getDb, insertAuditLog, insertChatAttachment } from "@/lib/db/sqlite";
 import { getConversationFilesDir } from "@/lib/runtime/paths";
-import { FINALIZED_MARKER } from "@/lib/agent/mcp-tools/finalize-deliverable";
+import { FINALIZED_MARKER, isDeliveredStoragePath } from "@/lib/deliverable";
 
 export function snapshotGeneratedFiles(conversationId: number | undefined): Set<string> {
   if (!conversationId) return new Set();
   return new Set(listGeneratedFilePaths(conversationId));
 }
 
+/**
+ * 差集追踪本回合新文件（含 working）。
+ * CR-Q1：working/candidate 不得自动登记为正式 assistant 附件；
+ * 仅 delivered/ 下的不可变副本可 insertChatAttachment。
+ */
 export function recordNewGeneratedFiles(
   conversationId: number | undefined,
   messageId: number | undefined,
   before: Set<string>
 ) {
-  const files: Array<{ name: string; mimeType: string; sizeBytes: number }> = [];
+  const files: Array<{ name: string; mimeType: string; sizeBytes: number; formal?: boolean }> = [];
   if (!conversationId) return files;
 
   const existing = getAllAttachmentStoragePaths(conversationId);
@@ -24,8 +29,10 @@ export function recordNewGeneratedFiles(
       const stat = statSync(filePath);
       const name = path.basename(filePath);
       const storagePath = toConversationStoragePath(conversationId, filePath);
-      files.push({ name, mimeType: guessMimeType(name), sizeBytes: stat.size });
-      if (messageId && !existing.has(storagePath)) {
+      const formal = isDeliveredStoragePath(storagePath);
+      files.push({ name, mimeType: guessMimeType(name), sizeBytes: stat.size, formal });
+      // 正式附件：仅 delivered/
+      if (messageId && formal && !existing.has(storagePath)) {
         insertChatAttachment({
           id: randomUUID(),
           messageId,
@@ -46,7 +53,7 @@ export function recordNewGeneratedFiles(
 
 /** 成功收尾时的清理:若本回合调用过 finalize_deliverable(写了 .finalized.json),删掉本回合在
  * generate/ 下「新建、但未被声明为最终产物」的中间/试错文件;声明清单、往次产物、会话上传输入都不删。
- * 无声明标记 → 全部保留(保守)。删除落 audit_logs(红线8)。仅在成功收尾调用,未完成/出错时不清理。 */
+ * delivered/ 永不由此清理。无声明标记 → 全部保留(保守)。 */
 export function cleanupUnfinalizedFiles(conversationId: number | undefined, before: Set<string>): string[] {
   if (!conversationId) return [];
   const outputDir = path.join(getConversationFilesDir(conversationId), "generate");
@@ -66,7 +73,7 @@ export function cleanupUnfinalizedFiles(conversationId: number | undefined, befo
   const deleted: string[] = [];
   for (const filePath of listGeneratedFilePaths(conversationId)) {
     const abs = path.resolve(filePath);
-    if (!abs.startsWith(genRoot + path.sep)) continue;   // 只动 generate/ 下;upload/ 输入永不碰
+    if (!abs.startsWith(genRoot + path.sep)) continue;   // 只动 generate/ 下;upload/ 与 delivered/ 永不碰
     if (before.has(filePath)) continue;                   // 回合前已存在(往次产物)→ 保留
     if (declared.has(path.basename(filePath))) continue;  // 已声明的成品 → 保留
     try { rmSync(filePath, { force: true }); deleted.push(path.basename(filePath)); } catch { /* 占用/已删:忽略 */ }
@@ -85,6 +92,7 @@ export function cleanupUnfinalizedFiles(conversationId: number | undefined, befo
   return deleted;
 }
 
+/** 仅同步 delivered/ 下的正式附件；working 文件不补登记。 */
 export function syncGeneratedAttachments(conversationId: number) {
   const messageId = getLatestAssistantMessageId(conversationId);
   if (!messageId) return 0;
@@ -93,9 +101,10 @@ export function syncGeneratedAttachments(conversationId: number) {
   let inserted = 0;
   for (const filePath of listGeneratedFilePaths(conversationId)) {
     try {
+      const storagePath = toConversationStoragePath(conversationId, filePath);
+      if (!isDeliveredStoragePath(storagePath)) continue;
       const stat = statSync(filePath);
       const name = path.basename(filePath);
-      const storagePath = toConversationStoragePath(conversationId, filePath);
       if (existing.has(storagePath)) continue;
       insertChatAttachment({
         id: randomUUID(),
@@ -127,7 +136,8 @@ function listGeneratedFilePaths(conversationId: number) {
       const fullPath = path.join(dir, entry.name);
       // 注意:不再排除 upload/。模型有时会把产物写到输入文件旁边(upload/),
       // 由 before/after 快照差集兜底——上传的输入文件在 before 快照里、不会被误记为产物,
-      // 而回合内新增的文件(无论落 generate/ 还是 upload/)都能被追踪、展示到对话与面板。
+      // 而回合内新增的文件(无论落 generate/ 还是 upload/)都能被追踪。
+      // delivered/ 也会被列出，供正式附件同步。
       if (entry.isDirectory()) {
         visit(fullPath);
       } else if (entry.isFile()) {

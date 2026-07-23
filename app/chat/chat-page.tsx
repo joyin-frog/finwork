@@ -89,11 +89,14 @@ import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
 import { surfaceVariants } from "@/components/ui/surface";
 
 import { AssistantTurn, type TimelineItem } from "@/app/chat/components/assistant-turn";
+import { RunStatusBanner } from "@/app/chat/components/run-status-banner";
 import { UserBubble } from "@/app/chat/components/user-bubble";
 import { FileTray } from "@/app/chat/components/file-tray";
 import { MentionPopup } from "@/app/chat/components/mention-popup";
 import { useChatNavigation } from "@/app/chat/hooks/use-chat-navigation";
 import { useAttachments } from "@/app/chat/hooks/use-attachments";
+import { useRunStatus } from "@/app/chat/hooks/use-run-status";
+import { canShowFileTaskSuccess } from "@/lib/agent/run-status-labels";
 
 type ChatMode = "new" | "recent";
 
@@ -143,6 +146,10 @@ export default function ChatPage({
   const [turnKey, setTurnKey] = useState<string | null>(null);
   const turn = stream.getTurn(turnKey);
   const loading = turn?.status === "streaming";
+  const { run: authoritativeRun, qualityForFile, refresh: refreshRunStatus } = useRunStatus(turn?.runId);
+  useEffect(() => {
+    if (turn?.status && turn.status !== "streaming") void refreshRunStatus();
+  }, [turn?.status, turn?.runId, refreshRunStatus]);
   // 用量进度环:挂载/轮询取数;回合从"进行中"落定后刷新一次,数字及时跟上。
   const { usage, refetch: refetchUsage } = useUsage();
   useEffect(() => {
@@ -1096,6 +1103,23 @@ export default function ChatPage({
                  <MessageScroller className="flex-1">
                   <MessageScrollerViewport ref={threadRef}>
                    <MessageScrollerContent className="w-full max-w-[800px] mx-auto gap-0 px-6 pt-10 pb-4">
+                  {authoritativeRun && (loading
+                    || authoritativeRun.status !== "completed"
+                    || !canShowFileTaskSuccess({
+                      runStatus: authoritativeRun.status,
+                      qualityStatus: authoritativeRun.qualityStatus,
+                      hasRequiredDeliverables: authoritativeRun.qualityStatus !== "not_applicable",
+                    })) ? (
+                    <div className="mb-3">
+                      <RunStatusBanner
+                        status={authoritativeRun.status}
+                        qualityStatus={authoritativeRun.qualityStatus}
+                        terminationReason={authoritativeRun.terminationReason}
+                        recentStep={authoritativeRun.latestCheckpoint?.lastCompletedStage ?? null}
+                        className="w-full"
+                      />
+                    </div>
+                  ) : null}
                   {displayMessages.map((message, index) => {
                     return (
                     <MessageScrollerItem
@@ -1136,6 +1160,7 @@ export default function ChatPage({
                           onContinue={() => void sendMessage("继续")}
                           feedback={message.id != null ? feedbackMap[message.id] : undefined}
                           onFeedback={submitFeedback}
+                          qualityForFile={qualityForFile}
                         />
                       )}
                     </MessageScrollerItem>

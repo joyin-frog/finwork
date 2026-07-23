@@ -31,8 +31,12 @@ export const mockAgentTestPromise = (async () => {
 
     // ── M1: 生成文件 → 写真产物 + run_python 工具事件,content 与流式一致 ──
     const tmp = mkdtempSync(path.join(os.tmpdir(), "mock-gen-"));
-    const gen = await run("帮我生成一个报表", { outputDir: tmp });
+    const gen = await run("帮我生成一个报表", { outputDir: tmp, requestId: "mock-test-run" });
     assert.ok(existsSync(path.join(tmp, "示例报表.xlsx")), "M1 FAIL: 应写出产物文件");
+    assert.ok(
+      existsSync(path.join(tmp, "delivered", "mock-test-run", "示例报表.xlsx")),
+      "M1 FAIL: 应模拟 finalize 后的正式 delivered 副本"
+    );
     assert.ok(
       gen.events.some((e) => e.type === "tool_started" && e.toolName === "run_python"),
       "M1 FAIL: 应有 run_python tool_started"

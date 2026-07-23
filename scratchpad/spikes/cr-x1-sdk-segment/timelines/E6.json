@@ -1,0 +1,77 @@
+{
+  "experimentId": "E6",
+  "writtenAt": "2026-07-21T09:10:55.601Z",
+  "events": [
+    {
+      "tMs": 3,
+      "label": "hash_before",
+      "detail": {
+        "hashBefore": "7a6d1b815cef81eec64bf0d291c92d39eef65457f01a922092fadae4d45058fa"
+      }
+    },
+    {
+      "tMs": 9,
+      "label": "writer_spawned",
+      "detail": {
+        "pid": 12442
+      }
+    },
+    {
+      "tMs": 371,
+      "label": "hash_mid_before_kill",
+      "detail": {
+        "hashMid": "80716c14418611154df60252dfd0ea9653808bd3b77566d93cb0452072a88dfb",
+        "changed": true
+      }
+    },
+    {
+      "tMs": 375,
+      "label": "child_killed",
+      "detail": {
+        "code": null,
+        "signal": "SIGKILL"
+      }
+    },
+    {
+      "tMs": 376,
+      "label": "quiesce_watch_start",
+      "detail": {
+        "windowMs": 1500
+      }
+    },
+    {
+      "tMs": 1988,
+      "label": "quiesce_watch_end",
+      "detail": {
+        "stable": true,
+        "uniqueHashes": [
+          "80716c14418611154df60252dfd0ea9653808bd3b77566d93cb0452072a88dfb"
+        ]
+      }
+    }
+  ],
+  "status": "ran_local_quiesce_probe",
+  "stableAfterKill": true,
+  "hashBefore": "7a6d1b815cef81eec64bf0d291c92d39eef65457f01a922092fadae4d45058fa",
+  "hashMid": "80716c14418611154df60252dfd0ea9653808bd3b77566d93cb0452072a88dfb",
+  "uniqueHashesAfterKill": [
+    "80716c14418611154df60252dfd0ea9653808bd3b77566d93cb0452072a88dfb"
+  ],
+  "killTimeoutMs": 1500,
+  "conclusion": "After SIGKILL, watched file stayed immutable for the timeout window (host-side quiesce achievable).",
+  "sdkLive": "not_run",
+  "reason": "RUN_LIVE not set (default dry-run); no real ANTHROPIC_API_KEY; SKIP_LLM set",
+  "productImplication": [
+    "Quiesce requires host-owned kill of Python/LO children + event cursor freeze; SDK interrupt alone is insufficient evidence.",
+    "Cannot claim auto-segment pause safety without live E1+E2+E6 together."
+  ],
+  "platform": {
+    "platform": "darwin arm64",
+    "release": "25.1.0",
+    "node": "v24.13.0",
+    "cwd": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "spikeRoot": "/Users/gyro/.codex/worktrees/f4f2/finance-agent-public/scratchpad/spikes/cr-x1-sdk-segment",
+    "sdkVersion": "0.3.193",
+    "timestamp": "2026-07-21T09:10:55.600Z"
+  }
+}

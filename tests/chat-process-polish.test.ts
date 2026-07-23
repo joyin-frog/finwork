@@ -79,6 +79,23 @@ export const chatProcessPolishTestPromise = (async () => {
       "T8e FAIL: null 应返回空串"
     );
 
+    // T8f: SQLite UTC 无时区标记（datetime('now')）不得按本地解析偏 8 小时
+    {
+      const utc = new Date(nowMs - 3 * 60_000);
+      const y = utc.getUTCFullYear();
+      const mo = String(utc.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(utc.getUTCDate()).padStart(2, "0");
+      const h = String(utc.getUTCHours()).padStart(2, "0");
+      const mi = String(utc.getUTCMinutes()).padStart(2, "0");
+      const s = String(utc.getUTCSeconds()).padStart(2, "0");
+      const sqliteUtc = `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+      assert.strictEqual(
+        messageTimestamp(sqliteUtc),
+        "3 分钟前",
+        `T8f FAIL: SQLite UTC「${sqliteUtc}」应显示「3 分钟前」，不得偏成「约 8 小时前」`
+      );
+    }
+
     console.log("chat-process-polish T8: messageTimestamp 纯函数 ✓");
   }
 

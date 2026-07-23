@@ -4,10 +4,93 @@ import contextlib
 import io
 import json
 import os
+import re
 import sys
 import traceback
 from collections import defaultdict
 from pathlib import Path
+
+# 禁止 run_python 拉起办公软件 GUI（真机曾反复弹出 WPS：agent 用 subprocess 调 wpsoffice 重算公式）。
+_GUI_OFFICE_CODE_RE = re.compile(
+    r"(?is)"
+    r"(wpsoffice|wps\.exe|et\.exe|wpp\.exe|wps\s*office|"
+    r"Microsoft\s*Excel|Excel\.app|Numbers\.app|"
+    r"win32com\.client|Dispatch\(\s*['\"]Excel\.Application|"
+    r"xlwings|"
+    r"open\s+-a\s+|osascript\s+)"
+)
+_GUI_OFFICE_CMD_RE = re.compile(
+    r"(?is)(wpsoffice|wps\.exe|et\.exe|wpp\.exe|"
+    r"Microsoft Excel\.app|Excel\.app|Numbers\.app|"
+    r"/Applications/[^\"'\s]*WPS[^\"'\s]*\.app|"
+    r"/Applications/[^\"'\s]*Excel[^\"'\s]*\.app)"
+)
+_GUI_OFFICE_DENY_MSG = (
+    "禁止通过 run_python 启动 WPS/Excel/Numbers 等图形界面程序。"
+    "公式重算请用本产品的 spreadsheet runtime / LibreOffice；读写表格用 openpyxl 或 xlsx skill。"
+)
+
+
+def _reject_gui_office_code(code: str) -> None:
+    if _GUI_OFFICE_CODE_RE.search(code):
+        raise SystemExit(_GUI_OFFICE_DENY_MSG)
+
+
+def _cmd_looks_like_gui_office(cmd) -> bool:
+    if isinstance(cmd, (list, tuple)):
+        text = " ".join(str(x) for x in cmd)
+    else:
+        text = str(cmd)
+    return bool(_GUI_OFFICE_CMD_RE.search(text))
+
+
+def _install_no_gui_office_exec_guard() -> None:
+    """运行时再拦一层，防止字符串拆开绕过源码静态检查。"""
+    import subprocess as _sp
+
+    _orig_run = _sp.run
+    _orig_popen = _sp.Popen
+    _orig_call = _sp.call
+    _orig_check_call = _sp.check_call
+    _orig_check_output = _sp.check_output
+    _orig_system = os.system
+
+    def _guard_cmd(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_run(cmd, *args, **kwargs)
+
+    def _guard_popen(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_popen(cmd, *args, **kwargs)
+
+    def _guard_call(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_call(cmd, *args, **kwargs)
+
+    def _guard_check_call(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_check_call(cmd, *args, **kwargs)
+
+    def _guard_check_output(cmd, *args, **kwargs):
+        if _cmd_looks_like_gui_office(cmd):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_check_output(cmd, *args, **kwargs)
+
+    def _guard_system(command):
+        if _cmd_looks_like_gui_office(command):
+            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
+        return _orig_system(command)
+
+    _sp.run = _guard_cmd  # type: ignore[method-assign]
+    _sp.Popen = _guard_popen  # type: ignore[misc,assignment]
+    _sp.call = _guard_call  # type: ignore[method-assign]
+    _sp.check_call = _guard_check_call  # type: ignore[method-assign]
+    _sp.check_output = _guard_check_output  # type: ignore[method-assign]
+    os.system = _guard_system  # type: ignore[assignment]
 
 
 # ── CSV 分析域 ──────────────────────────────────────────────
@@ -56,7 +139,41 @@ def analyze_csv(path: Path):
 
 
 # ── 文档解析域（xlsx/docx/pptx/pdf/OCR 提取） ──────────────
+def _is_legacy_xls(path: Path) -> bool:
+    """True for BIFF .xls. Never feed these to openpyxl (it only speaks OOXML)."""
+    return path.suffix.lower() == ".xls"
+
+
+def extract_xls(path: Path) -> str:
+    """Read legacy .xls via xlrd — never openpyxl."""
+    import xlrd
+
+    book = xlrd.open_workbook(str(path))
+    parts: list[str] = []
+    for sheet in book.sheets():
+        if sheet.nrows == 0:
+            continue
+        parts.append(f"## Sheet: {sheet.name}\n")
+        max_cols = sheet.ncols
+        for row_index in range(sheet.nrows):
+            cells = []
+            for col_index in range(max_cols):
+                cell = sheet.cell(row_index, col_index)
+                if cell.ctype == xlrd.XL_CELL_EMPTY:
+                    cells.append("")
+                else:
+                    cells.append(str(cell.value))
+            parts.append("| " + " | ".join(cells) + " |")
+            if row_index == 0:
+                parts.append("|" + "|".join(["---"] * max_cols) + "|")
+        parts.append("")
+    return "\n".join(parts)
+
+
 def extract_xlsx(path: Path) -> str:
+    if _is_legacy_xls(path):
+        return extract_xls(path)
+
     import openpyxl
 
     wb = openpyxl.load_workbook(path, data_only=True)
@@ -79,7 +196,49 @@ def extract_xlsx(path: Path) -> str:
     return "\n".join(parts)
 
 
+def inspect_xls(path: Path):
+    """Inspect legacy .xls with xlrd (no formula engine; cached values only)."""
+    import xlrd
+
+    book = xlrd.open_workbook(str(path))
+    workbook = {
+        "file_name": path.name,
+        "sheet_count": book.nsheets,
+        "sheets": [],
+        "format": "xls",
+        "engine": "xlrd",
+    }
+    for sheet in book.sheets():
+        header_row = [
+            sheet.cell_value(0, col) if sheet.nrows > 0 else None
+            for col in range(sheet.ncols)
+        ]
+        sample_rows = []
+        for row_index in range(1, min(sheet.nrows, 8)):
+            sample_rows.append([
+                sheet.cell_value(row_index, col)
+                for col in range(sheet.ncols)
+            ])
+        workbook["sheets"].append({
+            "name": sheet.name,
+            "rows": sheet.nrows,
+            "columns": sheet.ncols,
+            "headers": header_row,
+            "sample_rows": sample_rows,
+            "formula_count": 0,
+            "formulas_sample": [],
+            "merged_ranges": [],
+            "frozen_panes": None,
+            "auto_filter": None,
+            "number_formats_sample": {},
+        })
+    return workbook
+
+
 def inspect_excel(path: Path):
+    if _is_legacy_xls(path):
+        return inspect_xls(path)
+
     import openpyxl
 
     formula_wb = openpyxl.load_workbook(path, data_only=False, read_only=False)
@@ -275,7 +434,9 @@ def cmd_extract_text():
     if not path.exists():
         raise SystemExit(f"file not found: {path}")
     ext = path.suffix.lower()
-    if ext in (".xlsx", ".xls"):
+    if ext == ".xls":
+        text = extract_xls(path)
+    elif ext in (".xlsx", ".xlsm"):
         text = extract_xlsx(path)
     elif ext == ".docx":
         text = extract_docx(path)
@@ -297,6 +458,250 @@ def cmd_inspect_excel():
     if path.suffix.lower() not in (".xlsx", ".xlsm", ".xls"):
         raise SystemExit(f"unsupported file type: {path.suffix.lower()}")
     print(json.dumps(inspect_excel(path), ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_convert_xls():
+    """convert-xls <input.xls> <output.xlsx> — xlrd read → openpyxl write."""
+    if len(sys.argv) < 4:
+        raise SystemExit("usage: finance_worker.py convert-xls <input.xls> <output.xlsx>")
+    src = Path(sys.argv[2])
+    dst = Path(sys.argv[3])
+    if not src.exists():
+        print(json.dumps({"ok": False, "error": f"file not found: {src}"}, ensure_ascii=False))
+        return
+    if src.suffix.lower() != ".xls":
+        print(json.dumps({"ok": False, "error": "input must be .xls"}, ensure_ascii=False))
+        return
+    try:
+        import xlrd
+        import openpyxl
+    except ImportError as e:
+        print(json.dumps({"ok": False, "error": f"missing dependency: {e}"}, ensure_ascii=False))
+        return
+
+    book = xlrd.open_workbook(str(src))
+    wb = openpyxl.Workbook()
+    default = wb.active
+    wb.remove(default)
+    for sheet in book.sheets():
+        ws = wb.create_sheet(title=sheet.name[:31] or "Sheet")
+        for row_index in range(sheet.nrows):
+            for col_index in range(sheet.ncols):
+                cell = sheet.cell(row_index, col_index)
+                value = cell.value
+                if cell.ctype == xlrd.XL_CELL_DATE:
+                    try:
+                        value = xlrd.xldate_as_datetime(cell.value, book.datemode)
+                    except Exception:
+                        pass
+                ws.cell(row=row_index + 1, column=col_index + 1, value=value)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(str(dst))
+    print(json.dumps({"ok": True, "outputPath": str(dst)}, ensure_ascii=False))
+
+
+def _fixture_dir() -> Path:
+    """Spreadsheet probe fixtures (repo tests/fixtures/spreadsheet)."""
+    env = os.environ.get("FINANCE_AGENT_SPREADSHEET_FIXTURES")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "spreadsheet"
+
+
+def cmd_probe_spreadsheet():
+    """Behavioral package probe: xlrd .xls read + openpyxl xlsx roundtrip."""
+    import tempfile
+
+    result = {
+        "read": {"csv": False, "xlsx": False, "xlsm": False, "xls": False},
+        "write": {"xlsx": False},
+        "ok": False,
+    }
+    fixtures = _fixture_dir()
+    try:
+        import xlrd
+        xls_path = fixtures / "legacy-input.xls"
+        if xls_path.exists():
+            book = xlrd.open_workbook(str(xls_path))
+            sheet = book.sheet_by_index(0)
+            # Fixture contract: A1 == "Name", B2 == 42
+            a1 = sheet.cell_value(0, 0)
+            b2 = sheet.cell_value(1, 1) if sheet.nrows > 1 and sheet.ncols > 1 else None
+            result["read"]["xls"] = a1 == "Name" and float(b2) == 42.0
+    except Exception as e:
+        result["xls_error"] = str(e)
+
+    try:
+        import openpyxl
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "probe.xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws["A1"] = "hello"
+            ws["A2"] = 1
+            ws["A3"] = 2
+            ws["A4"] = "=SUM(A2:A3)"
+            wb.save(out)
+            result["write"]["xlsx"] = out.exists() and out.stat().st_size > 0
+            rb = openpyxl.load_workbook(out, data_only=False)
+            result["read"]["xlsx"] = rb.active["A1"].value == "hello"
+            rb.close()
+            xlsm = fixtures / "macro-input.xlsm"
+            if xlsm.exists():
+                try:
+                    mb = openpyxl.load_workbook(xlsm, keep_vba=True, data_only=True)
+                    result["read"]["xlsm"] = len(mb.sheetnames) >= 1
+                    mb.close()
+                except Exception:
+                    result["read"]["xlsm"] = False
+            else:
+                result["read"]["xlsm"] = result["read"]["xlsx"]
+        import pandas as pd
+        with tempfile.TemporaryDirectory() as td:
+            csv_path = Path(td) / "t.csv"
+            csv_path.write_text("a,b\n1,2\n", encoding="utf-8")
+            df = pd.read_csv(csv_path)
+            result["read"]["csv"] = len(df) == 1 and int(df.iloc[0]["a"]) == 1
+    except Exception as e:
+        result["xlsx_error"] = str(e)
+
+    result["ok"] = (
+        result["read"]["xls"]
+        and result["read"]["xlsx"]
+        and result["write"]["xlsx"]
+        and result["read"]["csv"]
+    )
+    print(json.dumps(result, ensure_ascii=False))
+
+
+def cmd_probe_recalc():
+    """If LibreOffice executable given, recalc =SUM(A1:A2) and expect 3."""
+    if len(sys.argv) < 3:
+        print(json.dumps({"ok": False, "error": "usage: probe-recalc <soffice>"}, ensure_ascii=False))
+        return
+    soffice = sys.argv[2]
+    import tempfile
+    import subprocess
+    import openpyxl
+
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        profile = td_path / "lo-profile"
+        profile.mkdir()
+        xlsx = td_path / "sum.xlsx"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws["A1"] = 1
+        ws["A2"] = 2
+        ws["A3"] = "=SUM(A1:A2)"
+        wb.save(xlsx)
+        wb.close()
+        out_dir = td_path / "out"
+        out_dir.mkdir()
+        try:
+            proc = subprocess.run(
+                [
+                    soffice,
+                    "--headless",
+                    "--norestore",
+                    "--nolockcheck",
+                    f"-env:UserInstallation=file://{profile}",
+                    "--convert-to",
+                    "xlsx",
+                    "--outdir",
+                    str(out_dir),
+                    str(xlsx),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=90,
+                env={**os.environ, "SAL_USE_VCLPLUGIN": "svp"},
+            )
+        except subprocess.TimeoutExpired:
+            print(json.dumps({"ok": False, "error": "recalc_timeout"}, ensure_ascii=False))
+            return
+        if proc.returncode != 0:
+            print(json.dumps({
+                "ok": False,
+                "error": proc.stderr or proc.stdout or f"exit {proc.returncode}",
+            }, ensure_ascii=False))
+            return
+        produced = list(out_dir.glob("*.xlsx"))
+        target = produced[0] if produced else xlsx
+        rb = openpyxl.load_workbook(target, data_only=True)
+        value = rb.active["A3"].value
+        rb.close()
+        print(json.dumps({"ok": value == 3, "value": value}, ensure_ascii=False))
+
+
+def cmd_recalc_xlsx():
+    """recalc-xlsx <xlsx> <soffice> [timeout_seconds] — working-copy friendly helper."""
+    if len(sys.argv) < 4:
+        print(json.dumps({"ok": False, "error": "usage: recalc-xlsx <xlsx> <soffice> [timeout]"}, ensure_ascii=False))
+        return
+    xlsx = Path(sys.argv[2])
+    soffice = sys.argv[3]
+    timeout = int(sys.argv[4]) if len(sys.argv) > 4 else 60
+    import tempfile
+    import subprocess
+    import openpyxl
+    import shutil
+
+    if not xlsx.exists():
+        print(json.dumps({"ok": False, "error": f"file not found: {xlsx}"}, ensure_ascii=False))
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        profile = td_path / "lo-profile"
+        profile.mkdir()
+        work = td_path / xlsx.name
+        shutil.copy2(xlsx, work)
+        out_dir = td_path / "out"
+        out_dir.mkdir()
+        try:
+            proc = subprocess.run(
+                [
+                    soffice,
+                    "--headless",
+                    "--norestore",
+                    "--nolockcheck",
+                    f"-env:UserInstallation=file://{profile}",
+                    "--convert-to",
+                    "xlsx",
+                    "--outdir",
+                    str(out_dir),
+                    str(work),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={**os.environ, "SAL_USE_VCLPLUGIN": "svp"},
+            )
+        except subprocess.TimeoutExpired:
+            print(json.dumps({"ok": False, "error": "recalc_timeout"}, ensure_ascii=False))
+            return
+        if proc.returncode != 0:
+            print(json.dumps({
+                "ok": False,
+                "error": proc.stderr or proc.stdout or f"exit {proc.returncode}",
+            }, ensure_ascii=False))
+            return
+        produced = list(out_dir.glob("*.xlsx"))
+        if not produced:
+            print(json.dumps({"ok": False, "error": "no output workbook"}, ensure_ascii=False))
+            return
+        shutil.copy2(produced[0], xlsx)
+        formula_wb = openpyxl.load_workbook(xlsx, data_only=False)
+        formula_count = 0
+        for sheet_name in formula_wb.sheetnames:
+            ws = formula_wb[sheet_name]
+            for row in ws.iter_rows(values_only=True):
+                for value in row:
+                    if isinstance(value, str) and value.startswith("="):
+                        formula_count += 1
+        formula_wb.close()
+        print(json.dumps({"ok": True, "formulaCount": formula_count}, ensure_ascii=False))
 
 
 # ── run_python 沙箱域（脚本执行 + 覆盖防护） ────────────────
@@ -371,6 +776,9 @@ def cmd_run():
     code = sys.stdin.read()
     if not code.strip():
         raise SystemExit("no code provided on stdin")
+
+    _reject_gui_office_code(code)
+    _install_no_gui_office_exec_guard()
 
     # 防覆盖守卫的版本化基线 = 「本回合开始前」就存在的文件,而非「本次 run_python 调用前」。
     # 否则同一回合里先建的文件,对后一次调用(独立 worker 进程、各拍各的 before)就成了"上一版",
@@ -472,13 +880,28 @@ def get_demo_data_path():
 
 def cmd_selfcheck():
     # 首启环境自检:报告 Python 版本与关键依赖是否就位(供桌面端 doctor 用人话提示用户)。
-    deps = ["openpyxl", "pandas", "pdfplumber", "xlsxwriter", "pypdf", "reportlab", "docx", "pptx", "lxml", "PIL", "defusedxml", "pdf2image", "markitdown"]
+    deps = [
+        "openpyxl",
+        "pandas",
+        "pdfplumber",
+        "xlsxwriter",
+        "xlrd",
+        "pypdf",
+        "reportlab",
+        "docx",
+        "pptx",
+        "lxml",
+        "PIL",
+        "defusedxml",
+        "pdf2image",
+        "markitdown",
+    ]
     found = {}
     missing = []
     for name in deps:
         try:
             module = __import__(name)
-            found[name] = getattr(module, "__version__", "unknown")
+            found[name] = getattr(module, "__version__", None) or getattr(module, "__VERSION__", "unknown")
         except Exception:
             missing.append(name)
     print(json.dumps({
@@ -734,6 +1157,18 @@ def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "inspect-excel":
         cmd_inspect_excel()
         return
+    if len(sys.argv) >= 2 and sys.argv[1] == "convert-xls":
+        cmd_convert_xls()
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "probe-spreadsheet":
+        cmd_probe_spreadsheet()
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "probe-recalc":
+        cmd_probe_recalc()
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "recalc-xlsx":
+        cmd_recalc_xlsx()
+        return
     if len(sys.argv) >= 2 and sys.argv[1] == "run":
         cmd_run()
         return
@@ -750,7 +1185,7 @@ def main():
         cmd_embed_texts()
         return
     raise SystemExit(
-        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | ocr-image <path> | run | export-voucher-xlsx | export-payslips-xlsx | embed-texts"
+        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | convert-xls <xls> <xlsx> | probe-spreadsheet | probe-recalc <soffice> | recalc-xlsx <xlsx> <soffice> [timeout] | ocr-image <path> | run | export-voucher-xlsx | export-payslips-xlsx | embed-texts"
     )
 
 

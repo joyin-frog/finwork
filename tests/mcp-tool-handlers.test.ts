@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
+import type { TaskContract } from "../lib/agent/run-contract.ts";
 
 // 复用全套既有 mockSdk 模式:捕获 sdk.tool(name, desc, schema, handler) 注册的 handler。
 type Handler = (args: unknown) => Promise<{
@@ -27,40 +28,81 @@ export const mcpToolHandlersTestPromise = (async () => {
   process.env.FINANCE_AGENT_DB_PATH = path.join(dir, "test.db");
 
   try {
-    // ════ finalize_deliverable ═══════════════════════════════════════════
+    // ════ finalize_deliverable (CR-Q1) ═══════════════════════════════════
     {
-      const outputDir = mkdtempSync(path.join(dir, "out-"));
-      const { createFinalizeDeliverableTool, FINALIZED_MARKER } = await import("../lib/agent/mcp-tools/finalize-deliverable.ts");
+      const conv = mkdtempSync(path.join(dir, "conv-"));
+      const outputDir = path.join(conv, "generate");
+      mkdirSync(outputDir, { recursive: true });
+      // 用 txt/csv 避免依赖 LibreOffice；合同 mime 对齐扩展名
+      writeFileSync(path.join(outputDir, "科目表.txt"), "科目表内容");
+      writeFileSync(path.join(outputDir, "对账单.csv"), "a,b\n1,2\n");
+      writeFileSync(path.join(outputDir, "工资表.txt"), "payroll");
+      writeFileSync(path.join(outputDir, "secret.txt"), "x");
+
+      const contract: TaskContract = {
+        version: 1,
+        taskKind: "text",
+        requiredDeliverables: [
+          { id: "coa", mime: "text/plain", count: 1, qualityProfile: "generic" },
+          { id: "stmt", mime: "text/csv", count: 1, qualityProfile: "generic" },
+          { id: "payroll", mime: "text/plain", count: 1, qualityProfile: "generic" },
+        ],
+        expectationSnapshot: {},
+      };
+
+      const { createFinalizeDeliverableTool, FINALIZED_MARKER } = await import(
+        "../lib/agent/mcp-tools/finalize-deliverable.ts"
+      );
       const { sdk, handlers } = capturingSdk();
-      createFinalizeDeliverableTool(sdk, outputDir);
+      createFinalizeDeliverableTool(sdk, outputDir, {
+        runId: "mcp-run-1",
+        taskContract: contract,
+        conversationFilesDir: conv,
+      });
       const finalize = handlers.get("finalize_deliverable")!;
       assert.ok(finalize, "finalize_deliverable 应注册");
       const markerPath = path.join(outputDir, FINALIZED_MARKER);
-      const readMarker = () => JSON.parse(readFileSync(markerPath, "utf8")) as string[];
 
-      // 1) 合法声明 → 写 marker(dotfile),structuredContent.finalized 一致
-      const r1 = await finalize({ files: ["科目表.xlsx", "对账单.csv"] });
-      assert.ok(!r1.isError, "合法声明不应报错");
-      assert.deepEqual(r1.structuredContent?.finalized, ["科目表.xlsx", "对账单.csv"]);
-      assert.deepEqual(readMarker(), ["科目表.xlsx", "对账单.csv"], "marker 应写入声明文件名");
+      // 1) FinalizeFile 合法声明 → delivered + evidence；不写 Run completed
+      const r1 = await finalize({
+        files: [
+          { name: "科目表.txt", contractDeliverableId: "coa" },
+          { name: "对账单.csv", contractDeliverableId: "stmt" },
+        ],
+      });
+      assert.ok(!r1.isError, `合法声明不应报错: ${r1.content.map((c) => c.text).join("")}`);
+      const finalized = r1.structuredContent?.finalized as Array<{ name: string; deliveredPath: string }>;
+      assert.ok(Array.isArray(finalized) && finalized.length === 2);
+      assert.ok(finalized.every((f) => f.deliveredPath.includes(`${path.sep}delivered${path.sep}`)));
+      assert.ok(!("runStatus" in (r1.structuredContent ?? {})));
+      assert.ok(existsSync(markerPath));
+      assert.deepEqual(JSON.parse(readFileSync(markerPath, "utf8")), ["科目表.txt", "对账单.csv"]);
 
-      // 2) 路径被裁成 basename(防目录穿越)
-      const r2 = await finalize({ files: ["../../etc/secret.pdf"] });
-      assert.ok(!r2.isError);
-      assert.ok(readMarker().includes("secret.pdf"), "应只保留 basename");
-      assert.ok(!readMarker().some((n) => n.includes("/")), "marker 中不应含路径分隔符");
+      // 2) 路径被裁成 basename；未知 contractDeliverableId → 失败
+      const r2 = await finalize({
+        files: [{ name: "../../etc/secret.txt", contractDeliverableId: "nope" }],
+      });
+      assert.ok(r2.isError);
+      assert.equal(r2.structuredContent?.code, "unknown_deliverable_id");
 
-      // 3) 合并去重:重复声明不产生重复项
-      const r3 = await finalize({ files: ["科目表.xlsx", "工资表.xlsx"] });
-      const merged = r3.structuredContent?.finalized as string[];
-      assert.equal(merged.filter((n) => n === "科目表.xlsx").length, 1, "重复声明应去重");
-      assert.ok(merged.includes("工资表.xlsx"), "新声明应并入");
+      // 3) 继续声明 payroll
+      const r3 = await finalize({
+        files: [{ name: "工资表.txt", contractDeliverableId: "payroll" }],
+      });
+      assert.ok(!r3.isError, r3.content.map((c) => c.text).join(""));
 
-      // 4) 空/纯空白文件名 → isError,且 marker 不被破坏
-      const before = readMarker();
-      const r4 = await finalize({ files: ["   "] });
+      // 4) 空 name → isError
+      const r4 = await finalize({ files: [{ name: "   ", contractDeliverableId: "coa" }] });
       assert.ok(r4.isError, "无有效文件名应报错");
-      assert.deepEqual(readMarker(), before, "报错路径不应改动 marker");
+
+      // 5) 缺 TaskContract → isError
+      const { sdk: sdk2, handlers: h2 } = capturingSdk();
+      createFinalizeDeliverableTool(sdk2, outputDir, { runId: "x" });
+      const r5 = await h2.get("finalize_deliverable")!({
+        files: [{ name: "科目表.txt", contractDeliverableId: "coa" }],
+      });
+      assert.ok(r5.isError);
+      assert.equal(r5.structuredContent?.code, "missing_task_contract");
     }
 
     // ════ record_document_metadata ═══════════════════════════════════════

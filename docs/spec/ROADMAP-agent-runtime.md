@@ -10,6 +10,12 @@
 > 的实现假设全部重写，AR4/AR6/AR8 措辞收窄。
 > 体例照 `ROADMAP-improve.md`；单个工作包开工时再写自包含的 `spec-<工作包名>.md`。
 
+> **2026-07-21 优先级叠加说明**：复杂文件任务的真实失败样本将 AR2b、AR2c、AR4 从通用
+> P1 路线图提升为产品可靠性交付的关键路径，但不改变本文件已经冻结的 AR2a 合同。拆分后的
+> 入口为 `ROADMAP-complex-task-reliability.md`。其中：CR-R1 对齐 AR2b，CR-R2 对齐 AR2c +
+> AR4；`run_settled.outcome` 继续保持 `completed|aborted|error`。两份路线图冲突时，事件合同
+> 以本文件与 `audit-agent-event-contract.md` 为准，复杂任务的功能范围/批次以新路线图为准。
+
 ## 总判断
 
 pi 探索验证了 finwork 的 agent 层三个已知薄弱点有配方可参照（重建回顾退化、压缩不可感知、

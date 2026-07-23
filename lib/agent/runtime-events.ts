@@ -70,6 +70,15 @@ export type AgentRuntimeEvent =
   | { type: "run_ended"; kind: "complete" | "incomplete"; conversation?: ConversationPayload; generatedAttachments?: GeneratedAttachmentPayload[]; message?: string; durationMs?: number; label?: string; roleId?: string; success?: boolean }
   /** Run 终态（本 spec 核心）：三路径（completed/aborted/error）在同一收口函数发射。 */
   | { type: "run_settled"; outcome: "completed" | "aborted" | "error"; error?: string }
+  /** CR-R0：可恢复状态变化；与 run_settled 分工。payload 与 run-contract 对齐。 */
+  | {
+      type: "run_state_changed";
+      from: string;
+      to: string;
+      trigger: string;
+      terminationReason?: string;
+      qualityStatus?: string;
+    }
   /** 对话级事件：标题更新（runId=null，在 settled 之后异步到达）。 */
   | { type: "title_updated"; title: string; conversationId?: number | null }
   // ── 共享事件（新旧同名，payload 一致）────────────────────────────────────
@@ -277,9 +286,11 @@ export function contractToLegacyEvents(envelope: AgentEventEnvelope): LegacyEven
     case "system_note":
       return [{ type: "system", subtype: event.subtype, message: event.message }];
 
-    // 不落库事件：run_settled、title_updated、turn_started、message_started、
-    //             message_completed、tool_updated、queue_updated
+    // 不落库事件：run_settled、run_state_changed、title_updated、turn_started、
+    //             message_started、message_completed、tool_updated、queue_updated
+    // （CR-R1 持久化 run_state_changed / settled 走 run_events，不进 chat_agent_events）
     case "run_settled":
+    case "run_state_changed":
     case "title_updated":
     case "turn_started":
     case "message_started":

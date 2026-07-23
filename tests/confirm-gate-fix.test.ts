@@ -54,9 +54,10 @@ export const confirmGateFixTestPromise = (async () => {
     "CGF-2c FAIL: remember_convention 应挂确认门，不应在 ALLOWED_TOOLS 中"
   );
 
+  // run_python 由 risk-confirm 默认放行，但仍须走 PreToolUse（stuck-guard 等），故不进 ALLOWED_TOOLS。
   assert.ok(
     !allowedSet.has("mcp__finance_worker__run_python"),
-    "CGF-2b FAIL: run_python 每次都必须确认，不应在 ALLOWED_TOOLS 中"
+    "CGF-2b FAIL: run_python 不应在 ALLOWED_TOOLS 中（须经 hook 链，即使确认门已默认放行）"
   );
 
   // ── CGF-3: 无漂移守卫（交叉一致性校验）──────────────────────────────────

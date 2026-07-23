@@ -16,6 +16,7 @@
 import { buildMessagesUrl } from "@/lib/agent/router";
 import type { AgentMessage } from "./claude-adapter";
 import type { SpanInput } from "@/lib/observability/spans";
+import { modelConfigFromSettings, resolveExecutionModel } from "@/lib/settings/model-config";
 
 // ─── 常量 ──────────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,9 @@ export type SummarySettings = {
   apiKey: string;
   apiUrl: string;
   mainModel?: string;
+  routerModel?: string;
+  subagentModel?: string;
+  /** @deprecated 仅迁移用；运行时不再回退 */
   model?: string;
 };
 
@@ -74,8 +78,9 @@ export async function summarizeHistory(
   if (process.env.SKIP_LLM) return null;
   if (!settings.apiKey.trim()) return null;
 
-  const model = settings.mainModel || settings.model;
-  if (!model) return null;
+  const config = modelConfigFromSettings(settings);
+  if (!config) return null;
+  const model = resolveExecutionModel({ config, purpose: "summary" }).modelId;
 
   const url = buildMessagesUrl(settings.apiUrl);
 

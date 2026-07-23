@@ -74,7 +74,7 @@ export const turnSegmentsTestPromise = (async () => {
     assert.equal(textSegs.length, 1, "T5 FAIL: text should be in processSegments");
   }
 
-  // ── T6: 工具按真实顺序归并为一个 tools 段;ask_user 被排除在过程段外 ──
+  // ── T6: 工具按真实顺序归并;ask_user 成独立 ask 段插在时序中 ──
   {
     const timeline: TimelineItem[] = [
       makeItem("tool_use", { name: "read_expense_policy", id: "tu-4" }),
@@ -82,20 +82,27 @@ export const turnSegmentsTestPromise = (async () => {
       makeItem("tool_use", { name: "check_reimbursement_batch", id: "tu-5" }),
       makeItem("tool_result", { toolUseId: "tu-5", content: "...结果..." }),
       makeItem("ask_user", { questionId: "q1", question: { question: "?" } }),
+      makeItem("tool_use", { name: "Bash", id: "tu-2" }),
+      makeItem("tool_result", { toolUseId: "tu-2", content: "ok" }),
       makeItem("text", { content: "核对完成。" }),
     ];
     const { processSegments, answerText } = buildTurnSegments(timeline);
     assert.equal(answerText, "核对完成。", "T6 FAIL: 末尾文本应为答案");
     assert.deepEqual(
       processSegments.map((s) => s.kind),
-      ["tools"],
-      "T6 FAIL: 工具应归并为一个 tools 段"
+      ["tools", "ask", "tools"],
+      "T6 FAIL: ask_user 应按时序插在工具段之间"
     );
-    // ask_user 不应出现在任何 tools 段里
+    const askSeg = processSegments[1];
+    assert.equal(askSeg.kind, "ask", "T6 FAIL: 中间段应为 ask");
+    if (askSeg.kind === "ask") {
+      assert.equal(askSeg.questionId, "q1", "T6 FAIL: ask 段应带 questionId");
+    }
+    // ask_user 不应混进 tools 段
     for (const seg of processSegments) {
       if (seg.kind === "tools") {
         for (const item of seg.items) {
-          assert.notEqual(item.event.type, "ask_user", "T6 FAIL: ask_user 不应进过程段");
+          assert.notEqual(item.event.type, "ask_user", "T6 FAIL: ask_user 不应混进 tools 段");
         }
       }
     }

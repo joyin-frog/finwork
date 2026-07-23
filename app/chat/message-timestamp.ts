@@ -1,12 +1,17 @@
 /**
- * messageTimestamp — ISO 时间字符串 → 消息工具条相对时间文字。
+ * messageTimestamp — ISO / SQLite 时间字符串 → 消息工具条相对时间文字。
  * 格式: 「刚刚」/ 「N 分钟前」/ 「昨天 HH:mm」/ 「M月d日」
  *
  * 不依赖 React,可在 Node.js 环境直接导入测试。
+ *
+ * SQLite `datetime('now')` 存 UTC 且无时区标记；必须经 parseDbTimestamp，
+ * 否则 UTC+8 下会整偏 8 小时（侧栏 relativeTime 已修，此处对齐）。
  */
+import { parseDbTimestamp } from "@/lib/utils/relative-time";
+
 export function messageTimestamp(isoStr: string | null): string {
   if (!isoStr) return "";
-  const date = new Date(isoStr);
+  const date = parseDbTimestamp(isoStr);
   if (isNaN(date.getTime())) return "";
 
   const now = new Date();
