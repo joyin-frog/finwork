@@ -17,14 +17,11 @@ import {
 export const spreadsheetProbeTestPromise = (async () => {
   // Lock / stamp consistency
   {
-    const lockPath = resolveRuntimeLockPath("darwin", "arch" in process ? process.arch : "arm64");
-    // On this host we ship darwin-arm64.txt
-    const hostLock = resolveRuntimeLockPath();
-    assert.ok(existsSync(hostLock), `platform lock should exist: ${hostLock}`);
-    const stamp = computePythonRuntimeStamp();
+    const lockPath = resolveRuntimeLockPath("darwin", "arm64");
+    assert.ok(existsSync(lockPath), `tracked platform lock should exist: ${lockPath}`);
+    const stamp = computePythonRuntimeStamp({ platform: "darwin", arch: "arm64" });
     assert.ok(stamp.startsWith(`${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}+`), "stamp should include lock hash suffix");
     assert.notEqual(stamp, `${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}`, "stamp without lock is only for missing lock");
-    void lockPath;
   }
 
   const fixtures = getSpreadsheetFixtureDir();
