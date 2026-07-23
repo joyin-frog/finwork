@@ -228,9 +228,9 @@ export const pythonInstallerTestPromise = (async () => {
   {
     const { resolveRuntimeLockPath, computePythonRuntimeStamp, PYTHON_RUNTIME_VER, PYTHON_RUNTIME_TAG } =
       await import("../lib/runtime/python-installer.ts");
-    const lock = resolveRuntimeLockPath();
-    assert.ok(existsSync(lock), "lock FAIL: current host lock should exist");
-    const stamp = computePythonRuntimeStamp();
+    const lock = resolveRuntimeLockPath("darwin", "arm64");
+    assert.ok(existsSync(lock), "lock FAIL: tracked darwin-arm64 lock should exist");
+    const stamp = computePythonRuntimeStamp({ platform: "darwin", arch: "arm64" });
     assert.ok(stamp.includes(PYTHON_RUNTIME_VER) && stamp.includes(PYTHON_RUNTIME_TAG));
     assert.ok(stamp.split("+").length >= 3, "lock FAIL: stamp should include lock hash segment");
 
@@ -239,6 +239,7 @@ export const pythonInstallerTestPromise = (async () => {
     let extracted = false;
     process.env.FINANCE_AGENT_PYTHON_ARCHIVE = "/fake/bundled/python-runtime.tar.gz";
     const r = await installPythonRuntime({
+      runtimeLockPath: lock,
       steps: {
         download: async () => {},
         extract: async () => { extracted = true; },

@@ -34,6 +34,7 @@ export const runEventsPersistenceTestPromise = (async () => {
       upsertRunCheckpoint,
       isDurableRunEventType,
       terminalStatusForSettledOutcome,
+      appendTerminalRunEventPair,
     } = await import("../lib/db/run-store.ts");
 
     // ── T1: migration v21 表/唯一索引存在 ──────────────────────────────────
@@ -237,6 +238,86 @@ export const runEventsPersistenceTestPromise = (async () => {
       const evBody = await ev.json() as { ok: boolean; data: { events: unknown[]; nextEventId: number | null } };
       assert.ok(evBody.data.events.length >= 2);
       console.log("T6 PASS: replay APIs ✓");
+    }
+
+    // ── T7: explicit stop persists state_changed before exactly one settled ──
+    {
+      const runId = `run-stop-${pid}`;
+      createAgentRun({
+        runId,
+        traceId: runId,
+        conversationId: 4,
+        status: "running",
+      });
+      const stopRoute = await import("../app/api/agent/runs/[runId]/stop/route.ts");
+      const response = await stopRoute.POST(
+        new Request(`http://local/api/agent/runs/${runId}/stop`, { method: "POST" }),
+        { params: Promise.resolve({ runId }) },
+      );
+      assert.equal(response.status, 200);
+
+      const replay = listRunEventsAfter(runId, 0, 20).events;
+      const changedIdx = replay.findIndex((e) => e.event.type === "run_state_changed");
+      const settledIdx = replay.findIndex((e) => e.event.type === "run_settled");
+      assert.ok(changedIdx >= 0, "T7: stop must persist run_state_changed");
+      assert.ok(settledIdx > changedIdx, "T7: run_settled must follow run_state_changed");
+      assert.equal(countSettledEvents(runId), 1, "T7: stop must settle exactly once");
+      assert.equal(getAgentRun(runId)!.status, "canceled");
+      assert.equal(getAgentRun(runId)!.terminationReason, "user_stop");
+      console.log("T7 PASS: explicit stop terminal pair persisted ✓");
+    }
+
+    // ── T8: terminal pair second-insert failure rolls back and stop returns 500 ──
+    {
+      const runId = `run-stop-rollback-${pid}`;
+      createAgentRun({
+        runId,
+        traceId: runId,
+        conversationId: 5,
+        status: "running",
+      });
+      const emitter = createEmitter(runId, 5);
+      const existingSettled = emitter.wrap({ type: "run_settled", outcome: "aborted" });
+      db.prepare(
+        `INSERT INTO run_events
+           (run_id, conversation_id, instance_id, event_type, event_json, created_at)
+         VALUES (?, ?, ?, 'run_settled', ?, ?)`
+      ).run(runId, 5, null, JSON.stringify(existingSettled), new Date().toISOString());
+
+      const changed = emitter.wrap({
+        type: "run_state_changed",
+        from: "running",
+        to: "canceled",
+        trigger: "explicit_stop_quiesced",
+        terminationReason: "user_stop",
+      });
+      const settled = emitter.wrap({ type: "run_settled", outcome: "aborted" });
+      assert.throws(
+        () => appendTerminalRunEventPair(changed, settled),
+        /UNIQUE|unique/,
+        "T8: duplicate settled must fail the transaction",
+      );
+      assert.equal(getAgentRun(runId)!.status, "running", "T8: failed pair must not change status");
+      assert.equal(
+        listRunEventsAfter(runId, 0, 20).events.filter((e) => e.event.type === "run_state_changed").length,
+        0,
+        "T8: failed pair must roll back state_changed",
+      );
+
+      const stopRoute = await import("../app/api/agent/runs/[runId]/stop/route.ts");
+      const { registerRunAbort, unregisterRunAbort } =
+        await import("../lib/agent/run-abort-registry.ts");
+      const liveController = new AbortController();
+      registerRunAbort(runId, liveController, 5);
+      const response = await stopRoute.POST(
+        new Request(`http://local/api/agent/runs/${runId}/stop`, { method: "POST" }),
+        { params: Promise.resolve({ runId }) },
+      );
+      assert.equal(response.status, 500, "T8: persistence failure must not report stop success");
+      assert.equal(liveController.signal.aborted, true, "T8: persistence failure must still abort live work");
+      unregisterRunAbort(runId);
+      assert.equal(getAgentRun(runId)!.status, "running");
+      console.log("T8 PASS: terminal pair rollback + stop failure surfaced ✓");
     }
 
     assert.ok(LATEST_VERSION >= 21);

@@ -106,6 +106,10 @@ export async function spreadsheetConvertXls(
 export type RecalcResult = {
   inputHash: string;
   outputHash: string;
+  /** Verified recalculated working copy. The caller decides whether to promote it. */
+  outputPath: string;
+  /** Runtime-owned temporary root that the caller may remove after promotion. */
+  cleanupRoot?: string;
   provider: string;
   version?: string;
   formulaCount?: number;
@@ -139,6 +143,7 @@ export async function spreadsheetRecalc(
   }
 
   const timeoutSeconds = opts?.timeoutSeconds ?? 60;
+  const ownsWorkRoot = !opts?.workCopyDir;
   const workRoot = opts?.workCopyDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "fa-recalc-"));
   const profileDir = path.join(workRoot, "lo-profile");
   const workCopy = path.join(workRoot, path.basename(xlsxPath));
@@ -185,6 +190,8 @@ export async function spreadsheetRecalc(
         data: {
           inputHash,
           outputHash,
+          outputPath: workCopy,
+          cleanupRoot: ownsWorkRoot ? workRoot : undefined,
           provider: lo.provider,
           version: lo.version,
           formulaCount: parsed.formulaCount,
@@ -220,6 +227,8 @@ export async function spreadsheetRecalc(
     data: {
       inputHash,
       outputHash,
+      outputPath: workCopy,
+      cleanupRoot: ownsWorkRoot ? workRoot : undefined,
       provider: lo.provider,
       version: lo.version,
       formulaCount,

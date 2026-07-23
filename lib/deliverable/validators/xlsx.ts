@@ -10,11 +10,24 @@ import { validateGenericFile } from "./generic-file";
 
 const VALIDATOR_ID = "xlsx_generic";
 const FORMULA_ERRORS = ["#DIV/0!", "#REF!", "#VALUE!", "#NAME?", "#NULL!", "#NUM!", "#N/A"];
+type XlsxRuntime = {
+  inspect: typeof spreadsheetInspect;
+  recalc: typeof spreadsheetRecalc;
+  render: typeof spreadsheetRender;
+};
+const DEFAULT_RUNTIME: XlsxRuntime = {
+  inspect: spreadsheetInspect,
+  recalc: spreadsheetRecalc,
+  render: spreadsheetRender,
+};
 
 /**
  * Office/xlsx 门：复用 CR-S1 spreadsheetInspect / Recalc / Render，不重实现。
  */
-export async function validateXlsxFile(input: ValidatorInput): Promise<ValidatorResult> {
+export async function validateXlsxFile(
+  input: ValidatorInput,
+  runtime: XlsxRuntime = DEFAULT_RUNTIME,
+): Promise<ValidatorResult> {
   const base = await validateGenericFile({ ...input, expectedMime: input.expectedMime });
   const errors: ValidatorIssue[] = [...base.errors];
   const warnings: ValidatorIssue[] = [...base.warnings];
@@ -37,7 +50,7 @@ export async function validateXlsxFile(input: ValidatorInput): Promise<Validator
     }
   }
 
-  const inspected = await spreadsheetInspect(input.filePath);
+  const inspected = await runtime.inspect(input.filePath);
   if (!inspected.ok) {
     errors.push({
       code: "parser_open_failed",
@@ -53,25 +66,11 @@ export async function validateXlsxFile(input: ValidatorInput): Promise<Validator
     errors.push({ code: "structure_empty", message: "工作簿无工作表" });
   }
 
-  let formulaCount = 0;
-  let emptyCacheCount = 0;
-  let formulaErrorCount = 0;
-  for (const sheet of sheets) {
-    formulaCount += Number(sheet.formula_count ?? 0);
-    const samples = (sheet.formulas_sample as Array<{ cell?: string; cached_value?: unknown; formula?: string }>) ?? [];
-    for (const f of samples) {
-      const cached = f.cached_value;
-      if (cached == null || cached === "") emptyCacheCount += 1;
-      if (typeof cached === "string" && FORMULA_ERRORS.some((e) => cached.includes(e))) {
-        formulaErrorCount += 1;
-        errors.push({
-          code: "formula_error",
-          message: `公式错误值: ${cached}`,
-          location: `${String(sheet.name ?? "")}!${f.cell ?? "?"}`,
-        });
-      }
-    }
-  }
+  const initialFormulaState = analyzeFormulaState(sheets);
+  let formulaCount = initialFormulaState.formulaCount;
+  let emptyCacheCount = initialFormulaState.emptyCacheCount;
+  let formulaErrorCount = initialFormulaState.formulaErrors.length;
+  errors.push(...initialFormulaState.formulaErrors);
   evidence.formulaCount = formulaCount;
   evidence.emptyCacheCount = emptyCacheCount;
 
@@ -88,19 +87,69 @@ export async function validateXlsxFile(input: ValidatorInput): Promise<Validator
   }
 
   // Recalc（合同要求时）— 消费 CR-S1，不重实现
+  let candidateRecalculated = false;
   if (input.needsRecalc) {
-    const recalc = await spreadsheetRecalc(input.filePath);
+    const recalc = await runtime.recalc(input.filePath);
     if (!recalc.ok) {
       errors.push({
         code: recalc.errorCode ?? "recalc_failed",
         message: recalc.detail ?? "公式重算失败",
       });
     } else {
-      evidence.recalc = recalc.data;
-      // 重算在工作副本上；候选文件 hash 不变。若合同要求缓存，重算成功可清除 empty-cache 硬失败
-      if (recalc.data && input.requireFormulaCache) {
-        const idx = errors.findIndex((e) => e.code === "formula_cache_empty");
-        if (idx >= 0) errors.splice(idx, 1);
+      const recalcData = recalc.data;
+      if (!recalcData?.outputPath) {
+        errors.push({
+          code: "recalc_output_missing",
+          message: "公式重算未返回可交付工作簿",
+        });
+      } else {
+        const { outputPath, cleanupRoot, ...recalcEvidence } = recalcData;
+        evidence.recalc = recalcEvidence;
+        try {
+          const verified = await runtime.inspect(outputPath);
+          if (!verified.ok) {
+            errors.push({
+              code: "recalc_verify_failed",
+              message: verified.detail ?? "重算后的工作簿无法重新检查",
+              location: verified.errorCode,
+            });
+          } else {
+            const verifiedSheets =
+              (verified.data as { sheets?: Array<Record<string, unknown>> })?.sheets ?? [];
+            const verifiedFormulaState = analyzeFormulaState(verifiedSheets);
+            evidence.recalcInspect = verified.data;
+            evidence.recalcEmptyCacheCount = verifiedFormulaState.emptyCacheCount;
+            if (verifiedSheets.length === 0) {
+              errors.push({
+                code: "recalc_structure_empty",
+                message: "重算后的工作簿无工作表",
+              });
+            } else if (verifiedFormulaState.formulaErrors.length > 0) {
+              errors.push(...verifiedFormulaState.formulaErrors);
+            } else if (input.requireFormulaCache && verifiedFormulaState.emptyCacheCount > 0) {
+              errors.push({
+                code: "recalc_cache_empty",
+                message: "重算后的工作簿仍存在未缓存结果的公式",
+              });
+            } else {
+              fs.copyFileSync(outputPath, input.filePath);
+              candidateRecalculated = true;
+              removeIssues(errors, new Set(["formula_cache_empty", "formula_error", "structure_empty"]));
+              formulaCount = verifiedFormulaState.formulaCount;
+              emptyCacheCount = verifiedFormulaState.emptyCacheCount;
+              formulaErrorCount = 0;
+              evidence.formulaCount = formulaCount;
+              evidence.emptyCacheCount = emptyCacheCount;
+            }
+          }
+        } catch (error) {
+          errors.push({
+            code: "recalc_promote_failed",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        } finally {
+          cleanupRecalcRoot(cleanupRoot, outputPath);
+        }
       }
     }
   }
@@ -108,7 +157,7 @@ export async function validateXlsxFile(input: ValidatorInput): Promise<Validator
   if (input.needsRender) {
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fa-deliv-render-"));
     try {
-      const render = await spreadsheetRender(input.filePath, outDir);
+      const render = await runtime.render(input.filePath, outDir);
       if (!render.ok) {
         errors.push({
           code: render.errorCode ?? "render_failed",
@@ -128,7 +177,7 @@ export async function validateXlsxFile(input: ValidatorInput): Promise<Validator
 
   // 重新哈希（确保过程中未改候选）
   fileSha256 = sha256File(input.filePath);
-  if (input.expectedSha256 && input.expectedSha256 !== fileSha256) {
+  if (!candidateRecalculated && input.expectedSha256 && input.expectedSha256 !== fileSha256) {
     errors.push({ code: "hash_mismatch", message: "校验过程中候选文件被修改" });
   }
 
@@ -141,6 +190,58 @@ export async function validateXlsxFile(input: ValidatorInput): Promise<Validator
     warnings,
     evidence: { ...evidence, formulaErrorCount },
   };
+}
+
+function analyzeFormulaState(sheets: Array<Record<string, unknown>>): {
+  formulaCount: number;
+  emptyCacheCount: number;
+  formulaErrors: ValidatorIssue[];
+} {
+  let formulaCount = 0;
+  let emptyCacheCount = 0;
+  const formulaErrors: ValidatorIssue[] = [];
+  for (const sheet of sheets) {
+    formulaCount += Number(sheet.formula_count ?? 0);
+    const samples =
+      (sheet.formulas_sample as Array<{ cell?: string; cached_value?: unknown }> | undefined) ?? [];
+    for (const formula of samples) {
+      const cached = formula.cached_value;
+      if (cached == null || cached === "") emptyCacheCount += 1;
+      if (typeof cached === "string" && FORMULA_ERRORS.some((e) => cached.includes(e))) {
+        formulaErrors.push({
+          code: "formula_error",
+          message: `公式错误值: ${cached}`,
+          location: `${String(sheet.name ?? "")}!${formula.cell ?? "?"}`,
+        });
+      }
+    }
+  }
+  return { formulaCount, emptyCacheCount, formulaErrors };
+}
+
+function removeIssues(errors: ValidatorIssue[], codes: Set<string>): void {
+  for (let i = errors.length - 1; i >= 0; i -= 1) {
+    if (codes.has(errors[i]!.code)) errors.splice(i, 1);
+  }
+}
+
+function cleanupRecalcRoot(cleanupRoot: string | undefined, outputPath: string): void {
+  if (!cleanupRoot) return;
+  const root = path.resolve(cleanupRoot);
+  const tempRoot = path.resolve(os.tmpdir());
+  const output = path.resolve(outputPath);
+  if (
+    path.dirname(root) !== tempRoot ||
+    !path.basename(root).startsWith("fa-recalc-") ||
+    (output !== root && !output.startsWith(`${root}${path.sep}`))
+  ) {
+    return;
+  }
+  try {
+    fs.rmSync(root, { recursive: true, force: true });
+  } catch {
+    /* ignore */
+  }
 }
 
 function fail(

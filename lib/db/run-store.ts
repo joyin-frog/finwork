@@ -323,6 +323,99 @@ export function appendDurableRunEvent(envelope: AgentEventEnvelope): number | nu
   }
 }
 
+/**
+ * Append the explicit-stop terminal pair and update the run atomically.
+ * The event ledger always records state_changed before run_settled.
+ */
+export function appendTerminalRunEventPair(
+  changed: AgentEventEnvelope,
+  settled: AgentEventEnvelope,
+): { changedEventId: number; settledEventId: number } | null {
+  if (changed.event.type !== "run_state_changed" || settled.event.type !== "run_settled") {
+    throw new Error("terminal pair requires run_state_changed followed by run_settled");
+  }
+  const runId = changed.runId;
+  if (!runId || settled.runId !== runId) {
+    throw new Error("terminal pair runId mismatch");
+  }
+
+  const terminalStatus = terminalStatusForSettledOutcome(settled.event.outcome);
+  if (changed.event.to !== terminalStatus) {
+    throw new Error("terminal pair status/outcome mismatch");
+  }
+
+  const db = getDb();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const run = getAgentRun(runId);
+    if (!run) {
+      db.exec("ROLLBACK");
+      return null;
+    }
+    if (isTerminalRunStatus(run.status)) {
+      db.exec("ROLLBACK");
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const insert = db.prepare(
+      `INSERT INTO run_events (run_id, conversation_id, instance_id, event_type, event_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    const changedResult = insert.run(
+      runId,
+      changed.conversationId,
+      changed.instanceId,
+      changed.event.type,
+      JSON.stringify(changed),
+      now,
+    );
+    const settledResult = insert.run(
+      runId,
+      settled.conversationId,
+      settled.instanceId,
+      settled.event.type,
+      JSON.stringify(settled),
+      now,
+    );
+    const changedEventId = Number(changedResult.lastInsertRowid);
+    const settledEventId = Number(settledResult.lastInsertRowid);
+    if (!changedEventId || !settledEventId) {
+      throw new Error("terminal pair event insert failed");
+    }
+
+    db.prepare(
+      `UPDATE agent_runs SET
+         status = ?,
+         termination_reason = COALESCE(?, termination_reason),
+         error_message = COALESCE(?, error_message),
+         last_event_id = ?,
+         updated_at = ?,
+         ended_at = COALESCE(ended_at, ?),
+         heartbeat_at = ?
+       WHERE run_id = ?`
+    ).run(
+      terminalStatus,
+      (changed.event.terminationReason as TerminationReason | undefined) ?? null,
+      settled.event.error ?? null,
+      settledEventId,
+      now,
+      now,
+      now,
+      runId,
+    );
+    db.exec("COMMIT");
+    return { changedEventId, settledEventId };
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      /* keep original error */
+    }
+    throw error;
+  }
+}
+
 function getSettledEventId(runId: string): number | null {
   const db = getDb();
   const row = db.prepare(

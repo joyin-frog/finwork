@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { getAgentRun } from "@/lib/db/run-store";
+import { appendTerminalRunEventPair, getAgentRun } from "@/lib/db/run-store";
 import { abortRunById } from "@/lib/agent/run-abort-registry";
 import { isTerminalRunStatus } from "@/lib/agent/run-contract";
 import { createEmitter } from "@/lib/agent/runtime-events";
-import { persistRuntimeEnvelope } from "@/lib/agent/run-event-persistence";
 
 /**
  * POST /api/agent/runs/:runId/stop
@@ -31,7 +30,7 @@ export async function POST(
     });
   }
 
-  // 尽力先落账本，再 abort（abort 触发 query catch 时已是终态 → settle 幂等跳过）
+  // 先原子落账本，再 abort（abort 触发 query catch 时已是终态 → settle 幂等跳过）
   try {
     const emitter = createEmitter(run.traceId, run.conversationId);
     const changed = emitter.wrap({
@@ -41,21 +40,24 @@ export async function POST(
       trigger: "explicit_stop_quiesced",
       terminationReason: "user_stop",
     });
-    persistRuntimeEnvelope(changed, {
-      runId,
-      completedToolCallIds: [],
-      generatedFiles: [],
-      status: run.status,
-    });
     const settled = emitter.wrap({ type: "run_settled", outcome: "aborted" });
-    persistRuntimeEnvelope(settled, {
-      runId,
-      completedToolCallIds: [],
-      generatedFiles: [],
-      status: "canceled",
-    });
-  } catch {
-    /* best-effort */
+    appendTerminalRunEventPair(changed, settled);
+  } catch (error) {
+    // 用户的停止意图优先：即使终态落账失败，也必须尽力终止真实执行。
+    const aborted = abortRunById(runId);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "stop persistence failed",
+        data: {
+          runId,
+          status: getAgentRun(runId)?.status ?? run.status,
+          abortedLive: aborted,
+          persistenceFailed: true,
+        },
+      },
+      { status: 500 },
+    );
   }
 
   const aborted = abortRunById(runId);

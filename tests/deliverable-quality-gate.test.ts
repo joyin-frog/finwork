@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  appendFileSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -27,6 +28,7 @@ import {
   isDeliveredStoragePath,
 } from "../lib/deliverable/index.ts";
 import { getSpreadsheetFixtureDir } from "../lib/runtime/spreadsheet-probe.ts";
+import { validateXlsxFile } from "../lib/deliverable/validators/xlsx.ts";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -239,6 +241,145 @@ export const deliverableQualityGateTestPromise = (async () => {
       if (r.ok) {
         assert.ok(existsSync(r.finalized[0].deliveredPath));
         assert.equal(sha256File(r.finalized[0].deliveredPath), sha256File(dest));
+      }
+    }
+
+    // ── Recalc output is re-inspected and promoted into the delivered candidate ──
+    if (existsSync(formulaOk)) {
+      const recalcDir = path.join(root, "recalc-output");
+      mkdirSync(recalcDir, { recursive: true });
+      const working = path.join(root, "recalc-candidate.xlsx");
+      const recalculated = path.join(recalcDir, "recalc-candidate.xlsx");
+      copyFileSync(formulaOk, working);
+      copyFileSync(formulaOk, recalculated);
+      appendFileSync(recalculated, "recalculated-cache");
+      const originalHash = sha256File(working);
+      const recalculatedHash = sha256File(recalculated);
+      let inspectCount = 0;
+
+      const report = await validateXlsxFile(
+        {
+          filePath: working,
+          fileName: "recalc-candidate.xlsx",
+          expectedMime: XLSX_MIME,
+          qualityProfile: "generic",
+          expectedSha256: originalHash,
+          needsRecalc: true,
+          requireFormulaCache: true,
+        },
+        {
+          inspect: async (filePath) => {
+            inspectCount += 1;
+            return {
+              ok: true,
+              data: {
+                sheets: [{
+                  name: "Sheet1",
+                  formula_count: 1,
+                  formulas_sample: [{
+                    cell: "A1",
+                    formula: "=1+1",
+                    cached_value: filePath === recalculated ? 2 : null,
+                  }],
+                }],
+              },
+            };
+          },
+          recalc: async () => ({
+            ok: true,
+            data: {
+              inputHash: originalHash,
+              outputHash: recalculatedHash,
+              outputPath: recalculated,
+              provider: "test",
+              durationMs: 1,
+              executable: "/test/libreoffice",
+            },
+          }),
+          render: async () => ({ ok: true, data: {
+            outDir: root,
+            files: [],
+            provider: "test",
+            executable: "/test/libreoffice",
+            durationMs: 1,
+          } }),
+        },
+      );
+
+      assert.equal(report.status, "passed");
+      assert.equal(inspectCount, 2, "recalc output must be inspected before promotion");
+      assert.equal(report.fileSha256, recalculatedHash);
+      assert.equal(sha256File(working), recalculatedHash);
+      assert.ok(!report.errors.some((e) => e.code === "formula_cache_empty"));
+    }
+
+    // ── Recalc output with formula errors / no sheets is never promoted ──
+    if (existsSync(formulaOk)) {
+      const invalidCases = [
+        {
+          name: "formula-error",
+          sheets: [{
+            name: "Sheet1",
+            formula_count: 1,
+            formulas_sample: [{ cell: "A1", formula: "=BAD()", cached_value: "#REF!" }],
+          }],
+          expectedCode: "formula_error",
+        },
+        {
+          name: "empty-sheets",
+          sheets: [],
+          expectedCode: "recalc_structure_empty",
+        },
+      ];
+      for (const invalid of invalidCases) {
+        const working = path.join(root, `${invalid.name}-candidate.xlsx`);
+        const recalculated = path.join(root, `${invalid.name}-output.xlsx`);
+        copyFileSync(formulaOk, working);
+        copyFileSync(formulaOk, recalculated);
+        appendFileSync(recalculated, invalid.name);
+        const originalHash = sha256File(working);
+
+        const report = await validateXlsxFile(
+          {
+            filePath: working,
+            fileName: path.basename(working),
+            expectedMime: XLSX_MIME,
+            qualityProfile: "generic",
+            expectedSha256: originalHash,
+            needsRecalc: true,
+            requireFormulaCache: true,
+          },
+          {
+            inspect: async (filePath) => ({
+              ok: true,
+              data: {
+                sheets: filePath === recalculated
+                  ? invalid.sheets
+                  : [{
+                    name: "Sheet1",
+                    formula_count: 1,
+                    formulas_sample: [{ cell: "A1", formula: "=1+1", cached_value: null }],
+                  }],
+              },
+            }),
+            recalc: async () => ({
+              ok: true,
+              data: {
+                inputHash: originalHash,
+                outputHash: sha256File(recalculated),
+                outputPath: recalculated,
+                provider: "test",
+                durationMs: 1,
+                executable: "/test/libreoffice",
+              },
+            }),
+            render: async () => ({ ok: false, errorCode: "unused" }),
+          },
+        );
+
+        assert.equal(report.status, "failed", `${invalid.name} must fail validation`);
+        assert.ok(report.errors.some((e) => e.code === invalid.expectedCode));
+        assert.equal(sha256File(working), originalHash, `${invalid.name} must not replace candidate`);
       }
     }
 

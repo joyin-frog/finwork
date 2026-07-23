@@ -151,6 +151,8 @@ export function resolvePythonAssetUrls(platform: NodeJS.Platform = process.platf
 export async function installPythonRuntime(opts: {
   steps: InstallSteps;
   onProgress?: (p: InstallProgress) => void;
+  /** Test/release seam for selecting an explicit platform lock. */
+  runtimeLockPath?: string;
 }): Promise<InstallResult> {
   const onProgress = opts.onProgress ?? (() => {});
   const exists = opts.steps.exists ?? fs.existsSync;
@@ -158,7 +160,11 @@ export async function installPythonRuntime(opts: {
   const writeText = opts.steps.writeText ?? defaultWriteText;
   const dir = getInstalledPythonDir();
   // Stamp always reflects on-disk platform lock (not test-injected stamp readers).
-  const expectedStamp = computePythonRuntimeStamp();
+  const lockPath = opts.runtimeLockPath ?? resolveRuntimeLockPath();
+  const lockHash = runtimeLockSha256(lockPath);
+  const expectedStamp = lockHash
+    ? `${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}+${lockHash.slice(0, 16)}`
+    : `${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}`;
   try {
     const pythonPath = pythonExeIn(dir);
     const stampFile = stampPath(dir);
@@ -230,7 +236,6 @@ export async function installPythonRuntime(opts: {
       throw lastError ?? new Error("下载失败:所有候选源均不可用");
     }
 
-    const lockPath = resolveRuntimeLockPath();
     const requirementsPath = path.join(getProjectRoot(), "requirements.txt");
     const useLock = exists(lockPath);
     const depFile = useLock ? lockPath : requirementsPath;

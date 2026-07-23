@@ -396,7 +396,8 @@ export function AssistantTurn({
                 );
               }
               if (seg.kind === "ask") {
-                // 按时序插在工具/正文之间;待答且回合进行中 → 输入框上方浮层,过程区不重复。
+                // 已答的确认项折叠在过程块内，按时序插在工具/正文之间；
+                // 待答且回合进行中 → 输入框上方浮层，过程区不重复。
                 const ev = seg.item.event as Extract<AgentEvent, { type: "ask_user" }>;
                 const ans = askAnswers.get(ev.questionId);
                 if (ans === undefined && isActive) return null;
