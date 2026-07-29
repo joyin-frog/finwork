@@ -60,3 +60,5 @@ graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
 */graphify-out/
 .codex/
 .cursor/
+# AS0 Phase B evidence may contain model responses and runtime traces.
+/artifacts/evals/

@@ -742,6 +742,9 @@ process.on("unhandledRejection", (err) => {
   const { transferQueueTestPromise } = await import("./transfer-queue.test.ts");
   await transferQueueTestPromise;
 
+  const { as0HarnessTestPromise } = await import("./as0/harness.test.ts");
+  await as0HarnessTestPromise;
+
 })().catch((err) => {
   console.error("[all.test] 测试链失败:", err);
   process.exitCode = 1;

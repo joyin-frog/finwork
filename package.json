@@ -24,6 +24,10 @@
     "test:e2e:prod": "next build && PW_PROD=1 playwright test",
     "eval:golden": "tsx tests/golden/run.ts",
     "eval:golden:ci": "SKIP_LLM=true tsx tests/golden/run.ts",
+    "eval:as0:validate": "tsx tests/as0/validate.ts",
+    "eval:as0:snapshot": "tsx tests/as0/context-snapshot.ts",
+    "eval:as0:phase-b": "tsx tests/as0/run.ts",
+    "eval:as0:typecheck": "tsc -p tests/as0/tsconfig.json",
     "worker:demo": "python3 workers/finance_worker.py demo"
   },
   "dependencies": {
