@@ -104,7 +104,7 @@ Anthropic Messages 兼容网关是第一阶段 Provider。迁移目标不是复�
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
-| AS0 | 上下文基线与职责清单 | 按 `as0-agent-context-baseline.md` 的 20 个 Runtime 中立任务记录 prompt/Skill/tool 成本、选择准确性、安全与交付质量；逐项标记 keep/move/merge/delete/investigate | 无；AR10 真实 PoC 前须冻结 Claude Phase B 结果 | **Phase B harness ready / Claude runs pending** |
+| AS0 | 上下文基线与职责清单 | 按 `as0-agent-context-baseline.md` 的 20 个 Runtime 中立任务记录 prompt/Skill/tool 成本、选择准确性、安全与交付质量；逐项标记 keep/move/merge/delete/investigate | 无；AR10 真实 PoC 前须冻结 Claude Phase B 结果 | **Runtime evidence frozen / manual review pending** |
 | AS1 | 结构中立化 | System Prompt 去 Claude boundary、Skill loader 换 Pi ResourceLoader、工具变 `FinanceToolDefinition`；保持语义与业务行为等价 | AS0、AR10；与 AR9/AR11/AR12 协同 | 未开始 |
 | AS2 | Pi-native 语义精简 | 精简 core prompt、Skill 入口/reference、按角色/任务暴露工具子集，逐项评测工具合并/删除 | AR12、AR13、AS1 | 未开始 |
 | AS3 | 精简发布门 | 形成 before/after 报告；业务质量、安全、交付不得下降，上下文成本/错误调用/无效 turns 至少一项改善 | AS2 | 未开始；并入 AR14 |

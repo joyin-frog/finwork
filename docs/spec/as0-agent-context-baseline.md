@@ -2,7 +2,7 @@
 
 > 版本：v1.0
 > 日期：2026-07-29
-> 状态：Phase B Harness Ready / Claude Runs Pending
+> 状态：Phase B Runtime Evidence Frozen / Manual Review Pending
 > 上游：`design-agent-context-simplification.md`
 > 下游：AR10、AS1、AS2、AR14/AS3
 > 机器可读任务集：`fixtures/as0-golden-tasks.v1.json`
@@ -275,6 +275,10 @@ AS0-19 canary 已确认一个旧链路问题：用户只要求“记住本次会
 - Pi 对照阶段不得隐藏、改写或放宽该 case；需要区分“保持旧行为”与“新增回归”。
 - 等 Pi 完全迁移、Claude SDK 删除后，再在 AS2/后续语义精简中修复“会话约定”和“长期记忆”
   的意图边界，并用同一 golden task 证明问题消失。
+
+正式执行结果见 `reports/as0-claude-minimax-m3-baseline-20260729.md`。Runtime 原始证据已绑定
+commit `86905c70d73d7a74549fd33c2180b4ccab20e367`；回答质量人工复核尚未完成，因此 AS0
+整体仍未标记为完成。
 
 ## 7. 执行顺序
 
