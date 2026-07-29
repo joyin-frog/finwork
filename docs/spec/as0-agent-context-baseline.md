@@ -2,7 +2,7 @@
 
 > 版本：v1.0
 > 日期：2026-07-29
-> 状态：Phase B Runtime Evidence Frozen / Manual Review Pending
+> 状态：Complete / AR10 Unblocked
 > 上游：`design-agent-context-simplification.md`
 > 下游：AR10、AS1、AS2、AR14/AS3
 > 机器可读任务集：`fixtures/as0-golden-tasks.v1.json`
@@ -14,10 +14,14 @@ AS0 分两段执行：
 1. **Phase A：冻结评测合同**。固定任务、fixture、指标、证据格式和当前资产快照，不调用模型。
 2. **Phase B：运行 Claude 基线**。在固定网关、模型和干净数据目录下执行任务并保存证据。
 
-Phase A 和 Phase B 执行 harness 已完成。真实 Claude 基线会产生模型调用和费用，必须通过
-双重安全门单独执行；在 Phase B 结果冻结前，AR10 不开始真实 Pi 对照 PoC。
+Phase A、Phase B、人工复核和离线重评分均已完成。正式 Claude baseline 为
+`claude-20260729074120-86905c70`；raw evidence 保持只读，重评分规则冻结在
+`as0-rescore-policy.v1.md`。AR10 真实 Pi 对照 PoC 的前置条件已经满足。
 
 AS0 不优化 System Prompt、Skill 或工具语义，也不删除 Claude 代码。
+
+正式结果见 `reports/as0-claude-minimax-m3-baseline-20260729.md`。217 条人工断言已全部复核，
+机器断言的 raw/effective 结果同时保留；后续 Pi evidence 必须使用同一 policy v1。
 
 ## 2. 为什么不直接使用现有 Golden Eval
 

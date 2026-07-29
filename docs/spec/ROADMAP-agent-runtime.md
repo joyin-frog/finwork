@@ -94,7 +94,7 @@ Anthropic Messages 兼容网关是第一阶段 Provider。迁移目标不是复�
 |----|--------|------|------|------|
 | AR8 | Pi Skill 资源目录 | 保留现有内置/用户 Skill SSOT；用 Pi `ResourceLoader` 做显式发现/白名单适配，禁止 ambient 用户目录渗入产品 session | AR10 | 未开始 |
 | AR9 | Finwork Agent Service + session/settings 泛化 | 用 PoC 证据冻结最小请求/结果/session/usage/error 边界；泛化 `claude_session_id`、`ClaudeSettings`、`ModelUsage`，公共层禁止 SDK import | AR10 | 未开始 |
-| AR10 | Pi + Anthropic Messages 替换 PoC | 按 `spike-pi-anthropic-replacement.md` 验证用户网关、session、事件、附件、Skill、代表工具、安全闸、取消/compaction、子代理、usage、打包和 Claude 零残留预演 | AS0 | **Spec 已写 / 等待 AS0** |
+| AR10 | Pi + Anthropic Messages 替换 PoC | 按 `spike-pi-anthropic-replacement.md` 验证用户网关、session、事件、附件、Skill、代表工具、安全闸、取消/compaction、子代理、usage、打包和 Claude 零残留预演 | AS0 | **Ready / AS0 已完成** |
 | AR11 | 中立财务工具目录 + Pi adapter | 抽 `FinanceToolDefinition`/执行上下文/规范化 tool id；Pi 生成 session-scoped `customTools`；验证 Zod→模型 schema 桥；从五个代表工具迁到 45 个 | AR10、AR9 | 未开始 |
 | AR12 | Pi 生产接入 | 用 `AgentSession`、自定义 `ResourceLoader` 与内部 Finwork extension 接入统一事件、安全、会话、交付和子代理合同 | AR9、AR11、AR8 | 未开始 |
 | AR13 | Claude SDK 删除 | 删除旧 adapter、SDK/MCP adapter、CLI 打包、Claude settings/session/config/retention、专属测试和错误文案；不保留 fallback | AR12 | 未开始 |
@@ -104,7 +104,7 @@ Anthropic Messages 兼容网关是第一阶段 Provider。迁移目标不是复�
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
-| AS0 | 上下文基线与职责清单 | 按 `as0-agent-context-baseline.md` 的 20 个 Runtime 中立任务记录 prompt/Skill/tool 成本、选择准确性、安全与交付质量；逐项标记 keep/move/merge/delete/investigate | 无；AR10 真实 PoC 前须冻结 Claude Phase B 结果 | **Runtime evidence frozen / manual review pending** |
+| AS0 | 上下文基线与职责清单 | 按 `as0-agent-context-baseline.md` 的 20 个 Runtime 中立任务记录 prompt/Skill/tool 成本、选择准确性、安全与交付质量；逐项标记 keep/move/merge/delete/investigate | 无；AR10 真实 PoC 前须冻结 Claude Phase B 结果 | **已完成 / AR10 已解锁** |
 | AS1 | 结构中立化 | System Prompt 去 Claude boundary、Skill loader 换 Pi ResourceLoader、工具变 `FinanceToolDefinition`；保持语义与业务行为等价 | AS0、AR10；与 AR9/AR11/AR12 协同 | 未开始 |
 | AS2 | Pi-native 语义精简 | 精简 core prompt、Skill 入口/reference、按角色/任务暴露工具子集，逐项评测工具合并/删除 | AR12、AR13、AS1 | 未开始 |
 | AS3 | 精简发布门 | 形成 before/after 报告；业务质量、安全、交付不得下降，上下文成本/错误调用/无效 turns 至少一项改善 | AS2 | 未开始；并入 AR14 |

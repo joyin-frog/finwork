@@ -27,6 +27,7 @@
     "eval:as0:validate": "tsx tests/as0/validate.ts",
     "eval:as0:snapshot": "tsx tests/as0/context-snapshot.ts",
     "eval:as0:phase-b": "tsx tests/as0/run.ts",
+    "eval:as0:rescore": "tsx tests/as0/rescore.ts",
     "eval:as0:typecheck": "tsc -p tests/as0/tsconfig.json",
     "worker:demo": "python3 workers/finance_worker.py demo"
   },

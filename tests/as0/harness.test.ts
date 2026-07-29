@@ -8,8 +8,10 @@ import {
 import { buildPlan, assertLiveAuthorized, parseArgs } from "./run";
 import { loadManifest, selectTasks } from "./manifest";
 import type { RuntimeEventRecord } from "./types";
+import { as0RescoreTestPromise } from "./rescore.test";
 
 export const as0HarnessTestPromise = (async () => {
+  await as0RescoreTestPromise;
   const { manifest } = loadManifest();
   assert.equal(manifest.tasks.length, 20);
 

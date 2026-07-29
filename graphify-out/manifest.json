@@ -2565,8 +2565,8 @@
     "semantic_hash": "00341e3d3cdf0127da677762683c40a2"
   },
   "package.json": {
-    "mtime": 1785308468.180079,
-    "ast_hash": "e758306d21ec68345d8d3ae9d129fff3",
+    "mtime": 1785318760.853026,
+    "ast_hash": "11dd26274bbf04db2d231f5d8c2aed7e",
     "semantic_hash": ""
   },
   "playwright.config.ts": {
@@ -4165,8 +4165,8 @@
     "semantic_hash": ""
   },
   "docs/spec/ROADMAP-agent-runtime.md": {
-    "mtime": 1785308751.1005406,
-    "ast_hash": "bf74c32d29644acfc91de1aba4c9bc60",
+    "mtime": 1785319001.7718668,
+    "ast_hash": "6700f473072baf7d39dc898fa4740f0b",
     "semantic_hash": ""
   },
   "docs/spec/ROADMAP-improve.md": {
@@ -5630,8 +5630,8 @@
     "semantic_hash": ""
   },
   "tests/as0/harness.test.ts": {
-    "mtime": 1785309777.6500335,
-    "ast_hash": "0661b4371816b8026fb37c8e140d2afb",
+    "mtime": 1785318760.8526359,
+    "ast_hash": "5a43bbfbe2943d1a80b6ce3007baea3a",
     "semantic_hash": ""
   },
   "tests/as0/manifest.ts": {
@@ -5670,8 +5670,8 @@
     "semantic_hash": ""
   },
   "docs/spec/as0-agent-context-baseline.md": {
-    "mtime": 1785310000.4820442,
-    "ast_hash": "f4c9567efbc430135b0e2cf93a5b214c",
+    "mtime": 1785319001.7712214,
+    "ast_hash": "0afa0c8c4910760d21a9297664419f2a",
     "semantic_hash": ""
   },
   "docs/spec/audit-complex-task-reliability.md": {
@@ -5710,13 +5710,13 @@
     "semantic_hash": ""
   },
   "docs/spec/design-agent-context-simplification.md": {
-    "mtime": 1785307090.5404925,
-    "ast_hash": "a5dce20d9a163db3fc9077988d48df92",
+    "mtime": 1785310854.7931619,
+    "ast_hash": "13bfd4924dec95c0f65a374e0f927185",
     "semantic_hash": ""
   },
   "docs/spec/design-pi-agent-runtime.md": {
-    "mtime": 1785305774.9383135,
-    "ast_hash": "40201aadd4c5581b6617d00939a36d80",
+    "mtime": 1785310854.794065,
+    "ast_hash": "ee611dea7aa512276b5036d555bed602",
     "semantic_hash": ""
   },
   "docs/spec/spec-complex-task-reliability.md": {
@@ -5770,8 +5770,8 @@
     "semantic_hash": ""
   },
   "docs/spec/spike-pi-anthropic-replacement.md": {
-    "mtime": 1785307090.5408843,
-    "ast_hash": "ec91f53a10199800a037161ad1126510",
+    "mtime": 1785319001.7723494,
+    "ast_hash": "cab0385f055a99ab13abe7032c3f029a",
     "semantic_hash": ""
   },
   "docs/spec/spike-sdk-segment-control-findings.md": {
@@ -5797,6 +5797,36 @@
   "scratchpad/spikes/cr-x1-sdk-segment/README.md": {
     "mtime": 1785302376.3385017,
     "ast_hash": "c69eeeda90df8219fe429321942938a7",
+    "semantic_hash": ""
+  },
+  "docs/spec/reports/evidence/as0-claude-minimax-m3-manual-review-20260729.json": {
+    "mtime": 1785319046.5493853,
+    "ast_hash": "485d7dfb629ca874da87ca6b93ff3f8d",
+    "semantic_hash": ""
+  },
+  "tests/as0/rescore-core.ts": {
+    "mtime": 1785318760.8515885,
+    "ast_hash": "58983d6fae6bfe15d00a576331f649eb",
+    "semantic_hash": ""
+  },
+  "tests/as0/rescore.test.ts": {
+    "mtime": 1785318760.852095,
+    "ast_hash": "023f6c7e6b2ae2873d1978ab8d49935a",
+    "semantic_hash": ""
+  },
+  "tests/as0/rescore.ts": {
+    "mtime": 1785318760.8519468,
+    "ast_hash": "f0a9b64100b3be0294c46f5e9ebfe086",
+    "semantic_hash": ""
+  },
+  "docs/spec/as0-rescore-policy.v1.md": {
+    "mtime": 1785319057.557379,
+    "ast_hash": "d71248690275129b783bef86cff70ae6",
+    "semantic_hash": ""
+  },
+  "docs/spec/reports/as0-claude-minimax-m3-baseline-20260729.md": {
+    "mtime": 1785319057.5566378,
+    "ast_hash": "42542eb8617f5c769e394ee5d932437e",
     "semantic_hash": ""
   }
 }
