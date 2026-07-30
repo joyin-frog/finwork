@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { readClaudeSettings } from "@/lib/settings/claude-settings";
-import { runClaudeAgent } from "@/lib/agent/claude-adapter";
-import type { AgentMessage } from "@/lib/agent/claude-adapter";
+import { readAgentSettings } from "@/lib/settings/agent-settings";
+import { runPiAgent } from "@/lib/agent/pi/agent-service";
+import type { AgentMessage } from "@/lib/agent/contracts";
 import { buildMessagesUrl } from "@/lib/agent/router";
 import { ALL_GOLDEN_CASES, type GoldenCase } from "./cases";
 
@@ -45,7 +45,7 @@ async function main() {
   console.log(`\n🔬 Golden Eval Runner\n`);
   console.log(`Cases: ${CASES.length}${SAMPLE > 0 ? ` (sampled ${SAMPLE}/category from ${ALL_GOLDEN_CASES.length})` : ""} | Mode: ${SKIP_LLM ? "SKIP_LLM (tool+keyword only)" : "FULL (with LLM judge)"} | Threshold: ${PASS_THRESHOLD}\n`);
 
-  const settings = await readClaudeSettings();
+  const settings = await readAgentSettings();
   const hasApiKey = settings.apiKey.trim().length > 0;
   if (!hasApiKey) console.log("⚠️  No API key configured — agent runs in mock mode.\n");
 
@@ -135,17 +135,15 @@ async function main() {
 async function runCase(gc: GoldenCase): Promise<{ toolCalls: string[]; response: string }> {
   const toolCalls: string[] = [];
 
-  const result = await runClaudeAgent(
-    gc.input as AgentMessage[],
-    {
+  const result = await runPiAgent({
+      messages: gc.input as AgentMessage[],
       requestId: randomUUID(),
       emit: (event) => {
         if (event.type === "tool_started" && !toolCalls.includes(event.toolName)) {
           toolCalls.push(event.toolName);
         }
       },
-    }
-  );
+    });
 
   return { toolCalls, response: result.content };
 }
@@ -206,7 +204,7 @@ function computeKeywordScore(gc: GoldenCase, response: string): number {
 // ─── LLM judge ──────────────────────────────────────────────────────
 
 async function runJudge(gc: GoldenCase, response: string, toolCalls: string[]): Promise<number> {
-  const settings = await readClaudeSettings();
+  const settings = await readAgentSettings();
   if (!settings.apiKey.trim()) return 0.5;
 
   const judgePrompt = [
@@ -232,7 +230,7 @@ async function runJudge(gc: GoldenCase, response: string, toolCalls: string[]): 
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: settings.routerModel || settings.model || "claude-haiku-4-5-20251001",
+        model: settings.routerModel || settings.model,
         max_tokens: 500,
         messages: [{ role: "user", content: judgePrompt }],
       }),

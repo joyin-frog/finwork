@@ -15,7 +15,7 @@
 
 import os from "node:os";
 import { getDb, insertAuditLog, getAppSetting, setAppSetting, getFeatureEventRows } from "@/lib/db/sqlite";
-import { readClaudeSettings } from "@/lib/settings/claude-settings";
+import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { buildEnvelope, type TelemetryEnvelope } from "@/lib/telemetry/projection";
 import { fetchUnreportedAppErrors, markAppErrorsReported } from "@/lib/runtime/app-errors";
 
@@ -299,7 +299,7 @@ function lastRowEpochMs(rows: Record<string, unknown>[], column: string): number
  * 解析最终使用的 endpoint/token:优先读编译期内置 env(§17.1),退回用户设置。
  * 绝不经 NEXT_PUBLIC_,绝不进客户端 JS(reporter 纯服务端)。
  */
-function resolveEndpointToken(settings: Awaited<ReturnType<typeof readClaudeSettings>>): {
+function resolveEndpointToken(settings: Awaited<ReturnType<typeof readAgentSettings>>): {
   endpoint: string;
   token: string;
 } {
@@ -310,7 +310,7 @@ function resolveEndpointToken(settings: Awaited<ReturnType<typeof readClaudeSett
 
 export async function runTelemetryReport(): Promise<void> {
   try {
-    const settings = await readClaudeSettings();
+    const settings = await readAgentSettings();
     if (!settings.telemetryEnabled) return;
     const { endpoint: resolvedEndpoint, token: resolvedToken } = resolveEndpointToken(settings);
     if (!resolvedEndpoint) return;
@@ -433,7 +433,7 @@ export type TestReportResult =
  * 红线 8:出网仍落 audit_logs(isExternal=true)。
  */
 export async function runTelemetryTestReport(): Promise<TestReportResult> {
-  const settings = await readClaudeSettings();
+  const settings = await readAgentSettings();
   if (!settings.telemetryEnabled) {
     return { ok: false, reason: "未启用或未配置 endpoint" };
   }

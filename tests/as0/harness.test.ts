@@ -38,7 +38,7 @@ export const as0HarnessTestPromise = (async () => {
   );
 
   const sanitized = sanitizeSettingsJson({
-    claude: {
+    agent: {
       apiKey: "secret",
       mainModel: "model-a",
       companyName: "真实公司",
@@ -48,15 +48,15 @@ export const as0HarnessTestPromise = (async () => {
       telemetryToken: "secret-token",
     },
     nested: [{ apiKEY: "secret-2", keep: true }],
-  }) as { claude: Record<string, unknown>; nested: Array<Record<string, unknown>> };
-  assert.equal("apiKey" in sanitized.claude, false);
+  }) as { agent: Record<string, unknown>; nested: Array<Record<string, unknown>> };
+  assert.equal("apiKey" in sanitized.agent, false);
   assert.equal("apiKEY" in sanitized.nested[0], false);
-  assert.equal("telemetryToken" in sanitized.claude, false);
-  assert.equal("userAvatar" in sanitized.claude, false);
-  assert.equal(sanitized.claude.companyName, "AS0 测试公司");
-  assert.equal(sanitized.claude.userName, "AS0 测试用户");
-  assert.equal(sanitized.claude.telemetryEnabled, false);
-  assert.equal(sanitized.claude.mainModel, "model-a");
+  assert.equal("telemetryToken" in sanitized.agent, false);
+  assert.equal("userAvatar" in sanitized.agent, false);
+  assert.equal(sanitized.agent.companyName, "AS0 测试公司");
+  assert.equal(sanitized.agent.userName, "AS0 测试用户");
+  assert.equal(sanitized.agent.telemetryEnabled, false);
+  assert.equal(sanitized.agent.mainModel, "model-a");
 
   const deliveryTask = manifest.tasks.find((task) => task.id === "AS0-17")!;
   const contract = buildTaskContract(deliveryTask);

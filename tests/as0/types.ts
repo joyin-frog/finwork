@@ -98,6 +98,11 @@ export type RuntimeTurnResult = {
   error?: string;
 };
 
+export type RuntimeCompactionRequest = {
+  sessionId: string;
+  model: string;
+};
+
 export interface PhaseBRuntime {
   readonly id: string;
   readonly providerProtocol: string;
@@ -106,6 +111,7 @@ export interface PhaseBRuntime {
     forcedCompaction: boolean;
   };
   runTurn(request: RuntimeTurnRequest): Promise<RuntimeTurnResult>;
+  forceCompact(request: RuntimeCompactionRequest): Promise<RuntimeEventRecord[]>;
 }
 
 export type AssertionResult = {

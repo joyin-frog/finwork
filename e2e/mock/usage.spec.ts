@@ -9,7 +9,7 @@ import { sendChat } from "./helpers";
 // 种子:直接往隔离 mock 库写一条超限 trace —— mock Agent 不上报 usage,无法从 UI 侧堆到超限。
 // 库是 WAL + busy_timeout,跨进程写安全;用固定 trace_id,finally 里必清,不给后续用例留"全员被拦"的毒状态。
 
-const DB_PATH = path.join(process.cwd(), ".claude", "e2e-mock", "appdata", "finance-agent.db");
+const DB_PATH = path.join(process.cwd(), ".finwork-test", "e2e-mock", "appdata", "finance-agent.db");
 const SEED_TRACE_ID = "e2e-usage-seed";
 const WINDOW_KEYS = ["usage.window_start_5h", "usage.window_start_week"];
 

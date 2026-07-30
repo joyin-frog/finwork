@@ -35,46 +35,46 @@ export const queryStagesTestPromise = (async () => {
     const result = await sessionStage(ctx);
     assert.ok(!(result instanceof Response), "S1 FAIL: sessionStage 不应短路");
     assert.ok(typeof result.conversationId === "number", "S1 FAIL: 应创建 conversationId");
-    assert.ok(typeof result.claudeSessionId === "string" && result.claudeSessionId.length > 0, "S1 FAIL: 应生成 claudeSessionId");
-    assert.ok(result.existingClaudeSessionId === null, "S1 FAIL: 新会话 existingClaudeSessionId 应为 null");
+    assert.ok(typeof result.runtimeSessionId === "string" && result.runtimeSessionId.length > 0, "S1 FAIL: 应生成 runtimeSessionId");
+    assert.ok(result.existingRuntimeSessionId === null, "S1 FAIL: 新会话 existingRuntimeSessionId 应为 null");
     // 验证会话已落库
     const conv = getChatConversation(result.conversationId!);
     assert.ok(conv, "S1 FAIL: 会话应已落库");
-    assert.ok(conv.claudeSessionId === result.claudeSessionId, "S1 FAIL: claudeSessionId 应写入会话");
+    assert.ok(conv.runtimeSessionId === result.runtimeSessionId, "S1 FAIL: runtimeSessionId 应写入会话");
     console.log("query-stages S1 pass ✓");
   }
 
-  // --- S2: 既有会话追加（claudeSessionId 复用）---
+  // --- S2: 既有会话追加（runtimeSessionId 复用）---
   {
     // 先建一条会话
     const ctx1 = makeCtx();
     const r1 = await sessionStage(ctx1);
     assert.ok(!(r1 instanceof Response), "S2 setup FAIL");
     const existingConvId = r1.conversationId!;
-    const existingSessionId = r1.claudeSessionId!;
+    const existingSessionId = r1.runtimeSessionId!;
 
     // 同 conversationId 再次请求
     const ctx2 = makeCtx({ conversationId: existingConvId });
     const r2 = await sessionStage(ctx2);
     assert.ok(!(r2 instanceof Response), "S2 FAIL: sessionStage 不应短路");
     assert.equal(r2.conversationId, existingConvId, "S2 FAIL: conversationId 应保持");
-    assert.equal(r2.existingClaudeSessionId, existingSessionId, "S2 FAIL: 应复用 existingClaudeSessionId");
-    assert.equal(r2.claudeSessionId, existingSessionId, "S2 FAIL: claudeSessionId 应与既有相同");
+    assert.equal(r2.existingRuntimeSessionId, existingSessionId, "S2 FAIL: 应复用 existingRuntimeSessionId");
+    assert.equal(r2.runtimeSessionId, existingSessionId, "S2 FAIL: runtimeSessionId 应与既有相同");
     console.log("query-stages S2 pass ✓");
   }
 
-  // --- S3: staleness 重置（超龄会话清空 claudeSessionId）---
+  // --- S3: staleness 重置（超龄会话清空 runtimeSessionId）---
   {
-    // 建一条会话并手动设置 claudeSessionUpdatedAt 为超旧时间
-    const { createChatConversation, setChatConversationClaudeSessionId } = await import("../lib/db/sqlite.ts");
+    // 建一条会话并手动设置 runtimeSessionUpdatedAt 为超旧时间
+    const { createChatConversation, setChatConversationRuntimeSession } = await import("../lib/db/sqlite.ts");
     const convId = createChatConversation("stale-test");
     const oldSessionId = "old-session-12345";
-    setChatConversationClaudeSessionId(convId, oldSessionId);
+    setChatConversationRuntimeSession(convId, oldSessionId);
 
     // 直接操控 DB 让 updated_at 超旧（超 12h）
     const { openFinanceDatabase: openDb } = await import("../lib/db/sqlite.ts");
     const db = openDb(process.env.FINANCE_AGENT_DB_PATH!);
-    db.prepare("UPDATE chat_conversations SET claude_session_updated_at = datetime('now', '-13 hours') WHERE id = ?").run(convId);
+    db.prepare("UPDATE chat_conversations SET runtime_session_updated_at = datetime('now', '-13 hours') WHERE id = ?").run(convId);
     db.close();
 
     // 确保 flag SESSION_LIVENESS_CHECK_ENABLED 开启
@@ -85,8 +85,8 @@ export const queryStagesTestPromise = (async () => {
     const ctx3 = makeCtx({ conversationId: convId });
     const r3 = await sessionStage(ctx3);
     assert.ok(!(r3 instanceof Response), "S3 FAIL: sessionStage 不应短路");
-    assert.equal(r3.existingClaudeSessionId, null, "S3 FAIL: 超龄会话 existingClaudeSessionId 应重置为 null");
-    assert.ok(r3.claudeSessionId !== oldSessionId, "S3 FAIL: 超龄会话应生成新 claudeSessionId");
+    assert.equal(r3.existingRuntimeSessionId, null, "S3 FAIL: 超龄会话 existingRuntimeSessionId 应重置为 null");
+    assert.ok(r3.runtimeSessionId !== oldSessionId, "S3 FAIL: 超龄会话应生成新 runtimeSessionId");
 
     // 清理 env
     delete process.env.FINANCE_AGENT_FLAG_SESSION_LIVENESS_CHECK_ENABLED;

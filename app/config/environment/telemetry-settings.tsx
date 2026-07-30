@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/app/config/settings-ui";
-import type { PublicClaudeSettings } from "@/lib/settings/claude-settings";
+import type { PublicAgentSettings } from "@/lib/settings/agent-settings";
 
-async function saveSettings(patch: Partial<PublicClaudeSettings>): Promise<void> {
-  await fetch("/api/settings/claude", {
+async function saveSettings(patch: Partial<PublicAgentSettings>): Promise<void> {
+  await fetch("/api/settings/agent", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(patch),
@@ -19,8 +19,8 @@ export function TelemetryBody() {
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/settings/claude");
-      const body = (await res.json()) as { data: PublicClaudeSettings };
+      const res = await fetch("/api/settings/agent");
+      const body = (await res.json()) as { data: PublicAgentSettings };
       setEnabled(body.data.telemetryEnabled ?? false);
     })();
   }, []);

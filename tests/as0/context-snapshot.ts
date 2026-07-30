@@ -42,7 +42,7 @@ const promptParts = buildSystemPromptParts({
   recentNegativeFeedback: ["不要覆盖原始文件"],
   companyProfile: { taxpayerType: "一般纳税人", industry: "软件服务" },
 });
-const [staticPrompt, runtimeBoundary, dynamicContext] = promptParts;
+const [staticPrompt, dynamicContext] = promptParts;
 
 const skillRoot = path.join(repoRoot, "agent-skills/skills");
 const skills = readdirSync(skillRoot, { withFileTypes: true })
@@ -113,11 +113,7 @@ const snapshot = {
   },
   context: {
     staticPrompt: { ...size(staticPrompt), sha256: sha256(staticPrompt) },
-    runtimeBoundary: {
-      type: typeof runtimeBoundary,
-      chars: typeof runtimeBoundary === "string" ? size(runtimeBoundary).chars : null,
-      bytes: typeof runtimeBoundary === "string" ? size(runtimeBoundary).bytes : null,
-    },
+    runtimeBoundary: { type: "removed", chars: 0, bytes: 0 },
     dynamicContextFixture: { ...size(dynamicContext), sha256: sha256(dynamicContext) },
     repositoryPrompt: { ...size(repositoryPrompt), sha256: sha256(repositoryPrompt) },
     skillListing: { count: skills.length, ...size(skillListing), sha256: sha256(skillListing) },

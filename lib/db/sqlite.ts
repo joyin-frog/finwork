@@ -345,8 +345,8 @@ export type StoredAgentEvent = {
 export type StoredChatConversation = {
   id: number;
   title: string;
-  claudeSessionId: string | null;
-  claudeSessionUpdatedAt: string | null;
+  runtimeSessionId: string | null;
+  runtimeSessionUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
   /** 专员会话的角色 id（E 刀）；NULL/undefined = 主管会话。 */
@@ -379,8 +379,8 @@ type AttachmentRow = {
 type ConversationRow = {
   id: number;
   title: string;
-  claude_session_id: string | null;
-  claude_session_updated_at: string | null;
+  runtime_session_id: string | null;
+  runtime_session_updated_at: string | null;
   created_at: string;
   updated_at: string;
   pinned: number;
@@ -461,7 +461,7 @@ export function listRecentChatConversations(limit = 10) {
   const db = getDb();
   const convRows = db
     .prepare(
-      "SELECT id, title, claude_session_id, claude_session_updated_at, created_at, updated_at, pinned, role_id FROM chat_conversations ORDER BY updated_at DESC, id DESC LIMIT ?"
+      "SELECT id, title, runtime_session_id, runtime_session_updated_at, created_at, updated_at, pinned, role_id FROM chat_conversations ORDER BY updated_at DESC, id DESC LIMIT ?"
     )
     .all(limit) as ConversationRow[];
 
@@ -582,16 +582,19 @@ export function deleteChatConversation(conversationId: number) {
 export function getChatConversation(conversationId: number) {
   const db = getDb();
   const row = db
-    .prepare("SELECT id, title, claude_session_id, claude_session_updated_at, created_at, updated_at, pinned, role_id FROM chat_conversations WHERE id = ?")
+    .prepare("SELECT id, title, runtime_session_id, runtime_session_updated_at, created_at, updated_at, pinned, role_id FROM chat_conversations WHERE id = ?")
     .get(conversationId) as ConversationRow | undefined;
   return row ? mapConversationRow(row, listChatMessages(row.id)) : null;
 }
 
-export function setChatConversationClaudeSessionId(conversationId: number, claudeSessionId: string) {
+export function setChatConversationRuntimeSession(
+  conversationId: number,
+  runtimeSessionId: string,
+) {
   const db = getDb();
   db.prepare(
-    "UPDATE chat_conversations SET claude_session_id = ?, claude_session_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-  ).run(claudeSessionId, conversationId);
+    "UPDATE chat_conversations SET runtime_session_id = ?, runtime_session_updated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+  ).run(runtimeSessionId, conversationId);
 }
 
 export function insertChatAttachment(attachment: Omit<StoredChatAttachment, "createdAt">) {
@@ -648,8 +651,8 @@ function mapConversationRow(row: ConversationRow, messages: StoredChatMessage[])
   return {
     id: row.id,
     title: row.title,
-    claudeSessionId: row.claude_session_id,
-    claudeSessionUpdatedAt: row.claude_session_updated_at,
+    runtimeSessionId: row.runtime_session_id,
+    runtimeSessionUpdatedAt: row.runtime_session_updated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     roleId: row.role_id ?? null,

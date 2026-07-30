@@ -7,7 +7,7 @@
  * 覆盖：
  * - T1 expandTaskTemplate：成功路径（含 extra）、未知 id 抛错、非法 period 抛错
  * - T2 subagent 模板均含 {{period}} 占位符
- * - T3 spawn 工具 task_template 三路径：匹配（API key 早返回）、不匹配、缺 period
+ * - T3 spawn 工具 task_template 三路径：匹配并注入执行器、不匹配、缺 period
  */
 
 import assert from "node:assert/strict";
@@ -130,7 +130,23 @@ export const taskTemplatesTestPromise = (async () => {
       };
 
       const { createSpawnSubagentTool } = await import("../lib/agent/mcp-tools/subagent.ts");
-      createSpawnSubagentTool(mockSdk, dir, undefined, undefined, undefined);
+      let executedInstructions = "";
+      createSpawnSubagentTool(
+        mockSdk,
+        dir,
+        undefined,
+        undefined,
+        undefined,
+        async (task) => {
+          executedInstructions = task.instructions;
+          return {
+            label: task.label,
+            content: "stub subagent completed",
+            success: true,
+            durationMs: 1,
+          };
+        },
+      );
 
       const handler = captured.handler;
       if (!handler) throw new Error("T3 FAIL: spawn 工具 handler 未被捕获");
@@ -163,7 +179,7 @@ export const taskTemplatesTestPromise = (async () => {
         `T3b FAIL: 错误文本应含"不属于角色"，实际: ${r3b.content[0]?.text}`
       );
 
-      // ── T3c：匹配 → 进入 runSubagent（API key 早返回，但不是模板校验错误）──
+      // ── T3c：匹配 → 展开模板并进入注入的中立执行器 ─────────────────────
       const r3c = await handler({
         role: "bookkeeper",
         instructions: "额外说明",
@@ -171,13 +187,12 @@ export const taskTemplatesTestPromise = (async () => {
         task_template: "month-close-precheck",
         period: "2026-06",
       });
-      // 无 API key → runSubagent 失败，文本含"Claude API Key"而非模板校验错误
       assert.ok(
-        r3c.content[0]?.text.includes("Claude API Key") ||
-        r3c.content[0]?.text.includes("API Key") ||
-        r3c.content[0]?.text.includes("失败"),
-        `T3c FAIL: 匹配后应调用 runSubagent（API key 早返回），实际文本: ${r3c.content[0]?.text}`
+        r3c.content[0]?.text.includes("stub subagent completed"),
+        `T3c FAIL: 匹配后应调用注入执行器，实际文本: ${r3c.content[0]?.text}`
       );
+      assert.ok(executedInstructions.includes("2026-06"), "T3c FAIL: 执行器应收到展开后的 period");
+      assert.ok(executedInstructions.includes("额外说明"), "T3c FAIL: 执行器应收到补充上下文");
       // 不应是"不属于角色"错误
       assert.ok(
         !r3c.content[0]?.text.includes("不属于角色"),

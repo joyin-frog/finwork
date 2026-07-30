@@ -8,9 +8,9 @@
  * - SS-4 buildSpecialistChatSystemPrompt：交互式 A 段（可提问）+ 角色 B 段 + 记忆段；无子代理"不能提问"纪律
  * - SS-5 会话角色维度落库：createChatConversation(roleId) → getChatConversation 回读；
  *        listConversationsForRole 并出直聊会话（isDirect）与派发会话
- * - SS-6 源码契约：/chat/new 支持 role 参数；claude-adapter 按 roleId 分支装配；routerStage 跳过专员会话
+ * - SS-6 源码契约：/chat/new 支持 role 参数；Pi Service 按 roleId 分支装配；routerStage 跳过专员会话
  * - SS-7 停用角色：specialistRoleUsabilityIssue / assertSpecialistRoleUsable fail-closed；
- *   runClaudeAgent({ roleId }) 在 mock 短路前抛错；恢复启用后可走 mock
+ *   runPiAgent({ roleId }) 在 mock 短路前抛错；恢复启用后可走 mock
  * - SS-8 sessionStage：非法 role 建会话 → 400；既有专员会话中途停用 → 403
  *
  * 运行：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true node --import tsx tests/specialist-session.test.ts
@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { resolveRoleAllowedTools, resolveRoleScopeTools } from "../lib/agent/roles/registry.ts";
 import { createRoleScopeHook, createRiskConfirmHook } from "../lib/agent/hooks/built-in.ts";
 import { runBeforeHooks } from "../lib/agent/hooks/chain.ts";
-import { buildSpecialistChatSystemPrompt, buildSubagentSystemPrompt } from "../lib/agent/subagent-runner.ts";
+import { buildSpecialistChatSystemPrompt, buildSubagentSystemPrompt } from "../lib/agent/subagent-prompts.ts";
 import { getRoleDefinition } from "../lib/agent/roles/registry.ts";
 
 export const specialistSessionTestPromise = (async () => {
@@ -140,10 +140,10 @@ export const specialistSessionTestPromise = (async () => {
   const read = (p: string) => readFileSync(path.join(process.cwd(), p), "utf8");
   const newPage = read("app/chat/new/page.tsx");
   assert.ok(newPage.includes("role?: string") && newPage.includes("initialRole"), "SS-6 FAIL: /chat/new 应支持 role 参数并传 initialRole");
-  const adapter = read("lib/agent/claude-adapter.ts");
-  assert.ok(adapter.includes("resolveRoleAllowedTools(specialistRole.id)"), "SS-6 FAIL: adapter 应按角色收窄 allowedTools");
-  assert.ok(adapter.includes("buildSpecialistChatSystemPrompt"), "SS-6 FAIL: adapter 应用专员系统提示");
-  assert.ok(adapter.includes("createRoleScopeHook"), "SS-6 FAIL: adapter 应挂 role-scope hook");
+  const service = read("lib/agent/pi/agent-service.ts");
+  assert.ok(service.includes("resolveRoleAllowedTools(role.id)"), "SS-6 FAIL: Pi Service 应按角色收窄 allowedTools");
+  assert.ok(service.includes("buildSpecialistChatSystemPrompt"), "SS-6 FAIL: Pi Service 应用专员系统提示");
+  assert.ok(service.includes("createFinanceToolAuthorizer"), "SS-6 FAIL: Pi Service 应挂统一工具授权链");
   const stages = read("lib/agent/query-stages.ts");
   assert.ok(stages.includes("specialist session"), "SS-6 FAIL: routerStage 应跳过专员会话");
   const chatPage = read("app/chat/chat-page.tsx");
@@ -151,7 +151,7 @@ export const specialistSessionTestPromise = (async () => {
   const newPageSrc = read("app/chat/new/page.tsx");
   assert.ok(newPageSrc.includes("getDisabledRoleIds"), "SS-6 FAIL: /chat/new 应检查用户停用角色");
 
-  // ── SS-7: 停用角色 fail-closed + adapter 在 mock 前校验 ─────────────────
+  // ── SS-7: 停用角色 fail-closed + Pi Service 在 mock 前校验 ──────────────
   {
     const dir = mkdtempSync(path.join(tmpdir(), "fa-specialist-disabled-"));
     const dbPath = path.join(dir, "test.db");
@@ -180,15 +180,15 @@ export const specialistSessionTestPromise = (async () => {
         "SS-7 FAIL: assertSpecialistRoleUsable 应对停用角色抛错"
       );
 
-      const { runClaudeAgent } = await import("../lib/agent/claude-adapter.ts");
+      const { runPiAgent } = await import("../lib/agent/pi/agent-service.ts");
       await assert.rejects(
-        () => runClaudeAgent([{ role: "user", content: "你好" }], { roleId: "payroll-officer" }),
+        () => runPiAgent({ messages: [{ role: "user", content: "你好" }], roleId: "payroll-officer" }),
         /已停用/,
-        "SS-7 FAIL: runClaudeAgent 在 mock 短路前应对停用角色抛错"
+        "SS-7 FAIL: runPiAgent 在 mock 短路前应对停用角色抛错"
       );
 
       setRoleDisabled("payroll-officer", false);
-      const ok = await runClaudeAgent([{ role: "user", content: "你好" }], { roleId: "payroll-officer" });
+      const ok = await runPiAgent({ messages: [{ role: "user", content: "你好" }], roleId: "payroll-officer" });
       assert.equal(ok.mode, "mock", "SS-7 FAIL: 重新启用后 mock 路径应可跑通");
     } finally {
       if (savedDbPath === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
@@ -210,14 +210,14 @@ export const specialistSessionTestPromise = (async () => {
       getDb();
       const { setRoleDisabled } = await import("../lib/agent/roles/availability.ts");
       const { sessionStage } = await import("../lib/agent/query-stages.ts");
-      const { readClaudeSettings } = await import("../lib/settings/claude-settings.ts");
-      const settings = await readClaudeSettings().catch(() => ({ roleMode: "daily" as const }));
+      const { readAgentSettings } = await import("../lib/settings/agent-settings.ts");
+      const settings = await readAgentSettings().catch(() => ({ roleMode: "daily" as const }));
 
       const baseCtx = {
         request: new Request("http://localhost/api/agent/query"),
         traceId: "ss8",
         startedAt: Date.now(),
-        settings: settings as Awaited<ReturnType<typeof readClaudeSettings>>,
+        settings: settings as Awaited<ReturnType<typeof readAgentSettings>>,
         roleMode: "daily",
         messages: [{ role: "user" as const, content: "测一下" }],
         conversationId: undefined as number | undefined,

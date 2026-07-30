@@ -4,7 +4,7 @@ title: PDF 文件处理
 summary: 读取、合并、拆分 PDF,提取文字和表格,扫描件自动识别文字。
 requires: "PDF 文件"
 category: file-tool
-description: 每当用户想要对 PDF 文件进行任何操作时，使用此技能。这包括读取或提取 PDF 中的文本/表格、合并多个 PDF 为一个、拆分 PDF、旋转页面、添加水印、创建新 PDF、填写 PDF 表单、加密/解密 PDF、提取图片，以及对扫描版 PDF 进行 OCR 使其可搜索。如果用户提到 .pdf 文件或要求生成一个，请使用此技能。
+description: "用于读取、创建或编辑 PDF，包括提取、OCR、合并、拆分、表单和水印；其他文档格式不用。输入 PDF 与操作要求，完成证据是页数/内容校验通过的 PDF。"
 ---
 
 # PDF 处理指南

@@ -1159,7 +1159,7 @@
       },
       {
         "cid": 2,
-        "name": "claude_session_id",
+        "name": "runtime_session_id",
         "type": "TEXT",
         "notnull": 0,
         "dflt_value": null,
@@ -1183,7 +1183,7 @@
       },
       {
         "cid": 5,
-        "name": "claude_session_updated_at",
+        "name": "runtime_session_updated_at",
         "type": "TEXT",
         "notnull": 0,
         "dflt_value": null,

@@ -21,6 +21,11 @@ export async function register() {
     } catch {
       // 启动清理陈旧输出目录是 best-effort,不得阻断应用启动。
     }
+    if (process.env.FINANCE_AGENT_PI_PREFLIGHT === "1") {
+      const { runPiPackagedPreflight } = await import("@/lib/agent/pi/packaged-preflight");
+      const result = await runPiPackagedPreflight();
+      console.log(`[pi-preflight] ${JSON.stringify(result)}`);
+    }
     try {
       const { appendServerLog, purgeOldServerLogs } = await import("@/lib/runtime/server-log");
       // 日志按日新建,启动时顺手清掉过期的 server-*.log,封住无限增长。

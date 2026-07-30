@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { getAppDataDir, getSecretFallbackPath, getSettingsPath } from "@/lib/runtime/paths";
-import { readClaudeSettings } from "@/lib/settings/claude-settings";
+import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { defaultAttempts, loadManifest, selectTasks } from "./manifest";
 import { sanitizeSettingsJson } from "./harness-core";
 import type { AttemptEvidence, GoldenTask, WorkerPayload } from "./types";
@@ -112,8 +112,8 @@ function summarize(attempts: AttemptEvidence[]) {
 }
 
 async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string> {
-  const settings = await readClaudeSettings();
-  if (!settings.apiKey.trim()) throw new Error("当前 Claude API key 未配置");
+  const settings = await readAgentSettings();
+  if (!settings.apiKey.trim()) throw new Error("当前 Agent API key 未配置");
   if (!settings.mainModel.trim()) throw new Error("当前 mainModel 未配置");
 
   const dirtyFiles = git("status", "--short").split("\n").filter(Boolean);
@@ -123,7 +123,7 @@ async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string
 
   const commit = git("rev-parse", "HEAD");
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
-  const baselineId = `claude-${stamp}-${commit.slice(0, 8)}`;
+  const baselineId = `pi-${stamp}-${commit.slice(0, 8)}`;
   const baselineRoot = path.resolve(options.outputRoot ?? path.join("artifacts/evals/as0", baselineId));
   mkdirSync(path.join(baselineRoot, "cases"), { recursive: true });
   writeFileSync(path.join(baselineRoot, "context-snapshot.json"), `${JSON.stringify(contextSnapshot(), null, 2)}\n`);
@@ -138,7 +138,7 @@ async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string
     gitCommit: commit,
     dirtyFiles,
     appVersion: JSON.parse(readFileSync("package.json", "utf8")).version,
-    runtime: "claude-agent-sdk",
+    runtime: "pi",
     providerProtocol: "anthropic-messages",
     gatewayOrigin: safeOrigin(settings.apiUrl),
     mainModel: settings.mainModel,
@@ -184,7 +184,7 @@ async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string
               FINANCE_AGENT_SETTINGS_PATH: settingsPath,
               FINANCE_AGENT_DB_PATH: path.join(appDataDir, "finance-agent.db"),
               FINANCE_AGENT_FILES_DIR: path.join(attemptDir, "files"),
-              FINANCE_AGENT_CLAUDE_CONFIG_DIR: path.join(appDataDir, "claude-config"),
+              FINANCE_AGENT_PI_SESSION_DIR: path.join(appDataDir, "pi-sessions"),
               FINANCE_AGENT_SECRET_FILE: process.env.FINANCE_AGENT_SECRET_FILE ?? sourceSecretPath,
               FINANCE_AGENT_MOCK_AGENT: "0",
             },
@@ -202,7 +202,7 @@ async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string
               schemaVersion: 1,
               taskId: item.taskId,
               attempt,
-              runtime: "claude-agent-sdk",
+              runtime: "pi",
               providerProtocol: "anthropic-messages",
               model: settings.mainModel,
               invalidRunReason: `worker_exit_${worker.status}`,

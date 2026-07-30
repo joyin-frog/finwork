@@ -1,4 +1,4 @@
-import { readClaudeSettings } from "@/lib/settings/claude-settings";
+import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { buildMessagesUrl } from "@/lib/agent/router";
 import { modelConfigFromSettings, resolveExecutionModel } from "@/lib/settings/model-config";
 
@@ -45,9 +45,9 @@ export async function generateConversationTitle(
   // CI / 单测跳过
   if (process.env.SKIP_LLM) return null;
 
-  let settings: Awaited<ReturnType<typeof readClaudeSettings>>;
+  let settings: Awaited<ReturnType<typeof readAgentSettings>>;
   try {
-    settings = await readClaudeSettings();
+    settings = await readAgentSettings();
   } catch {
     return null;
   }

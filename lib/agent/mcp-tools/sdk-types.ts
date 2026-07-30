@@ -1,4 +1,3 @@
-import type { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { ZodRawShape } from "zod/v4";
 import { ZodError } from "zod/v4";
 
@@ -7,10 +6,19 @@ export type SdkMcpToolDef = any;
 
 export type SdkLike = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tool: (name: string, description: string, schema: ZodRawShape, handler: (args: any) => any) => SdkMcpToolDef;
-  createSdkMcpServer?: typeof createSdkMcpServer;
+  tool: (
+    name: string,
+    description: string,
+    schema: ZodRawShape,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler: (args: any, extra?: any) => any,
+  ) => SdkMcpToolDef;
+  createSdkMcpServer?: (options: {
+    name: string;
+    version: string;
+    tools: SdkMcpToolDef[];
+  }) => unknown;
 };
-
 /**
  * Wraps a tool handler to catch ZodError and return a human-readable error
  * that the model can use to self-correct its arguments.

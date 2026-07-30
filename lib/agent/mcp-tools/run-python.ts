@@ -6,13 +6,14 @@ import { pythonSpawnEnv } from "@/lib/runtime/python-env";
 import { createLogger } from "@/lib/runtime/logger";
 import { z } from "zod/v4";
 import type { SdkLike } from "./sdk-types";
+import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
 
 type Sdk = SdkLike;
 
 const log = createLogger("run-python");
 
 export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: string) {
-  // 本工具工厂每回合(每次 runClaudeAgent → buildFinanceMcpServers)只创建一次,此刻 outputDir 里
+  // 本工具工厂每回合只创建一次，此刻 outputDir 里
   // 的文件 = 「本回合开始前」就有的产物(往次回合留下的)。把这份基线随每次 run_python 调用传给
   // worker,让防覆盖守卫只版本化这些"上一版",而本回合内新建的文件(哪怕跨多次调用)一律覆盖,
   // 不再误加 _v2。(修复:守卫原先按"每次调用前"判断,同一回合先建后存就被加 _v2。)
@@ -29,16 +30,20 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: strin
   return sdk.tool(
     "run_python",
     [
-      "执行 Python 脚本。可导入 openpyxl、pandas、matplotlib、reportlab、fpdf、python-docx、pdfplumber 等库。",
-      "【工具选择】创建/改造 .xlsx/.docx/.pdf/.pptx 文档必须优先调用对应 skill(xlsx/docx/pdf/pptx),不要绕过 skill 直接用 run_python 生成正式文档。除此之外,所有 Python(读表取数、计算、数据处理、探查文件结构)都用本工具——这是跑 Python 的唯一入口。",
-      "【禁用 Bash 跑 Python】严禁用 Bash 执行 Python(python -c、python - <<heredoc、python xxx.py 一律禁止);那会绕过本工具的紧凑读表与防覆盖守卫,引发一张表分多步读、_v2_v2 版本爆炸、回合超时。要跑 Python 就调本工具、把代码放进 code 参数。",
-      "【读表格式】读取表格数据用紧凑格式(df.to_csv() 或只打印值),禁止逐格带 (值,坐标) 形式输出——那会让输出翻倍、逼模型分很多次才能读完一张表。",
-      "【路径约束】生成的文件必须保存到 output_dir 变量指向的目录(已固定为本会话输出目录);不要自行拼接 /tmp、/var 等临时路径,否则文件会丢失、用户看不到。",
-      "【禁止启动 GUI】严禁用 subprocess/os.system/open -a 启动 WPS、Excel、Numbers 等办公软件图形界面；公式重算走产品 spreadsheet runtime / LibreOffice，读写表用 openpyxl 或 xlsx skill。",
-      "【openpyxl】画图时图表系列标题(series.tx)必须用 SeriesLabel 或单元格 Reference,勿直接赋字符串,否则 TypeError。"
+      "Finwork 唯一的 Python 执行入口，用于读表取数、计算、数据处理和文件探查；不要用 Bash 跑 Python。",
+      "正式创建或编辑 Office/PDF 文件改用对应 Skill，本工具不替代 xlsx/docx/pdf/pptx 工作流。",
+      "工作目录和 output_dir 已指向本会话输出目录；不要写临时目录、输入文件旁或启动办公软件 GUI。",
+      "读表一次尽量读全并紧凑输出，只打印所需值或 DataFrame，不逐格附带坐标。",
     ].join("\n"),
     { code: z.string().describe("要执行的 Python 代码") },
-    (args: { code: string }) => new Promise((resolve) => {
+    (args: { code: string }, execution?: FinanceToolExecutionContext) => new Promise((resolve) => {
+      if (execution?.signal?.aborted) {
+        resolve({
+          content: [{ type: "text" as const, text: "Python 执行已取消。" }],
+          isError: true,
+        });
+        return;
+      }
       const pythonPath = getPythonPath();
       const workerPath = path.join(getProjectRoot(), "workers", "finance_worker.py");
       // 直接用稳定的会话输出目录(不再用「每次调用新建、用完即删」的临时目录)。
@@ -73,6 +78,19 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: strin
 
       let stdout = "";
       let stderr = "";
+      let settled = false;
+      let aborted = false;
+      const finish = (result: unknown) => {
+        if (settled) return;
+        settled = true;
+        execution?.signal?.removeEventListener("abort", abortChild);
+        resolve(result);
+      };
+      const abortChild = () => {
+        aborted = true;
+        if (!child.killed) child.kill("SIGTERM");
+      };
+      execution?.signal?.addEventListener("abort", abortChild, { once: true });
       const MAX_STDOUT = 5 * 1024 * 1024;
       const MAX_STDERR = 1 * 1024 * 1024;
       // 回灌给模型的 stdout 上限。旧值 3000 太小:一次只够 ~24 行表数据,逼模型把一张表分很多次读
@@ -88,9 +106,17 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: strin
       });
 
       child.on("close", (code: number | null) => {
+        if (aborted) {
+          log.info("aborted", { traceId });
+          finish({
+            content: [{ type: "text" as const, text: "Python 执行已取消。" }],
+            isError: true,
+          });
+          return;
+        }
         if (code !== 0) {
           log.error("failed", { traceId, exitCode: code, stderr: stderr.slice(0, 500) });
-          resolve({
+          finish({
             content: [{
               type: "text" as const,
               text: `Python 执行出错 (exit code ${code}):\n${stderr.slice(0, 4000) || "(no stderr)"}\n${stdout.slice(0, 4000) || "(no stdout)"}`
@@ -111,7 +137,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: strin
           const capturedStdout = typeof parsed.stdout === "string" && parsed.stdout.trim()
             ? `Python 输出:\n${parsed.stdout.trim().slice(0, MODEL_STDOUT_LIMIT)}`
             : "";
-          resolve({
+          finish({
             content: [{
               type: "text" as const,
               text: [
@@ -123,7 +149,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: strin
             }]
           });
         } catch {
-          resolve({
+          finish({
             content: [{
               type: "text" as const,
               text: `Python 输出无法解析为 JSON。原始输出:\n${stdout.slice(0, MODEL_STDOUT_LIMIT) || "(empty)"}${stderrNote}`
@@ -135,7 +161,7 @@ export function createRunPythonTool(sdk: Sdk, outputDir: string, traceId?: strin
 
       child.on("error", (err: Error) => {
         log.error("spawn error", { traceId, error: err });
-        resolve({
+        finish({
           content: [{ type: "text" as const, text: `无法启动 Python: ${err.message}` }],
           isError: true
         });

@@ -92,22 +92,22 @@ Anthropic Messages 兼容网关是第一阶段 Provider。迁移目标不是复�
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
-| AR8 | Pi Skill 资源目录 | 保留现有内置/用户 Skill SSOT；用 Pi `ResourceLoader` 做显式发现/白名单适配，禁止 ambient 用户目录渗入产品 session | AR10 | 未开始 |
-| AR9 | Finwork Agent Service + session/settings 泛化 | 用 PoC 证据冻结最小请求/结果/session/usage/error 边界；泛化 `claude_session_id`、`ClaudeSettings`、`ModelUsage`，公共层禁止 SDK import | AR10 | 未开始 |
-| AR10 | Pi + Anthropic Messages 替换 PoC | 按 `spike-pi-anthropic-replacement.md` 验证用户网关、session、事件、附件、Skill、代表工具、安全闸、取消/compaction、子代理、usage、打包和 Claude 零残留预演 | AS0 | **Ready / AS0 已完成** |
-| AR11 | 中立财务工具目录 + Pi adapter | 抽 `FinanceToolDefinition`/执行上下文/规范化 tool id；Pi 生成 session-scoped `customTools`；验证 Zod→模型 schema 桥；从五个代表工具迁到 45 个 | AR10、AR9 | 未开始 |
-| AR12 | Pi 生产接入 | 用 `AgentSession`、自定义 `ResourceLoader` 与内部 Finwork extension 接入统一事件、安全、会话、交付和子代理合同 | AR9、AR11、AR8 | 未开始 |
-| AR13 | Claude SDK 删除 | 删除旧 adapter、SDK/MCP adapter、CLI 打包、Claude settings/session/config/retention、专属测试和错误文案；不保留 fallback | AR12 | 未开始 |
-| AR14 | Pi-only 发布门 | 45 个生产注册工具、安全矩阵、session/compaction、复杂文件交付、三平台 packaged smoke、import/依赖/产物零 Claude 残留 | AR13 | 未开始 |
+| AR8 | Pi Skill 资源目录 | 保留现有内置/用户 Skill SSOT；用 Pi `ResourceLoader` 做显式发现/白名单适配，禁止 ambient 用户目录渗入产品 session | AR10 | **已ship**：Finwork-owned ResourceLoader 显式加载内置/用户白名单，ambient 资源关闭 |
+| AR9 | Finwork Agent Service + session/settings 泛化 | 用 PoC 证据冻结最小请求/结果/session/usage/error 边界；泛化 `claude_session_id`、`ClaudeSettings`、`ModelUsage`，公共层禁止 SDK import | AR10 | **已ship**：中立 request/result/session/settings/usage 合同进入生产 Query |
+| AR10 | Pi + Anthropic Messages 替换 PoC | 按 `spike-pi-anthropic-replacement.md` 验证用户网关、session、事件、附件、Skill、代表工具、安全闸、取消/compaction、子代理、usage、打包和 Claude 零残留预演 | AS0 | **已完成：10 项 Pass Gate 全通过；当前平台 packaged 与 Pi-only closure 预演 PASS** |
+| AR11 | 中立财务工具目录 + Pi adapter | 抽 `FinanceToolDefinition`/执行上下文/规范化 tool id；Pi 生成 session-scoped `customTools`；验证 Zod→模型 schema 桥；从五个代表工具迁到 45 个 | AR10、AR9 | **已ship**：45/45 目录、Zod 权威校验、hooks、AbortSignal 与 Pi customTools 已落 |
+| AR12 | Pi 生产接入 | 用 `AgentSession`、自定义 `ResourceLoader` 与内部 Finwork extension 接入统一事件、安全、会话、交付和子代理合同 | AR9、AR11、AR8 | **已ship**：Query 唯一调用点已切 Pi；MiniMax-M3 真实 Query 等价门通过 |
+| AR13 | Claude SDK 删除 | 删除旧 adapter、SDK/MCP adapter、CLI 打包、Claude settings/session/config/retention、专属测试和错误文案；不保留 fallback | AR12 | **已ship**：依赖、adapter、CLI、旧 API/runner/hooks/专属测试已删除；Pi-only 审计通过 |
+| AR14 | Pi-only 发布门 | 45 个生产注册工具、安全矩阵、session/compaction、复杂文件交付、当前三 target（macOS arm64/x64、Windows x64）packaged smoke、import/依赖/产物零 Claude 残留 | AR13 | **进行中**：本机 local gate、真实 MiniMax-M3 上下文/compaction 门通过；CI Windows、另一 macOS 架构与完整 20-case golden 待完成 |
 
 ### Agent 上下文精简 —— 与迁移分账
 
 | ID | 工作包 | 说明 | 依赖 | 状态 |
 |----|--------|------|------|------|
 | AS0 | 上下文基线与职责清单 | 按 `as0-agent-context-baseline.md` 的 20 个 Runtime 中立任务记录 prompt/Skill/tool 成本、选择准确性、安全与交付质量；逐项标记 keep/move/merge/delete/investigate | 无；AR10 真实 PoC 前须冻结 Claude Phase B 结果 | **已完成 / AR10 已解锁** |
-| AS1 | 结构中立化 | System Prompt 去 Claude boundary、Skill loader 换 Pi ResourceLoader、工具变 `FinanceToolDefinition`；保持语义与业务行为等价 | AS0、AR10；与 AR9/AR11/AR12 协同 | 未开始 |
-| AS2 | Pi-native 语义精简 | 精简 core prompt、Skill 入口/reference、按角色/任务暴露工具子集，逐项评测工具合并/删除 | AR12、AR13、AS1 | 未开始 |
-| AS3 | 精简发布门 | 形成 before/after 报告；业务质量、安全、交付不得下降，上下文成本/错误调用/无效 turns 至少一项改善 | AS2 | 未开始；并入 AR14 |
+| AS1 | 结构中立化 | System Prompt 去 Claude boundary、Skill loader 换 Pi ResourceLoader、工具变 `FinanceToolDefinition`；保持语义与业务行为等价 | AS0、AR10；与 AR9/AR11/AR12 协同 | **已ship**：中立合同/设置/session/工具/Pi loader/子代理进入生产，等价门通过 |
+| AS2 | Pi-native 语义精简 | 精简 core prompt、Skill 入口/reference、按角色/任务暴露工具子集，逐项评测工具合并/删除 | AR12、AR13、AS1 | **实现完成，验收中**：core prompt、14 个 Skill 入口、工具描述及确定性任务子集已落；代表任务回归通过 |
+| AS3 | 精简发布门 | 形成 before/after 报告；业务质量、安全、交付不得下降，上下文成本/错误调用/无效 turns 至少一项改善 | AS2 | **进行中；并入 AR14**：before/after 与代表性真实门已完成，完整 golden/发布矩阵待完成 |
 
 ## 事件合同设计要点（AR2a/b/c 的设计定案，写 spec 时展开）
 

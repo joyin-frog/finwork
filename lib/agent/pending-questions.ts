@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AgentQuestion } from "./claude-adapter";
+import type { AgentQuestion } from "./contracts";
 
 // 挂起的用户确认/提问:agent 在 SSE 流中下发问题后在此等待,
 // 前端通过 POST /api/agent/answer 应答。Map 挂在 globalThis 上,

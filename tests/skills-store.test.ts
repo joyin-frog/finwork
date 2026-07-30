@@ -14,11 +14,6 @@ export const skillsStoreTestPromise = (async () => {
   const statePath = path.join(fixture, "skills-state.json");
 
   // 内置 fixture:1 个带脚本的 demo 技能。
-  mkdirSync(path.join(bundledRoot, ".claude-plugin"), { recursive: true });
-  writeFileSync(
-    path.join(bundledRoot, ".claude-plugin", "plugin.json"),
-    JSON.stringify({ name: "finance-skills", version: "0.1.0" }),
-  );
   const demoDir = path.join(bundledRoot, "skills", "demo");
   mkdirSync(path.join(demoDir, "scripts"), { recursive: true });
   writeFileSync(

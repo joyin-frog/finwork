@@ -2,7 +2,7 @@
 // against an isolated sandbox COPY (seeded KB included), so writes don't contend
 // and the slow categories run concurrently instead of sequentially.
 //
-// Prereq: the base sandbox (.claude/loop-sandbox/appdata) is reset + KB-seeded.
+// Prereq: the base sandbox (.finwork-test/loop-sandbox/appdata) is reset + KB-seeded.
 //   node scripts/loop/sandbox-env.mjs --reset
 //   node scripts/loop/with-server.mjs -- node scripts/loop/seed-knowledge.mjs
 //   node scripts/loop/golden-parallel.mjs [cat1,cat2,...] [--concurrency N]
@@ -13,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const BASE = path.join(REPO, ".claude", "loop-sandbox", "appdata"); // reset + seeded
+const BASE = path.join(REPO, ".finwork-test", "loop-sandbox", "appdata"); // reset + seeded
 const PYRT = process.env.FINANCE_AGENT_PYTHON_RUNTIME_DIR
   || path.join(os.homedir(), "Library", "Application Support", "finance-agent", "python-runtime");
 
@@ -24,7 +24,7 @@ const catArg = args.find((a) => !a.startsWith("--") && a !== String(CONC));
 const CATS = (catArg || "greeting,trivial_qa,tool_task,rag_qa,complex_workflow").split(",").map((s) => s.trim()).filter(Boolean);
 
 async function runCat(cat) {
-  const dir = path.join(REPO, ".claude", "loop-sandbox", `cat-${cat}`);
+  const dir = path.join(REPO, ".finwork-test", "loop-sandbox", `cat-${cat}`);
   await fs.rm(dir, { recursive: true, force: true });
   await fs.cp(BASE, dir, { recursive: true });
   const started = Date.now();
@@ -70,6 +70,6 @@ console.log(`  ${"合计".padEnd(16)} ${P}/${N}  加权avg=${scoreN ? (scoreSum 
 
 // cleanup copies
 for (const cat of CATS) {
-  await fs.rm(path.join(REPO, ".claude", "loop-sandbox", `cat-${cat}`), { recursive: true, force: true }).catch(() => {});
+  await fs.rm(path.join(REPO, ".finwork-test", "loop-sandbox", `cat-${cat}`), { recursive: true, force: true }).catch(() => {});
 }
 console.log(JSON.stringify({ total: `${P}/${N}`, weightedAvg: scoreN ? +(scoreSum / scoreN).toFixed(3) : null, perCategory: results }, null, 2));

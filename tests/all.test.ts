@@ -51,6 +51,7 @@ process.on("unhandledRejection", (err) => {
   await chatErrorPresentationTestPromise;
 
   await import("./feature-flags.test.ts");
+  await import("./as2-context-policy.test.ts");
   await import("./chat-features.test.ts");
   await import("./code-language.test.ts");
   await import("./chat-panel-state.test.ts");
@@ -185,12 +186,6 @@ process.on("unhandledRejection", (err) => {
   const { sessionTrustTestPromise } = await import("./session-trust.test.ts");
   await sessionTrustTestPromise;
 
-  const { sdkPreToolUseTestPromise } = await import("./sdk-pre-tool-use.test.ts");
-  await sdkPreToolUseTestPromise;
-
-  const { agentEventStreamTestPromise } = await import("./agent-event-stream.test.ts");
-  await agentEventStreamTestPromise;
-
   const { generatedFilesTestPromise } = await import("./generated-files.test.ts");
   await generatedFilesTestPromise;
 
@@ -235,9 +230,6 @@ process.on("unhandledRejection", (err) => {
   const { persistHygieneTestPromise } = await import("./persist-hygiene.test.ts");
   await persistHygieneTestPromise;
 
-  const { agentAbortRetryTestPromise } = await import("./agent-abort-retry.test.ts");
-  await agentAbortRetryTestPromise;
-
   await import("./chat-quick-prompts.test.ts");
 
   await import("./router-direct.test.ts");
@@ -256,9 +248,6 @@ process.on("unhandledRejection", (err) => {
 
   const { turnSegmentsTestPromise } = await import("./turn-segments.test.ts");
   await turnSegmentsTestPromise;
-
-  const { usageAccumulateTestPromise } = await import("./usage-accumulate.test.ts");
-  await usageAccumulateTestPromise;
 
   const { financeCardsTestPromise } = await import("./finance-cards.test.ts");
   await financeCardsTestPromise;
@@ -347,9 +336,6 @@ process.on("unhandledRejection", (err) => {
   const { skillsCategoryTestPromise } = await import("./skills-category.test.ts");
   await skillsCategoryTestPromise;
 
-  const { agentContextTestPromise } = await import("./agent-context.test.ts");
-  await agentContextTestPromise;
-
   const { systemPromptTemplateTestPromise } = await import("./system-prompt-template.test.ts");
   await systemPromptTemplateTestPromise;
 
@@ -397,9 +383,6 @@ process.on("unhandledRejection", (err) => {
 
   const { skillPptxTestPromise } = await import("./skill-pptx.test.ts");
   await skillPptxTestPromise;
-
-  const { skillPluginTestPromise } = await import("./skill-plugin.test.ts");
-  await skillPluginTestPromise;
 
   const { skillsStoreTestPromise } = await import("./skills-store.test.ts");
   await skillsStoreTestPromise;
@@ -501,9 +484,6 @@ process.on("unhandledRejection", (err) => {
 
   const { runPythonToolTestPromise } = await import("./run-python-tool.test.ts");
   await runPythonToolTestPromise;
-
-  const { subagentRunnerTestPromise } = await import("./subagent-runner.test.ts");
-  await subagentRunnerTestPromise;
 
   const { trustTierTestPromise } = await import("./trust-tier.test.ts");
   await trustTierTestPromise;
@@ -638,9 +618,6 @@ process.on("unhandledRejection", (err) => {
   const { policyRulesTestPromise } = await import("./policy-rules.test.ts");
   await policyRulesTestPromise;
 
-  const { agentAttachmentsJsonTestPromise } = await import("./agent-attachments-json.test.ts");
-  await agentAttachmentsJsonTestPromise;
-
   const { chatMessageEditRetractTestPromise } = await import("./chat-message-edit-retract.test.ts");
   await chatMessageEditRetractTestPromise;
 
@@ -711,9 +688,6 @@ process.on("unhandledRejection", (err) => {
 
   const { coerceJsonTestPromise } = await import("./coerce-json.test.ts");
   await coerceJsonTestPromise;
-
-  const { recapSummaryTestPromise } = await import("./recap-summary.test.ts");
-  await recapSummaryTestPromise;
 
   const { roleConventionsTestPromise } = await import("./role-conventions.test.ts");
   await roleConventionsTestPromise;

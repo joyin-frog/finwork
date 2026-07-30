@@ -1,9 +1,9 @@
 /**
  * POST /api/agents/dispatches/[id]/start — 启动排队中的转交任务（D3·刀8）
  *
- * 将 status='queued' 的行 CAS 转为 'running'，然后异步执行 runSubagent。
+ * 将 status='queued' 的行 CAS 转为 'running'，然后异步执行 runPiSubagent。
  * dispatch 行的生命周期（running→success/failed + ended_at + duration_ms）
- * 完全交给 runSubagent 内部的 recordDispatchStart/recordDispatchEnd 管理；
+ * 完全交给 runPiSubagent 内部的 recordDispatchStart/recordDispatchEnd 管理；
  * 本端点只负责 CAS 抢占 + D4 回写来源会话（insertChatMessage）。
  *
  * 注意（L2）：本端点不做来源会话绑定校验——originConversationId 由 propose_transfer 工具在
@@ -59,7 +59,7 @@ export async function POST(
   if (!role) {
     return NextResponse.json({ error: `未知角色 "${row.roleId}"` }, { status: 400 });
   }
-  // 必须在 CAS 抢占之前校验：runSubagent 对不可派发角色会早返回且不写
+  // 必须在 CAS 抢占之前校验：runPiSubagent 对不可派发角色会早返回且不写
   // recordDispatchEnd，若已把行标成 running 会永久卡住。
   if (!role.available) {
     return NextResponse.json(
@@ -88,11 +88,11 @@ export async function POST(
 
   void (async () => {
     try {
-      const { runSubagent } = await import("@/lib/agent/subagent-runner");
-      // existingDispatchId: 传入已有的 dispatch 行 id，runSubagent 内部直接复用，
+      const { runPiSubagent } = await import("@/lib/agent/pi/subagent-runner");
+      // existingDispatchId: 传入已有的 dispatch 行 id，runPiSubagent 内部直接复用，
       // 不再调用 recordDispatchStart 插入新行（B1·刀8：防止双台账行）。
-      // dispatch 行生命周期（running→success/failed）由 runSubagent 内部管理。
-      const result = await runSubagent(
+      // dispatch 行生命周期（running→success/failed）由 runPiSubagent 内部管理。
+      const result = await runPiSubagent(
         {
           roleId: row.roleId,
           instructions: row.instructions!,
@@ -114,7 +114,7 @@ export async function POST(
         }
       }
     } catch {
-      // runSubagent 本身通常不抛异常（内部已 catch 并返回 SubagentResult），
+      // runPiSubagent 本身通常不抛异常（内部已 catch 并返回 SubagentResult），
       // 此处兜底未预期的抛出；dispatch 行此时 status='running' 无 ended_at，
       // 需人工清理（见 L4 说明）。
     }

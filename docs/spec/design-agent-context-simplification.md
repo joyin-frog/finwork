@@ -227,7 +227,8 @@ AS1 的通过标准是同一 golden task 在旧基线与 Pi 路径上的业务�
 
 ## 6. Pi 稳定后的语义精简：AS2
 
-AS2 在 AR12 Pi 生产主链通过、AR13 Claude SDK 删除后执行，完成后进入 AR14。
+AS2 已在 AR12 Pi 生产主链通过、AR13 Claude SDK 删除后执行。当前实现完成并进入
+AR14/AS3 验收；完整 20-case golden 和发布矩阵通过前，不把 AS2 标为发布完成。
 
 ### 6.1 Core System Prompt 目标
 
@@ -304,10 +305,10 @@ tool 选择问题时进入 AS 工作包，不用 runtime 兼容垫片掩盖。
 
 | ID | 工作包 | 依赖 | 产出 | 状态 |
 |---|---|---|---|---|
-| AS0 | 上下文基线与职责清单 | 无 | golden tasks、token/质量基线、资产清单 | **Phase A kit ready / Phase B 待执行** |
-| AS1 | 结构中立化 | AR10；与 AR9/AR11/AR12 协同 | Pi loader/tool/prompt 结构，行为等价证据 | 未开始 |
-| AS2 | Pi-native 语义精简 | AR12、AR13、AS1 | 精简 prompt、Skills、工具暴露/目录，逐项评测 | 未开始 |
-| AS3 | 精简发布门 | AS2 | before/after 报告、回归结论、预算与准确率门 | 未开始；并入 AR14 |
+| AS0 | 上下文基线与职责清单 | 无 | golden tasks、token/质量基线、资产清单 | **已完成** |
+| AS1 | 结构中立化 | AR10；与 AR9/AR11/AR12 协同 | Pi loader/tool/prompt 结构，行为等价证据 | **已完成** |
+| AS2 | Pi-native 语义精简 | AR12、AR13、AS1 | 精简 prompt、Skills、工具暴露/目录，逐项评测 | **实现完成，验收中** |
+| AS3 | 精简发布门 | AS2 | before/after 报告、回归结论、预算与准确率门 | **进行中；并入 AR14** |
 
 关键路径：
 

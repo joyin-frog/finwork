@@ -8,10 +8,9 @@ export function createRememberConventionTool(sdk: Sdk) {
   return sdk.tool(
     "remember_convention",
     [
-      "管理用户的长期工作约定(记忆文件的工作约定节,之后每次对话自动遵守,设置 → 记忆 可查看修改)。",
-      "新增:用户表达想长期遵守的规矩/偏好时,text 一句话忠实转述,不要扩写(例:\"以后报销超 2000 都提醒我\"\"发薪日是 10 号\"\"报表都要带环比\")。",
-      "修改/取消既有约定:把要被替换或取消的旧约定原文填进 replaces(工具会先删掉旧的);改成新规矩就同时给 text,纯取消就只填 replaces、不要新增否定句——别再追加互相矛盾的条目。",
-      "系统会自动向用户弹出确认,确认通过才会写入,无需先口头询问。仅用于跨对话长期生效的规矩;一次性指令不要调用。口径明确属于某位专员职责域时改用 remember_role_convention。"
+      "新增、修改或取消跨对话长期生效的工作约定；本次会话口径、临时决定、结果和任务状态不要调用。",
+      "新增填 text；修改同时填旧原文 replaces 和新 text；纯取消只填 replaces。忠实转述，不扩写或追加否定条目。",
+      "系统会向用户确认后才写入。专员职责域口径改用 remember_role_convention。",
     ].join("\n"),
     {
       text: z.string().min(2).max(300).nullish().describe("约定原文,一句话,财务语言;纯取消某约定时可不填"),

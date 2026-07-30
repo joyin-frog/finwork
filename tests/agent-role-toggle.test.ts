@@ -233,7 +233,7 @@ export const agentRoleToggleTestPromise = (async () => {
       const { setRoleDisabled } = await import("../lib/agent/roles/availability.ts");
       setRoleDisabled("analyst", true);
 
-      const { runSubagent } = await import("../lib/agent/subagent-runner.ts");
+      const { runPiSubagent: runSubagent } = await import("../lib/agent/pi/subagent-runner.ts");
       const parentOutputDir = path.join(dir, "out");
 
       // 3a：停用 analyst 后 runSubagent 返回 success:false + content 含「已停用」
@@ -266,7 +266,7 @@ export const agentRoleToggleTestPromise = (async () => {
         );
       }
 
-      // 3c：恢复 analyst 后同调用走到 API key 检查（content 为「Claude API Key 未配置。」）
+      // 3c：恢复 analyst 后同调用走到 API key 检查
       setRoleDisabled("analyst", false);
       _resetSecretCache();
 
@@ -281,8 +281,8 @@ export const agentRoleToggleTestPromise = (async () => {
         `T3 FAIL: 恢复后无 API key 仍应 success:false，实际 ${r2.success}`
       );
       assert.ok(
-        r2.content.includes("Claude API Key 未配置"),
-        `T3 FAIL: 恢复后 content 应含「Claude API Key 未配置」，实际: ${r2.content}`
+        r2.content.includes("API Key 未配置"),
+        `T3 FAIL: 恢复后 content 应含「API Key 未配置」，实际: ${r2.content}`
       );
 
       // 3d：恢复后落了 dispatch 行（证明走到 key 检查路径）
@@ -403,11 +403,11 @@ export const agentRoleToggleTestPromise = (async () => {
       "T4 FAIL: lib/agent/mcp-tools/subagent.ts 的 role 枚举应改用 listDispatchableRoleIds()"
     );
 
-    // 4m：subagent-runner.ts 停用路径存在（含「已停用」）
-    const runnerSrc = src("lib/agent/subagent-runner.ts");
+    // 4m：Pi subagent runner 停用路径存在（含「已停用」）
+    const runnerSrc = src("lib/agent/pi/subagent-runner.ts");
     assert.ok(
       runnerSrc.includes("已停用"),
-      "T4 FAIL: lib/agent/subagent-runner.ts 应含角色停用拒绝逻辑（content 含「已停用」）"
+      "T4 FAIL: Pi subagent runner 应含角色停用拒绝逻辑（content 含「已停用」）"
     );
 
     // 4n：runner 停用检查在 dispatch 落行之前（停用返回不落行）——

@@ -75,7 +75,7 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
       // 连模型需要时预填当前 URL/模型(用户可能填过一半)
       if (needKey) {
         try {
-          const s = (await (await fetch("/api/settings/claude")).json()) as {
+          const s = (await (await fetch("/api/settings/agent")).json()) as {
             data?: {
               apiUrl?: string;
               mainModel?: string;
@@ -169,7 +169,7 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
     setConnecting(true);
     setKeyError("");
     try {
-      const res = await fetch("/api/settings/claude", {
+      const res = await fetch("/api/settings/agent", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

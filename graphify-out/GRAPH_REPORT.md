@@ -1,16 +1,16 @@
-# Graph Report - finance-agent-public  (2026-07-29)
+# Graph Report - finance-agent-public  (2026-07-30)
 
 ## Corpus Check
-- 1123 files · ~728,841 words
+- 1132 files · ~726,451 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 8534 nodes · 14921 edges · 586 communities (477 shown, 109 thin omitted)
-- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 54 edges (avg confidence: 0.68)
+- 8595 nodes · 15041 edges · 611 communities (486 shown, 125 thin omitted)
+- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 62 edges (avg confidence: 0.69)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `195d754b`
+- Built from commit: `d5008d8f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -493,7 +493,7 @@
 - pdfjs-dist
 - @tauri-apps/api
 - @tauri-apps/plugin-updater
-- @types/ws
+- chat-request.ts
 - @vscode/ripgrep
 - zod
 - postcss.config.mjs
@@ -540,7 +540,7 @@
 - @shadcn/react
 - user-avatar.tsx
 - as0/tsconfig.json
-- tailwindcss
+- embed-model.ts
 - WP-M11：成功 / 失败状态动效
 - WP4：Confirm 对话框组件化
 - CR-X1 Spike — SDK segment / interrupt / resume controls
@@ -564,80 +564,102 @@
 - WP-M3：Nav active 指示器（layoutId 共享元素，杀手锏）
 - WP-M6：侧边栏 collapse
 - runtime-lock/
-- WP-M7：Stat 数字 count-up（cockpit 四张卡）
-- @tauri-apps/plugin-dialog
+- golden/run.ts
+- getKnowledgeDocumentById
 - WP7：卡片层级与暗色阴影
 - spec-complex-task-reliability.md
-- docx-preview
-- next
-- react-day-picker
+- run-status-labels.ts
+- payroll-diff.test.ts
+- step-aggregate.ts
+- appearance-settings.tsx
+- finalize.ts
 - @tauri-apps/plugin-fs
 - tw-animate-css
+- ws
+- docx-preview
+- composer-tips.tsx
+- @earendil-works/pi-ai
+- content-format.ts
+- next-themes
+- error-detail.ts
+- react-markdown
+- DocCache
+- sharp
+- sonner
+- @tauri-apps/plugin-updater
+- ar10-pi-anthropic/README.md
+- ask-user-card.tsx
+- voucher-sheet.ts
+- finalize-deliverable.ts
+- rehype-sanitize
+- WP-M7：Stat 数字 count-up（cockpit 四张卡）
+- remark-gfm
+- @shadcn/react
+- @tailwindcss/postcss
+- @tauri-apps/plugin-shell
+- @types/ws
 - ws
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 350 edges
 2. `getDb()` - 155 edges
 3. `getPythonPath()` - 56 edges
-4. `runClaudeAgent()` - 52 edges
-5. `getAppDataDir()` - 44 edges
-6. `getProjectRoot()` - 40 edges
-7. `initializeFinanceDatabase()` - 39 edges
-8. `Button()` - 38 edges
-9. `openFinanceDatabase()` - 36 edges
-10. `createPayrollTools()` - 32 edges
+4. `getAppDataDir()` - 47 edges
+5. `scripts` - 44 edges
+6. `runPiAgent()` - 40 edges
+7. `getProjectRoot()` - 40 edges
+8. `initializeFinanceDatabase()` - 39 edges
+9. `Button()` - 38 edges
+10. `openFinanceDatabase()` - 36 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `DispatchCard()` --calls--> `relativeTime()`  [EXTRACTED]
-  app/agents/task-board.tsx → lib/utils/relative-time.ts
 - `sleep()` --indirect_call--> `resolve()`  [INFERRED]
   lib/agent/mock-agent.ts → app/api/skills/[name]/files/[...path]/route.ts
+- `main()` --indirect_call--> `resolve()`  [INFERRED]
+  scratchpad/spikes/ar10-pi-anthropic/run.mts → app/api/skills/[name]/files/[...path]/route.ts
 - `execute()` --indirect_call--> `resolve()`  [INFERRED]
   tests/as0/worker.ts → app/api/skills/[name]/files/[...path]/route.ts
+- `ChatPage()` --indirect_call--> `message()`  [INFERRED]
+  app/chat/chat-page.tsx → tests/as2-context-policy.test.ts
 - `FindInChat()` --indirect_call--> `text()`  [INFERRED]
   app/chat/find-in-chat.tsx → tests/finance-file-links.test.ts
-- `CockpitPage()` --calls--> `getCalendarContext()`  [EXTRACTED]
-  app/cockpit/page.tsx → lib/domain/tax-calendar.ts
 
 ## Import Cycles
-- 3-file cycle: `lib/agent/claude-adapter.ts -> lib/agent/recap-summary.ts -> lib/agent/router.ts -> lib/agent/claude-adapter.ts`
-- 3-file cycle: `lib/agent/mcp-tools/filing-precheck-batch.ts -> lib/agent/subagent-runner.ts -> lib/agent/mcp-tools/index.ts -> lib/agent/mcp-tools/filing-precheck-batch.ts`
-- 3-file cycle: `lib/agent/mcp-tools/bank-recon-batch.ts -> lib/agent/subagent-runner.ts -> lib/agent/mcp-tools/index.ts -> lib/agent/mcp-tools/bank-recon-batch.ts`
 - 3-file cycle: `lib/deliverable/validators/generic-file.ts -> lib/deliverable/validators/registry.ts -> lib/deliverable/validators/xlsx.ts -> lib/deliverable/validators/generic-file.ts`
 
-## Communities (586 total, 109 thin omitted)
+## Communities (611 total, 125 thin omitted)
 
 ### Community 0 - "cn"
 Cohesion: 0.02
-Nodes (173): ConversationSearchHit, FileSearchHit, GlobalSearchDialog(), SearchData, UserAvatar(), Accordion(), AccordionContent(), AccordionItem() (+165 more)
+Nodes (125): FilterChipGroup(), FilterChipOption, UserAvatar(), Accordion(), AccordionContent(), AccordionItem(), AccordionTrigger(), Alert() (+117 more)
 
 ### Community 1 - "sqlite.ts"
-Cohesion: 0.05
-Nodes (79): POST(), GET(), GET(), GET(), POST(), GET(), POST(), GET() (+71 more)
+Cohesion: 0.04
+Nodes (81): GET(), POST(), DELETE(), GET(), GET(), GET(), POST(), POST() (+73 more)
 
 ### Community 2 - "paths.ts"
-Cohesion: 0.05
-Nodes (47): GET(), createReadDocumentTool(), docCache, IMAGE_EXTS, TEXT_EXTS, createRunPythonTool(), log, Sdk (+39 more)
+Cohesion: 0.09
+Nodes (37): ROUNDING_LABEL, STATUS_LABEL, createFinanceTools(), resolveExpensePolicyPath(), Sdk, createReconciliationTools(), fmtRow(), Sdk (+29 more)
 
 ### Community 3 - "business-metrics-card.tsx"
-Cohesion: 0.03
-Nodes (88): AttentionPanel(), AttentionPanelProps, AttentionCard(), AttentionSection(), BusinessMetricsCard(), EMPTY_PROMPT, formatAmount(), MetricRow() (+80 more)
+Cohesion: 0.15
+Nodes (15): BusinessMetricsCard(), EMPTY_PROMPT, formatAmount(), MetricRow(), toTrustSource(), VALID_TRUST_SOURCES, VIEW_LABELS, ViewKey (+7 more)
 
 ### Community 4 - "kingdee-tools.ts"
-Cohesion: 0.05
-Nodes (63): createKingdeeTools(), exportDraftEntrySchema, exportDraftSchema, getAccountName(), importAccountsSchema, queryAccountsSchema, Sdk, validateVoucherSchema (+55 more)
+Cohesion: 0.06
+Nodes (27): AgentContextPolicy, ContextProfile, EXTENSION_SKILLS, FILE_TOOLS, HANDOFF_TOOLS, KNOWLEDGE_TOOLS, PROFILE_PATTERNS, PROFILES (+19 more)
 
 ### Community 5 - "subagent-runner.ts"
-Cohesion: 0.05
-Nodes (65): buildSystemEventMessage(), runClaudeAgent(), safeJsonStringify(), ALWAYS_CONFIRM_TOOLS, BINARY_OFFICE_EXTS, CONFIRM_EXEMPT_TOOLS, createAskUserQuestionHook(), createPathSafetyHook() (+57 more)
+Cohesion: 0.07
+Nodes (32): BINARY_OFFICE_EXTS, CONFIRM_EXEMPT_TOOLS, createAskUserQuestionHook(), createPathSafetyHook(), createReadGuardHook(), createRiskConfirmHook(), createRoleScopeHook(), createStuckGuardHook() (+24 more)
 
 ### Community 6 - "agents/page.tsx"
-Cohesion: 0.16
-Nodes (16): BoardNode(), buildGlobalHeadline(), buildHeadline(), DispatchCard(), STATE_LABEL, STATE_TONE, TaskBoardProps, TaskBoardView() (+8 more)
+Cohesion: 0.04
+Nodes (78): AgentCard(), AgentDetailDrawer(), AgentDetailDrawerProps, AgentTabSurface(), AgentTabSurfaceProps, AttentionPanel(), AttentionPanelProps, AgentRosterItem (+70 more)
 
 ### Community 7 - "skill-center.tsx"
-Cohesion: 0.06
-Nodes (37): UsageDetail(), useUsage(), AboutSettings(), AppearanceSettings(), STYLES, StyleValue, THEMES, DoctorStatus (+29 more)
+Cohesion: 0.05
+Nodes (47): AboutSettings(), AppearanceSettings(), STYLES, StyleValue, THEMES, DoctorStatus, RuntimeEnvBody(), TelemetryBody() (+39 more)
 
 ### Community 8 - "BaseSchemaValidator"
 Cohesion: 0.05
@@ -653,43 +675,43 @@ Nodes (18): _condense_xml(), pack(), Path, Pack a directory into a DOCX, PPTX, o
 
 ### Community 11 - "app-nav.tsx"
 Cohesion: 0.07
-Nodes (55): GROUPS, ShortcutsSettings(), isSettingsTab(), SettingsTab, SkillCenter(), CONFIG_TABS, AppNav(), ChatActive (+47 more)
+Nodes (56): createPayrollTools(), EmployeeInput, fmtDelta(), Sdk, createSalesInvoiceTools(), Sdk, ToolHandler, withIdempotency() (+48 more)
 
 ### Community 12 - "tool-call-step.tsx"
-Cohesion: 0.12
-Nodes (17): RoleMode, RoleModeContext, useRoleMode(), buildPairs(), CODE_PLUGINS, formatMs(), renderStepText(), RetryGroupRow() (+9 more)
+Cohesion: 0.13
+Nodes (16): RoleMode, RoleModeContext, useRoleMode(), buildPairs(), CODE_PLUGINS, formatMs(), renderStepText(), RetryGroupRow() (+8 more)
 
 ### Community 13 - "finance_worker.py"
 Cohesion: 0.06
 Nodes (59): get_field_info(), get_full_annotation_field_id(), make_field_dict(), write_field_info(), fill_pdf_fields(), validation_error_for_field_value(), fill_pdf_form(), transform_from_image_coords() (+51 more)
 
 ### Community 14 - "file-preview-page.tsx"
-Cohesion: 0.09
-Nodes (21): DocxPreviewWrapper(), Props, applyTint(), ConversationPreviewFile, ExcelCell, ExcelColor, ExcelSheet, ExcelSheetRow (+13 more)
+Cohesion: 0.05
+Nodes (54): ChatPreviewSidebar(), arrayBufferToBase64(), E2EPreviewInner(), DocxPreviewWrapper(), Props, applyTint(), buildCsvSheet(), buildExcelColumnWidths() (+46 more)
 
 ### Community 15 - "[roleId]/page.tsx"
-Cohesion: 0.05
-Nodes (55): AgentCard(), AgentDetailDrawer(), AgentDetailDrawerProps, AgentTabSurface(), AgentTabSurfaceProps, AgentRosterItem, AgentsPage(), InvoiceStats (+47 more)
+Cohesion: 0.04
+Nodes (61): AskUserQuestionPayload, AttentionCard(), allAnswered(), buildAnswer(), formatSelection(), getSubQuestions(), isMultiQuestion(), SubQuestion (+53 more)
 
 ### Community 16 - "chat-stream.tsx"
-Cohesion: 0.04
-Nodes (101): AttachmentCard(), extOf(), ImageLightbox(), isRenderableImage(), useImageLightbox(), formatBytes(), getConversationFileUrl(), ChatMode (+93 more)
+Cohesion: 0.08
+Nodes (34): DisplayFile, Message, shouldHideAgentEvent(), VISIBLE_SYSTEM_SUBTYPES, MarkdownMessage, TurnError(), ChatFloat(), EMPTY_FILES (+26 more)
 
 ### Community 17 - "tool-cards.tsx"
-Cohesion: 0.05
-Nodes (50): ChecklistCard(), ChecklistCardProps, ChecklistItem, ChecklistItemSeverity, ChecklistItemState, ChecklistStructured, parseChecklistStructured(), STATE_LABELS (+42 more)
+Cohesion: 0.06
+Nodes (49): ChecklistCard(), ChecklistCardProps, ChecklistItem, ChecklistItemSeverity, ChecklistItemState, ChecklistStructured, parseChecklistStructured(), STATE_LABELS (+41 more)
 
 ### Community 18 - "finance-store.ts"
-Cohesion: 0.07
-Nodes (32): GET(), POST(), revealInFileManager(), POST(), onRequestError(), register(), isTrustedLocalMutation(), exportDatabase() (+24 more)
+Cohesion: 0.08
+Nodes (21): ChatActive, ConversationSummary, NavActive, SectionFoldHeader(), ConversationStatusKind, ConversationStatusMark(), LABELS, resolveConversationStatus() (+13 more)
 
 ### Community 19 - "query/route.ts"
-Cohesion: 0.06
-Nodes (41): AgentCardProps, FileGroup(), getAppGlyph(), getFileIcon(), isImageFile(), OpenableFileRow(), openConversationFile(), OpenWithApp (+33 more)
+Cohesion: 0.16
+Nodes (19): AttachmentCard(), extOf(), ImageLightbox(), isRenderableImage(), useImageLightbox(), formatBytes(), FileTray(), UserBubble() (+11 more)
 
 ### Community 20 - "utils.ts"
-Cohesion: 0.09
-Nodes (23): highlightDarkCSS, highlightLightCSS, inter, jetbrainsMono, metadata, RootLayout(), viewport, useChatStream() (+15 more)
+Cohesion: 0.06
+Nodes (34): POST(), exportDatabase(), DiagnosticsExportResult, exportDiagnostics(), nextBundlePath(), getAppDataDir(), getBundledPythonDir(), getConventionsPath() (+26 more)
 
 ### Community 21 - "renderers.ts"
 Cohesion: 0.15
@@ -697,43 +719,43 @@ Nodes (13): buildRiskConfirmPrompt(), formatPeriod(), formatToolLabel(), getTool
 
 ### Community 22 - "button.tsx"
 Cohesion: 0.10
-Nodes (25): MemorySettings(), buildFileTree(), EXT_LANG, fileLang(), FileTreeNode, filterByCategory(), filterSkills(), FlatEntry (+17 more)
+Nodes (27): AppNav(), PageSearchBar(), buildFileTree(), EXT_LANG, fileLang(), FileTreeNode, filterByCategory(), filterSkills() (+19 more)
 
 ### Community 23 - "tax-cumulative.ts"
-Cohesion: 0.06
-Nodes (51): ROUNDING_LABEL, STATUS_LABEL, createFinanceTools(), resolveExpensePolicyPath(), Sdk, createReconciliationTools(), fmtRow(), Sdk (+43 more)
+Cohesion: 0.15
+Nodes (20): createReimbursementTools(), Sdk, findInvoicesInLedger(), loadReimbursementSingleLimit(), buildReimbursementReceipt(), InvoiceHistory, mapWarningsToRuleHits(), ReimbursementPolicy (+12 more)
 
 ### Community 24 - "mcp-tools/index.ts"
-Cohesion: 0.04
-Nodes (73): DispatchButton(), BankReconBatchDeps, createRunBankReconBatchTool(), RunParallelFn, Sdk, budgetSchema, canonicalBSSchema, canonicalISSchema (+65 more)
+Cohesion: 0.08
+Nodes (37): BankReconBatchDeps, createRunBankReconBatchTool(), RunParallelFn, Sdk, createRunFilingPrecheckBatchTool(), FilingPrecheckBatchDeps, RunParallelFn, Sdk (+29 more)
 
 ### Community 25 - "lib.rs"
 Cohesion: 0.08
 Nodes (46): App, AtomicBool, Box, Child, Error, ExitStatus, File, Mutex (+38 more)
 
 ### Community 26 - "business-analysis.ts"
-Cohesion: 0.09
-Nodes (41): AnalysisReportV2, asPct(), asPctTimes(), asTimes(), BenchmarkColumns, BuildV2Options, CAPABILITIES, fmtBudgetVs() (+33 more)
+Cohesion: 0.07
+Nodes (50): budgetSchema, canonicalBSSchema, canonicalISSchema, PriorPeriodArg, Sdk, AnalysisReportV2, asPct(), asPctTimes() (+42 more)
 
 ### Community 27 - "payroll.ts"
-Cohesion: 0.05
-Nodes (71): createPayrollTools(), EmployeeInput, fmtDelta(), Sdk, createReimbursementTools(), Sdk, recordAudit(), buildMonthView() (+63 more)
+Cohesion: 0.09
+Nodes (22): StoredPayrollRecord, computePayrollDiff(), delta2(), PayrollDiffField, PayrollDiffResult, PayrollDiffRow, buildPayslipExport(), PayslipExport (+14 more)
 
 ### Community 28 - "router.ts"
-Cohesion: 0.10
-Nodes (38): generateConversationTitle(), sanitizeTitle(), buildStructuredRecap(), createPostCompactHookCallback(), fallbackFlatRecap(), summarizeHistory(), SummarySettings, inferRouterFallbackReason() (+30 more)
+Cohesion: 0.08
+Nodes (40): generateConversationTitle(), sanitizeTitle(), sessionStage(), inferRouterFallbackReason(), resolveRunExecutionModel(), ResolveRunModelInput, RouterPathForModel, buildMessagesUrl() (+32 more)
 
 ### Community 29 - "assistant-turn.tsx"
-Cohesion: 0.04
-Nodes (51): PreviewableConversationFile, AgentEvent, DisplayFile, parseCodeLanguage(), AssistantTurn(), formatDuration(), isRawIncompleteErrorContent(), normalizeErrorComparison() (+43 more)
+Cohesion: 0.06
+Nodes (41): AgentEvent, AssistantTurn(), formatDuration(), getDisplayContent(), isRawIncompleteErrorContent(), normalizeErrorComparison(), stripLegacyThinking(), ThinkingStatusLine() (+33 more)
 
 ### Community 30 - "改法"
 Cohesion: 0.23
 Nodes (13): WP4.1 引入 `@radix-ui/react-alert-dialog`, WP4.2 CSS 收口, WP4.3 替换 3 处调用点, WP6.1 增加全局按钮基类, WP6.2 重命名旧类（向后兼容）, WP6.3 图标按钮的 aria, WP7.1 暗色用 elevation = 边框 + 微亮上沿, WP7.2 统一卡片 token (+5 more)
 
 ### Community 31 - "run-store.ts"
-Cohesion: 0.04
-Nodes (100): AgentTurnCollector, AgentTurnParams, AgentTurnResult, assembleAssistantContent(), coalesceTextIntoEvents(), createStreamingResponse(), improveConversationTitle(), insertAssistantTurn() (+92 more)
+Cohesion: 0.29
+Nodes (6): abortRunById(), Entry, registerRunAbort(), registry, _resetRunAbortRegistryForTests(), unregisterRunAbort()
 
 ### Community 32 - "helpers.ts"
 Cohesion: 0.09
@@ -748,8 +770,8 @@ Cohesion: 0.14
 Nodes (19): POST(), getBundledPythonArchive(), computePythonRuntimeStamp(), defaultInstallSteps, InstallPhase, InstallProgress, installPythonRuntime(), InstallResult (+11 more)
 
 ### Community 35 - "chat-page.tsx"
-Cohesion: 0.53
-Nodes (4): insertSkillToken(), main(), skillTokenTestPromise, tokenMatches()
+Cohesion: 0.07
+Nodes (44): ChatMode, ChatPage(), EMPTY_TIMELINE, getClipboardFiles(), getMessageFiles(), getPersistedTimeline(), SkillRef, TimelineItem (+36 more)
 
 ### Community 36 - "Spec: 统一排版与间距设计语言(Typography + Spacing System)"
 Cohesion: 0.17
@@ -760,24 +782,24 @@ Cohesion: 0.05
 Nodes (40): 0.1 已确认决策（2026-06-08 锁定）, 0. 总览, 1.1 保留 / 删除清单, 1.2 文件落盘与"明文镜像", 1.3 后端搜索 API, 1.4 前端搜索页, 1.5 SQLite Migration, 1. 模块一：知识库 (+32 more)
 
 ### Community 38 - "chat-file-browser.tsx"
-Cohesion: 0.21
-Nodes (12): DisplayFileLike, DraftAttachmentLike, normalizeModelFileLinks(), parseFileLinkHref(), previewSelectionFromConversationFile(), previewSelectionFromDisplayFile(), previewSelectionFromDraftAttachment(), previewSelectionFromReferencedFile() (+4 more)
+Cohesion: 0.10
+Nodes (20): PreviewableConversationFile, DisplayFileLike, DraftAttachmentLike, normalizeModelFileLinks(), parseFileLinkHref(), previewSelectionFromConversationFile(), previewSelectionFromDisplayFile(), previewSelectionFromDraftAttachment() (+12 more)
 
 ### Community 39 - "migrations.ts"
-Cohesion: 0.06
-Nodes (35): getUserVersion(), Migration, MIGRATIONS, runMigrations(), setUserVersion(), insertPolicyRule(), InsertPolicyRuleInput, PolicyRuleRow (+27 more)
+Cohesion: 0.08
+Nodes (28): loadTaxConfig(), getUserVersion(), Migration, MIGRATIONS, runMigrations(), setUserVersion(), insertPolicyRule(), InsertPolicyRuleInput (+20 more)
 
 ### Community 40 - "xlsx/SKILL.md"
 Cohesion: 0.05
 Nodes (37): Excel 文件工作流程, XLSX 创建、编辑和分析, 专业字体, 代码风格指南, 使用 openpyxl, 使用 pandas, 使用 pandas 进行数据分析, 保留现有模板（更新模板时） (+29 more)
 
 ### Community 41 - "getAppDataDir"
-Cohesion: 0.11
-Nodes (22): POST(), mergeRrfResults(), rrfScore(), getRgPath(), lazyRequire, buildDocMap(), buildFallbackTerms(), DocMeta (+14 more)
+Cohesion: 0.14
+Nodes (17): POST(), buildDocMap(), buildFallbackTerms(), DocMeta, ingestRgEvents(), mergeTitleAndRank(), parseQueryTerms(), RgJsonEvent (+9 more)
 
 ### Community 42 - "spreadsheet-runtime.ts"
 Cohesion: 0.09
-Nodes (31): defaultInstallHint(), defaultWhich(), LibreOfficeResolveOk, LibreOfficeResolverDeps, LibreOfficeResolveResult, LibreOfficeResolveUnavailable, parseVersion(), resolveLibreOffice() (+23 more)
+Nodes (30): defaultInstallHint(), defaultWhich(), LibreOfficeResolveOk, LibreOfficeResolverDeps, LibreOfficeResolveResult, LibreOfficeResolveUnavailable, parseVersion(), resolveLibreOffice() (+22 more)
 
 ### Community 43 - "tauri.conf.json"
 Cohesion: 0.05
@@ -800,24 +822,24 @@ Cohesion: 0.18
 Nodes (10): 0. 总原则, Motion 专项 Spec：动效落点清单与实现, WP-M5：模态体系（confirm / popover / sheet）, 不做（明确划界）, 全局 presets, 其他模态, 性能与可访问性 checklist, 执行顺序 (+2 more)
 
 ### Community 48 - "system-prompt.ts"
-Cohesion: 0.11
-Nodes (25): sanitizeInline(), buildFinanceMcpServers(), createKingdeeMcpServer(), buildDynamicSuffix(), buildFileOutputSection(), buildStaticPrefix(), buildSystemPromptParts(), loadStaticTemplate() (+17 more)
+Cohesion: 0.14
+Nodes (20): sanitizeInline(), buildDynamicSuffix(), buildFileOutputSection(), buildStaticPrefix(), buildSystemPromptParts(), loadStaticTemplate(), renderStaticPrefix(), buildCalendarPromptSection() (+12 more)
 
 ### Community 49 - "创建新文档"
 Cohesion: 0.06
 Nodes (34): docx-js 的关键规则, DOCX 创建、编辑和分析, XML 参考, 依赖项, 修订, 分页符, 列表（绝不使用 Unicode 项目符号）, 创建新文档 (+26 more)
 
 ### Community 50 - "dependencies"
-Cohesion: 0.05
-Nodes (37): class-variance-authority, clsx, date-fns, docx-preview, mammoth, motion, next-themes, dependencies (+29 more)
+Cohesion: 0.15
+Nodes (13): clsx, geist, @hugeicons/react, next-themes, dependencies, clsx, geist, @hugeicons/react (+5 more)
 
 ### Community 51 - "query-stages.ts"
-Cohesion: 0.08
-Nodes (48): DELETE(), getLibraryDir(), PATCH(), isAllowedAttachmentPath(), isInside(), resolveInScopeAttachmentPath(), sanitizeAttachments(), AttachmentTooLargeError (+40 more)
+Cohesion: 0.10
+Nodes (29): isAllowedAttachmentPath(), isInside(), resolveInScopeAttachmentPath(), sanitizeAttachments(), AttachmentTooLargeError, generateShortTitle(), guessMimeType(), log (+21 more)
 
 ### Community 52 - "dropdown-menu.tsx"
-Cohesion: 0.09
-Nodes (42): AgentQuestion, ClaudePhaseBRuntime, confirmationAnswer(), sumUsage(), buildTaskContract(), evaluateAttempt(), fileMime(), fileSize() (+34 more)
+Cohesion: 0.05
+Nodes (84): buildTaskContract(), evaluateAttempt(), fileMime(), fileSize(), loadedSkills(), normalizeSkillName(), normalizeToolName(), redactSessionId() (+76 more)
 
 ### Community 53 - "theme-playground.tsx"
 Cohesion: 0.09
@@ -828,16 +850,16 @@ Cohesion: 0.06
 Nodes (32): `app/agents/agent-detail-drawer.tsx`, `app/agents/agent-detail-drawer.tsx`（修改）, `app/dev/theme/theme-playground.tsx`（修改）, `app/globals.css`（修改）, `app/knowledge/page.tsx`, `app/knowledge/page.tsx`（修改）, `app/layout.tsx`（修改）, `app/shared/resource-card.tsx` (+24 more)
 
 ### Community 55 - "deliverable/store.ts"
-Cohesion: 0.12
-Nodes (12): GET(), useRunStatus(), CompletionEvidence, CompletionEvidenceSink, DeliverableStore, MemoryDeliverableStore, rowToEvidence(), rowToRecord() (+4 more)
+Cohesion: 0.14
+Nodes (9): CompletionEvidence, CompletionEvidenceSink, createDeliverableRecord(), DeliverableStore, MemoryDeliverableStore, rowToEvidence(), rowToRecord(), SqliteDeliverableStore (+1 more)
 
 ### Community 56 - "roles/registry.ts"
-Cohesion: 0.40
-Nodes (7): POST(), POST(), getDisabledRoleIds(), listDispatchableRoleIds(), setRoleDisabled(), RoleDefinition, enqueueTransferDispatch()
+Cohesion: 0.17
+Nodes (13): POST(), GET(), AuditEntry, DeleteRowsOp, listAuditEntries(), ListAuditOptions, RecordAuditInput, RestoreRowsOp (+5 more)
 
 ### Community 57 - "claude-settings.ts"
-Cohesion: 0.09
-Nodes (31): GET, PUT, GET(), RecentChatPage(), ConfigPage(), validTabs, CONFIG_TAB_KEYS, ConfigTabKey (+23 more)
+Cohesion: 0.07
+Nodes (46): GET(), GET, PUT, GET(), GET(), RecentChatPage(), BUDGETS, RunBudget (+38 more)
 
 ### Community 58 - "reporter.ts"
 Cohesion: 0.07
@@ -857,15 +879,15 @@ Nodes (29): OCR 技术选型：三层结构, OCR 预处理规则, Spec: 单据�
 
 ### Community 62 - "run-contract.ts"
 Cohesion: 0.08
-Nodes (27): SettleDecision, ASSERTION_TYPES, assertNotTerminationReason(), buildRunStateChanged(), buildSettledPayload(), CheckpointValidation, CompletionEvidenceValidation, completionGateSatisfied() (+19 more)
+Nodes (25): ASSERTION_TYPES, assertNotTerminationReason(), buildRunStateChanged(), buildSettledPayload(), CheckpointValidation, CompletionEvidenceValidation, nextRunStatus(), QUALITY_PROFILES (+17 more)
 
 ### Community 63 - "projection.ts"
 Cohesion: 0.07
 Nodes (63): POST(), VALID_KINDS, POST(), getFeatureEventRows(), AppErrorInput, AppErrorKind, computeFingerprint(), fetchUnreportedAppErrors() (+55 more)
 
 ### Community 64 - "embeddings.ts"
-Cohesion: 0.13
-Nodes (23): POST(), listActiveKnowledgeDocuments(), chunkText(), pushChunks(), DownloadStep, EmbedModelPaths, ensureEmbedModel(), getEmbedModelDir() (+15 more)
+Cohesion: 0.08
+Nodes (43): GROUPS, ShortcutsSettings(), NavShortcut(), AppShell(), FirstRunGate(), GlobalShortcuts(), GROUPS, scheduleDialogMotionReset() (+35 more)
 
 ### Community 65 - "§ 2 Apple 凭证(macOS 公证)"
 Cohesion: 0.07
@@ -880,20 +902,20 @@ Cohesion: 0.07
 Nodes (28): 1. 背景与目标, 2.1 SQLite Schema, 2.2 字段语义, 2.3 去重策略, 2. 数据模型, 3.1 save_memory, 3.2 recall_memory, 3.3 forget_memory (+20 more)
 
 ### Community 68 - "skills-store.ts"
-Cohesion: 0.08
-Nodes (41): Ctx, DELETE, GET, PUT, resolve(), NewChatPage(), ensurePromiseWithResolvers(), injectSkillHint() (+33 more)
+Cohesion: 0.06
+Nodes (51): Ctx, DELETE, GET, PUT, Ctx, GET, Ctx, DELETE (+43 more)
 
 ### Community 69 - "每文件改动内容"
 Cohesion: 0.07
 Nodes (27): `app/api/agent/query/route.ts`（修改，主要重写）, `app/chat/chat-request.ts`（修改）, `app/chat/chat-types.ts`（修改）, `app/chat/subagent-track.tsx`（修改）, `app/shared/chat-stream.tsx`（修改）, Audit: agent-event-contract (AR2a), Files changed, `lib/agent/claude-adapter.ts`（修改） (+19 more)
 
 ### Community 70 - "quota.ts"
-Cohesion: 0.15
-Nodes (22): billableTokensForTrace(), BlockedNotice, buildBlockedNotice(), classifyTier(), computeUsage(), computeWindow(), formatResetAt(), matchesSlot() (+14 more)
+Cohesion: 0.18
+Nodes (20): POST(), POST(), POST(), NewChatPage(), createProposeTransferTool(), Sdk, assertSpecialistRoleUsable(), getDisabledRoleIds() (+12 more)
 
 ### Community 71 - "pipeline.ts"
-Cohesion: 0.18
-Nodes (21): loadManifest(), buildRescoreResult(), createManualReview(), decisionKey(), EffectiveAssertion, expressionHit(), loadAttempts(), ManualDecision (+13 more)
+Cohesion: 0.21
+Nodes (11): ConfirmDialogProps, AlertDialog(), AlertDialogAction(), AlertDialogCancel(), AlertDialogContent(), AlertDialogDescription(), AlertDialogFooter(), AlertDialogHeader() (+3 more)
 
 ### Community 72 - "总览页 v2 Spec：活化（关注区 / 最近工作 / 团队面板 / 期间徽章 / 信任标签）"
 Cohesion: 0.07
@@ -904,8 +926,8 @@ Cohesion: 0.07
 Nodes (26): dom, dom.iterable, es2022, next-env.d.ts, .next/types/**/*.ts, **/*.tsx, compilerOptions, allowJs (+18 more)
 
 ### Community 74 - "cash-obligations.ts"
-Cohesion: 0.09
-Nodes (28): amountText(), CashObligationsCard(), CockpitSummary, TeamRoleItem, BusinessOverview, InvoiceLedgerStats, PayrollPeriodSummary, RecentWorkItem (+20 more)
+Cohesion: 0.13
+Nodes (24): PATCH(), InvoiceLedgerStats, listConfirmedMetaDocRows(), setKnowledgeArchived(), deriveAttentionItems(), CashObligation, daysBetween(), DEFAULT_PENDING (+16 more)
 
 ### Community 75 - "Spec: shadcn 对话基础组件接入"
 Cohesion: 0.08
@@ -916,40 +938,40 @@ Cohesion: 0.08
 Nodes (25): 0. 现状根因（先把"为什么这么黄"说清楚）, 1. 设计方向（Aesthetic Direction）, 2.1 浅色（默认）, 2.2 深色（**重做：从"死黑"换成"石板月光石"**）, 2.3 字号系统（**核心：主字号 14px**）, 2. 设计令牌（新版 Design Tokens）, 3.1 侧边导航（`app-nav`）, 3.2 驾驶舱（`cockpit`） (+17 more)
 
 ### Community 77 - "dispatch-store.ts"
-Cohesion: 0.15
-Nodes (17): GET(), POST(), DELETE(), GET(), BlockedDispatchRow, EnqueueTransferDispatchInput, getDispatchById(), listDispatchesByRole() (+9 more)
+Cohesion: 0.10
+Nodes (27): GET(), createRunPythonTool(), defaultEmbedRunner(), buildSpreadsheetMirror(), extractViaWorker(), formatCellValue(), parseDocument(), parseImageDocument() (+19 more)
 
 ### Community 78 - "files-library/route.ts"
-Cohesion: 0.15
-Nodes (24): GET(), guessMimeByExt(), POST(), resolveFilePath(), revealInFileManager(), deleteLibraryFile(), getKnowledgeDocumentByHash(), listAllFiles() (+16 more)
+Cohesion: 0.16
+Nodes (25): GET(), guessMimeByExt(), POST(), resolveFilePath(), revealInFileManager(), deleteLibraryFile(), getKnowledgeDocumentByHash(), insertAuditLog() (+17 more)
 
 ### Community 79 - "python-installer.ts"
 Cohesion: 0.07
 Nodes (26): 10. 不做清单, 1. 结论, 2.1 简洁不等于短, 2.2 单一所有权, 2.3 渐进披露, 2. 设计原则, 3.1 System Prompt, 3.2 Skills (+18 more)
 
 ### Community 80 - "finalize.ts"
-Cohesion: 0.12
-Nodes (29): Sdk, validateCompletionEvidence(), dedupeEvidence(), finalizeDeliverables(), FinalizeDeps, finalizeOneFile(), normalizeFinalizeFiles(), sha256File() (+21 more)
+Cohesion: 0.16
+Nodes (20): ALLOWED_DELIVERABLE_MIMES, EXT_MIME, isLikelyText(), MimeProbe, OLE_MAGIC, PDF_MAGIC, probeMimeConsistency(), ZIP_MAGIC (+12 more)
 
 ### Community 81 - "retention.ts"
-Cohesion: 0.19
-Nodes (23): claimRetentionRun(), cutoffEpochSeconds(), DEFAULT_RETENTION_CONFIG, isRetentionDays(), isValidRetentionSettingsValue(), loadRetentionConfig(), pruneOldAppErrors(), pruneOldAuditLogs() (+15 more)
+Cohesion: 0.12
+Nodes (30): ALLOWED_KEYS, GET(), isAllowedValue(), PUT(), isTrustedLocalMutation(), getAppSetting(), setAppSetting(), claimRetentionRun() (+22 more)
 
 ### Community 82 - "scripts"
-Cohesion: 0.07
-Nodes (28): scripts, build, dev, eval:as0:phase-b, eval:as0:rescore, eval:as0:snapshot, eval:as0:typecheck, eval:as0:validate (+20 more)
+Cohesion: 0.05
+Nodes (44): scripts, build, dev, eval:ar10:compaction, eval:ar10:confirm, eval:ar10:main, eval:ar10:steering, eval:ar10:subagent (+36 more)
 
 ### Community 83 - "storage.ts"
 Cohesion: 0.15
 Nodes (35): DELETE(), POST(), countKnowledgeDocumentsByContentHash(), countKnowledgeDocumentsByStoragePath(), deleteKnowledgeDocument(), getKnowledgeDocumentByFileName(), updateKnowledgeDocumentMetadata(), inferCategory() (+27 more)
 
 ### Community 84 - "rg-search.ts"
-Cohesion: 0.20
-Nodes (18): sanitizeSettingsJson(), as0HarnessTestPromise, defaultAttempts(), selectTasks(), as0RescoreTestPromise, assertLiveAuthorized(), buildPlan(), CliOptions (+10 more)
+Cohesion: 0.11
+Nodes (22): AgentModelUsage, routerStage(), SpanInput, SpanType, trancate(), writeSpan(), configuredLevel(), createLogger() (+14 more)
 
 ### Community 85 - "tax-calendar.ts"
-Cohesion: 0.21
-Nodes (10): PeriodBadge(), CalendarOptions, CalendarWindowId, ChatQuickPrompt, filingUrgency(), getChatQuickPrompts(), TaxDeadline, toIsoDate() (+2 more)
+Cohesion: 0.31
+Nodes (16): GET(), GET(), listSkills(), skillLabel(), listBlockedDispatches(), listRoleDispatchSummary(), listRoleLatestStatus(), getInvoiceLedgerStats() (+8 more)
 
 ### Community 86 - "逐条成功标准核实"
 Cohesion: 0.08
@@ -964,12 +986,12 @@ Cohesion: 0.08
 Nodes (23): 6.1 已完成刀的代码落点（当前仓库真实状态）, 6.2 已建立的约定（复用，别重造）, 6.3 环境与纪律（不可省）, 6.4 待办刀方案, 6.5 验证命令速查, A. 侧栏（`app/shared/app-nav.tsx`）, B. 角色工作台（新页 `/agents/<roleId>`）, C. 独立记忆系统（每角色） (+15 more)
 
 ### Community 89 - "deliverable/index.ts"
-Cohesion: 0.22
-Nodes (14): GET(), getModelConfigReadiness(), mapFastReasoningToSlots(), migrateModelConfig(), ModelConfigState, ModelConfigV2, ModelFieldErrors, normalizeModelId() (+6 more)
+Cohesion: 0.20
+Nodes (21): DELETE(), GET(), getLibraryDir(), PATCH(), cleanupUnfinalizedFiles(), getAllAttachmentStoragePaths(), getLatestAssistantMessageId(), guessMimeType() (+13 more)
 
 ### Community 90 - "model-config.ts"
-Cohesion: 0.39
-Nodes (7): DELETE(), GET(), POST(), addRoleMemory(), deleteRoleMemory(), listRoleMemory(), RoleMemoryItem
+Cohesion: 0.11
+Nodes (18): AttentionSection(), PeriodBadge(), PayrollPeriodSummary, CockpitSuggestions, getCockpitSuggestions(), CalendarContext, CalendarOptions, CalendarWindowId (+10 more)
 
 ### Community 91 - "各文件改动详情"
 Cohesion: 0.09
@@ -980,24 +1002,24 @@ Cohesion: 0.09
 Nodes (22): db-hardening.test.ts（无回归）, `docs/spec/ROADMAP-improve.md`（修改）, Files changed, Fix 轮记录（orchestrator，2026-07-06）, flags-db-override.test.ts（无回归）, `lib/db/migrations.ts`（修改）, `lib/db/schema.ts`（修改）, `lib/db/sqlite.ts`（修改） (+14 more)
 
 ### Community 93 - "devDependencies"
-Cohesion: 0.07
-Nodes (26): eslint, eslint-config-next, @eslint/eslintrc, devDependencies, eslint, eslint-config-next, @eslint/eslintrc, @playwright/test (+18 more)
+Cohesion: 0.09
+Nodes (23): eslint, eslint-config-next, @eslint/eslintrc, devDependencies, eslint, eslint-config-next, @eslint/eslintrc, @playwright/test (+15 more)
 
 ### Community 94 - "domain/reimbursement.ts"
-Cohesion: 0.18
-Nodes (15): buildReimbursementReceipt(), InvoiceHistory, mapWarningsToRuleHits(), ReimbursementPolicy, runScript(), SCRIPT, sortReimbursementsByRisk(), validateReimbursements() (+7 more)
+Cohesion: 0.21
+Nodes (8): onRequestError(), register(), appendServerLog(), formatServerError(), logFilePath(), logServerError(), purgeOldServerLogs(), ServerErrorContext
 
 ### Community 95 - "xlsx.ts"
-Cohesion: 0.13
-Nodes (27): QualityProfile, ALLOWED_DELIVERABLE_MIMES, EXT_MIME, isLikelyText(), MimeProbe, OLE_MAGIC, PDF_MAGIC, probeMimeConsistency() (+19 more)
+Cohesion: 0.23
+Nodes (12): DELETE(), GET(), getTrustStore(), isToolTrustedForConversation(), listTrustedTools(), revokeToolTrust(), TRUST_STORE_SYMBOL, trustKey() (+4 more)
 
 ### Community 96 - "getConversationFilesDir"
 Cohesion: 0.15
 Nodes (12): 1. 运行配置, 2. 总体结果, 3.1 高风险导出绕过确认, 3.2 Required delivery 全部缺少 CompletionEvidence, 3.3 会话记忆边界不清, 3.4 Claude adapter 无法强制 compaction, 3.5 长尾和无效 turns, 3. 已确认的旧链路问题 (+4 more)
 
 ### Community 97 - "knowledge/page.tsx"
-Cohesion: 0.07
-Nodes (42): FilesPageContent(), fmtBytes(), fmtDate(), groupFiles(), KIND_CARD_CLS, KIND_CHIP_SELECTED, KIND_CHIP_UNSELECTED, KIND_LABELS (+34 more)
+Cohesion: 0.08
+Nodes (38): FilesPageContent(), fmtBytes(), fmtDate(), groupFiles(), KIND_CARD_CLS, KIND_CHIP_SELECTED, KIND_CHIP_UNSELECTED, KIND_LABELS (+30 more)
 
 ### Community 98 - "components.json"
 Cohesion: 0.09
@@ -1016,20 +1038,20 @@ Cohesion: 0.09
 Nodes (21): core:default, core:window:allow-close, core:window:allow-destroy, core:window:allow-minimize, core:window:allow-start-dragging, core:window:allow-toggle-maximize, dialog:allow-open, dialog:allow-save (+13 more)
 
 ### Community 102 - "knowledge.ts"
-Cohesion: 0.20
-Nodes (18): GET(), neutralizeExternalContextTags(), wrapExternalContext(), createQueryKnowledgeTool(), createReadFileTool(), createSearchKnowledgeTool(), knowledgeText(), resolveDoc() (+10 more)
+Cohesion: 0.21
+Nodes (14): getAppGlyph(), getConversationFileUrl(), getFileIcon(), isImageFile(), OpenableFileRow(), openConversationFile(), OpenWithApp, revealConversationFile() (+6 more)
 
 ### Community 103 - "chart.tsx"
-Cohesion: 0.10
-Nodes (23): FilterChipGroup(), FilterChipOption, CalendarDayButton(), ChartConfig, ChartContainer(), ChartContext, ChartContextProps, ChartLegendContent() (+15 more)
+Cohesion: 0.14
+Nodes (16): CalendarDayButton(), ChartConfig, ChartContainer(), ChartContext, ChartContextProps, ChartLegendContent(), ChartTooltipContent(), getPayloadConfigFromPayload() (+8 more)
 
 ### Community 104 - "逐文件枚举表"
 Cohesion: 0.10
 Nodes (20): 10. `app/components/ask-user-panel.tsx`, 11. `app/knowledge/page.tsx`, 12. `app/knowledge/doc-card.tsx`, 13. `app/agents/page.tsx`, 1. `app/chat/find-in-chat.tsx`, 2. `app/chat/chat-file-browser.tsx`, 3. `app/chat/chat-file-panel.tsx`, 4. `app/cockpit/team-growth-hint.tsx` (+12 more)
 
 ### Community 105 - "run.ts"
-Cohesion: 0.13
-Nodes (18): ALL_GOLDEN_CASES, complexCases, GoldenCase, greetingCases, ragQaCases, toolTaskCases, trivialQaCases, CASE_IDS (+10 more)
+Cohesion: 0.24
+Nodes (11): ALLOWED_COMMANDS, executeKnowledgeQuery(), ExecuteResult, ParsedPipeline, PipelineResult, runPipeline(), SandboxError, tokenizePipeline() (+3 more)
 
 ### Community 106 - "memory/file-store.ts"
 Cohesion: 0.25
@@ -1037,7 +1059,7 @@ Nodes (16): GET(), PUT(), appendToMemorySection(), atomicWrite(), conventionMatc
 
 ### Community 107 - "nav-state.tsx"
 Cohesion: 0.09
-Nodes (30): AgentRosterLite, AppConversationTab, AppTab, appTabKeyFromRoute(), AppTabsAction, appTabsReducer(), AppTabsState, COCKPIT_TAB (+22 more)
+Nodes (29): AgentRosterLite, AppConversationTab, AppTab, appTabKeyFromRoute(), AppTabsAction, appTabsReducer(), AppTabsState, COCKPIT_TAB (+21 more)
 
 ### Community 108 - "§1 成功标准逐条核对"
 Cohesion: 0.10
@@ -1072,16 +1094,16 @@ Cohesion: 0.16
 Nodes (17): Agent skills, Domain docs, graphify, Issue tracker, Triage labels, UIUX前端设计, 一、先读，再写, 七、调试 (+9 more)
 
 ### Community 116 - "with-api-error.ts"
-Cohesion: 0.10
-Nodes (17): POST, Ctx, GET, Ctx, DELETE, GET, PATCH, PUT (+9 more)
+Cohesion: 0.07
+Nodes (61): AgentTurnCollector, AgentTurnParams, AgentTurnResult, assembleAssistantContent(), coalesceTextIntoEvents(), createStreamingResponse(), improveConversationTitle(), insertAssistantTurn() (+53 more)
 
 ### Community 117 - "flags.ts"
 Cohesion: 0.17
-Nodes (15): ALLOWED_KEYS, GET(), isAllowedValue(), PUT(), getAppSetting(), readFeatureFlags(), setAppSetting(), allFlags() (+7 more)
+Nodes (20): QualityProfile, DELIVERABLE_MIGRATION_NAME, DELIVERABLE_MIGRATION_VERSION, upDeliverablesV22(), AttachmentQualityState, DeliverableStatus, FinalizeContext, FinalizeFailure (+12 more)
 
 ### Community 118 - "run-status-labels.ts"
 Cohesion: 0.13
-Nodes (20): AttachmentQualityBadge(), TONE, bannerVariant(), RunStatusBanner(), RunStatusBannerProps, DeliverableWithQuality, RunSnapshot, BUDGETS (+12 more)
+Nodes (24): GET, quotaStage(), billableTokensForTrace(), BlockedNotice, buildBlockedNotice(), classifyTier(), computeUsage(), computeWindow() (+16 more)
 
 ### Community 119 - "各文件改动内容"
 Cohesion: 0.11
@@ -1116,20 +1138,20 @@ Cohesion: 0.11
 Nodes (18): 0. 目标与非目标, 1.1 token 类型权重（贴合官方价比例）, 1.2 模型分两档（粗粒度）, 1. 计量：成本加权"计费 token", 2. 窗口：固定重置 + 首次使用懒锚定, 3. 限额（写死、默认开、不可调）, 4. 数据库, 5. 拦截链路 (+10 more)
 
 ### Community 127 - "scripts"
-Cohesion: 0.11
-Nodes (18): dependencies, @anthropic-ai/claude-agent-sdk, description, @anthropic-ai/claude-agent-sdk, name, private, scripts, all (+10 more)
+Cohesion: 0.25
+Nodes (9): FileGroup(), ChatFilePanel(), Popover(), PopoverAnchor(), PopoverContent(), PopoverDescription(), PopoverHeader(), PopoverTitle() (+1 more)
 
 ### Community 128 - "agents/route.ts"
-Cohesion: 0.27
-Nodes (20): GET(), GET(), ROLE_REGISTRY, listSkills(), skillLabel(), listBlockedDispatches(), listDispatchesForPeriod(), listRoleDispatchSummary() (+12 more)
+Cohesion: 0.13
+Nodes (13): highlightDarkCSS, highlightLightCSS, inter, jetbrainsMono, metadata, RootLayout(), viewport, ScrollbarFade() (+5 more)
 
 ### Community 129 - "audit-store.ts"
-Cohesion: 0.17
-Nodes (13): POST(), GET(), AuditEntry, DeleteRowsOp, listAuditEntries(), ListAuditOptions, RecordAuditInput, RestoreRowsOp (+5 more)
+Cohesion: 0.08
+Nodes (33): POST, GET(), countChatConversations(), createChatConversation(), getConversationAttachments(), getMessageAttachments(), initializeFinanceDatabase(), insertChatAgentEvent() (+25 more)
 
 ### Community 130 - "layout.tsx"
-Cohesion: 0.31
-Nodes (9): AskUserQuestionPayload, allAnswered(), buildAnswer(), formatSelection(), getSubQuestions(), isMultiQuestion(), SubQuestion, AskUserPanel() (+1 more)
+Cohesion: 0.20
+Nodes (18): GET(), neutralizeExternalContextTags(), wrapExternalContext(), createQueryKnowledgeTool(), createReadFileTool(), createSearchKnowledgeTool(), knowledgeText(), resolveDoc() (+10 more)
 
 ### Community 131 - "§1 成功标准逐条证据"
 Cohesion: 0.11
@@ -1152,8 +1174,8 @@ Cohesion: 0.11
 Nodes (17): 0. 目标与非目标, 1.1 MetricStrip（`app/cockpit/metric-strip.tsx`）, 1.2 ComplianceStrip（`app/cockpit/compliance-strip.tsx`）, 1. 删除项, 2. 总览页 v3 布局, 3.1 花名册, 3.2 台账, 3.3 有限配置 (+9 more)
 
 ### Community 136 - "prepare-tauri.mjs"
-Cohesion: 0.11
-Nodes (16): agentSkillsDir, binResourceDir, bundledNode, localRequire, nextDir, nodeResourceDir, placeholderDistDir, pubkeyTxtPath (+8 more)
+Cohesion: 0.12
+Nodes (15): agentSkillsDir, binResourceDir, bundledNode, nextDir, nodeResourceDir, placeholderDistDir, pubkeyTxtPath, resourcesDir (+7 more)
 
 ### Community 137 - "parse_statements.py"
 Cohesion: 0.23
@@ -1164,8 +1186,8 @@ Cohesion: 0.12
 Nodes (16): 1. 扫描分组, 2. 逐组取文本 + 提取字段, 3. 查对照表(一次查全), 4. 一次批量处理(关键:别逐张逐工具调,会超时), 5. 汇总确认(全部处理完 → 一次问清所有疑问,期间不写 Excel), 6. 沉淀对照表, 7. 出清单(最后一步,确认全部解决后一次写全), A. 单据照片 → 凭证(主线) (+8 more)
 
 ### Community 139 - "session-trust.test.ts"
-Cohesion: 0.23
-Nodes (12): DELETE(), GET(), getTrustStore(), isToolTrustedForConversation(), listTrustedTools(), revokeToolTrust(), TRUST_STORE_SYMBOL, trustKey() (+4 more)
+Cohesion: 0.22
+Nodes (8): AR14 / AS2 Pi-only 上下文精简报告（2026-07-30）, AS0-08 工资计算, AS0-19 会话口径与压缩, Before / After, 发布门, 实现, 真实回归, 结论
 
 ### Community 140 - "audit-chat-page-split"
 Cohesion: 0.12
@@ -1184,8 +1206,8 @@ Cohesion: 0.12
 Nodes (16): 1. 背景与问题(为什么做), 2. 设计决策(grill 已敲定,不再讨论), 3. 详细改动点(按文件), 4. 执行步骤(串行), 5. 验收目标, 6. 循环协议(≤5 轮), 7. 任务分配, C1 `app/chat/timeline-display.ts` (+8 more)
 
 ### Community 144 - "sandbox-commands.ts"
-Cohesion: 0.13
-Nodes (24): ALLOWED_COMMANDS, executeKnowledgeQuery(), ExecuteResult, ParsedPipeline, PipelineResult, runPipeline(), SandboxError, tokenizePipeline() (+16 more)
+Cohesion: 0.23
+Nodes (15): getRgPath(), lazyRequire, escapeRe(), headTailCount(), mapGrepToRg(), matchGlob(), parseRangeSpec(), readFilesOrStdin() (+7 more)
 
 ### Community 145 - "observability-metrics.test.ts"
 Cohesion: 0.19
@@ -1222,10 +1244,6 @@ Nodes (14): 合同义务层（第一～四步）, 应收账龄台账 Skill, 执�
 ### Community 153 - "apps/route.ts"
 Cohesion: 0.24
 Nodes (14): app(), AppCandidate, findCandidateApp(), findFirstExecutable(), GET(), getCandidatesForFile(), isPdf(), isPresentation() (+6 more)
-
-### Community 154 - "confirm-dialog.tsx"
-Cohesion: 0.24
-Nodes (8): buildTurnSegments(), coalesceTextEvent(), ProcessSegment, resolveAnswerContent(), SegmentTimelineItem, TurnSegments, TimelineItem, turnSegmentsTestPromise
 
 ### Community 155 - "各文件更改内容"
 Cohesion: 0.13
@@ -1284,16 +1302,16 @@ Cohesion: 0.30
 Nodes (13): getSecretFallbackPath(), Backend, dpapiGet(), dpapiSet(), execFileAsync, fileGet(), fileSet(), getApiKeySecret() (+5 more)
 
 ### Community 169 - "e0-api-surface.mjs"
-Cohesion: 0.13
-Nodes (14): controlProbe, __dirname, evidence, evidencePath, info, queryBlock, queryMethods, require (+6 more)
+Cohesion: 0.40
+Nodes (4): nodeBinary, port, root, serverRoot
 
 ### Community 170 - "e2-interrupt-python.mjs"
 Cohesion: 0.16
-Nodes (13): child, __dirname, evidence, gate, localProbe, marker, planned, q (+5 more)
+Nodes (11): CockpitPage(), TeamGrowthHint(), CockpitSummary, TeamRoleItem, EASE_OUT_QUICK_EXIT, fadeIn, listContainer, popIn (+3 more)
 
 ### Community 171 - "e6-quiesce.mjs"
-Cohesion: 0.13
-Nodes (13): child, __dirname, evidence, gate, hashBefore, hashes, hashMid, localProbe (+5 more)
+Cohesion: 0.50
+Nodes (3): name, private, version
 
 ### Community 172 - "PDF 处理指南"
 Cohesion: 0.14
@@ -1312,8 +1330,8 @@ Cohesion: 0.26
 Nodes (11): handleGet(), handlePatch(), GET(), PATCH(), Artifact, ArtifactItem, ArtifactItemSeverity, ArtifactState (+3 more)
 
 ### Community 176 - "profile/file-store.ts"
-Cohesion: 0.36
-Nodes (9): GET(), PUT(), atomicWrite(), CompanyProfile, mergeCompanyProfile(), readCompanyProfile(), writeCompanyProfile(), writeQueue (+1 more)
+Cohesion: 0.16
+Nodes (16): amountText(), CashObligationsCard(), deadlineTone(), FinanceCalendarCard(), RecentWorkCard(), WorkRow(), conversationStatusFromWorkItem(), Card() (+8 more)
 
 ### Community 177 - "Audit: blindspot-fixes WP-A 安全脱敏"
 Cohesion: 0.14
@@ -1347,10 +1365,6 @@ Nodes (13): CalcReceipt 数据契约, Spec: 可追溯计算回执（CalcReceipt�
 Cohesion: 0.14
 Nodes (13): 1. 依赖声明 + 安装, 2. worker 加 `ocr-image` 命令(`workers/finance_worker.py`), 3. `parseDocument` 加图片分支(`lib/knowledge/parsers/index.ts`), 4. 前端, Spec:知识库图片本地 OCR(RapidOCR,进 python worker), 不做(本期边界), 任务, 文件 (+5 more)
 
-### Community 185 - "query-sandbox.ts"
-Cohesion: 0.29
-Nodes (7): conversationRelativePath(), ExpandedDetail(), isImagePath(), FormattedContent, formatToolInput(), formatToolOutput(), sniff()
-
 ### Community 186 - "隐私与数据说明 / Privacy & Data Notice"
 Cohesion: 0.14
 Nodes (12): 1. 本地存储, 2. 数据外发（关键）, 3. 遥测, 4. 数据使用与出售, 5. 联系, English Summary, 隐私与数据说明 / Privacy & Data Notice, 响应预期 / Response Timeline (+4 more)
@@ -1370,14 +1384,6 @@ Nodes (7): _bracket_limit(), calculate(), fmt(), main(), round2(), run(), valida
 ### Community 190 - "PptxGenJS Tutorial"
 Cohesion: 0.15
 Nodes (13): Better-Looking Charts, Charts, Common Pitfalls, Layout Dimensions, Lists & Bullets, PptxGenJS Tutorial, Quick Reference, Setup & Basic Structure (+5 more)
-
-### Community 191 - "agent-confirm-flow.test.ts"
-Cohesion: 0.33
-Nodes (8): POST(), answerPendingQuestion(), cancelPendingQuestions(), createPendingQuestion(), getStore(), PendingQuestion, settle(), agentConfirmFlowTestPromise
-
-### Community 192 - "nav-v3.test.ts"
-Cohesion: 0.36
-Nodes (9): decodeDataUrlToBytes(), decodeDataUrlToText(), getConversationPreviewUrl(), getKnowledgeFileUrl(), loadBytes(), loadPreview(), loadText(), openConversationSelection() (+1 more)
 
 ### Community 193 - "Audit: blindspot-fixes-r3 WP-G"
 Cohesion: 0.15
@@ -1431,10 +1437,6 @@ Nodes (12): Advanced PDF Cropping, Batch PDF Processing with Error Handling, Com
 Cohesion: 0.41
 Nodes (11): clean_unused_files(), get_referenced_files(), get_slide_referenced_files(), get_slides_in_sldidlst(), Path, Remove unreferenced files from an unpacked PPTX directory.  Usage: python clean., remove_orphaned_files(), remove_orphaned_rels_files() (+3 more)
 
-### Community 206 - "numfmt.ts"
-Cohesion: 0.36
-Nodes (7): addThousandSeparators(), applyPositiveFormat(), formatNumber(), FormatResult, isNumericFormat(), splitFormatSegments(), excelPreviewEnhanceTestPromise
-
 ### Community 207 - "Audit: WP-H chat 管线——消息双写与附件上限"
 Cohesion: 0.17
 Nodes (11): A5（超限附件返回 400）, Audit: WP-H chat 管线——消息双写与附件上限, Files changed, `lib/agent/query-stages.ts`, S4（user 消息去重）, S5（正常两轮对话不去重）, 与 spec 的偏差及理由, 先红后绿证据 (+3 more)
@@ -1472,12 +1474,12 @@ Cohesion: 0.17
 Nodes (11): A. 统一文件索引(复用现有两表,不新建大表), B. 文件库页(`app/files/page.tsx` + 侧栏/导航入口), C. 生命周期解耦(删对话别误删「保留」文件), Spec:统一文件库(索引 + 浏览/导出 + 生命周期解耦), 不做(本期边界), 文件(预计), 测试, 红线 / 约束 (+3 more)
 
 ### Community 216 - "SYSTEM_PROMPT.md"
-Cohesion: 0.17
-Nodes (11): 你的职责, 回答语气(专业模式), 回答语气(日常模式), 外部内容安全规则, 工作守则, 思考与回答的边界, 思考语言, 生成文件与图表 (+3 more)
+Cohesion: 0.25
+Nodes (7): 回答语气(专业模式), 回答语气(日常模式), 外部内容安全规则, 执行原则, 文件交付, 核心职责, 身份规则
 
 ### Community 217 - "logger.ts"
-Cohesion: 0.29
-Nodes (8): buildCsvSheet(), buildExcelColumnWidths(), buildExcelSheet(), formatExcelCellValue(), isFormulaValue(), parseA1Address(), parseCellAddress(), toExcelColumnLabel()
+Cohesion: 0.21
+Nodes (11): ALWAYS_CONFIRM_TOOLS, ALLOWED_TOOLS, BUILTIN_TOOLS, CONFIRM_REQUIRED_TOOL_NAMES, getToolRiskLevel(), TOOL_REGISTRY, ToolCategory, ToolDef (+3 more)
 
 ### Community 218 - "isTrustedLocalRequest"
 Cohesion: 0.29
@@ -1510,10 +1512,6 @@ Nodes (22): 10. 不做清单, 1. 当前结论, 2. 为什么不直接使用现有
 ### Community 225 - "[...filename]/route.ts"
 Cohesion: 0.38
 Nodes (8): isAllowedAppPath(), isValidConversationId(), GET(), getContentType(), openWithSystemApp(), revealInFileManager(), spawnDetached(), apiBoundariesTestPromise
-
-### Community 226 - "getKnowledgeDocumentById"
-Cohesion: 0.18
-Nodes (13): GET(), GET(), GET(), GET(), PATCH(), getKnowledgeDocumentById(), listConfirmedMetaDocRows(), setKnowledgeArchived() (+5 more)
 
 ### Community 227 - "chat-file-panel.tsx"
 Cohesion: 0.10
@@ -1556,12 +1554,12 @@ Cohesion: 0.18
 Nodes (10): 1. 生成签名密钥对, 2. 将公钥填入 tauri.conf.json, 3. 将 endpoint 替换为真实 GitHub 仓库地址, 4. 将私钥和密码添加到 GitHub Secrets, 一次性配置(首次发版前完成), 发版流程, 安全注意事项, 概览 (+2 more)
 
 ### Community 237 - "claude-adapter.ts"
-Cohesion: 0.07
-Nodes (42): AgentAttachment, AgentMessage, buildAttachmentBlocks(), buildPromptInput(), buildPromptText(), ClaudeAgentRunOptions, dataUrlToBase64(), formatBytes() (+34 more)
+Cohesion: 0.12
+Nodes (17): escapeXml(), formatFinworkSkillListing(), allow, definitions, dropped, injectedController, injectedDefinitions, injectedTools (+9 more)
 
 ### Community 238 - "env.mjs"
-Cohesion: 0.29
-Nodes (9): __dirname, getPlatformInfo(), getSdkPackageJson(), liveGate(), printBanner(), require, spikeRoot, __dirname (+1 more)
+Cohesion: 0.08
+Nodes (29): AgentCardProps, DispatchButton(), fmtReset(), Ring(), ringColor(), UsageBar(), UsageDetail(), UsageRing() (+21 more)
 
 ### Community 239 - "执行流程"
 Cohesion: 0.20
@@ -1644,12 +1642,8 @@ Cohesion: 0.24
 Nodes (4): AccountingAdapter, DraftAccountingAdapter, VoucherDraft, accountingAdapterTestPromise
 
 ### Community 259 - "e4-stream-input.mjs"
-Cohesion: 0.20
-Nodes (9): __dirname, evidence, gate, input, pending, planned, q, tl (+1 more)
-
-### Community 260 - "e5-repeated-resume.mjs"
-Cohesion: 0.20
-Nodes (8): baseOpts, __dirname, evidence, gate, planned, resumes, tl, typeContract
+Cohesion: 0.18
+Nodes (14): BoardNode(), buildGlobalHeadline(), buildHeadline(), STATE_LABEL, STATE_TONE, TaskBoardProps, TaskBoardView(), TaskTemplate (+6 more)
 
 ### Community 261 - "golden-parallel.mjs"
 Cohesion: 0.20
@@ -1736,12 +1730,8 @@ Cohesion: 0.22
 Nodes (8): 0. 结论速览（v2.0，含运行时实验）, 1. 四问静态验证结果, 2. finwork 现有接线（实施 AR3b 时的挂点）, 3.1 E1 截断实验：未能复现（inconclusive）, 3. 运行时实验结果（已跑）, 4. 对 AR3b 立项的建议（v2.0 定论）, AR3-spike：工具安全闸可行性验证结论, 附：实验原始信号（供 reviewer 复核）
 
 ### Community 282 - "feature-events.ts"
-Cohesion: 0.36
-Nodes (5): FEATURE_EVENT_NAMES, FeatureEventName, isFeatureEventName(), NAME_SET, telemetryFeatureTestPromise
-
-### Community 283 - "e1-interrupt-generation.mjs"
-Cohesion: 0.22
-Nodes (7): abortController, __dirname, evidence, gate, planned, q, tl
+Cohesion: 0.33
+Nodes (6): FEATURE_EVENT_NAMES, FeatureEventName, isFeatureEventName(), NAME_SET, trackFeature(), telemetryFeatureTestPromise
 
 ### Community 284 - "api-smoke.mjs"
 Cohesion: 0.50
@@ -1919,10 +1909,6 @@ Nodes (12): appVersion, nextConfig, .next, src-tauri, tests, compilerOptions, in
 Cohesion: 0.25
 Nodes (6): MOCK_APPDATA, mockEnv, PORT, realEnv, realRuntime, SANDBOX
 
-### Community 328 - "e3-max-turns.mjs"
-Cohesion: 0.25
-Nodes (7): __dirname, evidence, gate, planned, q, tl, typeContract
-
 ### Community 329 - "design-compliance.test.ts"
 Cohesion: 0.29
 Nodes (6): ALLOWED_FONT_SIZES, cssFiles, designComplianceTestPromise, loadCssFiles(), SKIP_FILES, STYLES_DIR
@@ -2036,8 +2022,8 @@ Cohesion: 0.33
 Nodes (6): 8. 实施步骤, Step 1 — DB 补函数 + API 端点(无 UI 依赖), Step 2 — `FilePreviewPage` 扩展(前端基础设施), Step 3 — 知识库页面组件(纯 UI), Step 4 — 导航栏入口 + 路由连接, Step 5 — 全链路集成测试
 
 ### Community 359 - "finalize-deliverable.ts"
-Cohesion: 0.43
-Nodes (5): groupSlipFiles(), isSlipFile(), SLIP_EXTS, SlipGroup, slipGroupingTestPromise
+Cohesion: 0.53
+Nodes (4): AnyEvent, DROP_SYSTEM_SUBTYPES, sanitizeTurnEvents(), persistHygieneTestPromise
 
 ### Community 360 - "tsconfig.typecheck.json"
 Cohesion: 0.11
@@ -2144,8 +2130,8 @@ Cohesion: 0.40
 Nodes (3): agentPage, ROOT, shared
 
 ### Community 389 - "loadExcelWorkbookResilient"
-Cohesion: 0.40
-Nodes (4): loadExcelWorkbookResilient(), toArrayBuffer(), sanitizeXlsxForPreview(), xlsxSanitizeTestPromise
+Cohesion: 0.26
+Nodes (12): GET(), PUT(), CompanyProfilePatchSchema, createUpdateCompanyProfileTool(), Sdk, atomicWrite(), CompanyProfile, mergeCompanyProfile() (+4 more)
 
 ### Community 390 - "resizable-preview-panel.test.ts"
 Cohesion: 0.40
@@ -2259,10 +2245,6 @@ Nodes (17): 1. Deliverable State, 2. Validator Registry, 3. Generic File Gate, 4
 Cohesion: 0.11
 Nodes (17): 1. Run Status, 2. AR2a Mapping, 3. Termination Reason, 4. State Transitions, 5. TaskContract, 6. CompletionEvidence, 7. Checkpoint Envelope, Acceptance Criteria (+9 more)
 
-### Community 456 - "clsx"
-Cohesion: 0.33
-Nodes (4): insertKnowledgeDocument(), HandlerFn, knowledgeMcpFixesTestPromise, ToolEntry
-
 ### Community 461 - "docx"
 Cohesion: 0.11
 Nodes (17): 1. RunManager, 2. APIs, 3. Authoritative UI Status, 4. Disconnect and Restart, 5. v1 Run Policy, 6. Pause and Stop, 7. Status Presentation, Acceptance Criteria (+9 more)
@@ -2275,17 +2257,25 @@ Nodes (17): Decision Outcomes, Deliverable, E1. Interrupt during model generatio
 Cohesion: 0.11
 Nodes (17): Allowed, Allowed follow-ups vs vetoed approaches, API surface (E0 — ran), Artifacts, Decision: **PARTIAL**, E1 — Interrupt during model generation, E2 — Interrupt during run_python / long subprocess, E3 — maxTurns boundary (+9 more)
 
-### Community 469 - "mammoth"
-Cohesion: 0.50
-Nodes (3): arrayBufferToBase64(), E2EPreviewInner(), DraftPreviewFile
+### Community 471 - "next-themes"
+Cohesion: 0.33
+Nodes (4): insertKnowledgeDocument(), HandlerFn, knowledgeMcpFixesTestPromise, ToolEntry
+
+### Community 473 - "postcss"
+Cohesion: 0.33
+Nodes (8): POST(), answerPendingQuestion(), cancelPendingQuestions(), createPendingQuestion(), getStore(), PendingQuestion, settle(), agentConfirmFlowTestPromise
 
 ### Community 476 - "react-file-icon"
 Cohesion: 0.12
 Nodes (15): 10. 附录：审查方法, 1. 一句话结论, 2. Spec 主张 vs 代码事实, 3. 做得好的地方, 4. 阻塞级发现（开工前必须改 Spec）, 5. 高风险设计债（应拍板或降级）, 6. 文档内小不一致, 7. 与 ROADMAP / 既有 Spec 关系 (+7 more)
 
-### Community 478 - "react-markdown"
-Cohesion: 0.23
-Nodes (13): AggregatedStep, aggregateToolSegment(), hasSuccessAfter(), LogicalStep, parseLogicalSteps(), summarizeToolSegment(), toolLabel(), ToolStepList() (+5 more)
+### Community 477 - "react-icons"
+Cohesion: 0.32
+Nodes (9): DELETE(), GET(), POST(), createRememberRoleConventionTool(), Sdk, addRoleMemory(), deleteRoleMemory(), listRoleMemory() (+1 more)
+
+### Community 481 - "rehype-sanitize"
+Cohesion: 0.07
+Nodes (50): AgentAttachment, AgentIntent, AgentMessage, AgentQuestion, FinworkAgentRequest, FinworkAgentResult, FinworkAgentUsage, fallbackFlatRecap() (+42 more)
 
 ### Community 482 - "remark-gfm"
 Cohesion: 0.13
@@ -2295,9 +2285,37 @@ Nodes (14): Decision Criteria, Deliverable, FAIL, macOS, Out of Scope, PARTIAL, 
 Cohesion: 0.19
 Nodes (14): 修复 1：时长徽章（阈值门 + 精确格式 + 标题正名）, 修复 4：exit code → 人话, 修复 5：运行代码意图（改正则 + 收紧意图）, 决策记录, 可选增强（不在本期最小集，单列）, 设计方案, 设计方案, 设计方案 (+6 more)
 
+### Community 486 - "tailwind-merge"
+Cohesion: 0.06
+Nodes (45): createBusinessAnalysisTool(), createRecordBusinessMetricsTool(), rowSchema, Sdk, jsonCoercible(), tryParseJson(), createRememberConventionTool(), Sdk (+37 more)
+
 ### Community 487 - "tailwindcss"
 Cohesion: 0.23
 Nodes (12): M8.1 消息卡片 enter, M8.2 流式光标, M9.1 拖拽手柄高亮, M9.2 文件 Drop zone, WP-M8：消息进入 + 流式渐显, WP-M9：拖拽反馈, 实现, 实现 (+4 more)
+
+### Community 488 - "@tailwindcss/postcss"
+Cohesion: 0.17
+Nodes (14): FinanceMcpServerOptions, assistantText(), decorateSubagentEvent(), failure(), isSubagentMilestone(), numericConversationId(), recordDispatchEnd(), recordDispatchStart() (+6 more)
+
+### Community 491 - "@tauri-apps/plugin-updater"
+Cohesion: 0.25
+Nodes (9): resolve(), ensurePromiseWithResolvers(), listFiles(), main(), Mode, ordered(), restoreEnvironment(), snapshotEnvironment() (+1 more)
+
+### Community 492 - "chat-request.ts"
+Cohesion: 0.13
+Nodes (25): buildUserContent(), dataUrlToFile(), dispatchSSEEvent(), readAsDataUrl(), readAsText(), readAttachment(), readSSEStream(), shouldReadAsText() (+17 more)
+
+### Community 493 - "@vscode/ripgrep"
+Cohesion: 0.19
+Nodes (18): assistantText(), evidence(), main(), Mode, runCompaction(), runSteering(), assistantErrors(), assistantText() (+10 more)
+
+### Community 494 - "zod"
+Cohesion: 0.18
+Nodes (10): AR10 Findings：Pi + Anthropic Messages, AR12 / AR13 完成证据, AR9 / AR11 / AS1 已推进范围, Pi 到公共事件映射, 可复现命令, 固定环境, 实验结果, 当前结论 (+2 more)
+
+### Community 500 - "agent-attachments-json.test.ts"
+Cohesion: 0.33
+Nodes (6): filesUnder(), forbidden, forbiddenMatches(), metafile, outfile, root
 
 ### Community 547 - "surface.tsx"
 Cohesion: 0.18
@@ -2310,6 +2328,10 @@ Nodes (9): 0. 调研结论, 1. 引入的新依赖, UI Polish Spec：图标统一
 ### Community 551 - "as0/tsconfig.json"
 Cohesion: 0.20
 Nodes (9): ./fixtures, compilerOptions, incremental, noEmit, exclude, extends, include, ./**/*.ts (+1 more)
+
+### Community 552 - "embed-model.ts"
+Cohesion: 0.13
+Nodes (24): POST(), listActiveKnowledgeDocuments(), chunkText(), pushChunks(), DownloadStep, EmbedModelPaths, ensureEmbedModel(), getEmbedModelDir() (+16 more)
 
 ### Community 553 - "WP-M11：成功 / 失败状态动效"
 Cohesion: 0.22
@@ -2324,8 +2346,8 @@ Cohesion: 0.22
 Nodes (8): Constraints, CR-X1 Spike — SDK segment / interrupt / resume controls, Environment, How to run, Individual experiments, Live SDK burns (paid), Outputs, What each experiment does without a key
 
 ### Community 556 - "error-detail.ts"
-Cohesion: 0.43
-Nodes (6): cleanErrorDetail(), ErrorDetail, extractFirstMessage(), extractMcpValidationJson(), tryParseJson(), errorDetailTestPromise
+Cohesion: 0.05
+Nodes (63): createKingdeeTools(), exportDraftEntrySchema, exportDraftSchema, getAccountName(), importAccountsSchema, queryAccountsSchema, Sdk, validateVoucherSchema (+55 more)
 
 ### Community 557 - "修复 2：格式感知高亮（问题 2 重点）"
 Cohesion: 0.25
@@ -2354,6 +2376,10 @@ Nodes (7): WP5.1 引入 sonner, WP5.2 替换 alert + 加成功反馈, WP5.3 样�
 ### Community 563 - "验收"
 Cohesion: 0.29
 Nodes (7): WP6：按钮三态语义化 + 触摸目标, WP8：图标动效（lucide + framer-motion）, 原则, 现状, 验收, 验收, 验收
+
+### Community 564 - "@tailwindcss/typography"
+Cohesion: 0.83
+Nodes (3): main(), restoreEnvironment(), snapshotEnvironment()
 
 ### Community 565 - "Audit: CR-R0 持久 Run 共享合同 v2"
 Cohesion: 0.33
@@ -2399,33 +2425,65 @@ Nodes (5): WP-M6：侧边栏 collapse, 实现, 性能, 现状, 验收
 Cohesion: 0.40
 Nodes (4): Files, Regenerating, runtime-lock/, Usage
 
-### Community 576 - "WP-M7：Stat 数字 count-up（cockpit 四张卡）"
-Cohesion: 0.50
-Nodes (4): WP-M7：Stat 数字 count-up（cockpit 四张卡）, 不做, 实现, 现状
+### Community 576 - "golden/run.ts"
+Cohesion: 0.13
+Nodes (18): ALL_GOLDEN_CASES, complexCases, GoldenCase, greetingCases, ragQaCases, toolTaskCases, trivialQaCases, CASE_IDS (+10 more)
+
+### Community 577 - "getKnowledgeDocumentById"
+Cohesion: 0.26
+Nodes (8): GET(), GET(), GET(), GET(), getKnowledgeDocumentById(), buildPdfPageMap(), readTextMirror(), pdfPagemapTestPromise
 
 ### Community 578 - "WP7：卡片层级与暗色阴影"
 Cohesion: 0.67
 Nodes (3): WP7：卡片层级与暗色阴影, 现状, 验收
 
+### Community 580 - "run-status-labels.ts"
+Cohesion: 0.14
+Nodes (18): GET(), AttachmentQualityBadge(), TONE, bannerVariant(), RunStatusBanner(), RunStatusBannerProps, DeliverableWithQuality, RunSnapshot (+10 more)
+
+### Community 582 - "step-aggregate.ts"
+Cohesion: 0.23
+Nodes (13): AggregatedStep, aggregateToolSegment(), hasSuccessAfter(), LogicalStep, parseLogicalSteps(), summarizeToolSegment(), toolLabel(), ToolStepList() (+5 more)
+
+### Community 584 - "finalize.ts"
+Cohesion: 0.16
+Nodes (17): completionGateSatisfied(), validateCompletionEvidence(), dedupeEvidence(), finalizeDeliverables(), FinalizeDeps, finalizeOneFile(), normalizeFinalizeFiles(), sha256File() (+9 more)
+
+### Community 591 - "content-format.ts"
+Cohesion: 0.29
+Nodes (7): conversationRelativePath(), ExpandedDetail(), isImagePath(), FormattedContent, formatToolInput(), formatToolOutput(), sniff()
+
+### Community 593 - "error-detail.ts"
+Cohesion: 0.43
+Nodes (6): cleanErrorDetail(), ErrorDetail, extractFirstMessage(), extractMcpValidationJson(), tryParseJson(), errorDetailTestPromise
+
+### Community 600 - "ask-user-card.tsx"
+Cohesion: 0.31
+Nodes (8): AnswerPair(), AskAnsweredSummary(), AskUserCard(), FALLBACK_OPTIONS, parseMultiAnswer(), stripRecommended(), EASE_OUT_QUICK, SPRING_DEFAULT
+
+### Community 604 - "WP-M7：Stat 数字 count-up（cockpit 四张卡）"
+Cohesion: 0.50
+Nodes (4): WP-M7：Stat 数字 count-up（cockpit 四张卡）, 不做, 实现, 现状
+
 ## Knowledge Gaps
-- **3868 isolated node(s):** `SkillEntry`, `RoleBoundaryEntry`, `RoleDetail`, `WorkTab`, `TABS` (+3863 more)
+- **3860 isolated node(s):** `SkillEntry`, `RoleBoundaryEntry`, `RoleDetail`, `WorkTab`, `TABS` (+3855 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **109 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **125 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `cn()` connect `cn` to `knowledge/page.tsx`, `layout.tsx`, `business-metrics-card.tsx`, `skill-center.tsx`, `chart.tsx`, `migrations.ts`, `app-nav.tsx`, `tool-call-step.tsx`, `[roleId]/page.tsx`, `chat-stream.tsx`, `tool-cards.tsx`, `query/route.ts`, `utils.ts`, `run-status-labels.ts`, `button.tsx`, `assistant-turn.tsx`?**
-  _High betweenness centrality (0.072) - this node is a cross-community bridge._
-- **Why does `dependencies` connect `dependencies` to `remark-gfm`, `@shadcn/react`, `tailwindcss`, `@tailwindcss/typography`, `@tauri-apps/plugin-dialog`, `docx-preview`, `next`, `react-day-picker`, `@tauri-apps/plugin-fs`, `tw-animate-css`, `ws`, `exceljs`, `geist`, `@hugeicons/core-free-icons`, `next-themes`, `@phosphor-icons/react`, `postcss`, `radix-ui`, `react-dom`, `devDependencies`, `react-icons`, `react-pdf`, `react-resizable-panels`, `rehype-sanitize`, `@shadcn/react`, `@anthropic-ai/claude-agent-sdk`, `tailwind-merge`, `chart.tsx`, `@tailwindcss/postcss`, `pdfjs-dist`, `@tauri-apps/api`, `@tauri-apps/plugin-updater`, `@types/ws`, `@vscode/ripgrep`, `zod`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+- **Why does `cn()` connect `cn` to `agents/route.ts`, `agents/page.tsx`, `skill-center.tsx`, `tool-call-step.tsx`, `[roleId]/page.tsx`, `tool-cards.tsx`, `finance-store.ts`, `query/route.ts`, `button.tsx`, `assistant-turn.tsx`, `chat-page.tsx`, `migrations.ts`, `profile/file-store.ts`, `embeddings.ts`, `run-status-labels.ts`, `pipeline.ts`, `ask-user-card.tsx`, `knowledge/page.tsx`, `knowledge.ts`, `chart.tsx`, `env.mjs`, `scripts`?**
+  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+- **Why does `dependencies` connect `dependencies` to `e5-repeated-resume.mjs`, `docx-preview`, `voucher-sheet.ts`, `subagent-runner.test.ts`, `e1-interrupt-generation.mjs`, `remark-gfm`, `@shadcn/react`, `finalize-deliverable.ts`, `e6-quiesce.mjs`, `react-markdown`, `query-sandbox.ts`, `agent-confirm-flow.test.ts`, `nav-v3.test.ts`, `@tauri-apps/plugin-updater`, `appearance-settings.tsx`, `e3-max-turns.mjs`, `@tauri-apps/plugin-fs`, `tw-animate-css`, `clsx`, `ws`, `composer-tips.tsx`, `numfmt.ts`, `@earendil-works/pi-ai`, `exceljs`, `geist`, `DocCache`, `@hugeicons/core-free-icons`, `Semaphore`, `mammoth`, `sharp`, `sonner`, `@phosphor-icons/react`, `next-themes`, `radix-ui`, `react-dom`, `rehype-sanitize`, `remark-gfm`, `react-markdown`, `react-pdf`, `react-resizable-panels`, `@shadcn/react`, `@tailwindcss/postcss`, `@shadcn/react`, `@tauri-apps/plugin-shell`, `@types/ws`, `ws`, `chart.tsx`, `pdfjs-dist`, `@tauri-apps/api`?**
+  _High betweenness centrality (0.036) - this node is a cross-community bridge._
 - **Why does `react` connect `chart.tsx` to `cn`, `dependencies`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
-- **Are the 2 inferred relationships involving `runClaudeAgent()` (e.g. with `writeSpan()` and `text()`) actually correct?**
-  _`runClaudeAgent()` has 2 INFERRED edges - model-reasoned connections that need verification._
+  _High betweenness centrality (0.036) - this node is a cross-community bridge._
 - **What connects `SkillEntry`, `RoleBoundaryEntry`, `RoleDetail` to the rest of the system?**
-  _3868 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _3860 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `cn` be split into smaller, more focused modules?**
-  _Cohesion score 0.017846971710651225 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.023879950941490515 - nodes in this community are weakly interconnected._
 - **Should `sqlite.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.04908424908424908 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.042105263157894736 - nodes in this community are weakly interconnected._
+- **Should `paths.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.08503401360544217 - nodes in this community are weakly interconnected._

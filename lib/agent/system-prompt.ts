@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
-import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from "@anthropic-ai/claude-agent-sdk";
 import { buildCalendarPromptSection } from "@/lib/domain/tax-calendar";
 import { getBundledSystemPromptPath, getSystemPromptPath } from "@/lib/runtime/paths";
 import { sanitizeInline, wrapExternalContext } from "./external-context";
-import type { RoleMode } from "@/lib/settings/claude-settings";
+import type { RoleMode } from "@/lib/settings/agent-settings";
 
 export type SystemPromptContext = {
   identity?: { companyName?: string; agentName?: string };
@@ -20,12 +19,8 @@ export type SystemPromptContext = {
 };
 
 /**
- * Build system prompt as a string array so the SDK can cache the static prefix.
- * Part A (static) — identity, rules, core instructions (cacheable)
- * Part B (boundary) — SDK sentinel
- * Part C (dynamic) — memory, calendar, feedback (not cached, changes per request).
- *   Skills are no longer injected here: they load on demand via the SDK Skill 工具
- *   (内置 plugin,见 lib/agent/skill-plugin.ts)。
+ * Build the Pi system prompt as static policy plus request-scoped context.
+ * Skill bodies remain on-demand resources and are not injected here.
  */
 export function buildSystemPromptParts(ctx: SystemPromptContext): string[] {
   // 身份标签直接拼进「静态高信任前缀」,先净化成单行+截断:
@@ -35,22 +30,21 @@ export function buildSystemPromptParts(ctx: SystemPromptContext): string[] {
   const companyName = sanitizeInline(ctx.identity?.companyName ?? "", 80);
   const madeBy = companyName ? `由${companyName}打造` : "公司内部打造";
 
-  // --- Part A: Static cacheable prefix ---
-  const partA = buildStaticPrefix(agentName, madeBy, ctx.roleMode);
-
-  // --- Part B: SDK sentinel ---
-  const partB = SYSTEM_PROMPT_DYNAMIC_BOUNDARY;
-
-  // --- Part C: Dynamic non-cacheable suffix ---
-  const partC = buildDynamicSuffix(ctx.memoryMarkdown, ctx.now ?? new Date(), ctx.recentNegativeFeedback, ctx.outputDir, ctx.companyProfile);
-
-  return [partA, partB, partC];
+  const staticPrefix = buildStaticPrefix(agentName, madeBy, ctx.roleMode);
+  const dynamicContext = buildDynamicSuffix(
+    ctx.memoryMarkdown,
+    ctx.now ?? new Date(),
+    ctx.recentNegativeFeedback,
+    ctx.outputDir,
+    ctx.companyProfile,
+  );
+  return [staticPrefix, dynamicContext];
 }
 
-/** 按优先级加载静态前缀(A 段)模板:应用数据目录覆盖 > 仓库/打包内 SYSTEM_PROMPT.md(唯一来源,无内置常量兜底)。
+/** 按优先级加载静态模板:应用数据目录覆盖 > 仓库/打包内 SYSTEM_PROMPT.md(唯一来源,无内置常量兜底)。
  *  打包态由 prepare-tauri 把 SYSTEM_PROMPT.md 拷进 next-server/lib/agent;两来源都读不到则抛错
  *  (宁可响亮失败,也不静默发空提示)。不缓存——改完下条消息即生效。
- *  只覆盖 A 段——B 段分界与 C 段(记忆/日历/反馈/输出目录)仍在代码里组装,不进此文件。 */
+ *  动态的记忆/日历/反馈/输出目录仍在代码里组装,不进此文件。 */
 function loadStaticTemplate(): string {
   for (const p of [getSystemPromptPath(), getBundledSystemPromptPath()]) {
     try {
@@ -162,11 +156,8 @@ function buildDynamicSuffix(
  * 实测它会手搓 python-pptx、把产物写到输入文件旁边、漏数据系列、擅自改单位。
  */
 export function buildFileOutputSection(outputDir?: string): string {
-  // 只注入「每会话变化」的输出目录绝对路径(不进可缓存的静态前缀)。
-  // 文件产出/图表/引用等静态规则集中在 SYSTEM_PROMPT.md 的「生成文件与图表」节(单一来源,免两份漂移)。
+  // 只注入每会话变化的输出目录；静态交付规则留在 SYSTEM_PROMPT.md。
   return outputDir
-    ? `## 本会话输出目录\n生成或另存的文件必须保存到:${outputDir}(run_python 里用 output_dir 变量;Bash/脚本写该绝对路径)。其余产出/图表/引用规则见前文「生成文件与图表」。`
-    : "## 本会话输出目录\n生成文件时,run_python 里用 output_dir 变量作为保存目录(其余规则见前文「生成文件与图表」)。";
+    ? `## 本会话输出目录\n生成或另存文件必须保存到：${outputDir}（run_python 使用 output_dir 变量）。`
+    : "## 本会话输出目录\n生成文件时使用 run_python 的 output_dir 变量。";
 }
-
-export { SYSTEM_PROMPT_DYNAMIC_BOUNDARY };

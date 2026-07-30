@@ -254,5 +254,39 @@ export const dbMigrationDisciplineTestPromise = (async () => {
     console.log("T5 PASS: 预演不碰原库 ✓");
   }
 
-  console.log("db-migration-discipline: all 5 checks passed ✓");
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T6: v23 session 列 rename 保留存量 locator
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`
+      CREATE TABLE chat_conversations (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        claude_session_id TEXT,
+        claude_session_updated_at TEXT
+      );
+      INSERT INTO chat_conversations
+        (id, title, claude_session_id, claude_session_updated_at)
+      VALUES
+        (1, 'legacy', 'legacy-session-1', '2026-07-29 10:00:00');
+    `);
+    const migration = MIGRATIONS.find((item) => item.version === 23);
+    assert.ok(migration, "T6 FAIL: v23 migration 应存在");
+    migration.up(db);
+    const columns = (db.prepare("PRAGMA table_info(chat_conversations)").all() as Array<{ name: string }>)
+      .map((column) => column.name);
+    assert.ok(columns.includes("runtime_session_id"));
+    assert.ok(columns.includes("runtime_session_updated_at"));
+    assert.ok(!columns.includes("claude_session_id"));
+    const row = db.prepare(
+      "SELECT runtime_session_id, runtime_session_updated_at FROM chat_conversations WHERE id = 1"
+    ).get() as { runtime_session_id: string; runtime_session_updated_at: string };
+    assert.equal(row.runtime_session_id, "legacy-session-1");
+    assert.equal(row.runtime_session_updated_at, "2026-07-29 10:00:00");
+    db.close();
+    console.log("T6 PASS: v23 session rename 保留存量 locator ✓");
+  }
+
+  console.log("db-migration-discipline: all 6 checks passed ✓");
 })();

@@ -17,22 +17,16 @@ import { currentYearMonth, expandTaskTemplate, getTaskTemplate } from "@/lib/age
 import { readCompanyProfile } from "@/lib/profile/file-store";
 import type { CompanyProfile } from "@/lib/profile/file-store";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
-import type { SubagentTask, SubagentResult } from "@/lib/agent/subagent-runner";
+import type {
+  SubagentParallelExecutor,
+  SubagentTask,
+} from "@/lib/agent/subagent-contracts";
+import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
 
 type Sdk = SdkLike;
 
 /** runSubagentsParallel 同签名类型，供 deps 注入与测试。 */
-type RunParallelFn = (
-  tasks: SubagentTask[],
-  opts: {
-    parentOutputDir: string;
-    concurrency?: number;
-    signal?: AbortSignal;
-    conversationId?: string;
-    traceId?: string;
-    onEvent?: (event: AgentRuntimeEvent, instanceId: string) => void;
-  }
-) => Promise<SubagentResult[]>;
+type RunParallelFn = SubagentParallelExecutor;
 
 export type FilingPrecheckBatchDeps = {
   /** 注入替代 runSubagentsParallel（测试用）；生产路径缺省动态 import subagent-runner */
@@ -64,7 +58,7 @@ export function createRunFilingPrecheckBatchTool(
         .nullish()
         .describe("复核期间，格式 YYYY-MM；缺省取当前年月"),
     },
-    async (args: { period?: string | null }) => {
+    async (args: { period?: string | null }, execution?: FinanceToolExecutionContext) => {
       // 1. 确定期间
       const period = (args.period ?? "").trim() || currentYearMonth();
 
@@ -100,14 +94,20 @@ export function createRunFilingPrecheckBatchTool(
       });
 
       // 5. 并行跑（复用 runSubagentsParallel，Promise.allSettled + 信号量）
-      const runFn: RunParallelFn =
-        deps?.run ?? (await import("@/lib/agent/subagent-runner")).runSubagentsParallel;
+      if (!deps?.run) {
+        return {
+          content: [{ type: "text" as const, text: "当前 Agent runtime 未配置批量子代理执行器。" }],
+          isError: true as const,
+        };
+      }
+      const runFn: RunParallelFn = deps.run;
 
       const results = await runFn(tasks, {
         parentOutputDir: outputDir,
         traceId,
         conversationId,
         onEvent: onSubagentEvent,
+        signal: execution?.signal,
       });
 
       // 6. 聚合：按税种分段，仅双双失败时置 isError

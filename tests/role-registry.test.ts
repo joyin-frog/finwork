@@ -203,7 +203,7 @@ export const roleRegistryTestPromise = (async () => {
 
   // ── G6: buildSubagentSystemPrompt 输出包含必要锚点字符串 ──────────────
   {
-    const { buildSubagentSystemPrompt } = await import("../lib/agent/subagent-runner.ts");
+    const { buildSubagentSystemPrompt } = await import("../lib/agent/subagent-prompts.ts");
 
     const taxRole = getRoleDefinition("tax-officer");
     assert.ok(

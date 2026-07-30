@@ -17,22 +17,16 @@ import fs from "node:fs";
 import type { SdkLike } from "./sdk-types";
 import { currentYearMonth, expandTaskTemplate } from "@/lib/agent/roles/task-templates";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
-import type { SubagentTask, SubagentResult } from "@/lib/agent/subagent-runner";
+import type {
+  SubagentParallelExecutor,
+  SubagentTask,
+} from "@/lib/agent/subagent-contracts";
+import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
 
 type Sdk = SdkLike;
 
 /** runSubagentsParallel 同签名类型，供 deps 注入与测试。 */
-type RunParallelFn = (
-  tasks: SubagentTask[],
-  opts: {
-    parentOutputDir: string;
-    concurrency?: number;
-    signal?: AbortSignal;
-    conversationId?: string;
-    traceId?: string;
-    onEvent?: (event: AgentRuntimeEvent, instanceId: string) => void;
-  }
-) => Promise<SubagentResult[]>;
+type RunParallelFn = SubagentParallelExecutor;
 
 export type BankReconBatchDeps = {
   /** 注入替代 runSubagentsParallel（测试用）；生产路径缺省动态 import subagent-runner */
@@ -75,7 +69,7 @@ export function createRunBankReconBatchTool(
       statement_files?: string[] | null;
       book_file?: string | null;
       period?: string | null;
-    }) => {
+    }, execution?: FinanceToolExecutionContext) => {
       // ── 五条校验（handler 内自行复查，不信任 schema） ────────────────────────────
 
       // 1. statement_files 非空
@@ -155,14 +149,20 @@ export function createRunBankReconBatchTool(
 
       // ── 并行跑（runSubagentsParallel 内部 Promise.allSettled 保序——
       //    结果数组与 tasks 入参顺序一一对应，本工具依赖此假设） ───────────────────
-      const runFn: RunParallelFn =
-        deps?.run ?? (await import("@/lib/agent/subagent-runner")).runSubagentsParallel;
+      if (!deps?.run) {
+        return {
+          content: [{ type: "text" as const, text: "当前 Agent runtime 未配置批量子代理执行器。" }],
+          isError: true as const,
+        };
+      }
+      const runFn: RunParallelFn = deps.run;
 
       const results = await runFn(tasks, {
         parentOutputDir: outputDir,
         traceId,
         conversationId,
         onEvent: onSubagentEvent,
+        signal: execution?.signal,
       });
 
       // ── 聚合：按账户分段，仅全败置 isError ──────────────────────────────────────

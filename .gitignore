@@ -10,6 +10,7 @@ coverage/
 *.log
 .DS_Store
 .claude/
+.finwork-test/
 .claire/
 .env
 .env.local

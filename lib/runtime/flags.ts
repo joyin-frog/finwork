@@ -6,7 +6,7 @@
 import { getAppSetting } from "@/lib/db/sqlite";
 
 const DEFAULTS: Record<string, boolean> = {
-  PROMPT_CACHE_ENABLED: true,              // [wired] lib/agent/claude-adapter.ts:203
+  PROMPT_CACHE_ENABLED: true,
   ROUTER_ENABLED: true,                    // [wired] app/api/agent/query/route.ts:102
   SESSION_LIVENESS_CHECK_ENABLED: true,   // [wired] app/api/agent/query/route.ts:84
   USAGE_LIMIT_ENABLED: true,              // [wired] app/api/agent/query/route.ts — 用量配额拦截(默认开)

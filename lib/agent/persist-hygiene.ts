@@ -1,7 +1,7 @@
 /**
  * 持久化卫生:持久化端噪声过滤 + 单回合事件数硬上限
  *
- * emit 层(claude-adapter.ts isMeaningfulSystemEvent)已是第一道闸;
+ * emit 层(Pi event mapper)已是第一道闸;
  * 本模块是纵深防御第二道闸,防任何路径绕过 emit 过滤的事件洪泛灌库。
  * 历史教训:会话 38 单回合 5384 thinking_tokens 噪声事件 / 1.5MB。
  */

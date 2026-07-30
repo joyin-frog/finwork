@@ -79,7 +79,7 @@ async function execute(payload: WorkerPayload): Promise<void> {
   const { getDb } = await import("@/lib/db/sqlite");
   const { getMemoryPath } = await import("@/lib/runtime/paths");
   const { SqliteDeliverableStore } = await import("@/lib/deliverable");
-  const { ClaudePhaseBRuntime } = await import("./claude-runtime");
+  const { PiPhaseBRuntime } = await import("./pi-runtime");
   const db = getDb();
   const before = snapshotSideEffects({
     appDataDir,
@@ -88,7 +88,7 @@ async function execute(payload: WorkerPayload): Promise<void> {
     memoryPath: getMemoryPath(),
   });
 
-  const runtime = new ClaudePhaseBRuntime();
+  const runtime = new PiPhaseBRuntime();
   const allEvents: RuntimeEventRecord[] = [];
   const allConfirmations: RuntimeTurnResult["confirmations"] = [];
   const allRunIds: string[] = [];
@@ -103,13 +103,22 @@ async function execute(payload: WorkerPayload): Promise<void> {
   let turnIndex = 0;
 
   if (task.setup?.forceCompaction && !runtime.capabilities.forcedCompaction) {
-    capabilityGaps.push("forced_compaction_not_supported_by_claude_adapter");
+    capabilityGaps.push("forced_compaction_not_supported_by_harness");
   }
   if (task.expected.delivery?.required) {
     capabilityGaps.push("task_contract_ids_not_injected_into_model_context");
   }
 
   for (const turn of task.turns) {
+    if (turn.control === "force_compaction") {
+      if (!sessionId) throw new Error(`${task.id}: force_compaction 前没有可恢复的 Pi session`);
+      const compactEvents = await runtime.forceCompact({
+        sessionId,
+        model: payload.model,
+      });
+      allEvents.push(...compactEvents);
+      continue;
+    }
     if (turn.control) continue;
     if (!turn.user) continue;
     turnIndex += 1;
@@ -221,12 +230,19 @@ async function execute(payload: WorkerPayload): Promise<void> {
       actual: { atSettlement, after },
     });
   }
-  if (task.setup?.forceCompaction && !runtime.capabilities.forcedCompaction) {
+  if (task.setup?.forceCompaction) {
+    const completed = allEvents.filter((record) => record.event.type === "compaction_completed");
     evaluated.assertions.push({
       id: "runtime.force_compaction_supported",
-      description: "Runtime 必须支持可控 compaction 才能完成该断言",
-      status: "fail",
-      actual: runtime.capabilities,
+      description: "Runtime 必须真实完成一次可控 compaction",
+      status:
+        runtime.capabilities.forcedCompaction && completed.length > 0
+          ? "pass"
+          : "fail",
+      actual: {
+        capability: runtime.capabilities.forcedCompaction,
+        completed: completed.length,
+      },
     });
   }
   const forbidsLongTermMemory = task.expected.forbiddenTools.some((expression) =>

@@ -4,10 +4,19 @@ import { ROLE_REGISTRY } from "@/lib/agent/roles/registry";
 import { listDispatchableRoleIds } from "@/lib/agent/roles/availability";
 import { TASK_TEMPLATES, expandTaskTemplate } from "@/lib/agent/roles/task-templates";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
+import type { SubagentExecutor } from "@/lib/agent/subagent-contracts";
+import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
 
 type Sdk = SdkLike;
 
-export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: string, conversationId?: string, onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void) {
+export function createSpawnSubagentTool(
+  sdk: Sdk,
+  outputDir: string,
+  traceId?: string,
+  conversationId?: string,
+  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
+  subagentExecutor?: SubagentExecutor,
+) {
   // 从 ROLE_REGISTRY 按 available 过滤，再经 listDispatchableRoleIds 排除用户停用的角色
   const dispatchableIds = listDispatchableRoleIds();
   const ROLE_IDS = dispatchableIds as [string, ...string[]];
@@ -33,12 +42,11 @@ export function createSpawnSubagentTool(sdk: Sdk, outputDir: string, traceId?: s
 
   return sdk.tool(
     "spawn_subagent",
-    `按预制角色派发一个子 Agent 执行特定独立任务。周期任务优先用 task_template 派发。
-适用场景：同类任务 N≥3、预计耗时>30s、任务间相互独立；一次响应可多次调用此工具，SDK 自动并行。
+    `把至少 3 个相互独立、预计较慢的同类任务派给预制角色；周期任务优先用 task_template。
 可派发角色：
 ${ROLE_CHEATSHEET}
-【指令完整性】每个子任务必须给出完整独立的指令——子 Agent 不共享主对话历史，缺少上下文会导致执行失败。
-不适用：单个简单任务、有顺序依赖的任务、需要和用户交互的任务、高风险写操作（子 Agent 内会被确认门拒绝，留在主对话经人确认后执行）。`,
+每个子任务必须包含完整目标、输入和交付物，因为子 Agent 不共享主对话历史。
+单个任务、有顺序依赖、需要用户交互或高风险写操作时不用。`,
     {
       role: z
         .enum(ROLE_IDS)
@@ -70,8 +78,17 @@ ${ROLE_CHEATSHEET}
       label: string;
       task_template?: string | null;
       period?: string | null;
-    }) => {
-      const { runSubagent } = await import("@/lib/agent/subagent-runner");
+    }, execution?: FinanceToolExecutionContext) => {
+      if (!subagentExecutor) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: "当前 Agent runtime 未配置子代理执行器，无法派发。",
+          }],
+          isError: true as const,
+        };
+      }
+      const run = subagentExecutor;
 
       // ── 模板路径 ──────────────────────────────────────────────────────────
       if (args.task_template) {
@@ -105,7 +122,7 @@ ${ROLE_CHEATSHEET}
           args.instructions || undefined
         );
 
-        const result = await runSubagent(
+        const result = await run(
           {
             roleId: args.role,
             instructions: expandedInstructions,
@@ -115,7 +132,13 @@ ${ROLE_CHEATSHEET}
             businessObject: template.objectLabel,
             period: args.period,
           },
-          { parentOutputDir: outputDir, traceId, conversationId, onEvent: onSubagentEvent }
+          {
+            parentOutputDir: outputDir,
+            traceId,
+            conversationId,
+            onEvent: onSubagentEvent,
+            signal: execution?.signal,
+          }
         );
         const text = [
           `子任务执行结果 [${result.label}]`,
@@ -128,14 +151,20 @@ ${ROLE_CHEATSHEET}
       }
 
       // ── 自由指令路径（无模板）─────────────────────────────────────────────
-      const result = await runSubagent(
+      const result = await run(
         {
           roleId: args.role,
           instructions: args.instructions,
           files: args.files ?? undefined,
           label: args.label,
         },
-        { parentOutputDir: outputDir, traceId, conversationId, onEvent: onSubagentEvent }
+        {
+          parentOutputDir: outputDir,
+          traceId,
+          conversationId,
+          onEvent: onSubagentEvent,
+          signal: execution?.signal,
+        }
       );
       const text = [
         `子任务执行结果 [${result.label}]`,

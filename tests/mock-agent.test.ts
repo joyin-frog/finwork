@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { isMockAgentEnabled, runMockAgent } from "../lib/agent/mock-agent.ts";
 import type { AgentRuntimeEvent } from "../lib/agent/runtime-events.ts";
-import type { ClaudeAgentRunOptions } from "../lib/agent/claude-adapter.ts";
+import type { MockAgentRunOptions } from "../lib/agent/mock-agent.ts";
 
 export const mockAgentTestPromise = (async () => {
   const prevFlag = process.env.FINANCE_AGENT_MOCK_AGENT;
@@ -13,7 +13,7 @@ export const mockAgentTestPromise = (async () => {
   try {
     assert.equal(isMockAgentEnabled(), true, "FAIL: 置位后应启用");
 
-    async function run(text: string, opts: Partial<ClaudeAgentRunOptions> = {}) {
+    async function run(text: string, opts: Partial<MockAgentRunOptions> = {}) {
       const chunks: string[] = [];
       const events: AgentRuntimeEvent[] = [];
       const res = await runMockAgent([{ role: "user", content: text }], {

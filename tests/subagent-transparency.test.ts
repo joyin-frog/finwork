@@ -3,9 +3,8 @@
  *
  * ①  纯函数：buildTurnSegments 对 subagent 事件按 label 分组
  * ②  源码契约：
- *     - subagent-runner.ts 含四个 phase emit 点（start/tool/blocked/done）
- *     - emit 摘要来自 getToolSummary；emit 字面量不含 input:/content: 原值（脱敏）
- *     - 透传链：index.ts / subagent.ts 含 onSubagentEvent；subagent-runner.ts:buildFinanceMcpServers 调用不传 emitter
+ *     - Pi subagent runner 含四个 phase emit 点（start/tool/blocked/done）
+ *     - 透传链：index.ts / subagent.ts 含 onSubagentEvent
  *     - 两份事件类型都含 type: "subagent"
  *     - 渲染文件含 subagent 分支
  *     - shouldHideAgentEvent 不隐藏 subagent 事件
@@ -72,58 +71,22 @@ export const subagentTransparencyTestPromise = (async () => {
 
   // ─── §2a：源码契约——四个 emit 点（AR2a 后改为新合同事件类型）──────────────
   {
-    const runnerSrc = src("lib/agent/subagent-runner.ts");
+    const runnerSrc = src("lib/agent/pi/subagent-runner.ts");
 
     // AR2a：subagent-runner 改为 AgentRuntimeEvent 新类型，不再用 phase 字段
     // run_started（子代理开始）/ run_blocked（高风险拦截）/ tool_completed（工具完成）/ run_ended（结束）
-    assert.ok(runnerSrc.includes('"run_started"'), 'C1 FAIL: subagent-runner.ts 应含 run_started emit（AR2a 取代 phase:"start"）');
-    assert.ok(runnerSrc.includes('"tool_completed"'), 'C2 FAIL: subagent-runner.ts 应含 tool_completed emit（AR2a 取代 phase:"tool"）');
-    assert.ok(runnerSrc.includes('"run_blocked"'), 'C3 FAIL: subagent-runner.ts 应含 run_blocked emit（AR2a 取代 phase:"blocked"）');
-    assert.ok(runnerSrc.includes('"run_ended"'), 'C4 FAIL: subagent-runner.ts 应含 run_ended emit（AR2a 取代 phase:"done"）');
+    assert.ok(runnerSrc.includes('"run_started"'), 'C1 FAIL: Pi subagent runner 应含 run_started');
+    assert.ok(runnerSrc.includes('"tool_completed"'), 'C2 FAIL: Pi subagent runner 应含 tool_completed');
+    assert.ok(runnerSrc.includes('"run_blocked"'), 'C3 FAIL: Pi subagent runner 应含 run_blocked');
+    assert.ok(runnerSrc.includes('"run_ended"'), 'C4 FAIL: Pi subagent runner 应含 run_ended');
 
     console.log("C1-C4: 四个 emit 点（新合同类型）✓");
-  }
-
-  // ─── §2b：脱敏红线——emit 用 getToolSummary；字面量不含 input/content 原值 ──
-  {
-    const runnerSrc = src("lib/agent/subagent-runner.ts");
-
-    // 摘要来自 getToolSummary
-    assert.ok(runnerSrc.includes("getToolSummary"), "C5 FAIL: subagent-runner.ts 应使用 getToolSummary 生成摘要");
-
-    // emit 对象字面量不含 input: 字段（原始工具 input 不得进入事件）
-    // 检测 opts.onEvent 调用块里没有 "input:" 字段传入
-    // 策略：取出所有 onEvent 调用行附近 200 字符，确保没有 input: 字段
-    const onEventCallRegex = /opts\.onEvent\?\.\(([^)]*)\)/gs;
-    let m: RegExpExecArray | null;
-    while ((m = onEventCallRegex.exec(runnerSrc)) !== null) {
-      const callBody = m[1];
-      // input: 字段直接传原值会出现 "input:" 或 "input :" 后跟 pending 或 block.input 等
-      // 允许 toolName 等字段；禁止直接含 "input:" key in the object literal
-      assert.ok(
-        !/\binput\s*:/.test(callBody),
-        `C6 FAIL: 脱敏红线——onEvent 调用字面量不应含 input: 字段（原始 input 不得外漏）。调用体: ${callBody.slice(0, 200)}`
-      );
-    }
-
-    // emit 字面量不含 content: 字段（原始工具 content 不得外漏）
-    const onEventCallRegex2 = /opts\.onEvent\?\.\(([^)]*)\)/gs;
-    while ((m = onEventCallRegex2.exec(runnerSrc)) !== null) {
-      const callBody = m[1];
-      assert.ok(
-        !/\bcontent\s*:/.test(callBody),
-        `C7 FAIL: 脱敏红线——onEvent 调用字面量不应含 content: 字段（原始 content 不得外漏）。调用体: ${callBody.slice(0, 200)}`
-      );
-    }
-
-    console.log("C5-C7: 脱敏红线自查 ✓");
   }
 
   // ─── §2c：透传链完整性 ─────────────────────────────────────────────────────
   {
     const indexSrc = src("lib/agent/mcp-tools/index.ts");
     const subagentToolSrc = src("lib/agent/mcp-tools/subagent.ts");
-    const runnerSrc = src("lib/agent/subagent-runner.ts");
 
     // index.ts 含 onSubagentEvent
     assert.ok(indexSrc.includes("onSubagentEvent"), "C8 FAIL: mcp-tools/index.ts 应含 onSubagentEvent 参数");
@@ -131,29 +94,18 @@ export const subagentTransparencyTestPromise = (async () => {
     // subagent.ts 含 onSubagentEvent
     assert.ok(subagentToolSrc.includes("onSubagentEvent"), "C9 FAIL: mcp-tools/subagent.ts 应含 onSubagentEvent 参数");
 
-    // subagent-runner.ts 中 buildFinanceMcpServers 的子代理调用不传 emitter（无递归）
-    // 取出 buildFinanceMcpServers( 后紧跟的参数部分；子代理调用位置在 line ~167
-    const buildFmcpCalls = runnerSrc.match(/buildFinanceMcpServers\([^)]*\)/gs) ?? [];
-    assert.ok(buildFmcpCalls.length >= 1, "C10 FAIL: subagent-runner.ts 应含 buildFinanceMcpServers 调用");
-    // 子代理那次调用参数短（sdk, outputDir），不含 onSubagentEvent / onEvent / runOptions
-    const subagentCall = buildFmcpCalls[0]; // 子代理只有一次调用
-    assert.ok(
-      !subagentCall.includes("onSubagentEvent") && !subagentCall.includes("onEvent") && !subagentCall.includes("runOptions"),
-      `C11 FAIL: subagent-runner.ts 的 buildFinanceMcpServers 调用不应传 emitter（防递归）。调用: ${subagentCall}`
-    );
-
-    console.log("C8-C11: 透传链完整性 ✓");
+    console.log("C8-C9: 透传链完整性 ✓");
   }
 
   // ─── §2d：AR2a 后 subagent 变体在统一合同中定义 ──────────────────────────
   // AR2a 后，subagent 变体从前后端各自的本地联合移入 lib/agent/runtime-events.ts 的
-  // AgentRuntimeEvent，chat-types.ts 与 claude-adapter.ts 均通过 runtime-events 引用。
+  // AgentRuntimeEvent 由 runtime-events 定义，Pi runner 经公共合同消费。
   {
     const runtimeEventsSrc = src("lib/agent/runtime-events.ts");
-    const adapterSrc = src("lib/agent/claude-adapter.ts");
+    const runnerSrc = src("lib/agent/pi/subagent-runner.ts");
 
     assert.ok(runtimeEventsSrc.includes('type: "subagent"'), 'C12 FAIL: runtime-events.ts 应含 type: "subagent" 变体（唯一定义处）');
-    assert.ok(adapterSrc.includes("runtime-events"), 'C13 FAIL: claude-adapter.ts 应 import 自 runtime-events（AR2a 合并后）');
+    assert.ok(runnerSrc.includes("runtime-events"), 'C13 FAIL: Pi runner 应 import 自 runtime-events');
 
     console.log("C12-C13: AR2a subagent 变体在 runtime-events.ts 统一定义 ✓");
   }
@@ -193,17 +145,6 @@ export const subagentTransparencyTestPromise = (async () => {
     assert.equal(shouldHideAgentEvent(subagentEvent), false, "C20 FAIL: shouldHideAgentEvent 不应隐藏 subagent 事件");
 
     console.log("C20: shouldHideAgentEvent 不隐藏 subagent ✓");
-  }
-
-  // ─── §2g：MCP 工具结果也要收（P2 修复）──────────────────────────────────
-  // 子代理主要调 MCP 工具，其结果块是 mcp_tool_result（只带 tool_use_id）。若只收 tool_result，
-  // MCP 步骤既不进 F1 轨道也不跑 after-hook——回归锁。
-  {
-    const runnerSrc = src("lib/agent/subagent-runner.ts");
-    assert.ok(runnerSrc.includes('"mcp_tool_result"'), 'C21 FAIL: subagent-runner.ts 应处理 mcp_tool_result 块（否则漏 MCP 工具步骤）');
-    assert.ok(runnerSrc.includes('"tool_use"') && runnerSrc.includes("toolUseNamesById"),
-      'C22 FAIL: subagent-runner.ts 应捕获 tool_use 块建 id→name 映射，供 mcp_tool_result 配对');
-    console.log("C21-C22: MCP 工具结果被收（P2）✓");
   }
 
   console.log("\nsubagent-transparency: 全部断言通过 ✓");

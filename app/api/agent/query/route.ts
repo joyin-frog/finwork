@@ -1,17 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { runClaudeAgent } from "@/lib/agent/claude-adapter";
-import type { AgentAttachment, AgentMessage } from "@/lib/agent/claude-adapter";
-import type { ModelUsage } from "@anthropic-ai/claude-agent-sdk";
+import { runPiAgent } from "@/lib/agent/pi/agent-service";
+import type {
+  AgentAttachment,
+  AgentMessage,
+  AgentModelUsage,
+  AgentQuestion,
+} from "@/lib/agent/contracts";
 import { writeSpan } from "@/lib/observability/spans";
 import { writeAgentTrace } from "@/lib/observability/trace-write";
-import { readClaudeSettings } from "@/lib/settings/claude-settings";
+import { readAgentSettings } from "@/lib/settings/agent-settings";
 import {
   getChatConversation,
   getDb,
   insertChatAgentEvent,
   insertChatMessage,
-  setChatConversationClaudeSessionId,
+  setChatConversationRuntimeSession,
   updateChatConversationTitle
 } from "@/lib/db/sqlite";
 import { cleanupUnfinalizedFiles, recordNewGeneratedFiles } from "@/lib/chat/generated-files";
@@ -19,7 +23,6 @@ import { filterIdentity, createStreamingIdentityFilter } from "@/lib/safety/iden
 import { runRouter } from "@/lib/agent/router";
 import { generateConversationTitle } from "@/lib/agent/conversation-title";
 import { cancelPendingQuestions, createPendingQuestion } from "@/lib/agent/pending-questions";
-import type { AgentQuestion } from "@/lib/agent/claude-adapter";
 import { redact } from "@/lib/safety/pii";
 import { sanitizeTurnEvents } from "@/lib/agent/persist-hygiene";
 import { appendServerLog } from "@/lib/runtime/server-log";
@@ -54,7 +57,7 @@ const log = createLogger("agent-query");
 export async function POST(request: Request) {
   const traceId = randomUUID();
   const startedAt = Date.now();
-  const settings = await readClaudeSettings().catch(() => ({ roleMode: "tech" as const, subagentModel: undefined as string | undefined })) as Awaited<ReturnType<typeof readClaudeSettings>>;
+  const settings = await readAgentSettings().catch(() => ({ roleMode: "tech" as const, subagentModel: undefined as string | undefined })) as Awaited<ReturnType<typeof readAgentSettings>>;
   const roleMode = settings.roleMode as string;
   log.info("request start", { traceId });
 
@@ -75,7 +78,7 @@ export async function POST(request: Request) {
   if (r instanceof Response) return r;
 
   const {
-    conversationId, existingClaudeSessionId, claudeSessionId,
+    conversationId, existingRuntimeSessionId, runtimeSessionId,
     agentMessages, attachments, outputDir, beforeGenerate,
     lastUserContent, useStreaming, routerResult, modelOverride: tierModelOverride,
     sessionRoleId, modelTier,
@@ -95,7 +98,7 @@ export async function POST(request: Request) {
   // --- Run agent ---
   try {
     log.info("agent start", {
-      traceId, conversationId, claudeSessionId, streaming: useStreaming,
+      traceId, conversationId, runtimeSessionId, streaming: useStreaming,
       model: modelOverride ?? null,
       modelRole: resolvedModel?.modelRole ?? null,
       executionTier: resolvedModel?.executionTier ?? null,
@@ -106,7 +109,7 @@ export async function POST(request: Request) {
       runId: traceId,
       traceId,
       conversationId: conversationId ?? null,
-      sessionId: claudeSessionId,
+      sessionId: runtimeSessionId,
       modelUsed: resolvedModel?.modelId ?? modelOverride ?? null,
       modelRole: resolvedModel?.modelRole ?? null,
       executionTier: resolvedModel?.executionTier ?? null,
@@ -119,7 +122,7 @@ export async function POST(request: Request) {
       attachments,
     });
     const turnParams: AgentTurnParams = {
-      traceId, agentMessages, claudeSessionId, existingClaudeSessionId,
+      traceId, agentMessages, runtimeSessionId, existingRuntimeSessionId,
       attachments, outputDir, routerResult, conversationId,
       // CR-R1：resolveExecutionModel 结果 → SDK model / ANTHROPIC_MODEL
       modelOverride,
@@ -130,7 +133,7 @@ export async function POST(request: Request) {
       executionTier: resolvedModel?.executionTier ?? null,
     };
     const persistParams: PersistTurnParams = {
-      conversationId, existingClaudeSessionId, beforeGenerate,
+      conversationId, existingRuntimeSessionId, beforeGenerate,
       traceId, startedAt, routerResult, lastUserContent, roleMode,
       resolvedModel,
     };
@@ -187,10 +190,10 @@ export async function POST(request: Request) {
     void appendServerLog(`[agent-query] failed traceId=${traceId} ${redact(error instanceof Error ? error.stack ?? error.message : String(error))}`);
     // 出错也保留已完成的部分(非流式路径同样不该整回合归零);拿不到 collector 才只记错误 trace。
     const collector = (error as { __collector?: AgentTurnCollector }).__collector;
-    const partialUsage = (error as { __modelUsage?: Record<string, ModelUsage> }).__modelUsage;
+    const partialUsage = (error as { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage;
     const isAbort = error instanceof Error && error.name === "AbortError";
     if (collector) {
-      persistIncompleteTurn({ conversationId, existingClaudeSessionId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage: message, modelUsage: partialUsage, resolvedModel });
+      persistIncompleteTurn({ conversationId, existingRuntimeSessionId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage: message, modelUsage: partialUsage, resolvedModel });
     } else {
       writeAgentTrace({
         traceId, conversationId, startedAt,
@@ -221,8 +224,8 @@ type AgentTurnCollector = {
 };
 
 type AgentTurnParams = {
-  traceId: string; agentMessages: AgentMessage[]; claudeSessionId: string | null;
-  existingClaudeSessionId: string | null; attachments: AgentAttachment[];
+  traceId: string; agentMessages: AgentMessage[]; runtimeSessionId: string | null;
+  existingRuntimeSessionId: string | null; attachments: AgentAttachment[];
   outputDir: string | undefined; routerResult: Awaited<ReturnType<typeof runRouter>>;
   modelOverride?: string;
   /** 专员会话（E 刀）：会话绑定的角色 id；NULL = 主管会话。 */
@@ -245,11 +248,20 @@ type AgentTurnParams = {
 };
 
 type AgentTurnResult =
-  | { mode: "cheap"; content: string; claudeSessionId: string | null; direct: true }
-  | (Awaited<ReturnType<typeof runClaudeAgent>> & { direct: false });
+  | { mode: "cheap"; content: string; runtimeSessionId: string | null; direct: true }
+  | {
+      mode: string;
+      content: string;
+      runtimeSessionId: string | null;
+      modelUsage?: Record<string, AgentModelUsage>;
+      totalCostUsd?: number;
+      numTurns?: number;
+      roleMode?: string;
+      direct: false;
+    };
 
 async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTurnResult; collector: AgentTurnCollector }> {
-  const { traceId, agentMessages, claudeSessionId, existingClaudeSessionId, attachments, outputDir, routerResult } = params;
+  const { traceId, agentMessages, runtimeSessionId, existingRuntimeSessionId, attachments, outputDir, routerResult } = params;
   const collector: AgentTurnCollector = { collectedChunks: [], collectedEvents: [] };
 
   // Cheap path: router already produced a direct answer
@@ -257,7 +269,7 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     const answer = filterIdentity(routerResult.decision.directAnswer);
     collector.collectedChunks.push(answer);
     coalesceTextIntoEvents(collector.collectedEvents, answer);
-    return { result: { mode: "cheap", content: answer, claudeSessionId, direct: true }, collector };
+    return { result: { mode: "cheap", content: answer, runtimeSessionId, direct: true }, collector };
   }
 
   // 身份出站过滤(安全红线·机制兜底):流式逐 chunk 过滤,collector 与下发都用过滤后文本
@@ -308,9 +320,10 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
     params.emitEnvelope?.(env);
   };
 
-  const data = await runClaudeAgent(agentMessages, {
-    claudeSessionId,
-    resumeSession: Boolean(existingClaudeSessionId),
+  const data = await runPiAgent({
+    messages: agentMessages,
+    runtimeSessionId,
+    resumeSession: Boolean(existingRuntimeSessionId),
     requestId: traceId,
     attachments,
     outputDir,
@@ -325,6 +338,7 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
       attachments,
     }),
     executionTier: params.executionTier,
+    intent: routerResult.decision.intent,
     // 主 Agent 事件走主 emitter
     emit: (event) => handleEmit(event, mainEmitter),
     // 子代理事件：每个子代理有唯一 instanceId，用 per-instance emitter 包装
@@ -363,7 +377,7 @@ async function runAgentTurn(params: AgentTurnParams): Promise<{ result: AgentTur
 }
 
 type PersistTurnParams = {
-  conversationId: number | undefined; existingClaudeSessionId: string | null;
+  conversationId: number | undefined; existingRuntimeSessionId: string | null;
   beforeGenerate: Set<string>; traceId: string; startedAt: number;
   routerResult: Awaited<ReturnType<typeof runRouter>>;
   lastUserContent: string; roleMode: string;
@@ -389,10 +403,10 @@ function insertAssistantTurn(conversationId: number, content: string, collector:
 function persistAgentTurn(
   params: PersistTurnParams & { result: AgentTurnResult; collector: AgentTurnCollector }
 ): { messageId?: number; fullContent: string; generatedAttachments: ReturnType<typeof recordNewGeneratedFiles> } {
-  const { conversationId, existingClaudeSessionId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, result, collector } = params;
+  const { conversationId, existingRuntimeSessionId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, result, collector } = params;
 
-  if (conversationId && result.claudeSessionId && result.claudeSessionId !== existingClaudeSessionId) {
-    setChatConversationClaudeSessionId(conversationId, result.claudeSessionId);
+  if (conversationId && result.runtimeSessionId && result.runtimeSessionId !== existingRuntimeSessionId) {
+    setChatConversationRuntimeSession(conversationId, result.runtimeSessionId);
   }
 
   let messageId: number | undefined;
@@ -429,7 +443,7 @@ function persistAgentTurn(
 
 /** 出错收尾:把本回合已完成的部分落库并标 turn_incomplete。 */
 function persistIncompleteTurn(
-  params: PersistTurnParams & { collector: AgentTurnCollector; errorMessage: string; modelUsage?: Record<string, ModelUsage> }
+  params: PersistTurnParams & { collector: AgentTurnCollector; errorMessage: string; modelUsage?: Record<string, AgentModelUsage> }
 ): { messageId?: number; fullContent: string; generatedAttachments: ReturnType<typeof recordNewGeneratedFiles> } {
   const { conversationId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage, modelUsage, resolvedModel } = params;
 
@@ -630,7 +644,7 @@ function createStreamingResponse(params: {
         // 原始错误落盘
         void appendServerLog(`[agent-query/stream] failed traceId=${traceId} ${redact(error instanceof Error ? error.stack ?? error.message : String(error))}`);
         const collector = (error as { __collector?: AgentTurnCollector }).__collector;
-        const partialUsage = (error as { __modelUsage?: Record<string, ModelUsage> }).__modelUsage;
+        const partialUsage = (error as { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage;
         // AR2a: 三路径收口 — abort 路径 vs 错误路径（stop API 已 settle 则跳过）
         const isAbort = error instanceof Error && error.name === "AbortError";
         const already = getAgentRun(traceId);

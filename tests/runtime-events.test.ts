@@ -240,7 +240,7 @@ export const runtimeEventsTestPromise = (async () => {
   // ─── ③ 源码契约：import 同源 ───────────────────────────────────────────────
   {
     const chatTypesSrc = src("app/chat/chat-types.ts");
-    const adapterSrc = src("lib/agent/claude-adapter.ts");
+    const serviceSrc = src("lib/agent/pi/agent-service.ts");
     const routeSrc = src("app/api/agent/query/route.ts");
 
     // chat-types.ts 应引用 AgentRuntimeEvent
@@ -259,10 +259,10 @@ export const runtimeEventsTestPromise = (async () => {
       "C3 FAIL: chat-types.ts 不应有本地 AgentEvent union（多行 | 开头）"
     );
 
-    // claude-adapter.ts 不再 export AgentRunEvent
+    // Pi Service 不应复制公共事件 union
     assert.ok(
-      !adapterSrc.includes("export type AgentRunEvent"),
-      "C4 FAIL: claude-adapter.ts 不应再 export AgentRunEvent"
+      !serviceSrc.includes("export type AgentRunEvent"),
+      "C4 FAIL: Pi Service 不应 export AgentRunEvent"
     );
 
     // route.ts import 自 runtime-events.ts
@@ -271,10 +271,10 @@ export const runtimeEventsTestPromise = (async () => {
       "C5 FAIL: route.ts 应 import 自 runtime-events"
     );
 
-    // adapter import 自 runtime-events
+    // Pi Service 经中立 FinworkAgentRequest 合同消费 emit
     assert.ok(
-      adapterSrc.includes("runtime-events"),
-      "C6 FAIL: claude-adapter.ts 应 import 自 runtime-events"
+      serviceSrc.includes("agent/contracts") && serviceSrc.includes("FinworkAgentRequest"),
+      "C6 FAIL: Pi Service 应经 FinworkAgentRequest 消费公共事件合同"
     );
 
     console.log("C1-C6: 源码契约 import 同源 ✓");

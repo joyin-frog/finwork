@@ -1,13 +1,14 @@
 # AR10 Spike：Pi + Anthropic Messages 替换 Claude Agent SDK
 
 > ID：AR10
-> 状态：Ready to Execute / AS0 Complete
+> 状态：In Progress / Core Protocol PASS / Production Switch Blocked
 > 类型：替换阻断 Spike，不接生产 Query Pipeline
 > 日期：2026-07-29
 > 时间盒：2–3 个工作日
 > 目标端点：用户现有 Anthropic Messages 兼容网关
 > 架构 SSOT：`design-pi-agent-runtime.md`
 > 执行前置：完成 `design-agent-context-simplification.md` 的 AS0 基线
+> 当前 findings：`spike-pi-anthropic-replacement-findings.md`
 
 AS0 的执行合同见 `as0-agent-context-baseline.md`。正式 Claude baseline
 `claude-20260729074120-86905c70` 已完成 Runtime evidence、217 条人工复核和 policy v1

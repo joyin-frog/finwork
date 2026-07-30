@@ -7,8 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-// Lives under .claude/ which is fully gitignored — the real apiKey copy never gets committed.
-export const SANDBOX_DIR = path.join(REPO_ROOT, ".claude", "loop-sandbox", "appdata");
+// Lives under .finwork-test/ which is fully gitignored — real settings never get committed.
+export const SANDBOX_DIR = path.join(REPO_ROOT, ".finwork-test", "loop-sandbox", "appdata");
 
 function realSettingsPath() {
   if (process.env.FINANCE_AGENT_REAL_SETTINGS) return process.env.FINANCE_AGENT_REAL_SETTINGS;
@@ -33,20 +33,20 @@ export async function prepareSandbox({ reset = false } = {}) {
     throw new Error(`找不到真实设置(含 apiKey):${realPath}`);
   }
   const parsed = JSON.parse(raw);
-  const claude = parsed.claude ?? parsed;
-  if (!claude.apiKey || !String(claude.apiKey).trim()) {
+  const agent = parsed.agent ?? parsed.claude ?? parsed;
+  if (!agent.apiKey || !String(agent.apiKey).trim()) {
     throw new Error(`真实设置里没有 apiKey:${realPath}`);
   }
   // 测试用模型覆盖(只改沙箱副本,不动真实设置):换更强模型验证 complex 等是否模型上限。
   // routerModel 保持不变(意图分类用快模型即可)。
   if (process.env.FINANCE_AGENT_TEST_MODEL) {
-    claude.model = process.env.FINANCE_AGENT_TEST_MODEL;
-    claude.mainModel = process.env.FINANCE_AGENT_TEST_MODEL;
-    claude.subagentModel = process.env.FINANCE_AGENT_TEST_MODEL;
+    agent.model = process.env.FINANCE_AGENT_TEST_MODEL;
+    agent.mainModel = process.env.FINANCE_AGENT_TEST_MODEL;
+    agent.subagentModel = process.env.FINANCE_AGENT_TEST_MODEL;
   }
   await fs.writeFile(
     path.join(SANDBOX_DIR, "local-settings.json"),
-    JSON.stringify({ claude }, null, 2) + "\n",
+    JSON.stringify({ agent }, null, 2) + "\n",
     "utf-8",
   );
 
@@ -71,8 +71,8 @@ export async function prepareSandbox({ reset = false } = {}) {
   return {
     appDataDir: SANDBOX_DIR,
     settingsPath: path.join(SANDBOX_DIR, "local-settings.json"),
-    model: claude.model || "(default)",
-    apiUrl: claude.apiUrl || "https://api.anthropic.com",
+    model: agent.model || "(default)",
+    apiUrl: agent.apiUrl || "(default)",
     pythonRuntime: extraEnv.FINANCE_AGENT_PYTHON_RUNTIME_DIR ?? null,
     env: { ...process.env, ...extraEnv },
   };

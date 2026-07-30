@@ -5,7 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { PageSearchBar } from "@/app/shared/page-search-dialog";
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
-import type { PublicClaudeSettings } from "@/lib/settings/claude-settings";
+import type { PublicAgentSettings } from "@/lib/settings/agent-settings";
 import { CONFIG_TABS, type ConfigTabKey } from "@/app/config/tabs";
 import { GeneralSettings } from "./general/general-settings";
 import { AppearanceSettings } from "./appearance/appearance-settings";
@@ -23,22 +23,22 @@ import { cn } from "@/lib/utils";
 type SettingsTab = ConfigTabKey;
 
 export default function SkillCenter({
-  initialClaudeSettings,
+  initialAgentSettings,
   initialTab = "general",
 }: {
-  initialClaudeSettings: PublicClaudeSettings;
+  initialAgentSettings: PublicAgentSettings;
   initialTab?: SettingsTab | string;
 }) {
-  const [claudeSettings, setClaudeSettings] = useState(initialClaudeSettings);
-  const [apiUrl, setApiUrl] = useState(initialClaudeSettings.apiUrl);
+  const [agentSettings, setAgentSettings] = useState(initialAgentSettings);
+  const [apiUrl, setApiUrl] = useState(initialAgentSettings.apiUrl);
   const [apiKey, setApiKey] = useState("");
-  const [fastModel, setFastModel] = useState(initialClaudeSettings.routerModel);
-  const [reasoningModel, setReasoningModel] = useState(initialClaudeSettings.mainModel);
-  const [companyName, setCompanyName] = useState(initialClaudeSettings.companyName);
-  const [agentName, setAgentName] = useState(initialClaudeSettings.agentName);
-  const [userName, setUserName] = useState(initialClaudeSettings.userName);
-  const [userAvatar, setUserAvatar] = useState(initialClaudeSettings.userAvatar);
-  const [roleMode, setRoleMode] = useState(initialClaudeSettings.roleMode);
+  const [fastModel, setFastModel] = useState(initialAgentSettings.routerModel);
+  const [reasoningModel, setReasoningModel] = useState(initialAgentSettings.mainModel);
+  const [companyName, setCompanyName] = useState(initialAgentSettings.companyName);
+  const [agentName, setAgentName] = useState(initialAgentSettings.agentName);
+  const [userName, setUserName] = useState(initialAgentSettings.userName);
+  const [userAvatar, setUserAvatar] = useState(initialAgentSettings.userAvatar);
+  const [roleMode, setRoleMode] = useState(initialAgentSettings.roleMode);
   const [activeTab, setActiveTab] = useState<SettingsTab>(isSettingsTab(initialTab) ? initialTab : "general");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [query, setQuery] = useState("");
@@ -46,23 +46,23 @@ export default function SkillCenter({
   const identity = useUserIdentity();
   useShortcutEvent("search-settings", () => setSearchOpen(true));
 
-  const saveClaudeRef = useRef(saveClaudeSettings);
-  saveClaudeRef.current = saveClaudeSettings;
-  const claudeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveAgentRef = useRef(saveAgentSettings);
+  saveAgentRef.current = saveAgentSettings;
+  const agentSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function scheduleClaudeSave() {
-    if (claudeSaveTimerRef.current) clearTimeout(claudeSaveTimerRef.current);
-    claudeSaveTimerRef.current = setTimeout(() => void saveClaudeRef.current(false), 800);
+  function scheduleAgentSave() {
+    if (agentSaveTimerRef.current) clearTimeout(agentSaveTimerRef.current);
+    agentSaveTimerRef.current = setTimeout(() => void saveAgentRef.current(false), 800);
   }
 
-  async function saveClaudeSettings(clearApiKey = false) {
+  async function saveAgentSettings(clearApiKey = false) {
     setSaveStatus("saving");
     try {
       const fast = fastModel.trim();
       const reasoning = reasoningModel.trim();
       // 双空 = 尚未配置模型 → omit，不挡其他设置落盘；单填或不完整 → 交给 API 400。
       const modelFields = !fast && !reasoning ? {} : { fastModel, reasoningModel };
-      const res = await fetch("/api/settings/claude", {
+      const res = await fetch("/api/settings/agent", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -81,12 +81,12 @@ export default function SkillCenter({
         setSaveStatus("error");
         return;
       }
-      const payload = (await res.json()) as { ok?: boolean; data: PublicClaudeSettings };
+      const payload = (await res.json()) as { ok?: boolean; data: PublicAgentSettings };
       if (!payload.data) {
         setSaveStatus("error");
         return;
       }
-      setClaudeSettings(payload.data);
+      setAgentSettings(payload.data);
       setApiUrl(payload.data.apiUrl);
       setFastModel(payload.data.routerModel);
       setReasoningModel(payload.data.mainModel);
@@ -183,32 +183,32 @@ export default function SkillCenter({
                 companyName={companyName}
                 userName={userName}
                 userAvatar={userAvatar}
-                onAgentNameChange={(v) => { setAgentName(v); scheduleClaudeSave(); }}
-                onCompanyNameChange={(v) => { setCompanyName(v); scheduleClaudeSave(); }}
-                onUserNameChange={(v) => { setUserName(v); identity.setIdentity({ name: v, avatar: userAvatar }); scheduleClaudeSave(); }}
-                onUserAvatarChange={(v) => { setUserAvatar(v); identity.setIdentity({ name: userName, avatar: v }); scheduleClaudeSave(); }}
+                onAgentNameChange={(v) => { setAgentName(v); scheduleAgentSave(); }}
+                onCompanyNameChange={(v) => { setCompanyName(v); scheduleAgentSave(); }}
+                onUserNameChange={(v) => { setUserName(v); identity.setIdentity({ name: v, avatar: userAvatar }); scheduleAgentSave(); }}
+                onUserAvatarChange={(v) => { setUserAvatar(v); identity.setIdentity({ name: userName, avatar: v }); scheduleAgentSave(); }}
               />
             )}
             {activeTab === "appearance" && <AppearanceSettings />}
             {activeTab === "personalization" && (
               <PersonalizationSettings
                 roleMode={roleMode}
-                onRoleModeChange={(v) => { setRoleMode(v); scheduleClaudeSave(); }}
+                onRoleModeChange={(v) => { setRoleMode(v); scheduleAgentSave(); }}
               />
             )}
             {activeTab === "model" && (
               <ModelSettings
                 apiUrl={apiUrl}
                 apiKey={apiKey}
-                apiKeyConfigured={claudeSettings.apiKeyConfigured}
-                apiKeyPreview={claudeSettings.apiKeyPreview}
+                apiKeyConfigured={agentSettings.apiKeyConfigured}
+                apiKeyPreview={agentSettings.apiKeyPreview}
                 fastModel={fastModel}
                 reasoningModel={reasoningModel}
-                onApiUrlChange={(v) => { setApiUrl(v); scheduleClaudeSave(); }}
+                onApiUrlChange={(v) => { setApiUrl(v); scheduleAgentSave(); }}
                 onApiKeyChange={setApiKey}
-                onApiKeyBlur={() => { if (apiKey.trim()) void saveClaudeSettings(false); }}
-                onFastModelChange={(v) => { setFastModel(v); scheduleClaudeSave(); }}
-                onReasoningModelChange={(v) => { setReasoningModel(v); scheduleClaudeSave(); }}
+                onApiKeyBlur={() => { if (apiKey.trim()) void saveAgentSettings(false); }}
+                onFastModelChange={(v) => { setFastModel(v); scheduleAgentSave(); }}
+                onReasoningModelChange={(v) => { setReasoningModel(v); scheduleAgentSave(); }}
               />
             )}
             {activeTab === "shortcuts" && <ShortcutsSettings />}

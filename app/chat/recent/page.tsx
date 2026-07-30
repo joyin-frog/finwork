@@ -1,5 +1,5 @@
 import ChatPage from "@/app/chat/chat-page";
-import { readPublicClaudeSettings } from "@/lib/settings/claude-settings";
+import { readPublicAgentSettings } from "@/lib/settings/agent-settings";
 
 export default async function RecentChatPage({
   searchParams,
@@ -8,7 +8,7 @@ export default async function RecentChatPage({
 }) {
   const params = await searchParams;
   const initialConversationId = params?.id ? Number(params.id) : null;
-  const settings = await readPublicClaudeSettings().catch(() => null);
+  const settings = await readPublicAgentSettings().catch(() => null);
 
   const conversationId = Number.isFinite(initialConversationId) ? initialConversationId : null;
   return <ChatPage key={`chat:recent:${conversationId ?? "missing"}`} mode="recent" initialConversationId={conversationId} roleMode={settings?.roleMode ?? "daily"} />;

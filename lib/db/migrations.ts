@@ -1039,6 +1039,33 @@ export const MIGRATIONS: Migration[] = [
       upDeliverablesV22(db);
     },
   },
+  {
+    version: 23,
+    name: "neutral_runtime_session_locator",
+    up: (db) => {
+      const table = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='chat_conversations'"
+      ).get();
+      if (!table) return;
+      const columns = new Set(
+        (db.prepare("PRAGMA table_info(chat_conversations)").all() as Array<{ name: string }>)
+          .map((column) => column.name)
+      );
+      if (columns.has("claude_session_id") && !columns.has("runtime_session_id")) {
+        db.exec(
+          "ALTER TABLE chat_conversations RENAME COLUMN claude_session_id TO runtime_session_id"
+        );
+      }
+      if (
+        columns.has("claude_session_updated_at") &&
+        !columns.has("runtime_session_updated_at")
+      ) {
+        db.exec(
+          "ALTER TABLE chat_conversations RENAME COLUMN claude_session_updated_at TO runtime_session_updated_at"
+        );
+      }
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

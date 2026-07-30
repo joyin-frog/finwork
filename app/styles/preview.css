@@ -594,6 +594,7 @@
 .preview-status {
   min-height: 100%;
   display: grid;
+  place-content: center; /* 整组居中；勿让 stretch 把三行拉满高度 */
   place-items: center;
   gap: 10px;
   text-align: center;
@@ -646,6 +647,14 @@
 
 .preview-empty-state strong {
   color: var(--text);
+}
+
+.preview-empty-state p {
+  margin: 0;
+  max-width: 16rem;
+  font-size: var(--text-meta);
+  line-height: var(--text-meta--line-height);
+  font-weight: var(--text-meta--font-weight);
 }
 
 .preview-text-stage {

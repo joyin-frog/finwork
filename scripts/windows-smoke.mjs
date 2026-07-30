@@ -24,7 +24,6 @@ const serverEntry = path.join(serverDir, "server.js");
 const FATAL = [
   "Cannot find module", // standalone 漏拷 .next/server/chunks/*.js
   "MODULE_NOT_FOUND",
-  "Native CLI binary", // @anthropic-ai/claude-agent-sdk 原生 CLI 没打包
   "Could not find @vscode/ripgrep", // ripgrep 平台包顶层 import
   "surrogates not allowed", // worker stdio 非 UTF-8
   "UnhandledSchemeError", // edge runtime 误打 node: 内建
