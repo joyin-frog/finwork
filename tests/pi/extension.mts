@@ -86,6 +86,13 @@ for (const command of ["sudo rm -rf /", "rm -rf ~/Documents", "rm -rf /"]) {
     `L1-5 FAIL: 破坏性命令应拒绝：${command}`,
   );
 }
+for (const command of ["find / -name '新建 XLSX*'", "find /Users/gyro -name '*.xlsx'", "find ~ -name '*.xlsx'"]) {
+  assert.match(
+    evaluateBuiltinToolCall("bash", { command }, roots) ?? "",
+    /全盘路径探查/,
+    `L1-5b FAIL: 应拒绝全盘探查: ${command}`,
+  );
+}
 
 // ── L1-6 非内置工具不受本闸影响（财务工具的授权仍在 tool-adapter 的 Zod 之后）──
 assert.equal(

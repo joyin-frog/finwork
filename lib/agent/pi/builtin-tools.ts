@@ -18,6 +18,8 @@ export type FinworkBuiltinRoots = {
   writeRoot: string;
   /** 读类工具（read/grep/find/ls、bash cwd）的根：会话文件目录，比 writeRoot 宽一级，含用户上传件。 */
   readRoot: string;
+  /** Bash 额外的只读附件根；不扩大 write/edit 的写入范围。 */
+  readRoots?: string[];
   /**
    * L4：技能根目录，只读放行。技能正文与其 `references/`、`scripts/` 都在这里；
    * 不放行的话「渐进披露」是断的——SKILL.md 叫模型去看 `scripts/xxx.py`，
@@ -78,7 +80,11 @@ export async function createFinworkBuiltinTools(
         // cwd 钉死在会话输出目录：模型写 `report.md` 落在会话里，而不是项目根或用户家目录。
         // 命令本身再包一层沙箱，绝对路径与等价改写都由内核按系统调用拦。
         spawnHook: ({ command, env }) => ({
-          command: wrapCommandWithSandbox(command, roots),
+          command: wrapCommandWithSandbox(command, {
+            readRoot: roots.readRoot,
+            ...(roots.readRoots ? { readRoots: roots.readRoots } : {}),
+            writeRoot: roots.writeRoot,
+          }),
           cwd: roots.writeRoot,
           env: { ...env, FINWORK_SESSION_OUTPUT_DIR: roots.writeRoot },
         }),

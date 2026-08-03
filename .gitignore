@@ -26,6 +26,8 @@ data/*.db-shm
 data/*.db-wal
 data/local-settings.json
 .codegraph/
+tests/history-eval/real-fixtures/
+tests/history-eval/real-reports/
 excel/
 test-results/
 docs/audits/overlay-consistency/

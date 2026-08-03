@@ -93,6 +93,13 @@ const DESTRUCTIVE_COMMAND_PATTERNS = [
   />\s*\/dev\/sd[a-z]/i,
 ];
 
+// 全盘 find 不是财务任务的合法探查方式：它既浪费时间，也会在沙箱里遍历大量
+// 无关路径。附件路径已由提示词明确给出；模型应在会话/附件只读根内读取。
+const BROAD_DISCOVERY_PATTERNS = [
+  /\bfind\s+(?:\/|~|\/Users(?:\/|\s)|\/System(?:\/|\s))/i,
+  /\bfind\s+\$HOME(?:\/|\s|$)/i,
+];
+
 /**
  * 返回拒绝原因；放行返回 null。
  *
@@ -111,6 +118,11 @@ export function evaluateBuiltinToolCall(
     for (const pattern of DESTRUCTIVE_COMMAND_PATTERNS) {
       if (pattern.test(command)) {
         return `拒绝执行破坏性命令：${command.slice(0, 120)}。如果确实需要，请由用户在终端自行执行。`;
+      }
+    }
+    for (const pattern of BROAD_DISCOVERY_PATTERNS) {
+      if (pattern.test(command)) {
+        return `拒绝执行全盘路径探查：${command.slice(0, 160)}。请使用提示词中提供的附件路径或会话目录。`;
       }
     }
     return null;

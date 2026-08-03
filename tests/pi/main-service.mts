@@ -107,4 +107,18 @@ assert.match(localText.text, /张敏,20000/);
 assert.match(localText.text, /无需调用工具读取/);
 assert.doesNotMatch(localText.text, /请用 read_document/);
 
+const xlsxPrompt = buildPiPrompt(
+  [{ role: "user", content: "把个税公式写入 Excel" }],
+  [{
+    name: "tax.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    size: 100,
+    dataUrl: "",
+    storagePath: path.join(root, "tax.xlsx"),
+  }],
+);
+assert.match(xlsxPrompt.text, /先用 read 加载可用的 xlsx Skill/);
+assert.match(xlsxPrompt.text, /bash 调用 Python\/openpyxl\/pandas/);
+assert.match(xlsxPrompt.text, /finalize_deliverable/);
+
 console.log("Pi main service ✓ controlled locator, fresh/resume prompt and attachments");

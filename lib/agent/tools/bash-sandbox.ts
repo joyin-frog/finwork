@@ -24,6 +24,8 @@ const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 export type BashSandboxRoots = {
   /** 可读根：会话文件目录（含用户上传件）。 */
   readRoot: string;
+  /** 额外的只读根：评测或导入流程中的附件目录；不授予写权限。 */
+  readRoots?: string[];
   /** 可写根：本回合会话输出目录。 */
   writeRoot: string;
 };
@@ -42,6 +44,7 @@ export function isBashSandboxAvailable(): boolean {
  */
 export function buildBashSandboxProfile(roots: BashSandboxRoots): string {
   const readRoot = canonical(roots.readRoot);
+  const readRoots = [...new Set((roots.readRoots ?? []).map(canonical).filter((root) => root !== readRoot))];
   const writeRoot = canonical(roots.writeRoot);
   const home = canonical(os.homedir());
   return [
@@ -55,6 +58,7 @@ export function buildBashSandboxProfile(roots: BashSandboxRoots): string {
     `(deny file-read* (subpath ${sbplString(home)}))`,
     // 会话目录重新放开（覆盖上一条），含用户本次上传的附件。
     `(allow file-read* (subpath ${sbplString(readRoot)}))`,
+    ...readRoots.map((root) => `(allow file-read* (subpath ${sbplString(root)}))`),
     // 标准设备：不放开则 `>/dev/null`、管道、tty 交互全断。
     '(allow file-write-data (literal "/dev/null") (literal "/dev/stdout") (literal "/dev/stderr")',
     '                       (literal "/dev/dtracehelper") (literal "/dev/tty"))',

@@ -29,7 +29,10 @@ mkdirSync(victimDir, { recursive: true });
 const victim = path.join(victimDir, "ledger.txt");
 writeFileSync(victim, "真账本\n", "utf8");
 
-const roots = { readRoot: filesDir, writeRoot: outputDir };
+const attachmentDir = path.join(root, "attachments");
+mkdirSync(attachmentDir, { recursive: true });
+writeFileSync(path.join(attachmentDir, "source.xlsx"), "attachment\n", "utf8");
+const roots = { readRoot: filesDir, readRoots: [attachmentDir], writeRoot: outputDir };
 
 /**
  * 照 pi 的执行形态跑：spawn(shell, [...args, command])，即 /bin/sh -c "<wrapped>"，
@@ -80,6 +83,9 @@ function runSandboxed(command: string): { ok: boolean; output: string } {
 
   const read = runSandboxed(`cat ${JSON.stringify(path.join(filesDir, "uploaded.csv"))}`);
   assert.match(read.output, /上传件/, `B-2 FAIL: 应能读本会话上传件：${read.output}`);
+
+  const attachment = runSandboxed(`cat ${JSON.stringify(path.join(attachmentDir, "source.xlsx"))}`);
+  assert.match(attachment.output, /attachment/, `B-2 FAIL: 应能读取额外附件根：${attachment.output}`);
 }
 
 // ── B-3 越界写入被拦 ──

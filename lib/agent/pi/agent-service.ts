@@ -45,6 +45,8 @@ import {
 import { createFinworkExtension } from "@/lib/agent/pi/extension";
 import { wrapExternalContext } from "@/lib/agent/external-context";
 import { buildDynamicSystemContext } from "@/lib/agent/system-prompt";
+import { decideSettleFromCompletionGate } from "@/lib/agent/completion-gate-settle";
+import { deriveTaskContractForTurn } from "@/lib/agent/run-contract";
 
 export type PiAgentServiceOptions = {
   /** AR10 harness 可覆盖到临时目录；生产缺省固定为 Finwork app-data。 */
@@ -52,6 +54,8 @@ export type PiAgentServiceOptions = {
   agentDir?: string;
   hardTimeoutMs?: number;
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
+  /** 验证失败后最多让 Pi 自动修复的回合数。 */
+  maxRepairRounds?: number;
 };
 
 /**
@@ -116,6 +120,13 @@ export async function runPiAgent(
         intent: request.intent,
       });
 
+  // Query pipeline 会预先注入合同；直接调用 runPiAgent（评测、CLI、测试）也必须有同样的
+  // 完成语义，否则模型可以在生成工作文件后直接 stop，绕过质量门。
+  const taskContract = request.taskContract ?? deriveTaskContractForTurn({
+    intent: request.intent,
+    attachments: request.attachments,
+  });
+
   const { modelRuntime, model, pricingKnown } = await createFinworkModelRuntime(settings, modelId);
   const { createAgentSession, SessionManager, SettingsManager } = await import(
     "@earendil-works/pi-coding-agent"
@@ -130,6 +141,15 @@ export async function runPiAgent(
   const builtinRoots: FinworkBuiltinRoots = {
     writeRoot: outputDir,
     readRoot: path.dirname(outputDir),
+    // 附件可能位于会话目录之外（历史评测就是这种布局）。只加入附件所在目录的
+    // 只读权限；写权限仍严格限制在本回合 outputDir。
+    readRoots: [...new Set(
+      (request.attachments ?? [])
+        .map((attachment) => attachment.storagePath)
+        .filter((storagePath): storagePath is string => Boolean(storagePath))
+        .map((storagePath) => path.dirname(path.resolve(storagePath)))
+        .filter((root) => root !== path.dirname(outputDir)),
+    )],
     skillRoots,
   };
   // 恢复判定要在装扩展之前算：L3b 的历史回放只在「没有可恢复 session」时才注入。
@@ -175,6 +195,7 @@ export async function runPiAgent(
   let liveHandle: LiveSessionHandle | null = null;
   let timedOut = false;
   let externallyAborted = request.signal?.aborted === true;
+  let repairRounds = 0;
   const mapper = new PiEventMapper();
   const currentRunMessages: AgentSessionEvent[] = [];
   const emitQuestion = wrapQuestionResolver(request.resolveUserQuestion, request.emit);
@@ -186,8 +207,8 @@ export async function runPiAgent(
     {
       subagentExecutor: runPiSubagent,
       subagentParallelExecutor: runPiSubagentsParallel,
-      ...(request.taskContract
-        ? { finalize: { taskContract: request.taskContract, runId: request.requestId ?? request.traceId ?? "unknown" } }
+      ...(taskContract
+        ? { finalize: { taskContract, runId: request.requestId ?? request.traceId ?? "unknown" } }
         : {}),
     },
   );
@@ -254,16 +275,49 @@ export async function runPiAgent(
     }, hardTimeoutMs);
     try {
       if (!externallyAborted) {
-        const prompt = buildPiPrompt(request.messages, request.attachments ?? []);
-        try {
-          await session.prompt(prompt.text, { images: prompt.images });
-          await session.waitForIdle();
-        } catch (error) {
-          // Pi 版本可能让 abort() 使 prompt reject，也可能正常 resolve。
-          // 两种形态都统一在下方转成 Finwork AbortError/TimeoutError。
-          if (!timedOut && !externallyAborted) throw error;
+          const prompt = buildPiPrompt(request.messages, request.attachments ?? []);
+          try {
+            await session.prompt(prompt.text, { images: prompt.images });
+            await session.waitForIdle();
+
+            // Harness completion loop：Pi 的 stop 只代表模型结束了一轮，不代表财务任务完成。
+            // finalize_deliverable 内部负责确定性文件验证并提交 CompletionEvidence；这里负责
+            // 在没有通过证据时把验证结果反馈给同一个 session，驱动有限次修复。
+            const runId = request.requestId ?? request.traceId ?? "unknown";
+            const maxRepairRounds = Math.max(0, Math.min(5, serviceOptions.maxRepairRounds ?? 2));
+            while (taskContract.requiredDeliverables.length > 0 && repairRounds < maxRepairRounds) {
+              const gate = decideSettleFromCompletionGate(runId, taskContract);
+              if (gate.outcome === "completed") break;
+              repairRounds += 1;
+              await session.prompt(
+                [
+                  `系统验证发现本次任务尚未完成（第 ${repairRounds}/${maxRepairRounds} 次修复）。`,
+                  gate.gateMessage,
+                  "请检查当前输出目录中的工作文件，补齐或修复交付物。",
+                  "完成修复后必须再次调用 finalize_deliverable；不要只回复说明文字。",
+                  "如果缺少必要输入或无法安全判断，请明确说明阻塞原因，不要猜测数字。",
+                ].join("\n"),
+              );
+              await session.waitForIdle();
+            }
+
+            const finalGate = taskContract.requiredDeliverables.length
+              ? decideSettleFromCompletionGate(runId, taskContract)
+              : { outcome: "completed" as const, qualityStatus: "not_applicable" as const };
+            if (finalGate.outcome !== "completed") {
+              const error = new Error(finalGate.gateMessage);
+              error.name = "ValidationError";
+              (error as Error & { __repairRounds?: number; __verificationStatus?: string; __terminationReason?: string }).__repairRounds = repairRounds;
+              (error as Error & { __repairRounds?: number; __verificationStatus?: string; __terminationReason?: string }).__verificationStatus = "failed";
+              (error as Error & { __repairRounds?: number; __verificationStatus?: string; __terminationReason?: string }).__terminationReason = "validation_failed";
+              throw error;
+            }
+          } catch (error) {
+            // Pi 版本可能让 abort() 使 prompt reject，也可能正常 resolve。
+            // 两种形态都统一在下方转成 Finwork AbortError/TimeoutError。
+            if (!timedOut && !externallyAborted) throw error;
+          }
         }
-      }
     } finally {
       clearTimeout(timeout);
       request.signal?.removeEventListener("abort", abortSession);
@@ -296,6 +350,8 @@ export async function runPiAgent(
       numTurns: accounting.numTurns,
       roleMode: settings.roleMode,
       terminationReason: accounting.stopReason,
+      repairRounds,
+      verificationStatus: taskContract.requiredDeliverables.length ? "passed" : "not_applicable",
     };
   } finally {
     liveHandle?.release();
@@ -347,6 +403,20 @@ export function buildPiPrompt(
   const lastUser = [...messages].reverse().find((message) => message.role === "user");
   const current = lastUser?.content ?? messages.at(-1)?.content ?? "";
   const parts = [current];
+  const hasSpreadsheet = attachments.some(
+    (attachment) =>
+      /\.(xlsx|xlsm|xls|csv|tsv)$/i.test(attachment.name) ||
+      /spreadsheet|excel|csv/i.test(attachment.mimeType),
+  );
+  if (hasSpreadsheet) {
+    parts.push(
+      [
+        "这是 Excel/表格任务。请先用 read 加载可用的 xlsx Skill 的 SKILL.md，并遵循其中的读写、公式和验证流程。",
+        "如果用户要求生成或修改表格，可以使用受限 bash 调用 Python/openpyxl/pandas 等本地工具；先把输入复制到本次会话输出目录，再修改副本。不要执行 find /、find ~ 或全盘搜索，直接使用提示词提供的附件路径。",
+        "完成后必须检查输出文件，并调用 finalize_deliverable 正式交付。",
+      ].join("\n"),
+    );
+  }
   const local = attachments.filter((attachment) => attachment.storagePath);
   const inlinedLocal = local.flatMap((attachment) => {
     const content = readSmallTextAttachment(attachment);

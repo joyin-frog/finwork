@@ -77,4 +77,6 @@ export type FinworkAgentResult = {
   numTurns?: number;
   roleMode?: string;
   terminationReason?: string;
+  repairRounds?: number;
+  verificationStatus?: "passed" | "not_applicable";
 };
