@@ -28,6 +28,7 @@ data/local-settings.json
 .codegraph/
 tests/history-eval/real-fixtures/
 tests/history-eval/real-reports/
+real-fixtures/
 excel/
 test-results/
 docs/audits/overlay-consistency/
