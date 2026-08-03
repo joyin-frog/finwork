@@ -11,7 +11,7 @@ import { HISTORICAL_FINANCE_CASES, type HistoricalFinanceCase } from "./cases";
 const SKIP_LLM = process.env.SKIP_LLM === "true";
 const CASE_IDS = new Set((process.env.HISTORY_CASE_ID || "").split(",").map((s) => s.trim()).filter(Boolean));
 const CASES = CASE_IDS.size === 0 ? HISTORICAL_FINANCE_CASES : HISTORICAL_FINANCE_CASES.filter((c) => CASE_IDS.has(c.id));
-const FIXTURE_ROOT = path.resolve("tests/history-eval/real-fixtures");
+const FIXTURE_ROOT = path.resolve(process.env.HISTORY_FIXTURE_ROOT ?? "tests/history-eval/real-fixtures");
 const USE_REAL_FIXTURES = process.env.HISTORY_REAL_FIXTURES !== "false";
 const TIMEOUT_MS = Number(process.env.HISTORY_TIMEOUT_MS ?? 1_800_000);
 const MAX_REPAIR_ROUNDS = Math.max(0, Math.min(5, Number(process.env.HISTORY_MAX_REPAIR_ROUNDS ?? 5)));

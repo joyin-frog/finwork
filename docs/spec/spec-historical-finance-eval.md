@@ -90,6 +90,7 @@ Pi Agent Loop
 
 ```bash
 FINANCE_AGENT_SETTINGS_PATH=/tmp/finwork-minimax-eval-settings.json \
+HISTORY_FIXTURE_ROOT=/Users/gyro/codex/finance-agent-public/tests/history-eval/real-fixtures \
 HISTORY_REAL_FIXTURES=true \
 HISTORY_TIMEOUT_MS=1800000 \
 HISTORY_MAX_REPAIR_ROUNDS=5 \
@@ -100,6 +101,7 @@ npm run eval:history
 
 ```bash
 FINANCE_AGENT_SETTINGS_PATH=/tmp/finwork-minimax-eval-settings.json \
+HISTORY_FIXTURE_ROOT=/Users/gyro/codex/finance-agent-public/tests/history-eval/real-fixtures \
 HISTORY_REAL_FIXTURES=true \
 HISTORY_CASE_ID=HISTORY-003 \
 HISTORY_TIMEOUT_MS=1800000 \
@@ -108,6 +110,20 @@ npm run eval:history
 ```
 
 真实输入和输出目录已加入 `.gitignore`：`tests/history-eval/real-fixtures/`、`tests/history-eval/real-reports/`。提交前不得把其中的原始工作簿、文档、图片或模型配置加入 Git。
+
+真实 fixture 放在仓库主根目录的共享路径，供不同 worktree 复用：
+
+```text
+/Users/gyro/codex/finance-agent-public/tests/history-eval/real-fixtures/
+```
+
+从 Codex worktree 运行时必须显式指定该路径，并把输出写入当前 worktree：
+
+```bash
+HISTORY_FIXTURE_ROOT=/Users/gyro/codex/finance-agent-public/tests/history-eval/real-fixtures \
+HISTORY_REAL_FIXTURES=true \
+npm run eval:history
+```
 
 ### 结果
 
