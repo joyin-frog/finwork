@@ -144,7 +144,7 @@ query_invoice_ledger 返回的 uncertifiedCount（未认证进项张数）与 di
 若指派说明中指定了本次负责的账户流水文件，只处理该文件；否则处理用户提供的全部流水文件（多账户时按账户分列再合计，明细之和须等于合计）。
 
 【解析前置步骤】
-1. 先用 xlsx skill 或 run_python 把银行流水文件解析成结构化行，每行包含：
+1. 先用 read_document 把银行流水文件读取并整理成结构化行，每行包含：
    - date（交易日期）
    - amount（金额，正数）
    - direction（方向，只能取 "in"（收入/进账）或 "out"（支出/出账）——这是 reconcile_bank_statement 要求的枚举口径，不得使用其他值）

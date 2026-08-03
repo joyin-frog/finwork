@@ -43,8 +43,7 @@ export const windowsHardeningTestPromise = (async () => {
     { file: "lib/agent/mcp-tools/finance-tools.ts",     label: "finance-tools" },
     // python-doctor defaultRunner 函数体
     { file: "lib/runtime/python-doctor.ts",             label: "python-doctor defaultRunner" },
-    // 已注入 4 处，改用 helper 消除手拼
-    { file: "lib/agent/mcp-tools/run-python.ts",        label: "run-python" },
+    // 固定 worker 调用点改用 helper 消除手拼
     { file: "lib/agent/mcp-tools/read-document.ts",     label: "read-document" },
     { file: "lib/agent/mcp-tools/kingdee-tools.ts",     label: "kingdee-tools" },
     { file: "lib/agent/tools/finance/payroll.ts",       label: "payroll" },

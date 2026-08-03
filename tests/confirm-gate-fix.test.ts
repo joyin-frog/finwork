@@ -16,11 +16,11 @@ const allowedSet = new Set(ALLOWED_TOOLS);
 export const confirmGateFixTestPromise = (async () => {
   // ── CGF-1: 红线工具 / always-confirm 工具不在 ALLOWED_TOOLS 中 ─────────
   const mustExclude = [
-    "mcp__finance_worker__calculate_payroll_batch",
-    "mcp__finance_worker__confirm_payroll_period",
-    "mcp__kingdee_worker__export_kingdee_draft",
-    "mcp__finance_worker__remember_convention",
-    "mcp__finance_worker__update_company_profile",
+    "calculate_payroll_batch",
+    "confirm_payroll_period",
+    "export_kingdee_draft",
+    "remember_convention",
+    "update_company_profile",
   ];
   for (const name of mustExclude) {
     assert.ok(
@@ -38,10 +38,10 @@ export const confirmGateFixTestPromise = (async () => {
 
   // ── CGF-2: 非确认工具仍在 ALLOWED_TOOLS 中（保证正常功能不退化）────────
   const mustInclude = [
-    "mcp__finance_worker__query_payroll_status",
-    "mcp__finance_worker__diff_payroll_period",
+    "query_payroll_status",
+    "diff_payroll_period",
     // 角色口径（刀6）静默写入；全局约定仍挂确认门（见 mustExclude / ALWAYS_CONFIRM）
-    "mcp__finance_worker__remember_role_convention",
+    "remember_role_convention",
   ];
   for (const name of mustInclude) {
     assert.ok(
@@ -50,13 +50,13 @@ export const confirmGateFixTestPromise = (async () => {
     );
   }
   assert.ok(
-    !allowedSet.has("mcp__finance_worker__remember_convention"),
+    !allowedSet.has("remember_convention"),
     "CGF-2c FAIL: remember_convention 应挂确认门，不应在 ALLOWED_TOOLS 中"
   );
 
   // run_python 由 risk-confirm 默认放行，但仍须走 PreToolUse（stuck-guard 等），故不进 ALLOWED_TOOLS。
   assert.ok(
-    !allowedSet.has("mcp__finance_worker__run_python"),
+    !allowedSet.has("run_python"),
     "CGF-2b FAIL: run_python 不应在 ALLOWED_TOOLS 中（须经 hook 链，即使确认门已默认放行）"
   );
 
@@ -88,7 +88,7 @@ export const confirmGateFixTestPromise = (async () => {
   // 同步落出（G4d 守卫：resolved tools ⊆ ALLOWED_TOOLS）。
   const payrollOfficerTools = resolveRoleAllowedTools("payroll-officer");
   assert.ok(
-    !payrollOfficerTools.includes("mcp__finance_worker__calculate_payroll_batch"),
+    !payrollOfficerTools.includes("calculate_payroll_batch"),
     `CGF-4 FAIL: payroll-officer resolved tools 仍含 calculate_payroll_batch，子代理确认门路径未生效`
   );
 

@@ -1,4 +1,4 @@
-import { createRunPythonTool } from "./run-python";
+import { createAnalyzeTabularTool } from "./analyze-tabular";
 import { createSpawnSubagentTool } from "./subagent";
 import { createRememberConventionTool } from "./conventions";
 import { createRememberRoleConventionTool } from "./role-conventions";
@@ -60,7 +60,7 @@ function createFinanceWorkerTools(
     ...serverOptions?.finalize,
   };
   return [
-    createRunPythonTool(sdk, outputDir, traceId),
+    createAnalyzeTabularTool(sdk),
       createSpawnSubagentTool(
         sdk,
         outputDir,

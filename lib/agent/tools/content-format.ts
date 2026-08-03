@@ -34,7 +34,7 @@ export function formatToolInput(toolName: string, input: unknown): FormattedCont
 
 /** 输出:shell/搜索类工具的输出是纯文本/命中行,不上色;其余按 JSON 嗅探。 */
 export function formatToolOutput(toolName: string, result: string): FormattedContent {
-  const name = toolName.replace(/^mcp__\w+__/, "");
+  const name = toolName.replace(/^\w+__/, "");
   if (!result) return { plain: "" };
   // grep 命中行、Bash stdout、glob 路径、抓取正文都不是某种语言 → 不上色(用户明确要求 grep 输出不高亮)
   if (["Bash", "Grep", "Glob", "WebSearch", "WebFetch"].includes(name)) return { plain: result };

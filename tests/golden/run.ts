@@ -3,6 +3,7 @@ import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { runPiAgent } from "@/lib/agent/pi/agent-service";
 import type { AgentMessage } from "@/lib/agent/contracts";
 import { buildMessagesUrl } from "@/lib/agent/router";
+import { getModelConfigReadiness } from "@/lib/settings/model-config";
 import { ALL_GOLDEN_CASES, type GoldenCase } from "./cases";
 
 const SKIP_LLM = process.env.SKIP_LLM === "true";
@@ -47,7 +48,15 @@ async function main() {
 
   const settings = await readAgentSettings();
   const hasApiKey = settings.apiKey.trim().length > 0;
-  if (!hasApiKey) console.log("⚠️  No API key configured — agent runs in mock mode.\n");
+  const modelReady = getModelConfigReadiness(settings).modelConfigReady;
+  if (!SKIP_LLM && (!hasApiKey || !modelReady)) {
+    const missing = getModelConfigReadiness(settings).missingModelRoles.join(", ");
+    throw new Error(
+      `真实 Golden 评测需要 API key 和完整模型配置；当前缺少${hasApiKey ? "模型槽位" : "API key"}${missing ? ` (${missing})` : ""}。` +
+      "如需只跑静态评分，请显式设置 SKIP_LLM=true。",
+    );
+  }
+  if (!hasApiKey) console.log("⚠️  No API key configured — static/mock mode enabled by SKIP_LLM.\n");
 
   const results: CaseResult[] = [];
   let passedCount = 0;

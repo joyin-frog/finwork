@@ -2,7 +2,7 @@
  * 凭证 → 金蝶「对照手填清单」(Excel 行数据)。
  *
  * 金蝶云星空无 Excel 导入,最终产物是对照清单:列对齐凭证录入界面,用户照着往金蝶敲。
- * 本函数只出确定性的行数据(列顺序/借贷分列/多凭证摊平),实际写 xlsx 由 run_python(openpyxl)完成。
+ * 本函数只出确定性的行数据(列顺序/借贷分列/多凭证摊平),实际写 xlsx 由固定导出工具完成。
  */
 import type { VoucherLine } from "@/lib/domain/voucher-build";
 

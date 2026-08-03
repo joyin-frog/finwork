@@ -1,13 +1,13 @@
 import path from "node:path";
 import type { Hook, BeforeToolResult } from "./types";
-import { getToolRiskLevel } from "@/lib/agent/tools/registry";
+import { getToolRiskLevel, TOOL_REGISTRY } from "@/lib/agent/tools/registry";
 import { getToolSummary } from "@/lib/agent/tools/renderers";
 import { getRoleDefinition, resolveRoleScopeTools } from "@/lib/agent/roles/registry";
+import { isDeliveredPath, isInsidePath } from "@/lib/agent/tools/path-policy";
 
 // 高风险工具确认时,除了"做什么"还要点明"会有什么后果"(尤其不可逆/锁定类),
 // 让非技术财务在按"确认"前看清影响,而不是面对一句裸工具名。
 const RISK_IMPACT_NOTES: Record<string, string> = {
-  run_python: "它可以读取、修改本机文件并执行代码；请只在你理解并接受这些影响时确认。",
   confirm_payroll_period: "确认后该月工资将「生效锁定」,后续累计预扣以此为基准,不可静默更改。",
   calculate_payroll_batch: "将按累计预扣预缴法计算并保存为草稿(需再次确认才生效)。",
   export_kingdee_draft: "将生成金蝶凭证草稿文件(仅草稿,不直接落账,可在金蝶内复核后过账)。",
@@ -16,7 +16,7 @@ const RISK_IMPACT_NOTES: Record<string, string> = {
 /** 把高风险工具调用翻成"人话动作摘要 + 关键事实(期间/人数) + 不可逆后果 + 确认问句"。 */
 function buildRiskConfirmPrompt(toolName: string, input: unknown): string {
   const summary = getToolSummary(toolName, input);
-  const bare = toolName.replace(/^mcp__\w+__/, "");
+  const bare = toolName;
   const note = RISK_IMPACT_NOTES[bare];
   return `${summary}${note ? `\n${note}` : ""}\n\n确认执行吗?`;
 }
@@ -74,19 +74,9 @@ export function createPathSafetyHook(): Hook {
   };
 }
 
-/** delivered/ 与 generate/ 同级；也拒绝对 outputDir 内误建的 delivered 子路径写入。 */
-function isDeliveredPath(filePath: string, outputDir: string): boolean {
-  const abs = path.resolve(filePath);
-  const parts = abs.split(path.sep);
-  if (parts.includes("delivered")) return true;
-  const genParent = path.dirname(path.resolve(outputDir));
-  const deliveredRoot = path.join(genParent, "delivered");
-  return abs === deliveredRoot || abs.startsWith(deliveredRoot + path.sep);
-}
-
 /**
  * 历史「未接线工具」闸。Bash 已默认放行（用户可用性要求）；
- * hook 仍挂在链上，便于日后按名拒绝其它工具。Python 仍应优先走 run_python。
+ * hook 仍挂在链上，便于日后按名拒绝其它工具。
  */
 export function createUnwiredToolHook(): Hook {
   const blocked = new Set<string>([]);
@@ -96,13 +86,13 @@ export function createUnwiredToolHook(): Hook {
       if (!blocked.has(ctx.toolName)) return { action: "allow" };
       return {
         action: "deny",
-        reason: `${ctx.toolName} 未接入本产品。需要执行 Python 请使用 run_python。`,
+        reason: `${ctx.toolName} 未接入本产品。请使用已登记的领域工具。`,
       };
     },
   };
 }
 
-// Office 二进制(非文本)文件:Read/Edit 读不了(会得到"binary file"错误),改造也只能走 run_python/skill。
+// Office 二进制(非文本)文件:Read/Edit 读不了(会得到"binary file"错误),改造只能走对应 Skill/领域工具。
 const BINARY_OFFICE_EXTS = new Set([".xlsx", ".xls", ".xlsm", ".docx", ".doc", ".pptx", ".ppt"]);
 
 /** read-guard:拦住对 Office 二进制文件用 Read/Edit/Write —— 一步导到正确工具,省掉"binary file"报错+空转一轮。 */
@@ -119,21 +109,21 @@ export function createReadGuardHook(): Hook {
       const tool = ext.startsWith(".xls") ? "openpyxl/pandas" : ext.startsWith(".doc") ? "python-docx" : "python-pptx";
       return {
         action: "deny",
-        reason: `${path.basename(filePath)} 是 ${kind} 二进制文件,Read/Edit 读不了它。探查结构用 run_python(${tool} 打开读),生成或改造走对应 skill(xlsx/docx/pptx);别再用 Read/Edit/Write 直接读写这个文件。`,
+        reason: `${path.basename(filePath)} 是 ${kind} 二进制文件,Read/Edit 读不了它。请用 read_document 或对应 Skill（${tool}）探查，生成或改造走领域工具;别再用 Read/Edit/Write 直接读写这个文件。`,
       };
     },
   };
 }
 
 /** stuck-guard:同一工具连续同等错误且无进展时断路（CR-R2：删除成功调用次数上限）。
- * 链每请求新建 → 计数天然按回合隔离。只盯 run_python。 */
+ * 链每请求新建 → 计数天然按回合隔离。只盯结构化统计工具。 */
 export function createStuckGuardHook(): Hook {
   let consecutiveErrors = 0;
   let lastErrorKey = "";
   let interrupts = 0;
   const MAX_ERR = 5;        // CR-R2：连续同错 ≥5 才断
   const MAX_INTERRUPTS = 2; // 一回合最多打断 2 次,避免反复弹
-  const isPython = (n: string) => n.includes("run_python");
+  const isPython = (n: string) => n.includes("analyze_tabular");
 
   return {
     name: "stuck-guard",
@@ -142,7 +132,7 @@ export function createStuckGuardHook(): Hook {
       const stuck = consecutiveErrors >= MAX_ERR;
       if (!stuck) return { action: "allow" };
       if (interrupts >= MAX_INTERRUPTS) {
-        return { action: "deny", reason: "本回合已多次反复尝试仍无进展。立即停止重试:用 AskUserQuestion 说明卡在哪、给可选项,或如实报告并交付已完成的部分,不要再调用 run_python。" };
+        return { action: "deny", reason: "本回合已多次反复尝试仍无进展。立即停止重试:用 AskUserQuestion 说明卡在哪、给可选项,或如实报告并交付已完成的部分,不要继续重复统计。" };
       }
       interrupts += 1;
       const why = `连续 ${consecutiveErrors} 次同类执行报错`;
@@ -152,7 +142,7 @@ export function createStuckGuardHook(): Hook {
           question: `我${why}、仍没到位。你想怎么办?回复「继续」我换个思路再试;「停下」我说明卡在哪、等你定;「先交付」我把已完成的部分先给你。`,
         })).trim();
         if (/继续|再试|换/.test(ans)) { consecutiveErrors = 0; lastErrorKey = ""; return { action: "allow" }; }
-        return { action: "deny", reason: `用户选择「${ans}」。停止重试:据此向用户说明卡点或交付已完成部分,不要再用同样的方式硬试 run_python。` };
+        return { action: "deny", reason: `用户选择「${ans}」。停止重试:据此向用户说明卡点或交付已完成部分,不要再用同样的方式重复统计。` };
       }
       return { action: "deny", reason: `${why}、仍未成功。停止重试,改用 AskUserQuestion 说明卡点并给选项,或如实报告;不要继续盲试。` };
     },
@@ -175,9 +165,9 @@ export function createStuckGuardHook(): Hook {
 }
 
 /**
- * 专员会话工具边界（E 刀）：MCP 工具只放行该角色职责域内的（resolveRoleScopeTools，
+ * 专员会话工具边界（E 刀）：自定义工具只放行该角色职责域内的（resolveRoleScopeTools，
  * 含域内高风险工具——它们继续走后面的确认门，交互式会话可弹确认卡）；
- * 域外 MCP 工具（含 spawn_subagent——专员不越级派发，与其他角色的域工具）一律 deny。
+ * 域外自定义工具（含 spawn_subagent——专员不越级派发，与其他角色的域工具）一律 deny。
  * 内置工具（Read/Write 等）不经此闸：沿用链上既有 hook 与 SDK 原生 PreToolUse 机制。
  */
 export function createRoleScopeHook(roleId: string): Hook {
@@ -186,17 +176,19 @@ export function createRoleScopeHook(roleId: string): Hook {
   return {
     name: "role-scope",
     async before(ctx): Promise<BeforeToolResult> {
-      if (!ctx.toolName.startsWith("mcp__")) return { action: "allow" };
-      if (ctx.toolName === "mcp__finance_worker__spawn_subagent") {
+      if (!TOOL_REGISTRY.some((tool) => tool.category === "finance" && tool.name === ctx.toolName)) {
+        return { action: "allow" };
+      }
+      if (ctx.toolName === "spawn_subagent") {
         return { action: "deny", reason: `专员会话不能派发其他角色。请直接完成职责内的部分；跨域需求请向用户说明，由用户转到对应专员会话或回主管会话处理。` };
       }
       // 专员会话越权转交（D2×E4）：放行 propose_transfer（不限目标角色——越权即可转任何域）。
-      if (ctx.toolName === "mcp__finance_worker__propose_transfer") {
+      if (ctx.toolName === "propose_transfer") {
         return { action: "allow" };
       }
       // 专员会话可沉淀本角色口径（C2×E6）：放行 remember_role_convention，但锁定只能写本角色记忆
       // （roleId 是模型填的参数，不锁则专员能越权写他角记忆，破坏 C1 隔离边界）。
-      if (ctx.toolName === "mcp__finance_worker__remember_role_convention") {
+      if (ctx.toolName === "remember_role_convention") {
         const target = (ctx.input as { roleId?: unknown } | null | undefined)?.roleId;
         if (target !== roleId) {
           return { action: "deny", reason: `专员会话只能写入「${roleName}」自己的记忆，roleId 请填 "${roleId}" 后重试。` };
@@ -215,15 +207,14 @@ export function createRoleScopeHook(roleId: string): Hook {
 // remember_convention：全局约定影响所有对话，仍走事前确认。
 // remember_role_convention（刀6）：角色口径静默写入 + 对话内轻提示，安全靠可见可删。
 export const ALWAYS_CONFIRM_TOOLS = new Set([
-  "mcp__finance_worker__remember_convention",
+  "remember_convention",
   // P3: 公司画像写入需用户确认(事实数据,非口径)
-  "mcp__finance_worker__update_company_profile",
+  "update_company_profile",
 ]);
 
-// Bash / run_python：默认授权（不弹确认卡）；其余 high-risk 财务写操作仍确认。
+// Bash 默认授权（不弹确认卡）；其余 high-risk 财务写操作仍确认。
 const CONFIRM_EXEMPT_TOOLS = new Set<string>([
   "Bash",
-  "mcp__finance_worker__run_python",
 ]);
 
 /**
@@ -236,7 +227,7 @@ export function createRiskConfirmHook(): Hook {
     async before(ctx): Promise<BeforeToolResult> {
       if (ALWAYS_CONFIRM_TOOLS.has(ctx.toolName)) {
         // 按工具名显式分发确认文案:新增 always-confirm 工具而未写文案时落到通用兜底,不会误用画像文案。
-        if (ctx.toolName === "mcp__finance_worker__update_company_profile") {
+        if (ctx.toolName === "update_company_profile") {
           const patch = getProfilePatch(ctx.input);
           const keys = Object.keys(patch).filter((k) => k !== "idempotency_key");
           const prompt = keys.length
@@ -244,7 +235,7 @@ export function createRiskConfirmHook(): Hook {
             : "要我更新公司画像吗？";
           return { action: "confirm", prompt };
         }
-        if (ctx.toolName === "mcp__finance_worker__remember_convention") {
+        if (ctx.toolName === "remember_convention") {
           const { text, replaces } = getConventionFields(ctx.input);
           let prompt: string;
           if (text && replaces) prompt = `要我把工作约定改成「${text}」吗?(替换原来的「${replaces}」)`;
@@ -255,11 +246,7 @@ export function createRiskConfirmHook(): Hook {
         }
         return { action: "confirm", prompt: buildRiskConfirmPrompt(ctx.toolName, ctx.input) };
       }
-      // 精确名或含 run_python 的 MCP 工具名一律默认放行
-      if (
-        CONFIRM_EXEMPT_TOOLS.has(ctx.toolName) ||
-        ctx.toolName.includes("run_python")
-      ) {
+      if (CONFIRM_EXEMPT_TOOLS.has(ctx.toolName)) {
         return { action: "allow" };
       }
       const riskLevel = getToolRiskLevel(ctx.toolName);
@@ -295,7 +282,7 @@ export function createSubagentBoundaryHook(): Hook {
   return {
     name: "subagent-boundary",
     async before(ctx): Promise<BeforeToolResult> {
-      if (ctx.toolName === "mcp__finance_worker__propose_transfer") {
+      if (ctx.toolName === "propose_transfer") {
         return {
           action: "deny",
           reason: "子代理不能发起转交。请在结果文本中说明 out_of_scope 并返回已完成的部分，由主对话或用户决定是否转交。",
@@ -322,12 +309,6 @@ function getToolFilePath(input: unknown): string {
   if (!input || typeof input !== "object") return "";
   const fp = (input as { file_path?: unknown }).file_path;
   return typeof fp === "string" ? fp : "";
-}
-
-function isInsidePath(filePath: string, rootPath: string): boolean {
-  const resolvedFile = path.resolve(filePath);
-  const resolvedRoot = path.resolve(rootPath);
-  return resolvedFile === resolvedRoot || resolvedFile.startsWith(`${resolvedRoot}${path.sep}`);
 }
 
 function getToolQuestions(input: unknown) {

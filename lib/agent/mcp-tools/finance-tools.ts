@@ -15,7 +15,7 @@ import { listReceivablesRaw } from "@/lib/db/finance-store";
 
 type Sdk = SdkLike;
 
-// Excel/PPT/PDF 的探查与生成已迁到 SDK 原生 skill(agent-skills/) + run_python;
+// Excel/PPT/PDF 的探查与生成走 read_document、领域工具和 SDK 原生 Skill；
 // 这里只保留无法用通用代码替代的确定性财务工具:报销制度读取、税额计算。
 export function createFinanceTools(sdk: Sdk, _outputDir: string) {
   void _outputDir;

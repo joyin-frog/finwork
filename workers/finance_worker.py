@@ -1,97 +1,10 @@
 #!/usr/bin/env python3
 import csv
-import contextlib
-import io
 import json
 import os
-import re
 import sys
-import traceback
 from collections import defaultdict
 from pathlib import Path
-
-# 禁止 run_python 拉起办公软件 GUI（真机曾反复弹出 WPS：agent 用 subprocess 调 wpsoffice 重算公式）。
-_GUI_OFFICE_CODE_RE = re.compile(
-    r"(?is)"
-    r"(wpsoffice|wps\.exe|et\.exe|wpp\.exe|wps\s*office|"
-    r"Microsoft\s*Excel|Excel\.app|Numbers\.app|"
-    r"win32com\.client|Dispatch\(\s*['\"]Excel\.Application|"
-    r"xlwings|"
-    r"open\s+-a\s+|osascript\s+)"
-)
-_GUI_OFFICE_CMD_RE = re.compile(
-    r"(?is)(wpsoffice|wps\.exe|et\.exe|wpp\.exe|"
-    r"Microsoft Excel\.app|Excel\.app|Numbers\.app|"
-    r"/Applications/[^\"'\s]*WPS[^\"'\s]*\.app|"
-    r"/Applications/[^\"'\s]*Excel[^\"'\s]*\.app)"
-)
-_GUI_OFFICE_DENY_MSG = (
-    "禁止通过 run_python 启动 WPS/Excel/Numbers 等图形界面程序。"
-    "公式重算请用本产品的 spreadsheet runtime / LibreOffice；读写表格用 openpyxl 或 xlsx skill。"
-)
-
-
-def _reject_gui_office_code(code: str) -> None:
-    if _GUI_OFFICE_CODE_RE.search(code):
-        raise SystemExit(_GUI_OFFICE_DENY_MSG)
-
-
-def _cmd_looks_like_gui_office(cmd) -> bool:
-    if isinstance(cmd, (list, tuple)):
-        text = " ".join(str(x) for x in cmd)
-    else:
-        text = str(cmd)
-    return bool(_GUI_OFFICE_CMD_RE.search(text))
-
-
-def _install_no_gui_office_exec_guard() -> None:
-    """运行时再拦一层，防止字符串拆开绕过源码静态检查。"""
-    import subprocess as _sp
-
-    _orig_run = _sp.run
-    _orig_popen = _sp.Popen
-    _orig_call = _sp.call
-    _orig_check_call = _sp.check_call
-    _orig_check_output = _sp.check_output
-    _orig_system = os.system
-
-    def _guard_cmd(cmd, *args, **kwargs):
-        if _cmd_looks_like_gui_office(cmd):
-            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
-        return _orig_run(cmd, *args, **kwargs)
-
-    def _guard_popen(cmd, *args, **kwargs):
-        if _cmd_looks_like_gui_office(cmd):
-            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
-        return _orig_popen(cmd, *args, **kwargs)
-
-    def _guard_call(cmd, *args, **kwargs):
-        if _cmd_looks_like_gui_office(cmd):
-            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
-        return _orig_call(cmd, *args, **kwargs)
-
-    def _guard_check_call(cmd, *args, **kwargs):
-        if _cmd_looks_like_gui_office(cmd):
-            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
-        return _orig_check_call(cmd, *args, **kwargs)
-
-    def _guard_check_output(cmd, *args, **kwargs):
-        if _cmd_looks_like_gui_office(cmd):
-            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
-        return _orig_check_output(cmd, *args, **kwargs)
-
-    def _guard_system(command):
-        if _cmd_looks_like_gui_office(command):
-            raise RuntimeError(_GUI_OFFICE_DENY_MSG)
-        return _orig_system(command)
-
-    _sp.run = _guard_cmd  # type: ignore[method-assign]
-    _sp.Popen = _guard_popen  # type: ignore[misc,assignment]
-    _sp.call = _guard_call  # type: ignore[method-assign]
-    _sp.check_call = _guard_check_call  # type: ignore[method-assign]
-    _sp.check_output = _guard_check_output  # type: ignore[method-assign]
-    os.system = _guard_system  # type: ignore[assignment]
-
 
 # ── CSV 分析域 ──────────────────────────────────────────────
 def analyze_csv(path: Path):
@@ -704,7 +617,7 @@ def cmd_recalc_xlsx():
         print(json.dumps({"ok": True, "formulaCount": formula_count}, ensure_ascii=False))
 
 
-# ── run_python 沙箱域（脚本执行 + 覆盖防护） ────────────────
+# ── 固定导出域（版本化防覆盖） ─────────────────────────────
 def _next_versioned_path(path: Path) -> Path:
     """path 已存在则返回同目录下 stem_v2/_v3… 的首个空位,用于「不覆盖上一版产物」。"""
     if not path.exists():
@@ -715,140 +628,6 @@ def _next_versioned_path(path: Path) -> Path:
         if not cand.exists():
             return cand
         n += 1
-
-
-def _install_overwrite_guard(output_path: Path, before_paths: set) -> None:
-    """拦 openpyxl 保存,实现「回合感知」防覆盖(区分跨回答 vs 同一次回答内):
-    - 目标是【本回合开始前就存在】的文件(上一轮产物 / 输入)→ 自动改存 _v2…,护住上一版;
-      同一回合内对同一旧名的反复保存复用同一个新版本(只版本化一次,不堆 _v2_v2…)。
-    - 目标是【本回合内新建】的文件 → 直接覆盖(同一次回答收敛到一个文件,不再版本化)。
-    这样:跨回答不冲掉上次产物,回合内不循环出多版本——也消除「静默改存→自己读回旧文件」的自欺。
-    只动 output_dir 内的目标;其它路径照常。"""
-    try:
-        import openpyxl
-    except Exception:
-        return
-    _orig_save = openpyxl.Workbook.save
-    root = str(output_path.resolve())
-    redirect = {}  # 旧名(resolve) -> 本回合内为它分配的新版本名(str),复用以避免每次再 +1
-
-    def _guarded_save(self, filename):
-        try:
-            target = Path(filename)
-            if not target.is_absolute():
-                target = output_path / target
-            target = target.resolve()
-            if not str(target).startswith(root):
-                # 目标在 output_dir 之外 → 重定向到输出目录同名,防产物逃逸丢失
-                name = target.name
-                target = (output_path / name).resolve()
-                print(f"已重定向到输出目录:{name}")
-            # 回合感知版本化判断(对重定向进来的目标同样适用)
-            if target in redirect:  # 本回合已为此旧名分配过新版 → 复用(覆盖那一个新版)
-                return _orig_save(self, redirect[target])
-            if target.exists() and target in before_paths:  # 上一轮产物/输入 → 版本化一次
-                newp = str(_next_versioned_path(target))
-                redirect[target] = newp
-                return _orig_save(self, newp)
-            # 本回合内新建(或全新文件)→ 直接覆盖/创建,不版本化
-            return _orig_save(self, str(target))
-        except Exception:
-            pass
-        return _orig_save(self, filename)
-
-    openpyxl.Workbook.save = _guarded_save
-
-
-def cmd_run():
-    output_dir = os.environ.get("FINANCE_AGENT_OUTPUT_DIR")
-    if not output_dir:
-        raise SystemExit("FINANCE_AGENT_OUTPUT_DIR environment variable is required")
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # 快照:路径 -> (mtime_ns, size),事后据此识别「新建」和「被改写」的产物
-    before = {}
-    for p in output_path.iterdir():
-        if p.is_file():
-            st = p.stat()
-            before[p.resolve()] = (st.st_mtime_ns, st.st_size)
-
-    code = sys.stdin.read()
-    if not code.strip():
-        raise SystemExit("no code provided on stdin")
-
-    _reject_gui_office_code(code)
-    _install_no_gui_office_exec_guard()
-
-    # 防覆盖守卫的版本化基线 = 「本回合开始前」就存在的文件,而非「本次 run_python 调用前」。
-    # 否则同一回合里先建的文件,对后一次调用(独立 worker 进程、各拍各的 before)就成了"上一版",
-    # 会被误加 _v2(实测缺陷:agent 跨多次调用存同名 → 第二次被改成 _v2)。回合基线由 run-python.ts
-    # 在工具工厂(每回合一次)快照后经 env 传入;无该 env(直接跑 worker/测试)则回落到调用前快照。
-    turn_before_env = os.environ.get("FINANCE_AGENT_TURN_BEFORE")
-    if turn_before_env:
-        try:
-            names = json.loads(turn_before_env)
-            guard_before = {(output_path / n).resolve() for n in names if isinstance(n, str)}
-        except Exception:
-            guard_before = set(before)
-    else:
-        guard_before = set(before)
-    _install_overwrite_guard(output_path, guard_before)  # 回合感知防覆盖:护上一版、回合内覆盖自己(含跨多次调用)
-
-    namespace = {"output_dir": str(output_path), "Path": Path}
-    captured_stdout = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(captured_stdout):
-            exec(code, namespace)
-    except Exception:
-        trace_id = os.environ.get("FINANCE_AGENT_TRACE_ID") or "?"
-        sys.stderr.write(f"[trace_id={trace_id}] ")
-        traceback.print_exc(file=sys.stderr)
-        raise
-
-    # 新建 或 被改写(mtime/size 变化)都算产物 —— 堵「覆盖已存在文件→集合差识别不到→更新隐身」
-    files_out = []
-    for p in sorted(output_path.iterdir(), key=lambda x: x.name):
-        if not p.is_file():
-            continue
-        st = p.stat()
-        prev = before.get(p.resolve())
-        is_new = prev is None
-        is_modified = prev is not None and (st.st_mtime_ns, st.st_size) != prev
-        if is_new or is_modified:
-            files_out.append({
-                "name": p.name,
-                "path": str(p.resolve()),
-                "size_bytes": st.st_size,
-                "mime_type": _guess_mime(p.suffix),
-                "changed": "new" if is_new else "modified",
-            })
-
-    result = {
-        "stdout": captured_stdout.getvalue(),
-        "files": files_out,
-    }
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-
-
-def _guess_mime(suffix: str) -> str:
-    mapping = {
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".xls": "application/vnd.ms-excel",
-        ".csv": "text/csv",
-        ".pdf": "application/pdf",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-        ".svg": "image/svg+xml",
-        ".txt": "text/plain",
-        ".md": "text/markdown",
-        ".json": "application/json",
-        ".html": "text/html",
-    }
-    return mapping.get(suffix, "application/octet-stream")
 
 
 # ── demo 数据与环境自检域 ───────────────────────────────────
@@ -914,8 +693,8 @@ def cmd_selfcheck():
 
 def _force_utf8_stdio():
     """把 stdin/stdout/stderr 统一改成 UTF-8。Windows 中文系统默认 cp936/GBK:Node 按 UTF-8 把
-    code 写进 stdin → sys.stdin.read() 误解码出游离代理(\\udcXX)→ exec/print 报 "surrogates not
-    allowed"。在读 stdin / 任何 print 之前调用。与 run-python.ts 的 PYTHONUTF8=1 双保险:即便 worker
+    JSON 写进 stdin → sys.stdin.read() 误解码出游离代理(\\udcXX)→ print 报 "surrogates not
+    allowed"。在读 stdin / 任何 print 之前调用，保证固定 worker
     被直接运行/测试(没设那个 env)也正确。"""
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
@@ -934,7 +713,7 @@ def cmd_export_voucher_xlsx():
     import openpyxl
 
     payload = json.loads(sys.stdin.read())
-    # 防覆盖:同名已存在则版本化为 _v2/_v3…(与 run_python 守卫同规),
+    # 防覆盖:同名已存在则版本化为 _v2/_v3…,
     # 否则第二次导出会原地改写上一份交付物(附件按路径去重,旧回答的附件被静默篡改)
     output_path = str(_next_versioned_path(Path(payload["outputPath"])))
     vouchers = payload.get("vouchers", [])
@@ -1169,9 +948,6 @@ def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "recalc-xlsx":
         cmd_recalc_xlsx()
         return
-    if len(sys.argv) >= 2 and sys.argv[1] == "run":
-        cmd_run()
-        return
     if len(sys.argv) == 3 and sys.argv[1] == "analyze-csv":
         print(json.dumps(analyze_csv(Path(sys.argv[2])), ensure_ascii=False, indent=2))
         return
@@ -1185,7 +961,7 @@ def main():
         cmd_embed_texts()
         return
     raise SystemExit(
-        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | convert-xls <xls> <xlsx> | probe-spreadsheet | probe-recalc <soffice> | recalc-xlsx <xlsx> <soffice> [timeout] | ocr-image <path> | run | export-voucher-xlsx | export-payslips-xlsx | embed-texts"
+        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | convert-xls <xls> <xlsx> | probe-spreadsheet | probe-recalc <soffice> | recalc-xlsx <xlsx> <soffice> [timeout] | ocr-image <path> | export-voucher-xlsx | export-payslips-xlsx | embed-texts"
     )
 
 

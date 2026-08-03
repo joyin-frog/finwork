@@ -7,12 +7,12 @@ import { hasToolSummary } from "../lib/agent/tools/renderers.ts";
 export const toolRegistryTestPromise = (async () => {
   // ── T1: 新工具已登记进 TOOL_REGISTRY,风险等级符合 plan ────────────────
   const expectedRisk: Record<string, string> = {
-    mcp__finance_worker__calculate_payroll_batch: "high",
-    mcp__finance_worker__confirm_payroll_period: "high",
-    mcp__finance_worker__check_reimbursement_batch: "safe",
-    mcp__finance_worker__record_reimbursement_invoices: "medium",
-    mcp__finance_worker__read_expense_policy: "safe",
-    mcp__finance_worker__tax_calculator: "safe"
+    calculate_payroll_batch: "high",
+    confirm_payroll_period: "high",
+    check_reimbursement_batch: "safe",
+    record_reimbursement_invoices: "medium",
+    read_expense_policy: "safe",
+    tax_calculator: "safe"
   };
   for (const [name, risk] of Object.entries(expectedRisk)) {
     assert.ok(TOOL_REGISTRY.some((t) => t.name === name), `T1 FAIL: ${name} 不在 TOOL_REGISTRY`);
@@ -48,7 +48,7 @@ export const toolRegistryTestPromise = (async () => {
   // grep_docs 已被 query_knowledge 取代,不应再存在
   assert.ok(!serverToolNames.includes("grep_docs"), "T2 FAIL: grep_docs 应已裁撤");
   for (const t of TOOL_REGISTRY) {
-    assert.notEqual(t.name, "mcp__finance_worker__grep_docs", "T2 FAIL: TOOL_REGISTRY 仍含 grep_docs");
+    assert.notEqual(t.name, "grep_docs", "T2 FAIL: TOOL_REGISTRY 仍含 grep_docs");
   }
 
   // ── T3: 5 个业务 skill 已迁移为 agent-skills 下的 SKILL.md(SDK 原生加载,旧 config.json 已退役)──
@@ -76,7 +76,7 @@ export const toolRegistryTestPromise = (async () => {
 
   // ── T6: registry ↔ renderer 一致性守卫 ─────────────────────────────────
   // 所有 finance 工具必须有中文摘要,防止新工具漏接渲染器
-  const bare = (n: string) => n.replace(/^mcp__\w+__/, "");
+  const bare = (n: string) => n.replace(/^\w+__/, "");
   for (const t of TOOL_REGISTRY.filter((d) => d.category === "finance")) {
     assert.ok(hasToolSummary(bare(t.name)), `T6 FAIL: finance tool ${t.name} 缺少 renderer summary`);
   }

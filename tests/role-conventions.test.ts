@@ -69,25 +69,25 @@ export const roleConventionsTestPromise = (async () => {
     const { ALLOWED_TOOLS } = await import("../lib/agent/tools/registry.ts");
     const { ALWAYS_CONFIRM_TOOLS } = await import("../lib/agent/hooks/built-in.ts");
     assert.ok(
-      ALLOWED_TOOLS.includes("mcp__finance_worker__remember_role_convention"),
+      ALLOWED_TOOLS.includes("remember_role_convention"),
       "RC-5 FAIL: remember_role_convention 应在 ALLOWED_TOOLS（静默自动放行）"
     );
     assert.ok(
-      !ALWAYS_CONFIRM_TOOLS.has("mcp__finance_worker__remember_role_convention"),
+      !ALWAYS_CONFIRM_TOOLS.has("remember_role_convention"),
       "RC-5 FAIL: remember_role_convention 不应在 ALWAYS_CONFIRM_TOOLS"
     );
     assert.ok(
-      !ALLOWED_TOOLS.includes("mcp__finance_worker__remember_convention"),
+      !ALLOWED_TOOLS.includes("remember_convention"),
       "RC-5 FAIL: remember_convention 不应在 ALLOWED_TOOLS（须经确认门）"
     );
     assert.ok(
-      ALWAYS_CONFIRM_TOOLS.has("mcp__finance_worker__remember_convention"),
+      ALWAYS_CONFIRM_TOOLS.has("remember_convention"),
       "RC-5 FAIL: remember_convention 应在 ALWAYS_CONFIRM_TOOLS"
     );
 
     // ── RC-6: 对话流轻提示渲染 ────────────────────────────────────────────
     const { getToolSummary } = await import("../lib/agent/tools/renderers.ts");
-    const summary = getToolSummary("mcp__finance_worker__remember_role_convention", {
+    const summary = getToolSummary("remember_role_convention", {
       roleId: "payroll-officer",
       text: "实习生按劳务报酬算个税",
       source: "6月算薪复核",

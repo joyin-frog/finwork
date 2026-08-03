@@ -9,7 +9,7 @@ import {
 import { dispatchSSEEvent } from "../app/chat/chat-request.ts";
 import type { AgentEvent } from "../app/chat/chat-types.ts";
 
-const CONFIRM_TOOL = "mcp__finance_worker__confirm_payroll_period";
+const CONFIRM_TOOL = "confirm_payroll_period";
 
 function ctxFor(toolName: string, resolveUserQuestion?: (q: { question: string }) => Promise<string>) {
   return {
@@ -44,32 +44,32 @@ export const agentConfirmFlowTestPromise = (async () => {
   // ── AC1b: 确认门改纯工具级 —— 高风险财务动作必确认,安全/豁免工具放行 ──
   // 高风险工具:无 resolver → deny(证明确实走了确认门,不靠 skill 配置)
   for (const tool of [
-    "mcp__finance_worker__calculate_payroll_batch",
-    "mcp__finance_worker__confirm_payroll_period",
-    "mcp__kingdee_worker__export_kingdee_draft",
+    "calculate_payroll_batch",
+    "confirm_payroll_period",
+    "export_kingdee_draft",
   ]) {
     const r = await runBeforeHooks(chain, ctxFor(tool, undefined));
     assert.equal(r.behavior, "deny", `AC1b FAIL: 高风险工具 ${tool} 无确认通道应拒绝(即需确认)`);
   }
   // remember_role_convention:刀6 静默写入；remember_convention 仍挂确认门
   assert.equal(
-    (await runBeforeHooks(chain, ctxFor("mcp__finance_worker__remember_role_convention", undefined))).behavior,
+    (await runBeforeHooks(chain, ctxFor("remember_role_convention", undefined))).behavior,
     "allow",
     "AC1b FAIL: remember_role_convention 应静默放行"
   );
   assert.equal(
-    (await runBeforeHooks(chain, ctxFor("mcp__finance_worker__remember_convention", undefined))).behavior,
+    (await runBeforeHooks(chain, ctxFor("remember_convention", undefined))).behavior,
     "deny",
     "AC1b FAIL: remember_convention 无确认通道应拒绝(ALWAYS_CONFIRM)"
   );
   // update_company_profile 仍为 ALWAYS_CONFIRM:无 resolver 必须 fail-closed
   assert.equal(
-    (await runBeforeHooks(chain, ctxFor("mcp__finance_worker__update_company_profile", undefined))).behavior,
+    (await runBeforeHooks(chain, ctxFor("update_company_profile", undefined))).behavior,
     "deny",
     "AC1b FAIL: update_company_profile 无确认通道应拒绝(ALWAYS_CONFIRM 路径守卫)"
   );
   // run_python：默认授权，无确认卡（含子 Agent 无 resolver 场景）。
-  const runPython = "mcp__finance_worker__run_python";
+  const runPython = "run_python";
   assert.equal(
     (await runBeforeHooks(chain, ctxFor(runPython, undefined))).behavior,
     "allow",
@@ -84,7 +84,7 @@ export const agentConfirmFlowTestPromise = (async () => {
   assert.equal(pythonResolverCalled, false, "AC1b FAIL: run_python 不应调用确认 resolver");
 
   // 放行类:无 resolver 也 allow(证明不需确认)。Read(safe)/Skill(未登记→默认medium)
-  for (const tool of ["Read", "Skill", "mcp__finance_worker__search_knowledge", runPython]) {
+  for (const tool of ["Read", "Skill", "search_knowledge", runPython]) {
     const r = await runBeforeHooks(chain, ctxFor(tool, undefined));
     assert.equal(r.behavior, "allow", `AC1b FAIL: ${tool} 应直接放行,不需确认`);
   }
@@ -100,11 +100,11 @@ export const agentConfirmFlowTestPromise = (async () => {
   assert.ok(capturedPrompt.includes("工资生效"), "AC1d FAIL: 确认 prompt 应含人话动作摘要(期间+动作)");
   assert.ok(capturedPrompt.includes("生效锁定"), "AC1d FAIL: 确认 prompt 应点明不可逆后果");
   assert.ok(capturedPrompt.includes("确认执行吗"), "AC1d FAIL: 确认 prompt 应有明确确认问句");
-  assert.ok(!capturedPrompt.includes("mcp__"), "AC1d FAIL: 确认 prompt 不应暴露 raw 工具名");
+  assert.ok(!capturedPrompt.includes(CONFIRM_TOOL), "AC1d FAIL: 确认 prompt 不应暴露 raw 工具名");
 
   // ── AC1c: 确认门并发安全 —— 同时确认多个高风险动作互不串扰 ──
   const concurrent = await Promise.all(
-    ["mcp__finance_worker__calculate_payroll_batch", "mcp__finance_worker__confirm_payroll_period", "mcp__kingdee_worker__export_kingdee_draft"]
+    ["calculate_payroll_batch", "confirm_payroll_period", "export_kingdee_draft"]
       .map((tool) => runBeforeHooks(chain, ctxFor(tool, async () => "确认")))
   );
   assert.ok(concurrent.every((r) => r.behavior === "allow"), "AC1c FAIL: 并发确认(均确认)应全部放行,无串扰");

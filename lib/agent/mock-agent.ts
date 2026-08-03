@@ -56,7 +56,7 @@ export async function runMockAgent(
   // ── journey: 生成文件(写真文件进 outputDir,供产物追踪 + 预览验证)──────────
   if (/生成|导出|excel|表格|报表|xlsx|文件/i.test(text)) {
     await say("好的,我来生成一个示例表格。");
-    emitEvent({ type: "tool_started", toolCallId: "mock-gen-1", toolName: "run_python", input: { task: "build_xlsx" } });
+    emitEvent({ type: "tool_started", toolCallId: "mock-gen-1", toolName: "analyze_tabular", input: { task: "summarize_rows" } });
     await sleep(delay);
     const fileName = "示例报表.xlsx";
     if (runOptions.outputDir) {
@@ -78,7 +78,7 @@ export async function runMockAgent(
         path.join(deliveredDir, fileName)
       );
     }
-    emitEvent({ type: "tool_completed", toolCallId: "mock-gen-1", toolName: "run_python", content: `已生成 ${fileName}`, durationMs: 6 });
+    emitEvent({ type: "tool_completed", toolCallId: "mock-gen-1", toolName: "analyze_tabular", content: `已汇总 ${fileName}`, durationMs: 6 });
     await say(`已生成 ${fileName},可在下方查看。`);
     return done();
   }
@@ -151,9 +151,9 @@ export async function runMockAgent(
     await sleep(delay);
     const steps: Array<{ name: string; input: unknown; result: string; isError?: boolean }> = [
       { name: "Skill", input: { command: "finance-skills:finance-analysis" }, result: "已加载技能" },
-      // mcp 工具带 mcp__<server>__ 前缀(贴近真实),验证图标/剥前缀的归一化
-      { name: "mcp__finance__run_python", input: { code: "rev = Decimal('55379467.47')" }, result: "ok" },
-      { name: "mcp__finance__search_knowledge", input: { query: "差旅住宿标准" }, result: "命中 3 篇" },
+      // Pi 工具使用全局唯一的裸名，验证工具步骤时间线不依赖来源域前缀。
+      { name: "analyze_tabular", input: { rows: [{ revenue: 55379467.47 }] }, result: "ok" },
+      { name: "search_knowledge", input: { query: "差旅住宿标准" }, result: "命中 3 篇" },
       { name: "WebSearch", input: { query: "增值税最新税率" }, result: "找到若干结果" },
       { name: "Edit", input: { file_path: "/Users/user/report.md" }, result: "已写入" },
       { name: "Bash", input: { command: "ls /nonexistent" }, result: "No such file or directory", isError: true },

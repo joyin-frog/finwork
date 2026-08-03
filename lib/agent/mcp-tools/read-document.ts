@@ -19,7 +19,7 @@ const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp"];
 /**
  * read_document:让 agent 直接取上传单据/文件的文本,不必自己写 OCR。
  * 按扩展名路由 worker 的 extract-text / ocr-image(rapidocr);扫描件 PDF 在 extract-text 内自动 OCR 兜底。
- * 修复真机故障——agent 曾对上传单据用 run_python 自己 import pytesseract(没装)卡死。
+ * 固定文档/OCR 入口，避免 agent 自己 import OCR 依赖卡死。
  */
 export function createReadDocumentTool(sdk: SdkLike) {
   return sdk.tool(

@@ -38,17 +38,10 @@ const summaries: Record<string, SummaryFn> = {
     return qs?.[0]?.question ? `询问：${qs[0].question.slice(0, 60)}` : "询问用户";
   },
 
-  run_python: (i, r) => {
-    const intent = pythonCodeIntent(str(i, "code"));
-    if (!r) return intent ? `运行 Python:${intent}` : "执行 Python";
-    const m = r.match(/生成的文件[：:]\n((?:- .+\n?)+)/);
-    if (m) {
-      const names = (m[1].match(/^- (.+?) \(/gm) ?? []).map((s) => s.replace(/^- /, "").replace(/ \($/, ""));
-      if (names.length === 1) return `生成文件 ${names[0]}`;
-      return `生成 ${names.length} 个文件`;
-    }
-    // 没产出文件时,用代码意图代替死板的"执行成功",让过程看得懂在干嘛
-    return intent ? `运行 Python:${intent}` : "执行 Python";
+  analyze_tabular: (i) => {
+    const rows = Array.isArray((i as Record<string, unknown>)?.rows) ? (i as Record<string, unknown>).rows as unknown[] : [];
+    const groups = Array.isArray((i as Record<string, unknown>)?.groupBy) ? (i as Record<string, unknown>).groupBy as unknown[] : [];
+    return `结构化统计${groups.length ? `（按 ${groups.join("、")} 分组）` : ""}：${rows.length} 行`;
   },
 
   // ─── 财务工具(finance_worker) ───
@@ -258,20 +251,20 @@ export function getToolSummary(
   if (isError && result) {
     return `错误：${summarizeToolError(result)}`;
   }
-  const bare = toolName.replace(/^mcp__\w+__/, "");
+  const bare = toolName.replace(/^\w+__/, "");
   const fn = summaries[bare] ?? summaries[toolName];
   return fn ? fn(input, result, isError) : formatToolLabel(toolName);
 }
 
 /** 该工具是否有专门的摘要文案(用于校验财务工具不落入英文兜底)。 */
 export function hasToolSummary(toolName: string): boolean {
-  const bare = toolName.replace(/^mcp__\w+__/, "");
+  const bare = toolName.replace(/^\w+__/, "");
   return Boolean(summaries[bare] ?? summaries[toolName]);
 }
 
 export function formatToolLabel(name: string): string {
   return name
-    .replace(/^mcp__\w+__/, "")
+    .replace(/^\w+__/, "")
     .replace(/[_-]/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }

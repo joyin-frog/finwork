@@ -39,7 +39,7 @@ export function createFinanceToolCollector(
   const definitions: FinanceToolDefinition[] = [];
   const sdk: ToolFactoryLike = {
     tool(name, description, schema, handler) {
-      const id = `mcp__${namespace}__${name}`;
+      const id = name;
       const definition: FinanceToolDefinition = {
         id,
         name,

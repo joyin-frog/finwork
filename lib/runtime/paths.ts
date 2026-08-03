@@ -84,7 +84,7 @@ export function getBundledPythonArchive() {
  * python-build-standalone(内嵌/按需安装运行时)的解释器路径。
  * 注意 Windows 与 venv 不同:standalone 把 python.exe 放在**根目录**(dir/python.exe),
  * Scripts/ 只在 pip 装了控制台脚本后才有、且不含 python.exe。早期误用 Scripts/python.exe
- * 导致 Windows 上"解压后找不到 Python"安装失败、以及 run_python 找不到解释器。
+ * 导致 Windows 上"解压后找不到 Python"安装失败、以及固定 worker 找不到解释器。
  */
 function standalonePythonExe(dir: string) {
   return process.platform === "win32"
@@ -111,8 +111,8 @@ export function getPythonPath() {
   return venvPythonExe(path.join(getProjectRoot(), "workers", ".venv"));
 }
 
-/** Python 解释器所在目录(= getPythonPath 的 dirname)。前置到子进程 PATH,可让 skill 经 Bash
- *  跑的 `python`/`markitdown` 命中与 run_python 同一解释器+依赖(否则 Bash 用 PATH 上的系统 python)。 */
+/** Python 解释器所在目录(= getPythonPath 的 dirname)。前置到子进程 PATH,可让固定 Skill/worker
+ *  跑的 `python`/`markitdown` 命中同一解释器+依赖(否则 Bash 用 PATH 上的系统 python)。 */
 export function getPythonBinDir() {
   return path.dirname(getPythonPath());
 }
