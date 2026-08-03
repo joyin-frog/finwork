@@ -8,7 +8,7 @@
 |---|---|
 | `lib/db/finance-store.ts` | 修改：新增 `listReceivablesRaw` 函数与 `ReceivableRawRow` 类型 |
 | `lib/agent/mcp-tools/finance-tools.ts` | 修改：新增 `query_receivables` 工具定义；import `listReceivablesRaw` |
-| `lib/agent/tools/registry.ts` | 修改：注册 `mcp__finance_worker__query_receivables`（safe/finance） |
+| `lib/agent/tools/registry.ts` | 修改：注册 `query_receivables`（safe/finance） |
 | `lib/agent/tools/renderers.ts` | 修改：新增 `query_receivables` 中文摘要（T6 守卫） |
 | `lib/agent/roles/registry.ts` | 修改：receivables-officer 转正四字段（available/skills/tools/dataScope） |
 | `agent-skills/skills/receivables-ledger/SKILL.md` | 新增：应收账龄台账技能定义 |
@@ -41,7 +41,7 @@
 ### `lib/agent/tools/registry.ts`
 在 `query_invoice_ledger` 下方新增一行：
 ```
-{ name: "mcp__finance_worker__query_receivables", category: "finance", riskLevel: "safe" }
+{ name: "query_receivables", category: "finance", riskLevel: "safe" }
 ```
 
 ### `lib/agent/tools/renderers.ts`
@@ -123,7 +123,7 @@ receivables-officer 的 `available` 已从 `false` 翻为 `true`，无需改动 
 
 ## 开放风险
 
-- **子代理工具访问**：receivables-officer 的 `tools: ["query_receivables"]` 通过 `resolveRoleAllowedTools` 解析为全名 `mcp__finance_worker__query_receivables`，符合 G1/G4d 守卫要求。
+- **子代理工具访问**：receivables-officer 的 `tools: ["query_receivables"]` 通过 `resolveRoleAllowedTools` 解析为全名 `query_receivables`，符合 G1/G4d 守卫要求。
 - **账龄口径**：v1 固定约定回款日（due_date），口径写入 SKILL.md 并在每次输出中显式声明。销项发票级账龄留 WP13b。
 - **核销链路**：主对话有 `record_document_metadata` 权限可起草草稿，子代理无此工具——SKILL.md 分场景声明已覆盖，禁止任何"告诉我即可更新完成"式措辞。
 

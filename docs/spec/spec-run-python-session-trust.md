@@ -3,7 +3,7 @@
 > 版本 v1.0 / 2026-07-13
 > 状态：草案
 > 依赖：`spec-security-release-blockers.md`（run_python 每次确认的机制闸由它引入）
-> 架构事实：Agent 经 `@anthropic-ai/claude-agent-sdk` 的 canUseTool 做工具权限；run_python(`mcp__finance_worker__run_python`,high risk)的确认来自 `createRiskConfirmHook` 通用 high-risk 分支,经 `runBeforeHooks`(chain.ts)调 `resolveUserQuestion` 弹确认卡,答案是唯一回传通道。`runOptions.conversationId?: number` 可用但未进 HookContext。子代理 `resolveUserQuestion` 为 undefined,run_python 走 confirm→无 resolver→deny 的 fail-closed 路径。桌面为单 Node 进程,进程级内存状态可跨请求/跨 Next route bundle 共享(参照 storage.ts 的 `globalThis[Symbol.for(...)]` lease registry)。
+> 架构事实：Agent 经 `@anthropic-ai/claude-agent-sdk` 的 canUseTool 做工具权限；run_python(`run_python`,high risk)的确认来自 `createRiskConfirmHook` 通用 high-risk 分支,经 `runBeforeHooks`(chain.ts)调 `resolveUserQuestion` 弹确认卡,答案是唯一回传通道。`runOptions.conversationId?: number` 可用但未进 HookContext。子代理 `resolveUserQuestion` 为 undefined,run_python 走 confirm→无 resolver→deny 的 fail-closed 路径。桌面为单 Node 进程,进程级内存状态可跨请求/跨 Next route bundle 共享(参照 storage.ts 的 `globalThis[Symbol.for(...)]` lease registry)。
 
 ## 0. 目标与非目标
 **目标**：给 run_python 的确认卡增加「本次对话不再询问」选项。同一 conversationId 内一旦用户以该选项确认过,后续该对话的 run_python 免确认直接放行;换新对话或重启应用后重新询问。把 run_python 的确认从「每次」降为「每对话一次」,不动安全底线。

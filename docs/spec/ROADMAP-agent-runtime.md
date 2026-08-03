@@ -98,6 +98,14 @@ Anthropic Messages 兼容网关是第一阶段 Provider。迁移目标不是复�
 | AR11 | 中立财务工具目录 + Pi adapter | 抽 `FinanceToolDefinition`/执行上下文/规范化 tool id；Pi 生成 session-scoped `customTools`；验证 Zod→模型 schema 桥；从五个代表工具迁到 45 个 | AR10、AR9 | **已ship**：45/45 目录、Zod 权威校验、hooks、AbortSignal 与 Pi customTools 已落 |
 | AR12 | Pi 生产接入 | 用 `AgentSession`、自定义 `ResourceLoader` 与内部 Finwork extension 接入统一事件、安全、会话、交付和子代理合同 | AR9、AR11、AR8 | **已ship**：Query 唯一调用点已切 Pi；MiniMax-M3 真实 Query 等价门通过 |
 | AR13 | Claude SDK 删除 | 删除旧 adapter、SDK/MCP adapter、CLI 打包、Claude settings/session/config/retention、专属测试和错误文案；不保留 fallback | AR12 | **已ship**：依赖、adapter、CLI、旧 API/runner/hooks/专属测试已删除；Pi-only 审计通过 |
+| L1 | Pi extension 落点 + 内置工具 | Finwork 内联 extension（`tool_call` 闸）+ 按会话目录自构造 read/write/edit/bash。顺带发现 path-safety/read-guard 在生产从未触发（Claude 时代工具名+参数名双层不匹配）。见 `design-pi-native-rearchitecture.md` §8 | AR13 | **已ship**（2026-07-30） |
+| L1b | bash 真约束（OS 沙箱） | 正则闸实测漏 8/10（分开写 `-r -f`、`cat ~/.ssh/*`、`mv` 搬账本、python 绕壳全放行）→ 改为 macOS `sandbox-exec` 内核级限制；家目录不可读、仅会话输出目录可写；**fail-closed**：无沙箱平台不注册 bash。`tests/pi/bash-sandbox.mts` 跑真实沙箱验证，判据为靶文件仍在而非退出码 | L1 | **已ship**（2026-07-31） |
+| L2 | provider 可观测性 + 诚实成本 | `before_provider_headers` 注入 trace id、`after_provider_response` 记状态与限流头（§8 欠账落地）。**cost 恒 0 的真因是把「未知」报成「零」**——模型与网关皆用户自填，Finwork 无从知价，故不内置价格表：settings 可声明 `modelPricing`（USD/百万 token，与 pi-ai 同单位），声明了由 pi 算真值，未声明则 `totalCostUsd=null`。`contextWindow`/`maxTokens` 一并可声明（原先对所有模型写死 200k/8192，直接影响 compaction 触发点） | L1 | **已ship**（2026-07-31） |
+| L3 | 系统提示词分段 + 历史真消息回放 | L3a：提示词拆静态前缀（可缓存，AR15b 前置）与动态段（`before_agent_start` 每回合重算），拼出结果逐字等价。L3b：删 `fallbackFlatRecap`，历史改由 `context` 钩子作为真消息注入——原扁平文本**可被消息内容伪造边界**（实测可复现），且丢失角色归属、pi 压缩无法按消息取舍 | L1 | **已ship**（2026-07-31） |
+| L4 | 只读内置工具 + 技能目录放行 | 加 `grep`/`find`/`ls`；技能根只读放行——此前 216 个技能子文件与 5 个引用它们的 SKILL.md 全被闸拒，**渐进披露一直是断的**；删掉自建 `Skill` 工具，清单改带 SKILL.md 路径由 `read` 加载 | L1 | **已ship**（2026-08-03） |
+| L6 | 在途 session 注册表 + provider 缓存 | **推翻了 AR15 的核心决策**（见 `design-pi-live-session.md` §0）：长活 session 的三条收益里，compaction 连续性经核实不成立（压缩落 JSONL），loader 重建实测仅 7ms，插话只需**在途**注册表。改为两项小改动，避免把 `emit`/`traceId` 改成可变间接引用（那会在热路径上引入跨会话 SSE 串流风险） | L1 | **已ship**（2026-08-03） |
+| L8 | 财务专属 compaction | `session_before_compact`：确定性提取金额/口径/期间/科目 → `<关键事实>` 块，叙述交模型生成，两者拼接；**任何一步失败都返回 undefined 回落 pi 自带摘要**（压缩失败会让整回合失败）。同时补上 §8 的 compaction 审计 | L3 | **已ship**（2026-08-03） |
+| AR15 | Pi 长活 Session | Session 活过单个 HTTP 回合（按 conversationId 进程内持有）；连带 provider/loader 缓存、Finwork Pi Extension 复位、steering 底层接线。见 `design-pi-live-session.md` | AR13 | **核心决策已推翻**（2026-08-03，见 `design-pi-live-session.md` §0）：收益核实后由 L6 的两项更小改动实现，不做跨 HTTP 回合持有 session。P1/P2 欠账已清（07-30） |
 | AR14 | Pi-only 发布门 | 45 个生产注册工具、安全矩阵、session/compaction、复杂文件交付、当前三 target（macOS arm64/x64、Windows x64）packaged smoke、import/依赖/产物零 Claude 残留 | AR13 | **进行中**：本机 local gate、真实 MiniMax-M3 上下文/compaction 门通过；CI Windows、另一 macOS 架构与完整 20-case golden 待完成 |
 
 ### Agent 上下文精简 —— 与迁移分账

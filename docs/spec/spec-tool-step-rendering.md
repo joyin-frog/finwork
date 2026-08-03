@@ -94,7 +94,7 @@ function classifyToolContent(toolName: string, role: "input" | "output", value: 
 | `Write` / `Edit` / `MultiEdit` | `json`（params） | `plain` |
 | `Grep` / `Glob` | `json`（params） | `plain`（命中行/路径，**不是语言**） |
 | `WebSearch` / `WebFetch` | `json` | `plain` |
-| MCP 财务/金蝶工具（`mcp__*`） | `json` | `json` |
+| MCP 财务/金蝶工具（`*`） | `json` | `json` |
 | 兜底（未知工具） | 见第二层 | 见第二层 |
 
 **第二层 — 嗅探兜底**（descriptor 没命中、或字段为空时）：`String(value).trim()` 以 `{`/`[` 开头且 `JSON.parse` 成功 → `{lang:"json"}`；否则 `{plain:true}`。保证未知工具也合理。
@@ -121,7 +121,7 @@ function classifyToolContent(toolName: string, role: "input" | "output", value: 
 - `rehypeHighlight` 只在 `tech` 展开面板触发（`daily` 不展开），成本天然受限于「被点开的步」。
 
 ### 验证
-- 单测 `classifyToolContent`：`Bash/input→shell`、`Bash/output→plain`、`Grep/input→json`、`Grep/output→plain`、`Read/output` 按扩展名、`mcp__finance_worker__x/output→json`、未知工具 JSON 串→json、未知工具纯文本→plain。
+- 单测 `classifyToolContent`：`Bash/input→shell`、`Bash/output→plain`、`Grep/input→json`、`Grep/output→plain`、`Read/output` 按扩展名、`x/output→json`、未知工具 JSON 串→json、未知工具纯文本→plain。
 - e2e：tech 模式展开「调用技能」「读取文件」，断言出现高亮 DOM（`.hljs` 或 `pre code` 着色类）；展开 grep 输出断言**无**高亮类。
 
 ### 风险
@@ -156,7 +156,7 @@ function summarizeToolError(toolName: string, result: string): string {
 }
 ```
 
-报错分支变为 `` return `错误：${summarizeToolError(bare, result)}`; ``（`bare` 已在上文 `toolName.replace(/^mcp__\w+__/, "")`，或直接传 `toolName`）。完整错误仍在 tech 展开卡里，这里只修一行摘要。
+报错分支变为 `` return `错误：${summarizeToolError(bare, result)}`; ``（`bare` 已在上文 `toolName.replace(/^\w+__/, "")`，或直接传 `toolName`）。完整错误仍在 tech 展开卡里，这里只修一行摘要。
 
 ### 验证
 - 扩 `tests/tool-renderers.test.ts`：

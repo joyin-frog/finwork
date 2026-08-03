@@ -29,12 +29,12 @@ FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true npx tsx tests/confirm-gate-fix.test.ts
 confirm-gate-fix: 5 tools excluded / 5 non-confirm tools intact / 3 high-finance drift guard / 2 always-confirm drift guard / subagent path ✓
 ```
 
-- `mcp__finance_worker__calculate_payroll_batch` — 不在 ALLOWED_TOOLS（CGF-1 通过）
-- `mcp__finance_worker__confirm_payroll_period` — 不在 ALLOWED_TOOLS（CGF-1 通过）
-- `mcp__kingdee_worker__export_kingdee_draft` — 不在 ALLOWED_TOOLS（CGF-1 通过）
-- `mcp__finance_worker__remember_convention` — 不在 ALLOWED_TOOLS（CGF-1 通过）
-- `mcp__finance_worker__update_company_profile` — 不在 ALLOWED_TOOLS（CGF-1 通过）
-- `Bash`、`Write`、`mcp__finance_worker__run_python`、`mcp__finance_worker__query_payroll_status`、`mcp__finance_worker__diff_payroll_period` — 仍在 ALLOWED_TOOLS（CGF-2 通过）
+- `calculate_payroll_batch` — 不在 ALLOWED_TOOLS（CGF-1 通过）
+- `confirm_payroll_period` — 不在 ALLOWED_TOOLS（CGF-1 通过）
+- `export_kingdee_draft` — 不在 ALLOWED_TOOLS（CGF-1 通过）
+- `remember_convention` — 不在 ALLOWED_TOOLS（CGF-1 通过）
+- `update_company_profile` — 不在 ALLOWED_TOOLS（CGF-1 通过）
+- `Bash`、`Write`、`run_python`、`query_payroll_status`、`diff_payroll_period` — 仍在 ALLOWED_TOOLS（CGF-2 通过）
 
 **结论：通过**
 
@@ -47,7 +47,7 @@ CGF-3b：`built-in.ALWAYS_CONFIRM_TOOLS` 中全部 2 个成员均不在 ALLOWED_
 
 ### SC-3：子代理不回归
 
-- `resolveRoleAllowedTools("payroll-officer")` 不含 `mcp__finance_worker__calculate_payroll_batch`（CGF-4 通过）
+- `resolveRoleAllowedTools("payroll-officer")` 不含 `calculate_payroll_batch`（CGF-4 通过）
 - G4d 守卫（role-registry.test.ts）仍绿：`resolveRoleAllowedTools` 结果 ⊆ ALLOWED_TOOLS，因为该函数末尾有 `.filter((t) => allowedSet.has(t))`，高风险工具从 ALLOWED_TOOLS 落出后自动从所有角色的 resolved tools 中消失。
 
 验证：

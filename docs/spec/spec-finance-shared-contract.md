@@ -16,7 +16,7 @@
 
 | 文件 | 各家怎么追加 |
 |---|---|
-| `lib/agent/tools/registry.ts` | 往 `TOOL_REGISTRY` 数组末尾追加 `{ name: "mcp__finance_worker__<x>", category: "finance", riskLevel }` |
+| `lib/agent/tools/registry.ts` | 往 `TOOL_REGISTRY` 数组末尾追加 `{ name: "<x>", category: "finance", riskLevel }` |
 | `lib/agent/mcp-tools/index.ts` | `import { create<X>Tool }` + 在 `createFinanceMcpServer` 的 tools 数组追加 `create<X>Tool(sdk)` |
 | `lib/agent/tools/renderers.ts` | 往 renderer map 追加 `<tool_short_name>: (i) => "…"` |
 | `lib/agent/system-prompt.ts` | 往 B 段 guidance 数组追加一条（≤1 行，说清何时调该工具/skill） |

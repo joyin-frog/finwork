@@ -213,9 +213,9 @@ export class MemoryStore {
 注册到 `TOOL_REGISTRY`：
 
 ```ts
-{ name: "mcp__finance_worker__save_memory",   category: "finance", riskLevel: "safe" },
-{ name: "mcp__finance_worker__recall_memory", category: "finance", riskLevel: "safe" },
-{ name: "mcp__finance_worker__forget_memory", category: "finance", riskLevel: "medium" },
+{ name: "save_memory",   category: "finance", riskLevel: "safe" },
+{ name: "recall_memory", category: "finance", riskLevel: "safe" },
+{ name: "forget_memory", category: "finance", riskLevel: "medium" },
 ```
 
 加入 `BASE_TOOLS`（所有 skill 默认可用）：
@@ -223,9 +223,9 @@ export class MemoryStore {
 ```ts
 export const BASE_TOOLS = [
   "Read", "Glob", "Grep", "AskUserQuestion",
-  "mcp__finance_worker__save_memory",
-  "mcp__finance_worker__recall_memory",
-  "mcp__finance_worker__forget_memory",
+  "save_memory",
+  "recall_memory",
+  "forget_memory",
 ];
 ```
 
@@ -333,7 +333,7 @@ export const BASE_TOOLS = [
 ✅ 全部满足才算完成：
 
 1. **schema 落地**：`memory_entries` 表 + 索引存在；`UNIQUE(user_id, type, key)` 生效
-2. **三个 MCP 工具注册**：`mcp__finance_worker__save_memory|recall_memory|forget_memory` 在 `TOOL_REGISTRY` 和 `BASE_TOOLS` 中
+2. **三个 MCP 工具注册**：`save_memory|recall_memory|forget_memory` 在 `TOOL_REGISTRY` 和 `BASE_TOOLS` 中
 3. **去重正确**：同 key 重复保存覆盖 content，不重复插入，hit_count 保留
 4. **recall 行为正确**：
    - 只返回 fact 类

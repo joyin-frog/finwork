@@ -51,7 +51,7 @@
 | `lib/domain/payroll-diff.ts` | 新增 | 纯函数 `computePayrollDiff` + 类型（`PayrollDiffResult` 等）。无 DB、无副作用。 |
 | `lib/db/finance-store.ts` | 修改 | 加只读 helper `getPriorConfirmedPeriod(year, month)`（返回 <当前期 最近一个有 confirmed 记录的 {year,month}，无则 null）——供取上月花名册。 |
 | `lib/agent/tools/finance/payroll.ts` | 修改 | `createPayrollTools` 加 `diff_payroll_period` 只读工具；返回加进数组。 |
-| `lib/agent/tools/registry.ts` | 修改 | 注册 `mcp__finance_worker__diff_payroll_period`，`riskLevel:"safe"`。 |
+| `lib/agent/tools/registry.ts` | 修改 | 注册 `diff_payroll_period`，`riskLevel:"safe"`。 |
 | `lib/agent/roles/registry.ts` | 修改 | `payroll-officer.tools` 加 `diff_payroll_period`。 |
 | `lib/agent/tools/renderers.ts` | 修改 | 加 `diff_payroll_period` 的 `getToolSummary` 条目。 |
 | `app/components/payroll-diff-card-data.ts` | 新增 | `parsePayrollDiffStructured`：structuredContent → 卡片 props，严格校验，残缺回 null。 |
@@ -80,7 +80,7 @@
    - 文本：`redact()` 包裹的摘要（"N 人有差异，最大变动：X 实发 ±¥…；新增 K 人；⚠ 漏算/离职嫌疑 M 人：…"）+ 排序清单。
    - `structuredContent: {year, month, comparedFromPeriod: diff.comparedFromPeriod, ...diff}`。
    - 只读，不 `savePayrollDraft`、不 `withIdempotency`。
-4. **注册（⚠ 评审 P2——三处必须原子同提交，中间态测试必红）**：`tools/registry.ts` 加 `{name:"mcp__finance_worker__diff_payroll_period", category:"finance", riskLevel:"safe"}`；`roles/registry.ts` 的 `payroll-officer.tools` 加 `"diff_payroll_period"` 裸名；`renderers.ts` 加 `getToolSummary` 条目（**复用既有 `formatPeriod(i)`**，如 `diff_payroll_period: (i)=>\`复核 ${formatPeriod(i)} 工资差异\``）。
+4. **注册（⚠ 评审 P2——三处必须原子同提交，中间态测试必红）**：`tools/registry.ts` 加 `{name:"diff_payroll_period", category:"finance", riskLevel:"safe"}`；`roles/registry.ts` 的 `payroll-officer.tools` 加 `"diff_payroll_period"` 裸名；`renderers.ts` 加 `getToolSummary` 条目（**复用既有 `formatPeriod(i)`**，如 `diff_payroll_period: (i)=>\`复核 ${formatPeriod(i)} 工资差异\``）。
    - **原子性**：`role.tools` 加裸名后，`resolveRoleAllowedTools` 需能在 `TOOL_REGISTRY` 找到全名，否则 `resolveBare` 抛错；且 `role-registry.test.ts`(G1/G4d) 要求 role.tools 全部可解析、`tool-renderers.test.ts`(AC7) 要求所有 finance 工具有中文摘要。因此 **registry.ts + renderers.ts + roles/registry.ts 三处改动必须一并完成再跑测试**（建议先加这三处注册再实现工具体，或全部写完再一次性跑），不要在中间态执行 `npm test`。
 5. **卡片**：`payroll-diff-card-data.ts` 严格解析（字段缺失/类型不符 → null）；`payroll-diff-card.tsx` 复制 `ReimbursementResultCard`（tool-cards.tsx:52）的表格 + 图标 + tone 模式，顶部一条 `--tone-notice` 标签写"本月草稿 vs 上月已确认（{comparedFromPeriod}）· 仅供复核，非环比分析"；`tool-cards.tsx` 加白名单 + 分发分支。
 6. **测试**：见 §4。

@@ -34,7 +34,7 @@ bank-recon promptTemplate 从 4 行扩展为完整的多段文案：
 在申报前复核批跑行之后追加 `createRunBankReconBatchTool` 调用，及对应 import。
 
 ### lib/agent/tools/registry.ts
-追加一行：`{ name: "mcp__finance_worker__run_bank_recon_batch", category: "finance", riskLevel: "safe" }`
+追加一行：`{ name: "run_bank_recon_batch", category: "finance", riskLevel: "safe" }`
 
 ### lib/agent/tools/renderers.ts
 在 run_filing_precheck_batch renderer 之后追加：

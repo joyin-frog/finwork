@@ -13,7 +13,7 @@
 | `lib/domain/payroll-diff.ts` | 新增 | `computePayrollDiff` 纯函数 + 类型（`PayrollDiffField/Row/Result`）|
 | `lib/db/finance-store.ts` | 修改 | 加 `getPriorConfirmedPeriod(year,month,db?)` 只读 helper |
 | `lib/agent/tools/finance/payroll.ts` | 修改 | `createPayrollTools` 加 `diff_payroll_period` 只读工具；`return` 加入数组 |
-| `lib/agent/tools/registry.ts` | 修改 | 加 `mcp__finance_worker__diff_payroll_period`，riskLevel:"safe" |
+| `lib/agent/tools/registry.ts` | 修改 | 加 `diff_payroll_period`，riskLevel:"safe" |
 | `lib/agent/roles/registry.ts` | 修改 | `payroll-officer.tools` 加 `"diff_payroll_period"` 裸名 |
 | `lib/agent/tools/renderers.ts` | 修改 | 加 `diff_payroll_period` 的 `getToolSummary` 条目，复用 `formatPeriod` |
 | `app/components/payroll-diff-card-data.ts` | 新增 | `parsePayrollDiffStructured`：structuredContent → 卡片 props，严格校验，残缺回 null |

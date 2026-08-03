@@ -213,6 +213,14 @@ Pi 使用 session-scoped `customTools` 注册业务工具。内部 Extension 不
 
 ## 8. Pi Extension
 
+> **实现现状校准（2026-07-30）**：AR12/AR13 实现选择了 `noExtensions: true`，把授权/审计
+> 内联进 tool-adapter 的 `execute`。原因是一次性 session（每回合 create→dispose）下 extension
+> 没有落点，且 builtin 工具全关后不需要 `tool_call` 阶段拦截。本节因此**部分未实施**：
+> 路径检查、安全 hook、always-confirm/session trust 已由 tool-adapter + `authorize.ts` 覆盖；
+> provider 请求/错误 trace、compaction 审计、禁止未接线工具**尚无落点**。
+> 已拍板由 `design-pi-live-session.md`（AR15）在长活 session 之上复位 extension，
+> 授权仍留在 tool-adapter（那里能拿到 Zod 解析后的入参）。开工前以 AR15 为准，不要照本节原文返工。
+
 内部 Finwork extension 只承载横切能力：
 
 - Pi 内置 read/bash/edit/write 的路径与风险检查。

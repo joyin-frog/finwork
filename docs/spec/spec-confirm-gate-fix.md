@@ -20,8 +20,8 @@
 **目标**：让确认门对**必须人确认的工具**真正触发——把这些工具从 `allowedTools` 移除，使其经 `canUseTool → risk-confirm hook`。范围 = **高风险财务工具 + always-confirm 工具**。主 Agent 与子代理因共用 `ALLOWED_TOOLS` 一并修复。
 
 **必须人确认的工具（本次纳入）**：
-- 高风险**财务**工具（`riskLevel:"high"` 且 `category:"finance"`）：`mcp__finance_worker__calculate_payroll_batch`、`mcp__finance_worker__confirm_payroll_period`、`mcp__kingdee_worker__export_kingdee_draft`。
-- always-confirm 工具（`built-in.ts` 的 `ALWAYS_CONFIRM_TOOLS`）：`mcp__finance_worker__remember_convention`、`mcp__finance_worker__update_company_profile`。
+- 高风险**财务**工具（`riskLevel:"high"` 且 `category:"finance"`）：`calculate_payroll_batch`、`confirm_payroll_period`、`export_kingdee_draft`。
+- always-confirm 工具（`built-in.ts` 的 `ALWAYS_CONFIRM_TOOLS`）：`remember_convention`、`update_company_profile`。
 
 **非目标（本期不做，另行处理）**：
 - ❌ **`Bash`**（`riskLevel:"high"` 但 `category:"builtin"`）：它是"应被 deny"（`createUnwiredToolHook`）而非"应确认"的工具，且 `tests/skill-xlsx.test.ts` AC-X2 断言 `ALLOWED_TOOLS.includes("Bash")`。本次**不动 Bash**（保留在 allowedTools，AC-X2 不破），把"Bash 未经门直接可执行"列为**独立后续**（见 §5 遗留）。
@@ -57,8 +57,8 @@
    // 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。
    // always-confirm 两名与 built-in.ALWAYS_CONFIRM_TOOLS 同步（confirm-gate-fix.test 守无漂移）。
    const CONFIRM_REQUIRED_TOOL_NAMES = new Set<string>([
-     "mcp__finance_worker__remember_convention",
-     "mcp__finance_worker__update_company_profile",
+     "remember_convention",
+     "update_company_profile",
    ]);
    export const ALLOWED_TOOLS: string[] = TOOL_REGISTRY
      .filter((t) => !((t.riskLevel === "high" && t.category === "finance") || CONFIRM_REQUIRED_TOOL_NAMES.has(t.name)))
@@ -75,10 +75,10 @@ FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true npm test
 npm run typecheck
 ```
 - 新增测试（`tests/confirm-gate-fix.test.ts`，仿 `tests/ask-user-multi.test.ts` 纯逻辑 + 导入断言）：
-  1. `["mcp__finance_worker__calculate_payroll_batch","mcp__finance_worker__confirm_payroll_period","mcp__kingdee_worker__export_kingdee_draft","mcp__finance_worker__remember_convention","mcp__finance_worker__update_company_profile"]` 每个都 **不在** `ALLOWED_TOOLS`。
-  2. `ALLOWED_TOOLS` **仍含** `Bash`、`Write`、`mcp__finance_worker__run_python`、`mcp__finance_worker__query_payroll_status`、`mcp__finance_worker__diff_payroll_period`。
+  1. `["calculate_payroll_batch","confirm_payroll_period","export_kingdee_draft","remember_convention","update_company_profile"]` 每个都 **不在** `ALLOWED_TOOLS`。
+  2. `ALLOWED_TOOLS` **仍含** `Bash`、`Write`、`run_python`、`query_payroll_status`、`diff_payroll_period`。
   3. 无漂移：`TOOL_REGISTRY.filter(t=>t.riskLevel==="high"&&t.category==="finance")` 每个名字不在 ALLOWED_TOOLS；`[...ALWAYS_CONFIRM_TOOLS]`（从 built-in 导入）每个不在 ALLOWED_TOOLS。
-  4. 子代理：`resolveRoleAllowedTools("payroll-officer")` 不含 `mcp__finance_worker__calculate_payroll_batch`。
+  4. 子代理：`resolveRoleAllowedTools("payroll-officer")` 不含 `calculate_payroll_batch`。
 - 回归必看：`tests/role-registry.test.ts`（G4d）、`tests/skill-xlsx.test.ts`（AC-X2）继续绿。
 - **真机验证（硬门槛）**：`preview_start` → 主对话发"用 calculate_payroll_batch 算某人某月工资" → 确认**弹出确认卡**（两按钮）；一次点确认（执行）、一次点取消（deny、无写入）→ 截图/日志留证。CLI 起不动则明确交回人工执行本步并说明。
 
