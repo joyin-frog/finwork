@@ -75,7 +75,7 @@ export const filingPrecheckBatchTestPromise = (async () => {
 
   // ─── 角色白名单不含批跑工具 ────────────────────────────────────────────────────
   {
-    const toolFullName = "mcp__finance_worker__run_filing_precheck_batch";
+    const toolFullName = "run_filing_precheck_batch";
     const allRoleIds = ["tax-officer", "bookkeeper", "payroll-officer", "treasury-officer", "receivables-officer", "analyst"];
     for (const roleId of allRoleIds) {
       const tools = resolveRoleAllowedTools(roleId);
@@ -255,7 +255,7 @@ export const filingPrecheckBatchTestPromise = (async () => {
   // ─── TOOL_REGISTRY 登记存在且 riskLevel=safe ──────────────────────────────────
   {
     const { TOOL_REGISTRY, getToolRiskLevel } = await import("../lib/agent/tools/registry.ts");
-    const toolName = "mcp__finance_worker__run_filing_precheck_batch";
+    const toolName = "run_filing_precheck_batch";
     assert.ok(
       TOOL_REGISTRY.some((t) => t.name === toolName),
       `T-registry FAIL: ${toolName} 不在 TOOL_REGISTRY`

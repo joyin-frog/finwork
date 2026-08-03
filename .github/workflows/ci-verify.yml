@@ -65,6 +65,7 @@ jobs:
           python -m venv workers/.venv
           workers/.venv/bin/python -m pip install --upgrade pip
           workers/.venv/bin/python -m pip install -r requirements.txt
+      # npm test 现在串起 test:pi(Pi 边界层)+ all.test.ts,两者仍是独立进程,见 package.json。
       - run: bash scripts/ci-cancel-aware.sh npm test
       - run: bash scripts/ci-cancel-aware.sh npm run eval:golden:ci
 

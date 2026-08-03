@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { calculateCumulativePayroll } from "../lib/domain/tax-cumulative";
 import { validateReimbursements } from "../lib/domain/reimbursement";
@@ -109,26 +109,15 @@ wb.save("${xlsxPath}")
   assert.equal(inspected.sheets[0].formula_count, 1);
   assert.equal(inspected.sheets[0].frozen_panes, "A2");
 
-  // Python run (code interpreter) test
-  const runOutputDir = path.join(process.env.FINANCE_AGENT_APP_DATA_DIR!, "test-run-output");
-  mkdirSync(runOutputDir, { recursive: true });
-  const runResult = execFileSync(pythonPath, ["workers/finance_worker.py", "run"], {
+  // Fixed worker command test: CSV analysis is allowed; arbitrary stdin code is not.
+  const csvPath = path.join(process.env.FINANCE_AGENT_APP_DATA_DIR!, "test-expenses.csv");
+  writeFileSync(csvPath, "category,amount,invoice_no\n交通,100,INV-1\n交通,50,INV-2\n", "utf8");
+  const analysisResult = execFileSync(pythonPath, ["workers/finance_worker.py", "analyze-csv", csvPath], {
     encoding: "utf-8",
-    env: { ...process.env, FINANCE_AGENT_OUTPUT_DIR: runOutputDir },
-    input: `
-import openpyxl
-wb = openpyxl.Workbook()
-ws = wb.active
-ws.title = "RunTest"
-ws.append(["Col1", "Col2"])
-ws.append(["A", "B"])
-wb.save(Path(output_dir) / "generated.xlsx")
-`
   });
-  const runJson = JSON.parse(runResult);
-  assert.equal(runJson.files.length, 1, `expected 1 generated file, got ${runJson.files.length}`);
-  assert.equal(runJson.files[0].name, "generated.xlsx");
-  assert.ok(runJson.files[0].size_bytes > 0);
+  const analysisJson = JSON.parse(analysisResult);
+  assert.equal(analysisJson.row_count, 2);
+  assert.equal(analysisJson.by_category["交通"], 150);
 
   const analysis = summarizeExpenses([
     { category: "交通", amount: 100 },
@@ -213,12 +202,11 @@ wb.save(Path(output_dir) / "generated.xlsx")
   const routeJson = (await routeResponse.json()) as {
     data: {
       conversationId: number;
-      runtimeSessionId: string;
-      conversation: { title: string; runtimeSessionId: string; messages: Array<{ role: string; content: string }> };
+      runtimeSessionId: string | null;
+      conversation: { title: string; runtimeSessionId: string | null; messages: Array<{ role: string; content: string }> };
     };
   };
   assert.ok(routeJson.data.conversationId > 0);
-  assert.ok(routeJson.data.runtimeSessionId);
   assert.equal(routeJson.data.conversation.runtimeSessionId, routeJson.data.runtimeSessionId);
   assert.equal(routeJson.data.conversation.title, "这是一条需要完整保存成标签的对话记录");
   assert.deepEqual(

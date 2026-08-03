@@ -7,6 +7,10 @@ process.on("unhandledRejection", (err) => {
   process.exitCode = 1;
 });
 
+// 本文件不含 Pi 边界层套件(tests/pi/**):那些用例各自 mutate env、跑真 Python 子进程,
+// 塞进本文件的单进程会与 DB 单例和 APP_DATA_DIR 串味——正是上面那条假绿灯教训的同一类。
+// 它们由 `npm run test:pi` 以独立进程跑,`npm test` 已串起两者(见 package.json)。
+
 (async () => {
   const { smokeTestPromise } = await import("./smoke.test.ts");
   await smokeTestPromise;
@@ -482,8 +486,8 @@ process.on("unhandledRejection", (err) => {
   const { mcpToolHandlersTestPromise } = await import("./mcp-tool-handlers.test.ts");
   await mcpToolHandlersTestPromise;
 
-  const { runPythonToolTestPromise } = await import("./run-python-tool.test.ts");
-  await runPythonToolTestPromise;
+  const { analyzeTabularToolTestPromise } = await import("./analyze-tabular-tool.test.ts");
+  await analyzeTabularToolTestPromise;
 
   const { trustTierTestPromise } = await import("./trust-tier.test.ts");
   await trustTierTestPromise;

@@ -269,7 +269,7 @@ async function main() {
     const res = await runBeforeHooks(
       chain,
       mkCtx({
-        toolName: "mcp__kingdee_worker__export_kingdee_draft",
+        toolName: "export_kingdee_draft",
         input: { period: "2024-01", vouchers: [] },
         // 注意:不提供 resolveUserQuestion → 无交互通道 → fail-closed
       })
