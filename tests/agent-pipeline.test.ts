@@ -31,7 +31,7 @@ export const agentPipelineTestPromise = (async () => {
 
   const read = await runBeforeHooks(chain, ctx("Read"));
   assert.equal(read.behavior, "allow", "AC6 FAIL: Read 不应被拦截");
-  const python = await runBeforeHooks(chain, ctx("mcp__finance_worker__run_python"));
+  const python = await runBeforeHooks(chain, ctx("run_python"));
   assert.equal(python.behavior, "allow", "AC6 FAIL: run_python 不应被拦截");
 
   console.log("agent-pipeline: all 2 checks passed ✓");

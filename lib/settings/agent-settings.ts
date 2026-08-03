@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { getSettingsPath } from "@/lib/runtime/paths";
 import { getApiKeySecret, setApiKeySecret } from "@/lib/settings/secret-store";
 import { migrateModelConfig, type ModelConfigV2 } from "@/lib/settings/model-config";
+import { parseModelPricing, type ModelPricingConfig } from "@/lib/agent/pi/model-catalog";
 
 export type RoleMode = "daily" | "tech";
 
@@ -33,6 +34,12 @@ export type AgentSettings = {
   telemetryToken: string;
   /** 匿名安装 ID,首次生成后持久化;永不绑定真实身份 */
   telemetryInstallId: string;
+  /**
+   * 每模型费率与上下文上限(可选,按 model id 索引)。费率单位 USD/百万 token。
+   * 模型与网关都是用户自填的,Finwork 无从知道价格,所以不内置价格表:声明了才算真实成本,
+   * 未声明时 totalCostUsd 报 null(未知)而不是 0(免费)。无 UI,直接编辑 settings.json。
+   */
+  modelPricing?: ModelPricingConfig;
 };
 
 export type PublicAgentSettings = {
@@ -150,6 +157,7 @@ export async function readAgentSettings(): Promise<AgentSettings> {
     telemetryEndpoint: (source.telemetryEndpoint || "").trim(),
     telemetryToken: (source.telemetryToken || "").trim(),
     telemetryInstallId,
+    modelPricing: parseModelPricing((source as { modelPricing?: unknown }).modelPricing),
   };
   if (loadedLegacyEnvelope) {
     try {
@@ -182,6 +190,8 @@ export async function writeAgentSettings(next: Partial<AgentSettings>) {
     telemetryToken: (next.telemetryToken ?? current.telemetryToken).trim(),
     // installId 一旦生成后永不被覆盖(除非显式传入非空值)。
     telemetryInstallId: next.telemetryInstallId?.trim() || current.telemetryInstallId || randomUUID(),
+    // 无 UI 写入路径;写设置时原样保留磁盘上的声明,不被 Partial 覆盖掉。
+    modelPricing: next.modelPricing ?? current.modelPricing,
   };
 
   // API Key 进系统密钥库,绝不写进 settings JSON(空串=清除)。
@@ -203,6 +213,8 @@ export async function writeAgentSettings(next: Partial<AgentSettings>) {
     telemetryEndpoint: settings.telemetryEndpoint,
     telemetryToken: settings.telemetryToken,
     telemetryInstallId: settings.telemetryInstallId,
+    // 白名单漏了它就会在每次写设置时静默删掉用户手写的费率声明。
+    ...(settings.modelPricing ? { modelPricing: settings.modelPricing } : {}),
   };
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
   await fs.writeFile(settingsPath, `${JSON.stringify({ agent: jsonPayload }, null, 2)}\n`, "utf-8");

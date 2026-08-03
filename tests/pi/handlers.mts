@@ -27,7 +27,7 @@ try {
     }),
   );
   const tool = (suffix: string) => {
-    const found = tools.find((candidate) => candidate.name.endsWith(`__${suffix}`));
+    const found = tools.find((candidate) => candidate.name === suffix);
     assert.ok(found, `missing Pi tool ${suffix}`);
     return found;
   };

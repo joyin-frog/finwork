@@ -7,7 +7,7 @@ const base = (over: Partial<Ctx> & { toolName: string }): Ctx => ({ input: {}, o
 (async () => {
   // Re-export read-guard checks stay in hooks-guard.test.ts; this file covers CR-R2 stuck policy.
 
-  const py = (over: Partial<Ctx> = {}): Ctx => base({ toolName: "mcp__finance_worker__run_python", input: { code: "x" }, ...over });
+  const py = (over: Partial<Ctx> = {}): Ctx => base({ toolName: "analyze_tabular", input: { code: "x" }, ...over });
   const err = (h: ReturnType<typeof createStuckGuardHook>, msg = "boom") =>
     h.after!({ ...py(), result: msg, isError: true, durationMs: 1 } as never);
   const ok = (h: ReturnType<typeof createStuckGuardHook>) =>

@@ -5,7 +5,7 @@ import { createFinanceToolAuthorizer } from "../../lib/agent/tools/authorize.ts"
 import { PiEventMapper } from "../../lib/agent/pi/event-mapper.ts";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { SubagentRunOptions, SubagentTask } from "../../lib/agent/subagent-contracts.ts";
-import { createPiSkillTool, formatFinworkSkillListing } from "../../lib/agent/pi/skill-tool.ts";
+import { formatFinworkSkillListing } from "../../lib/agent/pi/skill-tool.ts";
 import type { ResourceLoader } from "@earendil-works/pi-coding-agent";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,11 +16,11 @@ assert.equal(definitions.length, 45, "AS0 production catalog count must stay fro
 assert.equal(new Set(definitions.map((item) => item.id)).size, 45, "tool ids must be unique");
 
 for (const id of [
-  "mcp__finance_worker__read_document",
-  "mcp__finance_worker__remember_convention",
-  "mcp__finance_worker__run_python",
-  "mcp__kingdee_worker__process_voucher_batch",
-  "mcp__finance_worker__spawn_subagent",
+  "read_document",
+  "remember_convention",
+  "analyze_tabular",
+  "process_voucher_batch",
+  "spawn_subagent",
 ]) {
   assert.ok(definitions.some((item) => item.id === id), `missing representative tool: ${id}`);
 }
@@ -55,20 +55,13 @@ const skillLoader = {
     diagnostics: [],
   }),
 } as ResourceLoader;
-assert.match(formatFinworkSkillListing(skillLoader), /<name>payroll-calc<\/name>/);
-const skillTool = createPiSkillTool(skillLoader);
-assert.ok(skillTool);
-const skillResult = await skillTool.execute(
-  "load-payroll",
-  { skill: "payroll-calc" },
-  undefined,
-  undefined,
-  {} as never,
-);
-assert.match(
-  skillResult.content.find((item) => item.type === "text")?.text ?? "",
-  /必须调用确定性引擎/,
-);
+// L4：清单改为 pi 原生形态——给出 SKILL.md 绝对路径，模型用 read 读正文，
+// 不再有自建 `Skill` 工具（它曾把 baseDir 告诉模型，却没有工具能读那些引用文件）。
+const listing = formatFinworkSkillListing(skillLoader);
+assert.match(listing, /<name>payroll-calc<\/name>/);
+assert.match(listing, new RegExp(`<path>${skillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</path>`),
+  "清单必须带 SKILL.md 路径，否则模型无从 read");
+assert.match(listing, /用 `read` 读/, "清单必须指明用 read 加载");
 
 const remember = definitions.find((item) => item.name === "remember_convention")!;
 const noResolver = createFinanceToolAuthorizer({
@@ -90,7 +83,7 @@ await assert.rejects(
   /用户取消/,
 );
 
-const processVoucher = tools.find((tool) => tool.name.endsWith("__process_voucher_batch"))!;
+const processVoucher = tools.find((tool) => tool.name === "process_voucher_batch")!;
 await assert.rejects(
   () => processVoucher.execute("invalid-zod", {}, undefined, undefined, {} as never),
   /invalid_type|Invalid input|expected/i,
@@ -114,12 +107,12 @@ assert.deepEqual(
   mapper.map({
     type: "tool_execution_start",
     toolCallId: "tool-1",
-    toolName: "mcp__finance_worker__read_document",
+    toolName: "read_document",
     args: { path: "fixture.txt" },
   }).events,
   [{
     type: "tool_started",
-    toolName: "mcp__finance_worker__read_document",
+    toolName: "read_document",
     toolCallId: "tool-1",
     input: { path: "fixture.txt" },
   }],
@@ -148,7 +141,7 @@ const injectedDefinitions = buildFinanceToolDefinitions(
   },
 );
 const injectedTools = createPiFinanceTools(injectedDefinitions, allow);
-const spawnSubagent = injectedTools.find((tool) => tool.name.endsWith("__spawn_subagent"))!;
+const spawnSubagent = injectedTools.find((tool) => tool.name === "spawn_subagent")!;
 const injectedResult = await spawnSubagent.execute(
   "pi-subagent-injection",
   {

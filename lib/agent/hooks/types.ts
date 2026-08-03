@@ -17,7 +17,7 @@ export type HookContext = {
     questions?: Array<{ question: string; header?: string; options?: Array<{ label: string; description?: string }>; multiSelect?: boolean }>;
     // 高风险工具确认门:confirm 时前端渲染为确认卡(两按钮,无文本框);缺省为普通提问。
     kind?: "confirm";
-    // run_python 专属:true 时前端渲染「本次对话不再询问」勾选项。
+    // 可信任工具为 true 时前端渲染「本次对话不再询问」勾选项。
     trustable?: boolean;
   }) => Promise<string>;
 };

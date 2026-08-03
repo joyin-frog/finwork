@@ -29,37 +29,43 @@ export const queryStagesTestPromise = (async () => {
     ...overrides,
   });
 
-  // --- S1: 新会话创建 ---
+  // --- S1: 新会话创建（locator 归 runtime 所有，Query 不得自铸）---
+  // RuntimeSessionLocator 在 Pi 下就是受控目录里的 .jsonl 路径。Query 若先铸一个
+  // UUID 落库，回合中途失败时这个假 locator 会留在库里，下一轮 resume 必然报
+  // 「Pi session 不存在或已过期」且永久卡死。因此第一轮必须无 locator。
   {
     const ctx = makeCtx();
     const result = await sessionStage(ctx);
     assert.ok(!(result instanceof Response), "S1 FAIL: sessionStage 不应短路");
     assert.ok(typeof result.conversationId === "number", "S1 FAIL: 应创建 conversationId");
-    assert.ok(typeof result.runtimeSessionId === "string" && result.runtimeSessionId.length > 0, "S1 FAIL: 应生成 runtimeSessionId");
-    assert.ok(result.existingRuntimeSessionId === null, "S1 FAIL: 新会话 existingRuntimeSessionId 应为 null");
-    // 验证会话已落库
+    assert.equal(result.runtimeSessionId, null, "S1 FAIL: 首轮尚无 runtime session，不得自铸 locator");
+    assert.equal(result.existingRuntimeSessionId, null, "S1 FAIL: 新会话 existingRuntimeSessionId 应为 null");
+    // 验证会话已落库，且 runtime_session_id 仍为空（只由回合结束的回写填）
     const conv = getChatConversation(result.conversationId!);
     assert.ok(conv, "S1 FAIL: 会话应已落库");
-    assert.ok(conv.runtimeSessionId === result.runtimeSessionId, "S1 FAIL: runtimeSessionId 应写入会话");
+    assert.equal(conv.runtimeSessionId, null, "S1 FAIL: Query 不得把自铸 locator 写进会话");
     console.log("query-stages S1 pass ✓");
   }
 
-  // --- S2: 既有会话追加（runtimeSessionId 复用）---
+  // --- S2: 既有会话追加（复用回合结束时回写的真实 locator）---
   {
+    const { setChatConversationRuntimeSession: writeBack } = await import("../lib/db/sqlite.ts");
     // 先建一条会话
     const ctx1 = makeCtx();
     const r1 = await sessionStage(ctx1);
     assert.ok(!(r1 instanceof Response), "S2 setup FAIL");
     const existingConvId = r1.conversationId!;
-    const existingSessionId = r1.runtimeSessionId!;
+    // 模拟回合结束：route.ts 把 runtime 返回的真实 session 文件路径回写
+    const locator = path.join(baseDir, "pi-sessions", "s2-session.jsonl");
+    writeBack(existingConvId, locator);
 
     // 同 conversationId 再次请求
     const ctx2 = makeCtx({ conversationId: existingConvId });
     const r2 = await sessionStage(ctx2);
     assert.ok(!(r2 instanceof Response), "S2 FAIL: sessionStage 不应短路");
     assert.equal(r2.conversationId, existingConvId, "S2 FAIL: conversationId 应保持");
-    assert.equal(r2.existingRuntimeSessionId, existingSessionId, "S2 FAIL: 应复用 existingRuntimeSessionId");
-    assert.equal(r2.runtimeSessionId, existingSessionId, "S2 FAIL: runtimeSessionId 应与既有相同");
+    assert.equal(r2.existingRuntimeSessionId, locator, "S2 FAIL: 应复用回写的 locator");
+    assert.equal(r2.runtimeSessionId, locator, "S2 FAIL: runtimeSessionId 应与既有相同");
     console.log("query-stages S2 pass ✓");
   }
 
@@ -86,7 +92,7 @@ export const queryStagesTestPromise = (async () => {
     const r3 = await sessionStage(ctx3);
     assert.ok(!(r3 instanceof Response), "S3 FAIL: sessionStage 不应短路");
     assert.equal(r3.existingRuntimeSessionId, null, "S3 FAIL: 超龄会话 existingRuntimeSessionId 应重置为 null");
-    assert.ok(r3.runtimeSessionId !== oldSessionId, "S3 FAIL: 超龄会话应生成新 runtimeSessionId");
+    assert.equal(r3.runtimeSessionId, null, "S3 FAIL: 超龄会话应弃用旧 locator 且不自铸新的");
 
     // 清理 env
     delete process.env.FINANCE_AGENT_FLAG_SESSION_LIVENESS_CHECK_ENABLED;

@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   buildPiPrompt,
+  resolveResumableSession,
   validatePiSessionLocator,
 } from "../../lib/agent/pi/agent-service.ts";
 
@@ -22,6 +24,30 @@ const outside = path.join(root, "outside.jsonl");
 writeFileSync(outside, "{}\n", "utf8");
 assert.throws(() => validatePiSessionLocator(outside, sessions), /受控目录/);
 
+// resolveResumableSession：分开「可用性」与「安全」两种失败。
+// 会话文件不在了（保留期清掉 / app-data 迁移 / 历史遗留的假 locator）→ 起新会话，
+// 不能把整轮对话打死；而越界路径仍必须硬失败。
+assert.equal(
+  resolveResumableSession(randomUUID(), sessions),
+  null,
+  "非路径 locator（历史自铸 UUID）应降级为新会话",
+);
+assert.equal(
+  resolveResumableSession(path.join(sessions, "pruned.jsonl"), sessions),
+  null,
+  "受控目录内已被清理的 session 应降级为新会话",
+);
+assert.equal(
+  resolveResumableSession(sessionFile, sessions),
+  realpathSync(sessionFile),
+  "受控目录内存在的 session 应正常恢复",
+);
+assert.throws(
+  () => resolveResumableSession(outside, sessions),
+  /受控目录/,
+  "越界 session 必须硬失败，不得降级",
+);
+
 const fresh = buildPiPrompt(
   [
     { role: "user", content: "第一问" },
@@ -35,9 +61,10 @@ const fresh = buildPiPrompt(
     dataUrl: "data:text/plain;base64,bm90ZQ==",
     text: "note",
   }],
-  false,
 );
-assert.match(fresh.text, /<对话回顾>/);
+// L3b：历史不再压进提示词文本，改由 extension 的 context 钩子作为真消息注入。
+assert.doesNotMatch(fresh.text, /<对话回顾>/, "历史不应再出现在提示词里");
+assert.doesNotMatch(fresh.text, /第一问|第一答/, "历史内容不应泄进当前提示词");
 assert.match(fresh.text, /当前请求/);
 assert.match(fresh.text, /<attachment name="note.txt">/);
 
@@ -48,7 +75,6 @@ const resumed = buildPiPrompt(
     { role: "user", content: "只发这一条" },
   ],
   [],
-  true,
 );
 assert.equal(resumed.text, "只发这一条");
 assert.equal(resumed.images.length, 0);
@@ -61,7 +87,6 @@ const image = buildPiPrompt(
     size: 3,
     dataUrl: "data:image/png;base64,cmVk",
   }],
-  false,
 );
 assert.equal(image.images.length, 1);
 assert.equal(image.images[0].data, "cmVk");
@@ -77,7 +102,6 @@ const localText = buildPiPrompt(
     dataUrl: "",
     storagePath: csvPath,
   }],
-  false,
 );
 assert.match(localText.text, /张敏,20000/);
 assert.match(localText.text, /无需调用工具读取/);

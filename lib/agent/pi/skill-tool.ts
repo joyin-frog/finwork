@@ -1,60 +1,36 @@
-import { readFile } from "node:fs/promises";
-import type { ResourceLoader, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { z } from "zod/v4";
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { ResourceLoader } from "@earendil-works/pi-coding-agent";
 
+/**
+ * Skill 清单注入（L4 起改为 pi 原生形态）。
+ *
+ * 此前这里还有一个自建的 `Skill` 工具：入参是技能名枚举，内部 `readFile` 正文。
+ * 它存在的唯一原因是 `noTools: "builtin"` 关掉了 `read`，而 pi 的技能机制依赖 `read`。
+ * L4 打开只读内置工具后它就多余了，且它有个实打实的缺陷：
+ *
+ * 它把 `baseDir` 告诉模型、让模型去看 `references/`、`scripts/`，
+ * **但模型没有任何工具读得到那些文件**（读闸只放行会话目录）。仓库里有 216 个
+ * 非 SKILL.md 的技能文件、5 个 SKILL.md 明确引用它们——渐进披露一直是断的。
+ *
+ * 现在：清单直接给出 SKILL.md 的绝对路径，模型用 `read` 读正文，
+ * 再按正文里的相对路径继续 `read` 其引用文件。读闸放行技能根目录（只读）。
+ */
 export function formatFinworkSkillListing(loader: ResourceLoader): string {
   const skills = loader.getSkills().skills.filter((skill) => !skill.disableModelInvocation);
   if (skills.length === 0) return "";
   return [
     "## 可用 Skills",
-    "任务命中下列描述时，先调用 `Skill` 加载完整流程；未加载前不要凭 listing 猜步骤。",
+    "任务命中下列描述时，先用 `read` 读该 Skill 的 SKILL.md 加载完整流程；未加载前不要凭 listing 猜步骤。",
+    "SKILL.md 里引用的 references/、scripts/ 等相对路径，基于该文件所在目录，同样用 `read` 读取。",
     "<available_skills>",
     ...skills.flatMap((skill) => [
       "  <skill>",
       `    <name>${escapeXml(skill.name)}</name>`,
       `    <description>${escapeXml(skill.description)}</description>`,
+      `    <path>${escapeXml(skill.filePath)}</path>`,
       "  </skill>",
     ]),
     "</available_skills>",
   ].join("\n");
-}
-
-export function createPiSkillTool(loader: ResourceLoader): ToolDefinition | null {
-  const skills = loader.getSkills().skills.filter((skill) => !skill.disableModelInvocation);
-  if (skills.length === 0) return null;
-  const names = skills.map((skill) => skill.name);
-  const schema = z.object({
-    skill: z.enum(names as [string, ...string[]]).describe("要加载的 Skill 名称"),
-  });
-  return {
-    name: "Skill",
-    label: "加载 Skill",
-    description: "加载当前任务匹配的 Finwork Skill 完整流程、输入边界和完成证据。每个 Skill 每轮最多加载一次。",
-    parameters: z.toJSONSchema(schema, {
-      target: "draft-7",
-      unrepresentable: "any",
-    }) as TSchema,
-    async execute(_toolCallId, rawArgs) {
-      const { skill: skillName } = await schema.parseAsync(rawArgs);
-      const skill = skills.find((candidate) => candidate.name === skillName);
-      if (!skill) throw new Error(`Skill 不可用：${skillName}`);
-      const markdown = await readFile(skill.filePath, "utf8");
-      const body = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").trim();
-      return {
-        content: [{
-          type: "text",
-          text: [
-            `<skill name="${escapeXml(skill.name)}">`,
-            `references/scripts 的相对路径基于：${skill.baseDir}`,
-            body,
-            "</skill>",
-          ].join("\n"),
-        }],
-        details: { skill: skill.name },
-      };
-    },
-  };
 }
 
 function escapeXml(value: string): string {

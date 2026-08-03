@@ -23,22 +23,35 @@ export type SystemPromptContext = {
  * Skill bodies remain on-demand resources and are not injected here.
  */
 export function buildSystemPromptParts(ctx: SystemPromptContext): string[] {
+  return [buildStaticSystemPrompt(ctx), buildDynamicSystemContext(ctx)];
+}
+
+/**
+ * 静态前缀：只依赖公司名 / Agent 名 / roleMode。
+ *
+ * 单独导出是为了 L3a——它可跨请求缓存，而动态段必须每回合重算。原先两段在
+ * ResourceLoader 里被 `join("\n\n")` 压平，导致整个 loader（连同 skill 目录扫描）
+ * 每条消息重建一次。
+ */
+export function buildStaticSystemPrompt(ctx: Pick<SystemPromptContext, "identity" | "roleMode">): string {
   // 身份标签直接拼进「静态高信任前缀」,先净化成单行+截断:
   // 用户可在 /config 自填公司名/Agent 名,带换行的值能伪造标题/条目、把伪指令贴在
   // 反越狱硬规则旁边。净化后再做空值兜底(避免纯空白名被判真却净化成空)。
   const agentName = sanitizeInline(ctx.identity?.agentName ?? "", 40) || "小财";
   const companyName = sanitizeInline(ctx.identity?.companyName ?? "", 80);
   const madeBy = companyName ? `由${companyName}打造` : "公司内部打造";
+  return buildStaticPrefix(agentName, madeBy, ctx.roleMode);
+}
 
-  const staticPrefix = buildStaticPrefix(agentName, madeBy, ctx.roleMode);
-  const dynamicContext = buildDynamicSuffix(
+/** 动态尾段：记忆、当前日期、近期负反馈、输出目录、公司画像。每回合重算。 */
+export function buildDynamicSystemContext(ctx: SystemPromptContext): string {
+  return buildDynamicSuffix(
     ctx.memoryMarkdown,
     ctx.now ?? new Date(),
     ctx.recentNegativeFeedback,
     ctx.outputDir,
     ctx.companyProfile,
   );
-  return [staticPrefix, dynamicContext];
 }
 
 /** 按优先级加载静态模板:应用数据目录覆盖 > 仓库/打包内 SYSTEM_PROMPT.md(唯一来源,无内置常量兜底)。
@@ -158,6 +171,6 @@ function buildDynamicSuffix(
 export function buildFileOutputSection(outputDir?: string): string {
   // 只注入每会话变化的输出目录；静态交付规则留在 SYSTEM_PROMPT.md。
   return outputDir
-    ? `## 本会话输出目录\n生成或另存文件必须保存到：${outputDir}（run_python 使用 output_dir 变量）。`
-    : "## 本会话输出目录\n生成文件时使用 run_python 的 output_dir 变量。";
+    ? `## 本会话输出目录\n生成或另存文件必须保存到：${outputDir}。文件生成请使用对应的领域导出工具或 Skill。`
+    : "## 本会话输出目录\n文件生成请使用对应的领域导出工具或 Skill。";
 }

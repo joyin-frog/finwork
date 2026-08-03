@@ -13,13 +13,13 @@ export type AgentContextPolicy = {
   toolIds?: string[];
 };
 
-const finance = (name: string) => `mcp__finance_worker__${name}`;
-const kingdee = (name: string) => `mcp__kingdee_worker__${name}`;
+const finance = (name: string) => name;
+const kingdee = (name: string) => name;
 
 const FILE_TOOLS = [
   finance("read_document"),
   finance("read_file"),
-  finance("run_python"),
+  finance("analyze_tabular"),
   finance("finalize_deliverable"),
 ];
 const KNOWLEDGE_TOOLS = [

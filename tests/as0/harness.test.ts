@@ -67,7 +67,7 @@ export const as0HarnessTestPromise = (async () => {
   const events: RuntimeEventRecord[] = [
     {
       at: new Date(0).toISOString(),
-      event: { type: "tool_started", toolName: "mcp__finance_worker__search_knowledge" },
+      event: { type: "tool_started", toolName: "search_knowledge" },
     },
   ];
   const evaluated = evaluateAttempt({ task, events, confirmations: [], completionEvidence: [] });

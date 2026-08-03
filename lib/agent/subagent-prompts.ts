@@ -1,4 +1,6 @@
 import type { RoleDefinition } from "@/lib/agent/roles/registry";
+import { loadRolePromptFile } from "@/lib/agent/roles/prompt-files";
+import { buildDynamicSystemContext } from "@/lib/agent/system-prompt";
 
 const FINANCE_DISCIPLINE_SECTION = `【财务纪律】
 - 金额、税率、比率一律经工具计算，禁止心算；金额以分或 Decimal 处理。
@@ -31,11 +33,28 @@ function roleMemorySection(memories: string[]): string {
   return `\n\n【你的记忆（该角色专属口径与约定，执行时遵守）】\n${lines}`;
 }
 
+/** 动态段不因专员使用独立静态提示词而丢失：日期、全局记忆、角色记忆和输出目录均每回合刷新。 */
+export function buildSpecialistDynamicSystemContext(
+  globalMemory: string | undefined,
+  roleMemories: string[],
+  outputDir: string,
+  now?: Date,
+): string {
+  const roleMemory = roleMemories.length
+    ? `## 本角色记忆\n${roleMemories.map((memory) => `- ${memory}`).join("\n")}`
+    : "";
+  return buildDynamicSystemContext({
+    memoryMarkdown: [globalMemory?.trim(), roleMemory].filter(Boolean).join("\n\n"),
+    outputDir,
+    now,
+  });
+}
+
 export function buildSubagentSystemPrompt(
   role: RoleDefinition,
   memories: string[] = [],
 ): string {
-  return `${SUBAGENT_BASE_PROMPT}\n\n${role.rolePrompt}${roleMemorySection(memories)}`;
+  return `${SUBAGENT_BASE_PROMPT}\n\n${loadRolePromptFile(role)}${roleMemorySection(memories)}`;
 }
 
 export function buildSpecialistChatSystemPrompt(
@@ -62,8 +81,7 @@ export function buildSpecialistChatSystemPrompt(
 
 ${FINANCE_DISCIPLINE_SECTION}${boundariesSection}`;
   const outputSection = outputDir
-    ? `\n\n【输出目录】\n生成或另存的文件保存到：${outputDir}（run_python 里用 output_dir 变量）。`
+    ? `\n\n【输出目录】\n生成或另存的文件保存到：${outputDir}；文件生成请使用对应的领域导出工具或 Skill。`
     : "";
-  return `${base}\n\n${role.rolePrompt}${roleMemorySection(memories)}${outputSection}`;
+  return `${base}\n\n${loadRolePromptFile(role)}${roleMemorySection(memories)}${outputSection}`;
 }
-

@@ -28,7 +28,7 @@ export function sha256(value: string | Buffer): string {
 }
 
 export function normalizeToolName(name: string): string {
-  return name.replace(/^mcp__[^_]+_worker__/, "").replace(/^mcp__[^_]+__/, "");
+  return name.replace(/^[^_]+_worker__/, "").replace(/^[^_]+__/, "");
 }
 
 export function normalizeSkillName(name: string): string {

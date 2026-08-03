@@ -21,7 +21,6 @@ import {
   getMessageAttachments,
   insertChatAttachment,
   insertChatMessage,
-  setChatConversationRuntimeSession,
 } from "@/lib/db/sqlite";
 import { getConversationFilesDir } from "@/lib/runtime/paths";
 import { snapshotGeneratedFiles } from "@/lib/chat/generated-files";
@@ -263,10 +262,10 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
       existingRuntimeSessionId = null;
     }
   }
-  const runtimeSessionId = conversationId ? existingRuntimeSessionId ?? randomUUID() : null;
-  if (conversationId && runtimeSessionId && !existingRuntimeSessionId) {
-    setChatConversationRuntimeSession(conversationId, runtimeSessionId);
-  }
+  // locator 归 runtime 所有，Query 只搬运不铸造（见 lib/agent/session.ts）。Pi 的 locator
+  // 就是受控目录里的 .jsonl 路径，自铸 UUID 落库会在回合中途失败时留下永久卡死 resume 的
+  // 假 locator。首轮为 null，真实 locator 由回合结束时的回写填入。
+  const runtimeSessionId = conversationId ? existingRuntimeSessionId : null;
 
   // 用户引用的技能 → 注入"优先使用这些技能"提示(只改发给 agent 的副本,不污染已落库原文)。
   const agentMessages = injectSkillHint(messages, referencedSkills); // 裁剪职责下沉到 adapter（pickPromptMessages）

@@ -13,8 +13,8 @@ const payroll = resolveAgentContextPolicy({
   intent: "tool_task",
 });
 assert.deepEqual(new Set(payroll.skillNames), new Set(["payroll-calc", "xlsx"]));
-assert.ok(payroll.toolIds?.includes("mcp__finance_worker__calculate_payroll_batch"));
-assert.ok(!payroll.toolIds?.includes("mcp__kingdee_worker__export_kingdee_draft"));
+assert.ok(payroll.toolIds?.includes("calculate_payroll_batch"));
+assert.ok(!payroll.toolIds?.includes("export_kingdee_draft"));
 
 const rag = resolveAgentContextPolicy({
   messages: message("公司差旅住宿标准是什么"),
@@ -24,10 +24,10 @@ assert.deepEqual(rag.skillNames, []);
 assert.deepEqual(
   new Set(rag.toolIds),
   new Set([
-    "mcp__finance_worker__search_knowledge",
-    "mcp__finance_worker__query_knowledge",
-    "mcp__finance_worker__read_file",
-    "mcp__finance_worker__read_document",
+    "search_knowledge",
+    "query_knowledge",
+    "read_file",
+    "read_document",
   ]),
 );
 
@@ -37,8 +37,8 @@ const mixed = resolveAgentContextPolicy({
   intent: "complex_workflow",
 });
 assert.ok(mixed.profiles.includes("bank") && mixed.profiles.includes("voucher"));
-assert.ok(mixed.toolIds?.includes("mcp__finance_worker__reconcile_bank_statement"));
-assert.ok(mixed.toolIds?.includes("mcp__kingdee_worker__process_voucher_batch"));
+assert.ok(mixed.toolIds?.includes("reconcile_bank_statement"));
+assert.ok(mixed.toolIds?.includes("process_voucher_batch"));
 
 const multiDeliverable = resolveAgentContextPolicy({
   messages: message("生成预算差异 Excel 和 Word 简报两个正式交付物"),
@@ -55,7 +55,7 @@ const delegatedDepartments = resolveAgentContextPolicy({
 });
 assert.ok(delegatedDepartments.profiles.includes("batch"));
 assert.ok(delegatedDepartments.profiles.includes("business"));
-assert.ok(delegatedDepartments.toolIds?.includes("mcp__finance_worker__spawn_subagent"));
+assert.ok(delegatedDepartments.toolIds?.includes("spawn_subagent"));
 assert.ok(delegatedDepartments.skillNames?.includes("finance-analysis"));
 
 const confirmationFirst = resolveAgentContextPolicy({
@@ -63,7 +63,7 @@ const confirmationFirst = resolveAgentContextPolicy({
   attachments: [{ name: "单据.csv", mimeType: "text/csv", size: 1, dataUrl: "" }],
   intent: "tool_task",
 });
-assert.deepEqual(confirmationFirst.toolIds, ["mcp__kingdee_worker__export_kingdee_draft"]);
+assert.deepEqual(confirmationFirst.toolIds, ["export_kingdee_draft"]);
 assert.ok(confirmationFirst.skillNames?.includes("kingdee-draft"));
 
 const voucherBatch = resolveAgentContextPolicy({
@@ -71,7 +71,7 @@ const voucherBatch = resolveAgentContextPolicy({
   attachments: [{ name: "单据.csv", mimeType: "text/csv", size: 1, dataUrl: "" }],
   intent: "tool_task",
 });
-assert.deepEqual(voucherBatch.toolIds, ["mcp__kingdee_worker__process_voucher_batch"]);
+assert.deepEqual(voucherBatch.toolIds, ["process_voucher_batch"]);
 
 const sessionOnly = resolveAgentContextPolicy({
   messages: message("记住本次会话的口径"),
@@ -83,6 +83,6 @@ const longTerm = resolveAgentContextPolicy({
   messages: message("以后所有报表都要带环比，请长期记住"),
   intent: "tool_task",
 });
-assert.ok(longTerm.toolIds?.includes("mcp__finance_worker__remember_convention"));
+assert.ok(longTerm.toolIds?.includes("remember_convention"));
 
 console.log("AS2 context policy: fallback, domain union, Skill and tool narrowing ✓");
