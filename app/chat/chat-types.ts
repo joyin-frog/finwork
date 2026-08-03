@@ -80,7 +80,7 @@ export type AskUserQuestionPayload = {
   questions?: Array<{ question: string; header?: string; multiSelect?: boolean; options?: Array<{ label: string; description?: string }> }>;
   // 高风险工具确认门:confirm 时渲染为确认卡(两按钮,无文本框);缺省为普通提问。
   kind?: "confirm" | "question";
-  // run_python 专属:true 时面板在确认卡里渲染「本次对话不再询问」勾选项。
+  // 可信任工具为 true 时面板在确认卡里渲染「本次对话不再询问」勾选项。
   trustable?: boolean;
 };
 

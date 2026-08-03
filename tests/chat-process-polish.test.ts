@@ -210,10 +210,10 @@ export const chatProcessPolishTestPromise = (async () => {
     assert.strictEqual(chips11a!.sheets, 3, `T11a FAIL: sheets 应为 3,实际:${chips11a!.sheets}`);
     assert.strictEqual(chips11a!.voucherCount, 42, `T11a FAIL: voucherCount 应为 42,实际:${chips11a!.voucherCount}`);
 
-    // T11b: mcp__ 前缀形式也能命中
-    const timeline11b = [makeToolResult("mcp__kingdee_worker__export_voucher_list", voucherJson)];
+    // T11b:  前缀形式也能命中
+    const timeline11b = [makeToolResult("export_voucher_list", voucherJson)];
     const chips11b = extractVoucherChips(timeline11b, "金蝶对照手填清单.xlsx");
-    assert.ok(chips11b !== null, "T11b FAIL: mcp__ 前缀形式应命中");
+    assert.ok(chips11b !== null, "T11b FAIL:  前缀形式应命中");
 
     // T11c: 文件名不匹配 → null
     const chips11c = extractVoucherChips(timeline11a, "其他文件.xlsx");

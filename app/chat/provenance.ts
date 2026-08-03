@@ -19,7 +19,7 @@ export type ReimbursementProvenance = {
 };
 
 function bareName(name: string | undefined): string {
-  return (name ?? "").replace(/^mcp__\w+__/, "");
+  return (name ?? "").replace(/^\w+__/, "");
 }
 
 function str(input: unknown, key: string): string {

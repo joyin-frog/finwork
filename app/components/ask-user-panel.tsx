@@ -167,7 +167,7 @@ export function AskUserPanel({
           </>
         )}
 
-        {/* 「本次对话不再询问」勾选（仅 run_python 的 trustable 确认卡出现） */}
+        {/* 「本次对话不再询问」勾选（仅 trustable 确认卡出现） */}
         {question.trustable && (
           <label className="flex items-center gap-2 text-body text-muted-foreground">
             <Checkbox

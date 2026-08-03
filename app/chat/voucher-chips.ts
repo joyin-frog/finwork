@@ -22,7 +22,7 @@ interface TimelineLike {
 
 const TARGET_TOOLS = new Set([
   "export_voucher_list",
-  "mcp__kingdee_worker__export_voucher_list",
+  "export_voucher_list",
 ]);
 
 export function extractVoucherChips(

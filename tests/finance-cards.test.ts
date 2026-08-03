@@ -71,13 +71,13 @@ export const financeCardsTestPromise = (async () => {
     results: [{ employeeName: "张三", grossPay: 1, socialInsurance: 0, housingFund: 0, specialDeduction: 0, taxCurrent: 0, netPay: 1 }],
     failures: [], coldStarts: []
   };
-  assert.ok(ToolResultCard({ name: "mcp__finance_worker__calculate_payroll_batch", structured: payrollStructured }), "AC9 FAIL: 工资卡");
-  assert.ok(ToolResultCard({ name: "mcp__finance_worker__check_reimbursement_batch", structured: { results: [reimRow("I", [])] } }), "AC9 FAIL: 报销卡");
-  assert.ok(ToolResultCard({ name: "mcp__kingdee_worker__export_kingdee_draft", structured: draftResult.structuredContent }), "AC9 FAIL: 凭证卡");
-  assert.ok(ToolResultCard({ name: "mcp__kingdee_worker__validate_kingdee_voucher", structured: validateResult.structuredContent }), "AC9 FAIL: 校验卡");
-  assert.equal(ToolResultCard({ name: "mcp__finance_worker__tax_calculator", structured: { any: 1 } }), null, "AC9 FAIL: 未注册工具应返回 null");
-  assert.equal(ToolResultCard({ name: "mcp__finance_worker__calculate_payroll_batch", structured: null }), null, "AC9 FAIL: 无 structured 应返回 null");
-  assert.equal(ToolResultCard({ name: "mcp__finance_worker__calculate_payroll_batch", structured: { results: [{ bad: true }] } }), null, "AC9 FAIL: 解析失败必须回退 null");
+  assert.ok(ToolResultCard({ name: "calculate_payroll_batch", structured: payrollStructured }), "AC9 FAIL: 工资卡");
+  assert.ok(ToolResultCard({ name: "check_reimbursement_batch", structured: { results: [reimRow("I", [])] } }), "AC9 FAIL: 报销卡");
+  assert.ok(ToolResultCard({ name: "export_kingdee_draft", structured: draftResult.structuredContent }), "AC9 FAIL: 凭证卡");
+  assert.ok(ToolResultCard({ name: "validate_kingdee_voucher", structured: validateResult.structuredContent }), "AC9 FAIL: 校验卡");
+  assert.equal(ToolResultCard({ name: "tax_calculator", structured: { any: 1 } }), null, "AC9 FAIL: 未注册工具应返回 null");
+  assert.equal(ToolResultCard({ name: "calculate_payroll_batch", structured: null }), null, "AC9 FAIL: 无 structured 应返回 null");
+  assert.equal(ToolResultCard({ name: "calculate_payroll_batch", structured: { results: [{ bad: true }] } }), null, "AC9 FAIL: 解析失败必须回退 null");
 
   console.log("finance-cards: all 3 checks passed ✓");
 })();

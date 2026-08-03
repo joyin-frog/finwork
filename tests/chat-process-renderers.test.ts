@@ -21,11 +21,11 @@ export const chatProcessRenderersTestPromise = (async () => {
     "检索知识库",
     "R3 FAIL: search_knowledge 无 query 时回落"
   );
-  // mcp__ 前缀剥离后仍生效
+  //  前缀剥离后仍生效
   assert.equal(
-    getToolSummary("mcp__finance_worker__search_knowledge", { query: "差旅标准" }),
+    getToolSummary("search_knowledge", { query: "差旅标准" }),
     "检索知识库：差旅标准",
-    "R4 FAIL: mcp__ 前缀下 search_knowledge 应正常"
+    "R4 FAIL:  前缀下 search_knowledge 应正常"
   );
 
   // query_knowledge → 查询知识库：<command 截 32 字>（有 rg 模式优先显示模式）
@@ -66,9 +66,9 @@ export const chatProcessRenderersTestPromise = (async () => {
     "R10 FAIL: read_file 无 fileName 时回落"
   );
   assert.equal(
-    getToolSummary("mcp__finance_worker__read_file", { fileName: "报销制度.pdf" }),
+    getToolSummary("read_file", { fileName: "报销制度.pdf" }),
     "读取资料：报销制度.pdf",
-    "R11 FAIL: mcp__ 前缀下 read_file 应正常"
+    "R11 FAIL:  前缀下 read_file 应正常"
   );
 
   console.log("chat-process-renderers: all checks passed ✓");

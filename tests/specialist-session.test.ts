@@ -23,7 +23,12 @@ import { tmpdir } from "node:os";
 import { resolveRoleAllowedTools, resolveRoleScopeTools } from "../lib/agent/roles/registry.ts";
 import { createRoleScopeHook, createRiskConfirmHook } from "../lib/agent/hooks/built-in.ts";
 import { runBeforeHooks } from "../lib/agent/hooks/chain.ts";
-import { buildSpecialistChatSystemPrompt, buildSubagentSystemPrompt } from "../lib/agent/subagent-prompts.ts";
+import {
+  buildSpecialistChatSystemPrompt,
+  buildSpecialistDynamicSystemContext,
+  buildSubagentSystemPrompt,
+} from "../lib/agent/subagent-prompts.ts";
+import { getRolePromptPath } from "../lib/agent/roles/prompt-files.ts";
 import { getRoleDefinition } from "../lib/agent/roles/registry.ts";
 
 export const specialistSessionTestPromise = (async () => {
@@ -34,15 +39,15 @@ export const specialistSessionTestPromise = (async () => {
     assert.ok(payrollScope.includes(t), `SS-1 FAIL: scope 应 ⊇ allowed，缺 ${t}`);
   }
   assert.ok(
-    payrollScope.includes("mcp__finance_worker__calculate_payroll_batch"),
+    payrollScope.includes("calculate_payroll_batch"),
     "SS-1 FAIL: 薪税域 scope 应含高风险的 calculate_payroll_batch（专员会话经确认卡执行）"
   );
   assert.ok(
-    !payrollAllowed.includes("mcp__finance_worker__calculate_payroll_batch"),
+    !payrollAllowed.includes("calculate_payroll_batch"),
     "SS-1 FAIL: allowed（免确认名单）不应含高风险工具"
   );
   assert.ok(
-    !payrollScope.includes("mcp__finance_worker__spawn_subagent"),
+    !payrollScope.includes("spawn_subagent"),
     "SS-1 FAIL: 角色 scope 不应含 spawn_subagent（不越级）"
   );
 
@@ -51,21 +56,21 @@ export const specialistSessionTestPromise = (async () => {
     ({ toolName, input: {}, outputDir: "/tmp", resolveUserQuestion });
   const scopeChain = [createRoleScopeHook("payroll-officer")];
 
-  const denySpawn = await runBeforeHooks(scopeChain, ctxFor("mcp__finance_worker__spawn_subagent"));
+  const denySpawn = await runBeforeHooks(scopeChain, ctxFor("spawn_subagent"));
   assert.equal(denySpawn.behavior, "deny", "SS-2 FAIL: spawn_subagent 必须 deny（专员不越级）");
 
-  const denyForeign = await runBeforeHooks(scopeChain, ctxFor("mcp__kingdee_worker__export_kingdee_draft"));
+  const denyForeign = await runBeforeHooks(scopeChain, ctxFor("export_kingdee_draft"));
   assert.equal(denyForeign.behavior, "deny", "SS-2 FAIL: 他角色域工具（导金蝶）应 deny");
   assert.match(denyForeign.message ?? "", /职责|边界/, "SS-2 FAIL: deny 文案应说明职责边界");
 
-  const allowInScope = await runBeforeHooks(scopeChain, ctxFor("mcp__finance_worker__query_payroll_status"));
+  const allowInScope = await runBeforeHooks(scopeChain, ctxFor("query_payroll_status"));
   assert.equal(allowInScope.behavior, "allow", "SS-2 FAIL: 域内工具应放行");
 
   const allowBuiltin = await runBeforeHooks(scopeChain, ctxFor("Read"));
   assert.equal(allowBuiltin.behavior, "allow", "SS-2 FAIL: 内置工具应穿透 role-scope（由既有闸管）");
 
   // 记忆沉淀（C2×E6）：本角色放行、写他角记忆必拦（roleId 是模型参数，不锁则破坏 C1 隔离）
-  const memTool = "mcp__finance_worker__remember_role_convention";
+  const memTool = "remember_role_convention";
   const allowOwnMemory = await runBeforeHooks(scopeChain, {
     toolName: memTool, input: { roleId: "payroll-officer", text: "口径", source: "测试" }, outputDir: "/tmp",
   });
@@ -77,9 +82,9 @@ export const specialistSessionTestPromise = (async () => {
 
   // ── SS-3: 域内高风险工具走确认门（role-scope 在前、risk-confirm 在后，与 adapter 链序一致）──
   const fullChain = [createRoleScopeHook("payroll-officer"), createRiskConfirmHook()];
-  const confirmed = await runBeforeHooks(fullChain, ctxFor("mcp__finance_worker__calculate_payroll_batch", async () => "确认"));
+  const confirmed = await runBeforeHooks(fullChain, ctxFor("calculate_payroll_batch", async () => "确认"));
   assert.equal(confirmed.behavior, "allow", "SS-3 FAIL: 域内高风险工具经用户确认后应放行");
-  const noResolver = await runBeforeHooks(fullChain, ctxFor("mcp__finance_worker__calculate_payroll_batch", undefined));
+  const noResolver = await runBeforeHooks(fullChain, ctxFor("calculate_payroll_batch", undefined));
   assert.equal(noResolver.behavior, "deny", "SS-3 FAIL: 无确认通道必须 fail-closed");
 
   // ── SS-4: 专员会话系统提示 ───────────────────────────────────────────────
@@ -93,6 +98,17 @@ export const specialistSessionTestPromise = (async () => {
   assert.ok(!chatPrompt.includes("你没有与用户对话的通道"), "SS-4 FAIL: 不应含子代理'不能提问'纪律");
   assert.ok(chatPrompt.includes("提问"), "SS-4 FAIL: 应鼓励向用户提问（交互式）");
   assert.ok(chatPrompt.includes("remember_role_convention") && chatPrompt.includes(`"${role.id}"`), "SS-4 FAIL: 应含本角色记忆沉淀指引（roleId 固定为本角色）");
+  assert.match(getRolePromptPath(role.id), new RegExp(`/roles/prompts/${role.id}\\.md$`), "SS-4 FAIL: 角色应有独立提示词文件路径");
+  const dynamicPrompt = buildSpecialistDynamicSystemContext(
+    "全局口径：金额不含税",
+    ["本角色只输出草稿"],
+    "/tmp/out",
+    new Date("2026-08-03T00:00:00Z"),
+  );
+  assert.match(dynamicPrompt, /2026年8月|财务日历/, "SS-4 FAIL: 专员动态段应含当前日期/财务日历");
+  assert.match(dynamicPrompt, /全局口径：金额不含税/, "SS-4 FAIL: 专员动态段应含全局记忆");
+  assert.match(dynamicPrompt, /本角色只输出草稿/, "SS-4 FAIL: 专员动态段应含角色记忆");
+  assert.match(dynamicPrompt, /\/tmp\/out/, "SS-4 FAIL: 专员动态段应含输出目录");
   // 财务纪律单一来源：两个 A 段都含同一段落
   const subPrompt = buildSubagentSystemPrompt(role, []);
   assert.ok(chatPrompt.includes("金额、税率、比率一律经工具计算") && subPrompt.includes("金额、税率、比率一律经工具计算"), "SS-4 FAIL: 财务纪律段应两处共用");
