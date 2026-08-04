@@ -12,5 +12,6 @@ lxml==6.1.1
 Pillow==12.2.0
 pdf2image==1.17.0
 markitdown[pptx]==0.1.1
+rapidocr-onnxruntime==1.4.4
 onnxruntime==1.27.0
 tokenizers==0.23.1

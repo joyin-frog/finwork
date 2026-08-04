@@ -81,12 +81,19 @@ description: "用于读取、创建或编辑 Excel/CSV，也用于把比较、�
 
 ### 重要要求
 
-**公式重算由产品 Runtime 负责**：不要通过 Bash 调用 `scripts/recalc.py`，也不要在任务中临时安装公式库或自行寻找 `soffice`。
+**写入 XLSX 不依赖 LibreOffice**：先用 openpyxl/pandas 正常创建或修改工作簿并保存。LibreOffice 只用于公式缓存刷新与渲染验证，不是写文件的前提。
+
+**公式重算由产品 Runtime 负责**：不要通过 Bash 调用 `scripts/recalc.py`，不要自行寻找或启动 `soffice`，也不要为了绕过重算而在 Python 中手工模拟整套 Excel 公式引擎。
+
+**输入附件是只读的**：直接从附件绝对路径 `load_workbook()`，修改后保存到当前输出目录中的新文件名。不要用 `shutil.copy()` / `copy2()` 把附件权限原样复制后再覆盖同一文件；这会把沙箱中的只读 `0444` 一并带到副本。确需复制时使用 `shutil.copyfile()`，随后对输出文件执行 `chmod(0o600)`。
+
+**控制单次工具输出大小**：复杂模型需要长 Python 脚本时，先用 `write` 创建短骨架，再用多次 `edit` 分段补充。不要在一次 `write` 中发送整个大型数据字典和脚本；工具参数被输出 token 上限截断后不会执行。
 
 当工作簿包含需要求值的公式、或正式交付依赖计算后的单元格值时：
-1. 使用产品 Spreadsheet Runtime 的 `recalc` / `probe` 能力（由应用提供，不依赖 Agent 猜环境）。
-2. 若 Runtime 报告 LibreOffice 不可用（`recalc_unavailable`），停止公式型交付并提示用户安装 LibreOffice；**不要跳过重算后假装已算完**。
-3. 静态只读分析可以在无 LibreOffice 时进行，但必须说明公式缓存可能过期。
+1. 先保存候选 XLSX，并做公式文本、关键输入值、工作表结构和修改范围的静态检查。
+2. 调用 `finalize_deliverable`；产品会在沙箱外自动执行 Spreadsheet Runtime 的重算、错误扫描与渲染验证。
+3. 只有当 `finalize_deliverable` 明确返回 `recalc_unavailable` 时，才停止公式型交付并报告阻塞；不要在调用前猜测运行时不可用。
+4. 静态只读分析可以在无 LibreOffice 时进行，但必须说明公式缓存可能过期。
 
 Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测不属于本 skill。
 ---
@@ -230,7 +237,7 @@ wb.save('modified.xlsx')
 
 ## 重算公式
 
-由 openpyxl 创建或修改的 Excel 文件包含作为字符串的公式，但没有计算后的值。**必须**通过产品 Spreadsheet Runtime 重算（`spreadsheet_runtime recalc` / 应用暴露的等价接口）：
+由 openpyxl 创建或修改的 Excel 文件包含作为字符串的公式，但没有计算后的值。保存工作簿后调用 `finalize_deliverable`，由产品 Spreadsheet Runtime 完成重算：
 
 - Runtime 使用系统 LibreOffice，并创建独立临时 UserInstallation
 - 在工作副本上重算，不原地修改用户上传文件
@@ -239,6 +246,8 @@ wb.save('modified.xlsx')
 
 不要：
 - 通过 Bash 执行 `scripts/recalc.py` 或直接调用 `soffice`
+- 因为 Bash 内不能启动 LibreOffice，就认定 Excel 无法写入或交付
+- 在 `finalize_deliverable` 之前手工模拟复杂公式缓存
 - 在任务中临时安装公式计算库做兜底
 - 在缺少重算能力时跳过并声称「已计算」
 

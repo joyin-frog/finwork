@@ -174,6 +174,10 @@ def inspect_excel(path: Path):
         header_row = []
         sample_rows = []
         formulas = []
+        formula_count = 0
+        formula_empty_cache_count = 0
+        formula_errors = []
+        layout_issues = []
         number_formats = {}
 
         for cell in next(ws.iter_rows(min_row=1, max_row=1, values_only=False), []):
@@ -186,20 +190,63 @@ def inspect_excel(path: Path):
                 for col_index in range(1, max_column + 1)
             ])
 
-        for row in ws.iter_rows(max_row=min(max_row, 200), max_col=max_column, values_only=False):
+        merged_coordinates = {
+            coordinate
+            for merged_range in ws.merged_cells.ranges
+            for row in ws[merged_range.coord]
+            for cell in row
+            for coordinate in [cell.coordinate]
+        }
+        for row in ws.iter_rows(values_only=False):
             for cell in row:
                 if isinstance(cell.value, str) and cell.value.startswith("="):
-                    formulas.append({
-                        "cell": cell.coordinate,
-                        "formula": cell.value,
-                        "cached_value": value_ws[cell.coordinate].value,
-                    })
-                if cell.number_format and cell.number_format != "General":
+                    formula_count += 1
+                    cached_value = value_ws[cell.coordinate].value
+                    if cached_value is None or cached_value == "":
+                        formula_empty_cache_count += 1
+                    if (
+                        isinstance(cached_value, str)
+                        and any(error in cached_value for error in (
+                            "#DIV/0!", "#REF!", "#VALUE!", "#NAME?",
+                            "#NULL!", "#NUM!", "#N/A",
+                        ))
+                        and len(formula_errors) < 100
+                    ):
+                        formula_errors.append({
+                            "cell": cell.coordinate,
+                            "cached_value": cached_value,
+                        })
+                    if len(formulas) < 25:
+                        formulas.append({
+                            "cell": cell.coordinate,
+                            "formula": cell.value,
+                            "cached_value": cached_value,
+                        })
+                if (
+                    len(number_formats) < 40
+                    and cell.number_format
+                    and cell.number_format != "General"
+                ):
                     number_formats[cell.coordinate] = cell.number_format
-                if len(formulas) >= 80:
-                    break
-            if len(formulas) >= 80:
-                break
+                if (
+                    len(layout_issues) < 50
+                    and isinstance(cell.value, str)
+                    and not cell.value.startswith("=")
+                    and len(cell.value.strip()) >= 16
+                    and bool(cell.alignment.wrap_text)
+                    and cell.coordinate not in merged_coordinates
+                    and float(
+                        ws.column_dimensions[cell.column_letter].width
+                        or ws.sheet_format.defaultColWidth
+                        or 8.43
+                    ) <= 8
+                ):
+                    layout_issues.append({
+                        "code": "narrow_wrapped_text",
+                        "cell": cell.coordinate,
+                        "text_length": len(cell.value.strip()),
+                        "column_width": ws.column_dimensions[cell.column_letter].width or 8.43,
+                    })
 
         workbook["sheets"].append({
             "name": sheet_name,
@@ -207,13 +254,11 @@ def inspect_excel(path: Path):
             "columns": max_column,
             "headers": header_row,
             "sample_rows": sample_rows,
-            "formula_count": sum(
-                1
-                for row in ws.iter_rows(values_only=True)
-                for value in row
-                if isinstance(value, str) and value.startswith("=")
-            ),
-            "formulas_sample": formulas[:25],
+            "formula_count": formula_count,
+            "formula_empty_cache_count": formula_empty_cache_count,
+            "formula_errors": formula_errors,
+            "formulas_sample": formulas,
+            "layout_issues": layout_issues,
             "merged_ranges": merged_ranges,
             "frozen_panes": frozen_panes,
             "auto_filter": str(ws.auto_filter.ref) if ws.auto_filter and ws.auto_filter.ref else None,
@@ -264,11 +309,20 @@ def extract_pdf(path: Path) -> str:
                 parts.append(f"--- Page {i + 1} ---\n{text}")
             else:
                 ocr_page_indices.add(i)
-    # 无文字层的页面(扫描件/手拍回单等)逐页抽最大内嵌图 OCR,避免混合 PDF 漏页。
+    # 文本层优先。OCR 只处理文本缺失的候选页，并设置硬上限，避免大 PDF
+    # 被逐页 OCR 把 Agent/worker 卡死；调用方可通过环境变量提高上限。
     if ocr_page_indices:
-        ocr_text = _ocr_pdf_pages(path, ocr_page_indices)
+        max_ocr_pages = max(0, int(os.environ.get("FINANCE_PDF_MAX_OCR_PAGES", "4")))
+        candidates = sorted(ocr_page_indices)
+        selected = set(candidates[:max_ocr_pages])
+        ocr_text = _ocr_pdf_pages(path, selected) if selected else ""
         if ocr_text:
             parts.append(ocr_text)
+        if len(candidates) > len(selected):
+            parts.append(
+                f"[PDF OCR truncated: {len(candidates) - len(selected)} pages omitted; "
+                "use targeted page OCR after locating required fields.]"
+            )
     return "\n\n".join(parts)
 
 
@@ -371,6 +425,111 @@ def cmd_inspect_excel():
     if path.suffix.lower() not in (".xlsx", ".xlsm", ".xls"):
         raise SystemExit(f"unsupported file type: {path.suffix.lower()}")
     print(json.dumps(inspect_excel(path), ensure_ascii=False, indent=2, default=str))
+
+
+def cmd_inspect_excel_cells():
+    """inspect-excel-cells <path> <json-addresses> — read cached scalar values."""
+    if len(sys.argv) < 4:
+        raise SystemExit("usage: finance_worker.py inspect-excel-cells <path> <json-addresses>")
+    path = Path(sys.argv[2])
+    addresses = json.loads(sys.argv[3])
+    import openpyxl
+
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=False)
+    values = {}
+    for qualified in addresses:
+        if "!" not in qualified:
+            values[qualified] = None
+            continue
+        sheet_name, address = qualified.rsplit("!", 1)
+        values[qualified] = wb[sheet_name][address].value if sheet_name in wb.sheetnames else None
+    wb.close()
+    print(json.dumps({"ok": True, "values": values}, ensure_ascii=False, default=str))
+
+
+def cmd_inspect_excel_formulas():
+    """inspect-excel-formulas <path> <json-addresses> — read literal formulas."""
+    if len(sys.argv) < 4:
+        raise SystemExit("usage: finance_worker.py inspect-excel-formulas <path> <json-addresses>")
+    path = Path(sys.argv[2])
+    addresses = json.loads(sys.argv[3])
+    import openpyxl
+
+    wb = openpyxl.load_workbook(path, data_only=False, read_only=False)
+    formulas = {}
+    for qualified in addresses:
+        if "!" not in qualified:
+            formulas[qualified] = None
+            continue
+        sheet_name, address = qualified.rsplit("!", 1)
+        if sheet_name not in wb.sheetnames:
+            formulas[qualified] = None
+            continue
+        cell = wb[sheet_name][address]
+        formulas[qualified] = cell.value if cell.data_type == "f" else None
+    wb.close()
+    print(json.dumps({"ok": True, "formulas": formulas}, ensure_ascii=False, default=str))
+
+
+def cmd_compare_excel_allowlist():
+    """compare-excel-allowlist <reference> <candidate> <sheet> <json-columns>."""
+    if len(sys.argv) < 6:
+        raise SystemExit(
+            "usage: finance_worker.py compare-excel-allowlist "
+            "<reference> <candidate> <sheet> <json-columns>"
+        )
+    reference_path = Path(sys.argv[2])
+    candidate_path = Path(sys.argv[3])
+    allowed_sheet = sys.argv[4]
+    allowed_columns = {str(column).upper() for column in json.loads(sys.argv[5])}
+    import openpyxl
+    from openpyxl.utils import get_column_letter
+
+    before_wb = openpyxl.load_workbook(reference_path, data_only=False, read_only=False)
+    after_wb = openpyxl.load_workbook(candidate_path, data_only=False, read_only=False)
+    before_sheets = before_wb.sheetnames
+    after_sheets = after_wb.sheetnames
+    disallowed = []
+    changed_count = 0
+    allowed_changed_count = 0
+    if before_sheets != after_sheets:
+        disallowed.append(
+            "sheet-order:" + "|".join(before_sheets) + "=>" + "|".join(after_sheets)
+        )
+
+    def comparable(cell):
+        if cell.data_type == "f":
+            return ("formula", cell.value)
+        value = cell.value
+        if hasattr(value, "isoformat"):
+            value = value.isoformat()
+        return (cell.data_type, value)
+
+    for sheet_name in dict.fromkeys([*before_sheets, *after_sheets]):
+        if sheet_name not in before_wb.sheetnames or sheet_name not in after_wb.sheetnames:
+            continue
+        before = before_wb[sheet_name]
+        after = after_wb[sheet_name]
+        max_row = max(before.max_row or 0, after.max_row or 0)
+        max_column = max(before.max_column or 0, after.max_column or 0)
+        for row in range(1, max_row + 1):
+            for column in range(1, max_column + 1):
+                if comparable(before.cell(row, column)) == comparable(after.cell(row, column)):
+                    continue
+                changed_count += 1
+                address = f"{get_column_letter(column)}{row}"
+                if sheet_name == allowed_sheet and get_column_letter(column) in allowed_columns:
+                    allowed_changed_count += 1
+                elif len(disallowed) < 100:
+                    disallowed.append(f"{sheet_name}!{address}")
+    before_wb.close()
+    after_wb.close()
+    print(json.dumps({
+        "ok": True,
+        "changedCount": changed_count,
+        "allowedChangedCount": allowed_changed_count,
+        "disallowedChanges": disallowed,
+    }, ensure_ascii=False))
 
 
 def cmd_convert_xls():
@@ -936,6 +1095,15 @@ def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "inspect-excel":
         cmd_inspect_excel()
         return
+    if len(sys.argv) >= 2 and sys.argv[1] == "inspect-excel-cells":
+        cmd_inspect_excel_cells()
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "inspect-excel-formulas":
+        cmd_inspect_excel_formulas()
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "compare-excel-allowlist":
+        cmd_compare_excel_allowlist()
+        return
     if len(sys.argv) >= 2 and sys.argv[1] == "convert-xls":
         cmd_convert_xls()
         return
@@ -961,7 +1129,7 @@ def main():
         cmd_embed_texts()
         return
     raise SystemExit(
-        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | convert-xls <xls> <xlsx> | probe-spreadsheet | probe-recalc <soffice> | recalc-xlsx <xlsx> <soffice> [timeout] | ocr-image <path> | export-voucher-xlsx | export-payslips-xlsx | embed-texts"
+        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | inspect-excel <path> | inspect-excel-cells <path> <json-addresses> | inspect-excel-formulas <path> <json-addresses> | compare-excel-allowlist <reference> <candidate> <sheet> <json-columns> | convert-xls <xls> <xlsx> | probe-spreadsheet | probe-recalc <soffice> | recalc-xlsx <xlsx> <soffice> [timeout] | ocr-image <path> | export-voucher-xlsx | export-payslips-xlsx | embed-texts"
     )
 
 

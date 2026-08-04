@@ -41,6 +41,8 @@ export type FinanceMcpServerOptions = {
   /** Runtime-owned subagent seams. Claude remains the legacy default. */
   subagentExecutor?: SubagentExecutor;
   subagentParallelExecutor?: SubagentParallelExecutor;
+  /** 本回合用户附件的只读根；供 read_document 使用。 */
+  readDocumentAllowedRoots?: string[];
 };
 
 function createFinanceWorkerTools(
@@ -72,7 +74,9 @@ function createFinanceWorkerTools(
       createSearchKnowledgeTool(sdk),
       createQueryKnowledgeTool(sdk),
       createReadFileTool(sdk),
-      createReadDocumentTool(sdk),
+      createReadDocumentTool(sdk, {
+        allowedRoots: [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])],
+      }),
       createScanSlipFolderTool(sdk),
       createRememberConventionTool(sdk),
       createRememberRoleConventionTool(sdk),

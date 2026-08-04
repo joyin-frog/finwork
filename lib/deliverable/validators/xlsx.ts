@@ -65,6 +65,27 @@ export async function validateXlsxFile(
   if (sheets.length === 0) {
     errors.push({ code: "structure_empty", message: "工作簿无工作表" });
   }
+  if (input.needsRender) {
+    for (const sheet of sheets) {
+      const layoutIssues =
+        (sheet.layout_issues as Array<{
+          code?: unknown;
+          cell?: unknown;
+          text_length?: unknown;
+          column_width?: unknown;
+        }> | undefined) ?? [];
+      for (const issue of layoutIssues) {
+        if (issue.code !== "narrow_wrapped_text") continue;
+        errors.push({
+          code: "layout_narrow_wrapped_text",
+          message:
+            `长文本位于过窄列并启用换行（长度 ${Number(issue.text_length ?? 0)}，` +
+            `列宽 ${Number(issue.column_width ?? 0)}），会产生巨高行或竖排文字`,
+          location: `${String(sheet.name ?? "")}!${String(issue.cell ?? "?")}`,
+        });
+      }
+    }
+  }
 
   const initialFormulaState = analyzeFormulaState(sheets);
   let formulaCount = initialFormulaState.formulaCount;
@@ -106,7 +127,9 @@ export async function validateXlsxFile(
         const { outputPath, cleanupRoot, ...recalcEvidence } = recalcData;
         evidence.recalc = recalcEvidence;
         try {
-          const verified = await runtime.inspect(outputPath);
+          const verified = recalcData.inspection
+            ? { ok: true, data: recalcData.inspection }
+            : await runtime.inspect(outputPath);
           if (!verified.ok) {
             errors.push({
               code: "recalc_verify_failed",
@@ -126,10 +149,14 @@ export async function validateXlsxFile(
               });
             } else if (verifiedFormulaState.formulaErrors.length > 0) {
               errors.push(...verifiedFormulaState.formulaErrors);
-            } else if (input.requireFormulaCache && verifiedFormulaState.emptyCacheCount > 0) {
+            } else if (
+              input.requireFormulaCache &&
+              verifiedFormulaState.formulaCount > 0 &&
+              verifiedFormulaState.emptyCacheCount >= verifiedFormulaState.formulaCount
+            ) {
               errors.push({
                 code: "recalc_cache_empty",
-                message: "重算后的工作簿仍存在未缓存结果的公式",
+                message: "重算后的工作簿全部公式仍无缓存结果",
               });
             } else {
               fs.copyFileSync(outputPath, input.filePath);
@@ -140,6 +167,14 @@ export async function validateXlsxFile(
               formulaErrorCount = 0;
               evidence.formulaCount = formulaCount;
               evidence.emptyCacheCount = emptyCacheCount;
+              if (emptyCacheCount > 0) {
+                warnings.push({
+                  code: "formula_blank_results",
+                  message:
+                    `重算后有 ${emptyCacheCount} 个公式结果为空；` +
+                    "空字符串可由 IF 等公式合法产生，不作为重算失败",
+                });
+              }
             }
           }
         } catch (error) {
@@ -202,11 +237,29 @@ function analyzeFormulaState(sheets: Array<Record<string, unknown>>): {
   const formulaErrors: ValidatorIssue[] = [];
   for (const sheet of sheets) {
     formulaCount += Number(sheet.formula_count ?? 0);
+    const explicitEmptyCount = sheet.formula_empty_cache_count;
+    if (typeof explicitEmptyCount === "number") {
+      emptyCacheCount += explicitEmptyCount;
+    }
+    const explicitErrors =
+      (sheet.formula_errors as Array<{ cell?: unknown; cached_value?: unknown }> | undefined);
+    if (explicitErrors) {
+      for (const formula of explicitErrors) {
+        formulaErrors.push({
+          code: "formula_error",
+          message: `公式错误值: ${String(formula.cached_value ?? "")}`,
+          location: `${String(sheet.name ?? "")}!${String(formula.cell ?? "?")}`,
+        });
+      }
+      continue;
+    }
     const samples =
       (sheet.formulas_sample as Array<{ cell?: string; cached_value?: unknown }> | undefined) ?? [];
     for (const formula of samples) {
       const cached = formula.cached_value;
-      if (cached == null || cached === "") emptyCacheCount += 1;
+      if (typeof explicitEmptyCount !== "number" && (cached == null || cached === "")) {
+        emptyCacheCount += 1;
+      }
       if (typeof cached === "string" && FORMULA_ERRORS.some((e) => cached.includes(e))) {
         formulaErrors.push({
           code: "formula_error",

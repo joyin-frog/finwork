@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { ExtensionAPI, InlineExtension } from "@earendil-works/pi-coding-agent";
 import { isDeliveredPath, isInsidePath } from "@/lib/agent/tools/path-policy";
 import {
@@ -138,20 +139,28 @@ export function evaluateBuiltinToolCall(
   }
 
   if (isReadClass) {
+    const resolvedFilePath = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(roots.readRoot, filePath);
     // 会话目录 + 技能目录（只读）。技能目录必须放行，否则 SKILL.md 指向的
     // references/ 与 scripts/ 读不到，渐进披露形同虚设。
     const allowed = [roots.readRoot, ...(roots.skillRoots ?? [])];
-    if (!allowed.some((root) => isInsidePath(filePath, root))) {
+    if (!allowed.some((root) => isInsidePath(resolvedFilePath, root))) {
       return `只能读取本次会话目录或技能目录内的文件：${roots.readRoot}。读 Office/PDF 二进制请用 read_document。`;
     }
     return null;
   }
 
   // write / edit
-  if (isDeliveredPath(filePath, roots.writeRoot)) {
+  // Pi 的内置工具 cwd 已设为 writeRoot；策略层也必须以同一根解析相对路径，
+  // 不能让 Node 进程自身的 cwd（项目根）改变授权结果。
+  const resolvedFilePath = path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(roots.writeRoot, filePath);
+  if (isDeliveredPath(resolvedFilePath, roots.writeRoot)) {
     return "不能写入不可变交付目录 delivered/（正式附件只读）。";
   }
-  if (!isInsidePath(filePath, roots.writeRoot)) {
+  if (!isInsidePath(resolvedFilePath, roots.writeRoot)) {
     return `只能把生成文件写入本次会话输出目录：${roots.writeRoot}`;
   }
   return null;

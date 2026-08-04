@@ -1,5 +1,9 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import fs from "node:fs";
+import path from "node:path";
 import { isBashSandboxAvailable, wrapCommandWithSandbox } from "@/lib/agent/tools/bash-sandbox";
+import { resolveLibreOffice } from "@/lib/runtime/libreoffice-resolver";
+import { getPythonBinDir, getPythonVenvRoot } from "@/lib/runtime/paths";
 
 /**
  * Finwork 自行构造的 Pi 内置文件/shell 工具。
@@ -75,6 +79,14 @@ export async function createFinworkBuiltinTools(
   // （构造层钉死根 + tool_call 路径校验），bash 的约束只能来自沙箱——拿不到就不注册，
   // 而不是退回正则黑名单假装有闸。
   if (isBashSandboxAvailable()) {
+    const pythonBinDir = getPythonBinDir();
+    const pythonVenvRoot = getPythonVenvRoot();
+    // standalone runtime 是 <root>/bin/python；venv 则由 pyvenv.cfg 精确识别。
+    const pythonRuntimeRoot = pythonVenvRoot ?? path.dirname(pythonBinDir);
+    const libreOffice = resolveLibreOffice();
+    const libreOfficeRuntimeRoot = libreOffice.ok
+      ? resolveLibreOfficeRuntimeRoot(libreOffice.executable)
+      : undefined;
     tools.push(
       createBashToolDefinition(roots.writeRoot, {
         // cwd 钉死在会话输出目录：模型写 `report.md` 落在会话里，而不是项目根或用户家目录。
@@ -82,15 +94,62 @@ export async function createFinworkBuiltinTools(
         spawnHook: ({ command, env }) => ({
           command: wrapCommandWithSandbox(command, {
             readRoot: roots.readRoot,
-            ...(roots.readRoots ? { readRoots: roots.readRoots } : {}),
+            readRoots: [
+              ...(roots.readRoots ?? []),
+              // Skill 正文可引用 scripts/references/assets；read 工具已放行这些根，
+              // Bash 也必须能执行/读取同一套只读资源。
+              ...(roots.skillRoots ?? []),
+              // venv 的解释器、site-packages 和 console scripts 必须在 OS
+              // sandbox 中可读；仅改 PATH 会因沙箱不可达而静默回退到系统 Python。
+              pythonRuntimeRoot,
+              // 受控 LibreOffice 通常是 dependencies/bin/override 下的 wrapper，
+              // 实体在同一 dependencies/native 中；整个 runtime 根都要只读可达。
+              ...(libreOfficeRuntimeRoot ? [libreOfficeRuntimeRoot] : []),
+            ],
             writeRoot: roots.writeRoot,
           }),
           cwd: roots.writeRoot,
-          env: { ...env, FINWORK_SESSION_OUTPUT_DIR: roots.writeRoot },
+          env: {
+            ...env,
+            // Bash 与固定 worker 必须使用同一受控 Python runtime。只设置
+            // FINANCE_AGENT_PYTHON_PATH 不会改变 shell 的 python/python3 解析。
+            PATH: [
+              pythonBinDir,
+              // pi 会传入自己的 PATH；它可能比启动 Finwork 时的 PATH 更窄。
+              // 两者都保留，才能让评测/桌面进程显式注入的 LibreOffice 等
+              // 受控运行时继续对模型侧 Bash 可见。
+              process.env.PATH,
+              env.PATH,
+            ].filter(Boolean).join(path.delimiter),
+            ...(pythonVenvRoot ? { VIRTUAL_ENV: pythonVenvRoot } : {}),
+            FINWORK_SESSION_OUTPUT_DIR: roots.writeRoot,
+          },
         }),
       }) as ToolDefinition,
     );
   }
 
   return tools;
+}
+
+function resolveLibreOfficeRuntimeRoot(executable: string): string | undefined {
+  let resolved = executable;
+  try {
+    resolved = fs.realpathSync(executable);
+  } catch {
+    // Resolver 已验证存在；realpath 失败时仍可按原路径推导。
+  }
+  const normalized = path.normalize(resolved);
+  const dependenciesMarker = `${path.sep}dependencies${path.sep}`;
+  const dependenciesIndex = normalized.indexOf(dependenciesMarker);
+  if (dependenciesIndex >= 0) {
+    return normalized.slice(
+      0,
+      dependenciesIndex + dependenciesMarker.length - path.sep.length,
+    );
+  }
+  const appIndex = normalized.indexOf(".app" + path.sep);
+  if (appIndex >= 0) return normalized.slice(0, appIndex + ".app".length);
+  const parent = path.dirname(normalized);
+  return parent === path.parse(parent).root ? undefined : parent;
 }

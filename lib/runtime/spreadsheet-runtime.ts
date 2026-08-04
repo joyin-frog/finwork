@@ -12,6 +12,7 @@ import { getProjectRoot, getPythonPath } from "./paths";
 import { pythonSpawnEnv } from "./python-env";
 import { resolveLibreOffice, type LibreOfficeResolveResult } from "./libreoffice-resolver";
 import { getSpreadsheetCapabilities, type SpreadsheetCapabilities } from "./spreadsheet-probe";
+import { artifactToolInspect, artifactToolProbe, artifactToolRecalc } from "./artifact-tool-provider";
 
 export type RuntimeCommandResult<T = unknown> = {
   ok: boolean;
@@ -68,6 +69,10 @@ export async function spreadsheetInspect(filePath: string): Promise<RuntimeComma
   if (!fs.existsSync(filePath)) {
     return { ok: false, errorCode: "file_not_found", detail: filePath };
   }
+  const provider = (process.env.FINANCE_AGENT_SPREADSHEET_PROVIDER ?? "auto").toLowerCase();
+  if (provider === "artifact_tool" || (provider === "auto" && artifactToolProbe().ok)) {
+    return artifactToolInspect(filePath);
+  }
   try {
     const raw = await runPython(["inspect-excel", filePath]);
     return { ok: true, data: JSON.parse(raw) };
@@ -75,6 +80,134 @@ export async function spreadsheetInspect(filePath: string): Promise<RuntimeComma
     return {
       ok: false,
       errorCode: "inspect_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function spreadsheetExtractText(
+  filePath: string,
+): Promise<RuntimeCommandResult<{ text: string }>> {
+  if (!fs.existsSync(filePath)) {
+    return { ok: false, errorCode: "file_not_found", detail: filePath };
+  }
+  try {
+    const text = await runPython(["extract-text", filePath]);
+    return { ok: true, data: { text } };
+  } catch (error) {
+    return {
+      ok: false,
+      errorCode: "extract_text_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function spreadsheetInspectCells(
+  filePath: string,
+  addresses: string[],
+): Promise<RuntimeCommandResult<{ values: Record<string, string | number | boolean | null> }>> {
+  if (!fs.existsSync(filePath)) {
+    return { ok: false, errorCode: "file_not_found", detail: filePath };
+  }
+  try {
+    const raw = await runPython(["inspect-excel-cells", filePath, JSON.stringify(addresses)]);
+    const parsed = JSON.parse(raw) as {
+      ok?: boolean;
+      values?: Record<string, string | number | boolean | null>;
+      error?: string;
+    };
+    if (!parsed.ok || !parsed.values) {
+      return { ok: false, errorCode: "inspect_cells_failed", detail: parsed.error };
+    }
+    return { ok: true, data: { values: parsed.values } };
+  } catch (error) {
+    return {
+      ok: false,
+      errorCode: "inspect_cells_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function spreadsheetInspectFormulaCells(
+  filePath: string,
+  addresses: string[],
+): Promise<RuntimeCommandResult<{ formulas: Record<string, string | null> }>> {
+  if (!fs.existsSync(filePath)) {
+    return { ok: false, errorCode: "file_not_found", detail: filePath };
+  }
+  try {
+    const raw = await runPython([
+      "inspect-excel-formulas",
+      filePath,
+      JSON.stringify(addresses),
+    ]);
+    const parsed = JSON.parse(raw) as {
+      ok?: boolean;
+      formulas?: Record<string, string | null>;
+      error?: string;
+    };
+    if (!parsed.ok || !parsed.formulas) {
+      return { ok: false, errorCode: "inspect_formulas_failed", detail: parsed.error };
+    }
+    return { ok: true, data: { formulas: parsed.formulas } };
+  } catch (error) {
+    return {
+      ok: false,
+      errorCode: "inspect_formulas_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function spreadsheetCompareAllowedCells(
+  referencePath: string,
+  candidatePath: string,
+  allowedSheet: string,
+  allowedColumns: string[],
+): Promise<RuntimeCommandResult<{
+  changedCount: number;
+  allowedChangedCount: number;
+  disallowedChanges: string[];
+}>> {
+  if (!fs.existsSync(referencePath) || !fs.existsSync(candidatePath)) {
+    return {
+      ok: false,
+      errorCode: "file_not_found",
+      detail: !fs.existsSync(referencePath) ? referencePath : candidatePath,
+    };
+  }
+  try {
+    const raw = await runPython([
+      "compare-excel-allowlist",
+      referencePath,
+      candidatePath,
+      allowedSheet,
+      JSON.stringify(allowedColumns),
+    ]);
+    const parsed = JSON.parse(raw) as {
+      ok?: boolean;
+      changedCount?: number;
+      allowedChangedCount?: number;
+      disallowedChanges?: string[];
+      error?: string;
+    };
+    if (!parsed.ok) {
+      return { ok: false, errorCode: "compare_cells_failed", detail: parsed.error };
+    }
+    return {
+      ok: true,
+      data: {
+        changedCount: parsed.changedCount ?? 0,
+        allowedChangedCount: parsed.allowedChangedCount ?? 0,
+        disallowedChanges: parsed.disallowedChanges ?? [],
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      errorCode: "compare_cells_failed",
       detail: error instanceof Error ? error.message : String(error),
     };
   }
@@ -113,6 +246,8 @@ export type RecalcResult = {
   provider: string;
   version?: string;
   formulaCount?: number;
+  /** Single-pass post-recalc inspection, when the provider can inspect in memory. */
+  inspection?: unknown;
   durationMs: number;
   executable: string;
 };
@@ -133,6 +268,9 @@ export async function spreadsheetRecalc(
   if (!fs.existsSync(xlsxPath)) {
     return { ok: false, errorCode: "file_not_found", detail: xlsxPath };
   }
+  if ((process.env.FINANCE_AGENT_SPREADSHEET_PROVIDER ?? "").toLowerCase() === "artifact_tool") {
+    return artifactToolRecalc(xlsxPath, { workCopyDir: opts?.workCopyDir });
+  }
   const lo = (opts?.resolveLo ?? resolveLibreOffice)();
   if (!lo.ok) {
     return {
@@ -145,81 +283,42 @@ export async function spreadsheetRecalc(
   const timeoutSeconds = opts?.timeoutSeconds ?? 60;
   const ownsWorkRoot = !opts?.workCopyDir;
   const workRoot = opts?.workCopyDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "fa-recalc-"));
-  const profileDir = path.join(workRoot, "lo-profile");
   const workCopy = path.join(workRoot, path.basename(xlsxPath));
-  fs.mkdirSync(profileDir, { recursive: true });
+  fs.mkdirSync(workRoot, { recursive: true });
   fs.copyFileSync(xlsxPath, workCopy);
   const inputHash = sha256File(xlsxPath);
 
-  const userInstallation = `file://${profileDir}`;
-  const args = [
-    "--headless",
-    "--norestore",
-    "--nolockcheck",
-    `-env:UserInstallation=${userInstallation}`,
-    "--calc",
-    workCopy,
-    "macro:///Standard.Module1.RecalculateAndSave",
-  ];
-
-  // Native timeout via spawn — do not depend on timeout/gtimeout.
+  // Re-save through Calc in an isolated profile. Invoking a user macro directly
+  // can hang forever when the bundled runtime has no Standard.Module1 installed;
+  // the worker's convert-to path both recalculates and has its own hard timeout.
+  let formulaCount: number | undefined;
   try {
-    await execFileAsync(lo.executable, args, timeoutSeconds * 1000);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (/TIMEOUT|killed|SIGKILL/i.test(msg)) {
-      return { ok: false, errorCode: "recalc_timeout", detail: msg };
-    }
-    // Fallback: ask worker to run convert-to / macro path if direct macro fails
-    try {
-      const raw = await runPython(
-        ["recalc-xlsx", workCopy, lo.executable, String(timeoutSeconds)],
-        { timeoutMs: (timeoutSeconds + 15) * 1000 }
-      );
-      const parsed = JSON.parse(raw) as { ok?: boolean; error?: string; formulaCount?: number };
-      if (!parsed.ok) {
-        return { ok: false, errorCode: "recalc_failed", detail: parsed.error ?? msg };
-      }
-      const outputHash = sha256File(workCopy);
-      // Upload must remain unchanged
-      if (sha256File(xlsxPath) !== inputHash) {
-        return { ok: false, errorCode: "input_mutated", detail: "recalc mutated source file" };
-      }
-      return {
-        ok: true,
-        data: {
-          inputHash,
-          outputHash,
-          outputPath: workCopy,
-          cleanupRoot: ownsWorkRoot ? workRoot : undefined,
-          provider: lo.provider,
-          version: lo.version,
-          formulaCount: parsed.formulaCount,
-          durationMs: Date.now() - started,
-          executable: lo.executable,
-        },
-      };
-    } catch (inner) {
+    const raw = await runPython(
+      ["recalc-xlsx", workCopy, lo.executable, String(timeoutSeconds)],
+      { timeoutMs: (timeoutSeconds + 15) * 1000 }
+    );
+    const parsed = JSON.parse(raw) as { ok?: boolean; error?: string; formulaCount?: number };
+    if (!parsed.ok) {
+      const detail = parsed.error ?? "LibreOffice recalculation failed";
       return {
         ok: false,
-        errorCode: "recalc_failed",
-        detail: inner instanceof Error ? inner.message : String(inner),
+        errorCode: /timeout/i.test(detail) ? "recalc_timeout" : "recalc_failed",
+        detail,
       };
     }
+    formulaCount = parsed.formulaCount;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      errorCode: /timeout|killed|SIGKILL/i.test(msg) ? "recalc_timeout" : "recalc_failed",
+      detail: msg,
+    };
   }
 
   const outputHash = sha256File(workCopy);
   if (sha256File(xlsxPath) !== inputHash) {
     return { ok: false, errorCode: "input_mutated", detail: "recalc mutated source file" };
-  }
-
-  let formulaCount: number | undefined;
-  try {
-    const raw = await runPython(["inspect-excel", workCopy]);
-    const inspected = JSON.parse(raw) as { sheets?: Array<{ formula_count?: number }> };
-    formulaCount = (inspected.sheets ?? []).reduce((n, s) => n + (s.formula_count ?? 0), 0);
-  } catch {
-    // optional
   }
 
   return {

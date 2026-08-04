@@ -9,6 +9,7 @@ import {
   wrapCommandWithSandbox,
 } from "../../lib/agent/tools/bash-sandbox.ts";
 import { createFinworkBuiltinTools } from "../../lib/agent/pi/builtin-tools.ts";
+import { resolveLibreOffice } from "../../lib/runtime/libreoffice-resolver.ts";
 
 if (process.platform !== "darwin") {
   console.log("Pi bash sandbox — 跳过（非 darwin，此平台不注册 bash）");
@@ -149,6 +150,25 @@ function runSandboxed(command: string): { ok: boolean; output: string } {
     ["bash", "edit", "find", "grep", "ls", "read", "write"],
     "B-7 FAIL: darwin 上应注册含 bash 的完整内置集",
   );
+
+  // ── B-8 受控 LibreOffice 不只在 PATH 中，还必须穿过 home-read deny ──
+  const libreOffice = resolveLibreOffice();
+  if (libreOffice.ok) {
+    const bash = tools.find((tool) => tool.name === "bash");
+    assert.ok(bash, "B-8 setup FAIL: bash tool missing");
+    const result = await bash.execute(
+      "B-8",
+      { command: "command -v soffice" },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    const output = result.content
+      .filter((part): part is { type: "text"; text: string } => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+    assert.match(output, /soffice/i, `B-8 FAIL: LibreOffice runtime 被沙箱隐藏：${output}`);
+  }
 }
 
 console.log("Pi bash sandbox ✓ 真实 sandbox-exec 拦住了正则漏过的全部越界写/删/搬");

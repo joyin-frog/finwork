@@ -78,5 +78,6 @@ export type FinworkAgentResult = {
   roleMode?: string;
   terminationReason?: string;
   repairRounds?: number;
+  repairStopReason?: "completed" | "no_progress" | "max_rounds" | "not_required";
   verificationStatus?: "passed" | "not_applicable";
 };

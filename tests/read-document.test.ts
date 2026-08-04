@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { getPythonPath, getProjectRoot } from "../lib/runtime/paths.ts";
 import { createReadDocumentTool } from "../lib/agent/mcp-tools/read-document.ts";
@@ -112,6 +112,43 @@ img.save(sys.argv[1])
         } else {
           console.log("read-document: reportlab 不可用,跳过 RD6 ⚠");
         }
+      }
+
+      // ── RD7: 宿主注入附件根可读，根内 symlink 仍不能越界 ──
+      {
+        const appDir = path.join(dir, "isolated-app-data");
+        mkdirSync(appDir);
+        process.env.FINANCE_AGENT_APP_DATA_DIR = appDir;
+        const scopedHandlers = new Map<string, (a: unknown) => Promise<unknown>>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const scopedSdk: any = {
+          tool: (name: string, _d: string, _s: unknown, h: (a: unknown) => unknown) => {
+            scopedHandlers.set(name, h);
+            return { name };
+          },
+        };
+        createReadDocumentTool(scopedSdk, { allowedRoots: [dir] });
+        const scopedRead = scopedHandlers.get("read_document")!;
+
+        const allowedPdf = path.join(dir, "allowed.pdf");
+        if (makeTextPdf(python, allowedPdf, "ALLOWED-ROOT-778899")) {
+          const out = (await scopedRead({ filePath: allowedPdf })) as {
+            content: Array<{ text: string }>;
+            isError?: boolean;
+          };
+          assert.equal(out.isError, undefined);
+          assert.ok(out.content[0].text.includes("778899"));
+        }
+
+        const escapeLink = path.join(dir, "escape.pdf");
+        symlinkSync("/etc/hosts", escapeLink);
+        const escaped = (await scopedRead({ filePath: escapeLink })) as {
+          content: Array<{ text: string }>;
+          isError?: boolean;
+        };
+        assert.equal(escaped.isError, true);
+        assert.match(escaped.content[0].text, /安全目录/);
+        console.log("read-document: RD7 注入附件根可读且 symlink 越界被拒 ✓");
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });

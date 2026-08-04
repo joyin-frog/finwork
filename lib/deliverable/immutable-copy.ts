@@ -44,8 +44,13 @@ export function copyToDeliveredImmutable(args: {
 
   mkdirSync(deliveredDir, { recursive: true });
   const safeName = path.basename(fileName);
-  const finalPath = path.join(deliveredDir, safeName);
-  const tmpPath = path.join(deliveredDir, `.${safeName}.${process.pid}.tmp`);
+  // 同一 deliverable 可以在修复循环中多次定稿。若直接复用文件名，后一次
+  // rename 会覆盖前一次副本，使已经落库的 CompletionEvidence 指向新内容。
+  // 以校验 hash 分版本，同时保留原始 basename，保证每条 evidence 真正不可变。
+  const versionDir = path.join(deliveredDir, expectedSha256);
+  mkdirSync(versionDir, { recursive: true });
+  const finalPath = path.join(versionDir, safeName);
+  const tmpPath = path.join(versionDir, `.${safeName}.${process.pid}.tmp`);
 
   try {
     copyFileSync(workingPath, tmpPath);

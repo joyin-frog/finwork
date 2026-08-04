@@ -144,6 +144,41 @@ export const deliverableQualityGateTestPromise = (async () => {
       assert.notEqual(sha256File(working), hash);
     }
 
+    // ── Re-finalize same name: old evidence path must remain immutable ──
+    {
+      const conv = path.join(root, "conv-versioned");
+      const generate = path.join(conv, "generate");
+      mkdirSync(generate, { recursive: true });
+      const working = path.join(generate, "report.txt");
+      const deliveredDir = getDeliveredDir(conv, "run-versioned");
+
+      writeFileSync(working, "version-one");
+      const hashOne = sha256File(working);
+      const first = copyToDeliveredImmutable({
+        workingPath: working,
+        deliveredDir,
+        fileName: "report.txt",
+        expectedSha256: hashOne,
+      });
+      assert.equal(first.ok, true);
+      if (!first.ok) throw new Error("first copy failed");
+
+      writeFileSync(working, "version-two");
+      const hashTwo = sha256File(working);
+      const second = copyToDeliveredImmutable({
+        workingPath: working,
+        deliveredDir,
+        fileName: "report.txt",
+        expectedSha256: hashTwo,
+      });
+      assert.equal(second.ok, true);
+      if (!second.ok) throw new Error("second copy failed");
+
+      assert.notEqual(first.deliveredPath, second.deliveredPath);
+      assert.equal(sha256File(first.deliveredPath), hashOne);
+      assert.equal(sha256File(second.deliveredPath), hashTwo);
+    }
+
     // ── Finalize happy path (text) + evidence only (no Run completed) ──
     {
       const conv = path.join(root, "conv-fin");
@@ -313,6 +348,65 @@ export const deliverableQualityGateTestPromise = (async () => {
       assert.ok(!report.errors.some((e) => e.code === "formula_cache_empty"));
     }
 
+    // ── Recalc may legitimately leave some IF/template formulas blank ──
+    if (existsSync(formulaOk)) {
+      const working = path.join(root, "recalc-partial-blank.xlsx");
+      const recalculated = path.join(root, "recalc-partial-blank-output.xlsx");
+      copyFileSync(formulaOk, working);
+      copyFileSync(formulaOk, recalculated);
+      appendFileSync(recalculated, "recalculated-partial-blank");
+      const originalHash = sha256File(working);
+
+      const report = await validateXlsxFile(
+        {
+          filePath: working,
+          fileName: path.basename(working),
+          expectedMime: XLSX_MIME,
+          qualityProfile: "generic",
+          expectedSha256: originalHash,
+          needsRecalc: true,
+          requireFormulaCache: true,
+        },
+        {
+          inspect: async (filePath) => ({
+            ok: true,
+            data: {
+              sheets: [{
+                name: "Sheet1",
+                formula_count: 2,
+                formula_empty_cache_count: filePath === recalculated ? 1 : 2,
+                formulas_sample: filePath === recalculated
+                  ? [
+                    { cell: "A1", formula: "=1+1", cached_value: 2 },
+                    { cell: "A2", formula: '=IF(A1=2,"","x")', cached_value: null },
+                  ]
+                  : [
+                    { cell: "A1", formula: "=1+1", cached_value: null },
+                    { cell: "A2", formula: '=IF(A1=2,"","x")', cached_value: null },
+                  ],
+              }],
+            },
+          }),
+          recalc: async () => ({
+            ok: true,
+            data: {
+              inputHash: originalHash,
+              outputHash: sha256File(recalculated),
+              outputPath: recalculated,
+              provider: "test",
+              durationMs: 1,
+              executable: "/test/libreoffice",
+            },
+          }),
+          render: async () => ({ ok: false, errorCode: "unused" }),
+        },
+      );
+
+      assert.equal(report.status, "passed");
+      assert.ok(report.warnings.some((e) => e.code === "formula_blank_results"));
+      assert.ok(!report.errors.some((e) => e.code === "recalc_cache_empty"));
+    }
+
     // ── Recalc output with formula errors / no sheets is never promoted ──
     if (existsSync(formulaOk)) {
       const invalidCases = [
@@ -329,6 +423,19 @@ export const deliverableQualityGateTestPromise = (async () => {
           name: "empty-sheets",
           sheets: [],
           expectedCode: "recalc_structure_empty",
+        },
+        {
+          name: "all-formulas-empty",
+          sheets: [{
+            name: "Sheet1",
+            formula_count: 2,
+            formula_empty_cache_count: 2,
+            formulas_sample: [
+              { cell: "A1", formula: "=1+1", cached_value: null },
+              { cell: "A2", formula: "=2+2", cached_value: null },
+            ],
+          }],
+          expectedCode: "recalc_cache_empty",
         },
       ];
       for (const invalid of invalidCases) {
@@ -381,6 +488,100 @@ export const deliverableQualityGateTestPromise = (async () => {
         assert.ok(report.errors.some((e) => e.code === invalid.expectedCode));
         assert.equal(sha256File(working), originalHash, `${invalid.name} must not replace candidate`);
       }
+    }
+
+    // ── Full formula scan reports errors outside the sampled formula window ──
+    if (existsSync(formulaOk)) {
+      const working = path.join(root, "full-formula-scan.xlsx");
+      copyFileSync(formulaOk, working);
+      const report = await validateXlsxFile(
+        {
+          filePath: working,
+          fileName: path.basename(working),
+          expectedMime: XLSX_MIME,
+          qualityProfile: "generic",
+          expectedSha256: sha256File(working),
+        },
+        {
+          inspect: async () => ({
+            ok: true,
+            data: {
+              sheets: [{
+                name: "Forecast",
+                formula_count: 80,
+                formula_empty_cache_count: 0,
+                formulas_sample: [{
+                  cell: "A1",
+                  formula: "=1+1",
+                  cached_value: 2,
+                }],
+                formula_errors: [{
+                  cell: "Z99",
+                  cached_value: "#REF!",
+                }],
+              }],
+            },
+          }),
+          recalc: async () => ({ ok: false, errorCode: "unused" }),
+          render: async () => ({ ok: false, errorCode: "unused" }),
+        },
+      );
+
+      assert.equal(report.status, "failed");
+      assert.ok(report.errors.some(
+        (e) => e.code === "formula_error" && e.location === "Forecast!Z99",
+      ));
+    }
+
+    // ── Render-required profiles reject narrow wrapped long text ──
+    if (existsSync(formulaOk)) {
+      const working = path.join(root, "layout-issue.xlsx");
+      copyFileSync(formulaOk, working);
+      const report = await validateXlsxFile(
+        {
+          filePath: working,
+          fileName: path.basename(working),
+          expectedMime: XLSX_MIME,
+          qualityProfile: "generic",
+          expectedSha256: sha256File(working),
+          needsRender: true,
+        },
+        {
+          inspect: async () => ({
+            ok: true,
+            data: {
+              sheets: [{
+                name: "Assumptions",
+                formula_count: 0,
+                formula_empty_cache_count: 0,
+                formulas_sample: [],
+                layout_issues: [{
+                  code: "narrow_wrapped_text",
+                  cell: "A3",
+                  text_length: 48,
+                  column_width: 6,
+                }],
+              }],
+            },
+          }),
+          recalc: async () => ({ ok: false, errorCode: "unused" }),
+          render: async () => ({
+            ok: true,
+            data: {
+              outDir: root,
+              files: [],
+              provider: "test",
+              executable: "/test/libreoffice",
+              durationMs: 1,
+            },
+          }),
+        },
+      );
+
+      assert.equal(report.status, "failed");
+      assert.ok(report.errors.some(
+        (e) => e.code === "layout_narrow_wrapped_text" && e.location === "Assumptions!A3",
+      ));
     }
 
     // ── SQLite store transaction + migration DDL ──

@@ -120,7 +120,9 @@ export function createFinalizeDeliverableTool(
             result.failures
               ?.map(
                 (f) =>
-                  `${f.name}(${f.contractDeliverableId}): ${f.errors.map((e) => e.message).join("; ")}`
+                  `${f.name}(${f.contractDeliverableId}): ${f.errors.map((e) =>
+                    `${e.code}${e.location ? `@${e.location}` : ""}: ${e.message}`
+                  ).join("; ")}`
               )
               .join("\n") ?? result.error;
           return {

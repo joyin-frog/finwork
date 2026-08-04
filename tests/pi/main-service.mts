@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   buildPiPrompt,
+  lastAssistantError,
   resolveResumableSession,
   validatePiSessionLocator,
 } from "../../lib/agent/pi/agent-service.ts";
@@ -117,8 +118,53 @@ const xlsxPrompt = buildPiPrompt(
     storagePath: path.join(root, "tax.xlsx"),
   }],
 );
-assert.match(xlsxPrompt.text, /先用 read 加载可用的 xlsx Skill/);
+assert.match(xlsxPrompt.text, /先用 read 加载 xlsx Skill：.*agent-skills\/skills\/xlsx\/SKILL\.md/);
 assert.match(xlsxPrompt.text, /bash 调用 Python\/openpyxl\/pandas/);
+assert.match(xlsxPrompt.text, /bash 当前目录就是本次会话输出目录/);
+assert.match(xlsxPrompt.text, /附件在沙箱中只读/);
+assert.match(xlsxPrompt.text, /不要用 shutil\.copy\/copy2/);
+assert.match(xlsxPrompt.text, /多次 edit 分段补充/);
 assert.match(xlsxPrompt.text, /finalize_deliverable/);
+const xlsxRecalcPrompt = buildPiPrompt(
+  [{ role: "user", content: "生成需要重算的 Excel" }],
+  [{
+    name: "tax.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    size: 100,
+    dataUrl: "",
+    storagePath: path.join(root, "tax.xlsx"),
+  }],
+  {
+    version: 1,
+    taskKind: "spreadsheet",
+    spreadsheetRequirement: {
+      needsLegacyXlsRead: false,
+      needsWrite: true,
+      needsRecalc: true,
+      needsRender: true,
+      needsMacroPreservation: false,
+    },
+    requiredDeliverables: [],
+    expectationSnapshot: {},
+  },
+);
+assert.match(xlsxRecalcPrompt.text, /由 finalize_deliverable 在沙箱外的受控运行时自动完成/);
+assert.match(xlsxRecalcPrompt.text, /不要在 bash 中自行启动 soffice/);
+
+const transientErrorThenSuccess = [
+  {
+    type: "message_end",
+    message: { role: "assistant", stopReason: "error", errorMessage: "terminated", content: [] },
+  },
+  {
+    type: "message_end",
+    message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "done" }] },
+  },
+] as never;
+assert.equal(
+  lastAssistantError(transientErrorThenSuccess),
+  undefined,
+  "repair 后成功的最终 assistant 结束态应覆盖更早的 transient error",
+);
 
 console.log("Pi main service ✓ controlled locator, fresh/resume prompt and attachments");

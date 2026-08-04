@@ -13,7 +13,12 @@ import type {
   FinworkAgentUsage,
 } from "@/lib/agent/contracts";
 import { readAgentSettings } from "@/lib/settings/agent-settings";
-import { getPiAgentDir, getPiSessionDir, getProjectRoot } from "@/lib/runtime/paths";
+import {
+  getBundledPluginRoot,
+  getPiAgentDir,
+  getPiSessionDir,
+  getProjectRoot,
+} from "@/lib/runtime/paths";
 import { ensureConventionsMigrated } from "@/lib/memory/migrate-conventions";
 import { readMemoryMarkdown } from "@/lib/memory/file-store";
 import { readCompanyProfile } from "@/lib/profile/file-store";
@@ -46,7 +51,10 @@ import { createFinworkExtension } from "@/lib/agent/pi/extension";
 import { wrapExternalContext } from "@/lib/agent/external-context";
 import { buildDynamicSystemContext } from "@/lib/agent/system-prompt";
 import { decideSettleFromCompletionGate } from "@/lib/agent/completion-gate-settle";
-import { deriveTaskContractForTurn } from "@/lib/agent/run-contract";
+import {
+  deriveTaskContractForTurn,
+  type TaskContract,
+} from "@/lib/agent/run-contract";
 
 export type PiAgentServiceOptions = {
   /** AR10 harness 可覆盖到临时目录；生产缺省固定为 Finwork app-data。 */
@@ -56,6 +64,27 @@ export type PiAgentServiceOptions = {
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high";
   /** 验证失败后最多让 Pi 自动修复的回合数。 */
   maxRepairRounds?: number;
+  /** 任务级确定性验证的独立预算，避免 finalize 后卡在 verifier。 */
+  verificationTimeoutMs?: number;
+  /**
+   * 调用方可追加任务级确定性验证（历史评测、受控业务工作流）。
+   * 通用 CompletionGate 仍负责文件存在性、类型、可打开性与不可变交付。
+   */
+  completionVerifier?: (input: {
+    runId: string;
+    taskContract: TaskContract;
+  }) => Promise<{
+    ok: boolean;
+    message?: string;
+    fingerprint?: string;
+  }>;
+  /** Repair 前的最小可交付文件检查；没有候选文件时不得进入长 repair loop。 */
+  minimumDeliverableCheck?: () => {
+    ok: boolean;
+    message?: string;
+  };
+  /** abort() 可能等待 SDK 的 waitForIdle；为清理设置独立上限。 */
+  abortTimeoutMs?: number;
 };
 
 /**
@@ -196,6 +225,8 @@ export async function runPiAgent(
   let timedOut = false;
   let externallyAborted = request.signal?.aborted === true;
   let repairRounds = 0;
+  let repairStopReason: FinworkAgentResult["repairStopReason"] =
+    taskContract.requiredDeliverables.length ? "max_rounds" : "not_required";
   const mapper = new PiEventMapper();
   const currentRunMessages: AgentSessionEvent[] = [];
   const emitQuestion = wrapQuestionResolver(request.resolveUserQuestion, request.emit);
@@ -207,6 +238,7 @@ export async function runPiAgent(
     {
       subagentExecutor: runPiSubagent,
       subagentParallelExecutor: runPiSubagentsParallel,
+      readDocumentAllowedRoots: builtinRoots.readRoots,
       ...(taskContract
         ? { finalize: { taskContract, runId: request.requestId ?? request.traceId ?? "unknown" } }
         : {}),
@@ -262,56 +294,150 @@ export async function runPiAgent(
       }
     });
 
+    const operationAbort = new AbortController();
     const abortSession = () => {
       externallyAborted = true;
-      void session?.abort();
+      operationAbort.abort();
+      void abortSessionWithDeadline(session, serviceOptions.abortTimeoutMs ?? 2_000);
     };
     request.signal?.addEventListener("abort", abortSession, { once: true });
     const hardTimeoutMs =
       serviceOptions.hardTimeoutMs ?? runBudgetForTier(request.executionTier).hardTimeoutMs;
     const timeout = setTimeout(() => {
       timedOut = true;
-      void session?.abort();
+      operationAbort.abort();
+      void abortSessionWithDeadline(session, serviceOptions.abortTimeoutMs ?? 2_000);
     }, hardTimeoutMs);
     try {
       if (!externallyAborted) {
-          const prompt = buildPiPrompt(request.messages, request.attachments ?? []);
+          const prompt = buildPiPrompt(
+            request.messages,
+            request.attachments ?? [],
+            taskContract,
+          );
           try {
-            await session.prompt(prompt.text, { images: prompt.images });
-            await session.waitForIdle();
+            await awaitAbortable(
+              session.prompt(prompt.text, { images: prompt.images }),
+              operationAbort.signal,
+            );
+            await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+
+            // 先确保最小可交付文件存在，再允许系统验证失败驱动 repair。
+            // 没有文件时继续读资料/调用工具只会放大超时，且没有可评分证据。
+            const minimumDeliverableCheck = serviceOptions.minimumDeliverableCheck;
+            const minimumCheck = minimumDeliverableCheck?.();
+            if (minimumCheck && !minimumCheck.ok) {
+              await awaitAbortable(
+                session.prompt([
+                  "系统硬门槛：当前还没有检测到可交付文件。",
+                  minimumCheck.message ?? "请先在当前输出目录生成至少一个真实、可打开且符合合同类型的最小文件。",
+                  "不要继续长时间分析；生成后立即调用 finalize_deliverable。",
+                ].join("\n")),
+                operationAbort.signal,
+              );
+              await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+              const afterMinimumCheck = minimumDeliverableCheck!();
+              if (!afterMinimumCheck.ok) {
+                const error = new Error(
+                  afterMinimumCheck.message ?? "未生成最小可交付文件，停止自动修复。",
+                );
+                error.name = "MinimumDeliverableError";
+                (error as Error & { __terminationReason?: string }).__terminationReason =
+                  "minimum_deliverable_missing";
+                throw error;
+              }
+            }
 
             // Harness completion loop：Pi 的 stop 只代表模型结束了一轮，不代表财务任务完成。
             // finalize_deliverable 内部负责确定性文件验证并提交 CompletionEvidence；这里负责
             // 在没有通过证据时把验证结果反馈给同一个 session，驱动有限次修复。
             const runId = request.requestId ?? request.traceId ?? "unknown";
             const maxRepairRounds = Math.max(0, Math.min(5, serviceOptions.maxRepairRounds ?? 2));
-            while (taskContract.requiredDeliverables.length > 0 && repairRounds < maxRepairRounds) {
-              const gate = decideSettleFromCompletionGate(runId, taskContract);
-              if (gate.outcome === "completed") break;
-              repairRounds += 1;
-              await session.prompt(
-                [
-                  `系统验证发现本次任务尚未完成（第 ${repairRounds}/${maxRepairRounds} 次修复）。`,
-                  gate.gateMessage,
-                  "请检查当前输出目录中的工作文件，补齐或修复交付物。",
-                  "完成修复后必须再次调用 finalize_deliverable；不要只回复说明文字。",
-                  "如果缺少必要输入或无法安全判断，请明确说明阻塞原因，不要猜测数字。",
-                ].join("\n"),
+            const completionDecision = async () => {
+              const base = decideSettleFromCompletionGate(runId, taskContract);
+              if (base.outcome !== "completed" || !serviceOptions.completionVerifier) {
+                return base;
+              }
+              const verificationTimeoutMs = serviceOptions.verificationTimeoutMs ?? 60_000;
+              const taskVerification = await withTimeout(
+                serviceOptions.completionVerifier({ runId, taskContract }),
+                verificationTimeoutMs,
+                {
+                  ok: false,
+                  message: `任务级验证超过 ${verificationTimeoutMs}ms，已停止等待。`,
+                  fingerprint: "task-verification-timeout",
+                },
               );
-              await session.waitForIdle();
+              if (taskVerification.ok) return base;
+              return {
+                outcome: "error" as const,
+                qualityStatus: "failed" as const,
+                terminationReason: "validation_failed" as const,
+                gateMessage:
+                  taskVerification.message?.trim() ||
+                  "任务级确定性断言未通过",
+                diagnosticFingerprint:
+                  taskVerification.fingerprint?.trim() ||
+                  "task-verification-failed",
+              };
+            };
+            let previousFingerprint: string | undefined;
+            while (taskContract.requiredDeliverables.length > 0 && repairRounds < maxRepairRounds) {
+              const gate = await completionDecision();
+              if (gate.outcome === "completed") {
+                repairStopReason = "completed";
+                break;
+              }
+              if (
+                previousFingerprint &&
+                gate.diagnosticFingerprint === previousFingerprint
+              ) {
+                repairStopReason = "no_progress";
+                break;
+              }
+              previousFingerprint = gate.diagnosticFingerprint;
+              repairRounds += 1;
+              await awaitAbortable(
+                session.prompt(
+                  [
+                    `系统验证发现本次任务尚未完成（第 ${repairRounds}/${maxRepairRounds} 次修复）。`,
+                    gate.gateMessage,
+                    "请按上述具体文件、位置和错误修复当前输出目录中的工作文件。",
+                    "完成修复后必须再次调用 finalize_deliverable；不要只回复说明文字。",
+                    "如果缺少必要输入或无法安全判断，请明确说明阻塞原因，不要猜测数字。",
+                  ].join("\n"),
+                ),
+                operationAbort.signal,
+              );
+              await awaitAbortable(session.waitForIdle(), operationAbort.signal);
             }
 
             const finalGate = taskContract.requiredDeliverables.length
-              ? decideSettleFromCompletionGate(runId, taskContract)
+              ? await completionDecision()
               : { outcome: "completed" as const, qualityStatus: "not_applicable" as const };
             if (finalGate.outcome !== "completed") {
-              const error = new Error(finalGate.gateMessage);
+              const stopNote = repairStopReason === "no_progress"
+                ? "\n自动修复已停止：连续两次验证指纹相同，未检测到文件或错误变化。"
+                : repairRounds >= maxRepairRounds
+                  ? `\n自动修复已停止：达到 ${maxRepairRounds} 轮上限。`
+                  : "";
+              const error = new Error(finalGate.gateMessage + stopNote);
               error.name = "ValidationError";
-              (error as Error & { __repairRounds?: number; __verificationStatus?: string; __terminationReason?: string }).__repairRounds = repairRounds;
-              (error as Error & { __repairRounds?: number; __verificationStatus?: string; __terminationReason?: string }).__verificationStatus = "failed";
-              (error as Error & { __repairRounds?: number; __verificationStatus?: string; __terminationReason?: string }).__terminationReason = "validation_failed";
+              const meta = error as Error & {
+                __repairRounds?: number;
+                __repairStopReason?: FinworkAgentResult["repairStopReason"];
+                __verificationStatus?: string;
+                __terminationReason?: string;
+              };
+              meta.__repairRounds = repairRounds;
+              meta.__repairStopReason = repairStopReason;
+              meta.__verificationStatus = "failed";
+              meta.__terminationReason = "validation_failed";
               throw error;
             }
+            repairStopReason = taskContract.requiredDeliverables.length
+              ? "completed"
+              : "not_required";
           } catch (error) {
             // Pi 版本可能让 abort() 使 prompt reject，也可能正常 resolve。
             // 两种形态都统一在下方转成 Finwork AbortError/TimeoutError。
@@ -351,12 +477,78 @@ export async function runPiAgent(
       roleMode: settings.roleMode,
       terminationReason: accounting.stopReason,
       repairRounds,
+      repairStopReason,
       verificationStatus: taskContract.requiredDeliverables.length ? "passed" : "not_applicable",
     };
   } finally {
     liveHandle?.release();
-    session?.dispose();
+    await disposeSessionWithDeadline(session, serviceOptions.abortTimeoutMs ?? 2_000);
   }
+}
+
+async function abortSessionWithDeadline(
+  session: AgentSession | null,
+  timeoutMs: number,
+): Promise<void> {
+  if (!session) return;
+  try {
+    await Promise.race([session.abort(), delay(timeoutMs)]);
+  } catch {
+    // 清理必须继续执行；SDK abort 的异常不能遮蔽原始 timeout/error。
+  }
+}
+
+async function disposeSessionWithDeadline(
+  session: AgentSession | null,
+  timeoutMs: number,
+): Promise<void> {
+  if (!session) return;
+  await abortSessionWithDeadline(session, timeoutMs);
+  try {
+    session.dispose();
+  } catch {
+    // dispose 是最后一道清理，不能覆盖原始任务结果。
+  }
+}
+
+function delay(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, timeoutMs)));
+}
+
+function awaitAbortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("Agent operation aborted", "AbortError"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException("Agent operation aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
 }
 
 /**
@@ -399,6 +591,7 @@ export function historyBeforeCurrent(messages: AgentMessage[]): AgentMessage[] {
 export function buildPiPrompt(
   messages: AgentMessage[],
   attachments: AgentAttachment[],
+  taskContract?: TaskContract | null,
 ): { text: string; images: ImageContent[] } {
   const lastUser = [...messages].reverse().find((message) => message.role === "user");
   const current = lastUser?.content ?? messages.at(-1)?.content ?? "";
@@ -409,11 +602,62 @@ export function buildPiPrompt(
       /spreadsheet|excel|csv/i.test(attachment.mimeType),
   );
   if (hasSpreadsheet) {
+    const xlsxSkillPath = path.join(
+      getBundledPluginRoot(),
+      "skills",
+      "xlsx",
+      "SKILL.md",
+    );
     parts.push(
       [
-        "这是 Excel/表格任务。请先用 read 加载可用的 xlsx Skill 的 SKILL.md，并遵循其中的读写、公式和验证流程。",
-        "如果用户要求生成或修改表格，可以使用受限 bash 调用 Python/openpyxl/pandas 等本地工具；先把输入复制到本次会话输出目录，再修改副本。不要执行 find /、find ~ 或全盘搜索，直接使用提示词提供的附件路径。",
+        `这是 Excel/表格任务。请先用 read 加载 xlsx Skill：${xlsxSkillPath}，并遵循其中的读写、公式和验证流程。`,
+        "如果用户要求生成或修改表格，可以使用受限 bash 调用 Python/openpyxl/pandas 等本地工具；bash 当前目录就是本次会话输出目录，使用相对目标路径。不要执行 find /、find ~ 或全盘搜索，直接使用提示词提供的附件绝对路径读取。附件在沙箱中只读：用 openpyxl 从附件绝对路径加载后，保存为当前目录下新的输出文件；不要用 shutil.copy/copy2 保留只读权限后再原地覆盖。确需复制时使用 shutil.copyfile 并把输出 chmod 为 0o600。",
+        "生成脚本较长时，先用 write 创建短骨架，再用多次 edit 分段补充；不要把整个大脚本塞进一次 write，以免模型输出上限截断工具参数。",
+        taskContract?.spreadsheetRequirement?.needsRecalc ||
+        taskContract?.spreadsheetRequirement?.needsRender
+          ? "写入 XLSX 不依赖 LibreOffice：先用 openpyxl/pandas 正常保存候选文件。合同要求的 LibreOffice 重算/渲染由 finalize_deliverable 在沙箱外的受控运行时自动完成；不要在 bash 中自行启动 soffice，也不要手工模拟整套 Excel 公式缓存。你仍需先做静态公式、关键输入值、结构和修改范围检查，然后立即调用 finalize_deliverable；只有该工具明确返回 recalc_unavailable 才能报告重算阻塞。"
+          : "",
         "完成后必须检查输出文件，并调用 finalize_deliverable 正式交付。",
+      ].filter(Boolean).join("\n"),
+    );
+  }
+  const needsDocx =
+    attachments.some(
+      (attachment) =>
+        attachment.name.toLowerCase().endsWith(".docx") ||
+        attachment.mimeType ===
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ) ||
+    taskContract?.requiredDeliverables.some(
+      (deliverable) =>
+        deliverable.mime ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+  if (needsDocx) {
+    const docxSkillPath = path.join(
+      getBundledPluginRoot(),
+      "skills",
+      "docx",
+      "SKILL.md",
+    );
+    parts.push(
+      [
+        `这是 Word/DOCX 任务。请先用 read 加载 docx Skill：${docxSkillPath}，并遵循其中的读取、编辑、验证和渲染流程。`,
+        "只修改本次会话输出目录中的副本，不要覆盖用户上传的原始文档。",
+        "产品 Python Runtime 已预装 python-docx；优先用它生成 DOCX。不要运行 npm install/pip install，也不要因为全局 docx-js 不存在而停止。",
+        "正文或生成脚本较长时，先用 write 创建短骨架，再用多次 edit 分段补充，避免单个超长工具调用因模型输出上限被截断。",
+      ].join("\n"),
+    );
+  }
+  if (taskContract?.requiredDeliverables.length) {
+    parts.push(
+      [
+        "本任务的交付合同由系统冻结，不能用说明文字代替文件：",
+        ...taskContract.requiredDeliverables.map(
+          (deliverable) =>
+            `- contractDeliverableId=${deliverable.id}; MIME=${deliverable.mime}; 数量=${deliverable.count}; qualityProfile=${deliverable.qualityProfile}`,
+        ),
+        "请按上述 ID 生成最终文件，并在最后一次调用 finalize_deliverable 时逐一声明。",
       ].join("\n"),
     );
   }
@@ -556,13 +800,15 @@ function lastAssistantText(events: AgentSessionEvent[]): string {
   return "";
 }
 
-function lastAssistantError(events: AgentSessionEvent[]): string | undefined {
+export function lastAssistantError(events: AgentSessionEvent[]): string | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event.type !== "message_end" || event.message.role !== "assistant") continue;
-    if (event.message.stopReason === "error") {
-      return event.message.errorMessage || "Pi Agent 模型调用失败";
-    }
+    // 只看最后一条 assistant 结束态。repair 之前的 transient error 已被后续
+    // 成功 stop/finalize 覆盖，不能在 Run settle 时重新翻出来误判整个任务失败。
+    return event.message.stopReason === "error"
+      ? event.message.errorMessage || "Pi Agent 模型调用失败"
+      : undefined;
   }
   return undefined;
 }

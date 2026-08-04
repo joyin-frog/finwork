@@ -18,7 +18,7 @@ description: "用于读取、创建或编辑 .docx，包括报告、模板、修
 | 任务 | 方法 |
 |------|------|
 | 读取/分析内容 | `pandoc` 或解压以获取原始 XML |
-| 创建新文档 | 使用 `docx-js`——参见下方的"创建新文档" |
+| 创建新文档 | 使用产品 Python Runtime 预装的 `python-docx` |
 | 编辑现有文档 | 解压 → 编辑 XML → 重新打包——参见下方的"编辑现有文档" |
 
 ### 将 .doc 转换为 .docx
@@ -58,7 +58,22 @@ python scripts/accept_changes.py input.docx output.docx
 
 ## 创建新文档
 
-使用 JavaScript 生成 .docx 文件，然后进行验证。安装：`npm install -g docx`
+优先使用产品 Python Runtime 已预装的 `python-docx` 生成 .docx，然后调用 `finalize_deliverable` 验证和渲染。不要运行 `npm install` / `pip install`，也不要依赖全局 Node 模块。
+
+```python
+from docx import Document
+from docx.shared import Pt
+
+doc = Document()
+normal = doc.styles["Normal"]
+normal.font.name = "Arial"
+normal.font.size = Pt(10.5)
+doc.add_heading("标题", level=1)
+doc.add_paragraph("正文")
+doc.save("交付文档.docx")
+```
+
+如果当前运行时已经能 `require("docx")`，也可以使用下面的 docx-js API；不可用时直接使用 `python-docx`，不要临时安装依赖。
 
 ### 设置
 ```javascript
@@ -590,6 +605,7 @@ python scripts/office/pack.py unpacked/ output.docx --original document.docx
 ## 依赖项
 
 - **pandoc**：文本提取
-- **docx**：`npm install -g docx`（新建文档）
+- **python-docx**：产品 Python Runtime 已预装（新建文档）
+- **docx-js**：仅在当前运行时已提供时使用；不要在任务中临时安装
 - **LibreOffice**：PDF 转换（通过 `scripts/office/soffice.py` 为沙箱环境自动配置）
 - **Poppler**：`pdftoppm` 用于图片生成

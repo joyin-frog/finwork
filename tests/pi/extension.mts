@@ -43,6 +43,16 @@ assert.equal(
   null,
   "L1-2 FAIL: 写入会话输出目录应放行",
 );
+assert.equal(
+  evaluateBuiltinToolCall("write", { path: "report.md" }, roots),
+  null,
+  "L1-2 FAIL: Pi cwd 下的相对写入路径应按会话输出目录解析",
+);
+assert.equal(
+  evaluateBuiltinToolCall("edit", { path: "scripts/build.py" }, roots),
+  null,
+  "L1-2 FAIL: Pi cwd 下的相对编辑路径应按会话输出目录解析",
+);
 assert.match(
   evaluateBuiltinToolCall("write", { path: "/etc/crontab" }, roots) ?? "",
   /只能把生成文件写入/,
@@ -66,6 +76,11 @@ assert.equal(
   evaluateBuiltinToolCall("read", { path: path.join(filesDir, "uploaded.xlsx") }, roots),
   null,
   "L1-4 FAIL: 应能读取本会话上传的附件",
+);
+assert.equal(
+  evaluateBuiltinToolCall("read", { path: "generate/report.md" }, roots),
+  null,
+  "L1-4 FAIL: 相对读取路径应按会话读取根解析",
 );
 assert.match(
   evaluateBuiltinToolCall("read", { path: "/Users/someone/.ssh/id_rsa" }, roots) ?? "",
