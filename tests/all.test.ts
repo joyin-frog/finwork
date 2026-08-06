@@ -394,6 +394,9 @@ process.on("unhandledRejection", (err) => {
   const { settingsRefactorTestPromise } = await import("./settings-refactor.test.ts");
   await settingsRefactorTestPromise;
 
+  const { settingsEnvelopeTestPromise } = await import("./settings-envelope.test.ts");
+  await settingsEnvelopeTestPromise;
+
   const { settingsSkillsRedesignTestPromise } = await import("./settings-skills-redesign.test.ts");
   await settingsSkillsRedesignTestPromise;
 
@@ -423,6 +426,25 @@ process.on("unhandledRejection", (err) => {
 
   const { businessAnalysisV2TestPromise } = await import("./business-analysis-v2.test.ts");
   await businessAnalysisV2TestPromise;
+
+  const { businessSenseTestPromise } = await import("./business-sense.test.ts");
+  await businessSenseTestPromise;
+
+  const { deliverableCapabilityDegradeTestPromise } = await import(
+    "./deliverable-capability-degrade.test.ts"
+  );
+  await deliverableCapabilityDegradeTestPromise;
+
+  const { patchWorkbookTestPromise } = await import("./patch-workbook.test.ts");
+  await patchWorkbookTestPromise;
+
+  const { patchWorkbookValueCoercionTestPromise } = await import(
+    "./patch-workbook-value-coercion.test.ts"
+  );
+  await patchWorkbookValueCoercionTestPromise;
+
+  const { xlsxCapabilitiesTestPromise } = await import("./xlsx-capabilities.test.ts");
+  await xlsxCapabilitiesTestPromise;
 
   const { ocrImageTestPromise } = await import("./ocr-image.test.ts");
   await ocrImageTestPromise;

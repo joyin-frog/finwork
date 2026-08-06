@@ -20,6 +20,13 @@ const FILE_TOOLS = [
   finance("read_document"),
   finance("read_file"),
   finance("analyze_tabular"),
+  // 改用户已有的工作簿必须走它;不放进白名单模型就只能退回 openpyxl 重写,
+  // 而那会清空整册公式缓存(实测 1164 → 0)。
+  finance("patch_workbook"),
+  // 勾稽/查异常/合并汇总:不放行的话模型只能自己写脚本判断,结果不可复现。
+  finance("check_workbook_ties"),
+  finance("detect_data_issues"),
+  finance("merge_labeled_tables"),
   finance("finalize_deliverable"),
 ];
 const KNOWLEDGE_TOOLS = [

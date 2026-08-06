@@ -611,7 +611,13 @@ export function buildPiPrompt(
     parts.push(
       [
         `这是 Excel/表格任务。请先用 read 加载 xlsx Skill：${xlsxSkillPath}，并遵循其中的读写、公式和验证流程。`,
-        "如果用户要求生成或修改表格，可以使用受限 bash 调用 Python/openpyxl/pandas 等本地工具；bash 当前目录就是本次会话输出目录，使用相对目标路径。不要执行 find /、find ~ 或全盘搜索，直接使用提示词提供的附件绝对路径读取。附件在沙箱中只读：用 openpyxl 从附件绝对路径加载后，保存为当前目录下新的输出文件；不要用 shutil.copy/copy2 保留只读权限后再原地覆盖。确需复制时使用 shutil.copyfile 并把输出 chmod 为 0o600。",
+        // 这里曾写着「用 openpyxl 从附件加载后保存为新文件」——那是一次有损往返:
+        // openpyxl 的 load→save 会清空整册公式缓存值(实测 2639 → 2)。模板型任务
+        // 的三张报表全由公式驱动,缓存一没就全部读不出数,模型随后会写十几个脚本
+        // 反复排查,直到超时(HISTORY-002 实测 27 个脚本、40 分钟、0 交付)。
+        "**改动用户上传的表格（含填写模板、工作底稿）必须用 `patch_workbook` 工具，不得用 openpyxl/pandas 打开再保存。** 后者会清空整册公式的缓存值，模板里既有的公式将全部读不出结果，且含外部链接的数据无法恢复。`patch_workbook` 只重写你点名的单元格，其余原样保留，并会自动为新写入的公式补算结果。",
+        "附件里若提供了模板或工作底稿，**填它，不要另起炉灶重建一张同名表**：模板自带的公式就是计算逻辑，重建等于把它们全丢掉。",
+        "只有**新建空白表格**才用受限 bash 调 Python/openpyxl/pandas；bash 当前目录就是本次会话输出目录，使用相对目标路径。不要执行 find /、find ~ 或全盘搜索，直接使用提示词提供的附件绝对路径读取。确需复制文件时使用 shutil.copyfile 并把输出 chmod 为 0o600，不要用 shutil.copy/copy2（会把沙箱只读权限一并带过去）。",
         "生成脚本较长时，先用 write 创建短骨架，再用多次 edit 分段补充；不要把整个大脚本塞进一次 write，以免模型输出上限截断工具参数。",
         taskContract?.spreadsheetRequirement?.needsRecalc ||
         taskContract?.spreadsheetRequirement?.needsRender

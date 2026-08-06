@@ -12,7 +12,8 @@ export type HistoricalArtifactAssertion = {
     | "xlsx_cells_equal"
     | "xlsx_formulas_equal"
     | "xlsx_only_allowed_cells_changed"
-    | "docx_min_chars";
+    | "docx_min_chars"
+    | "no_impossible_share";
   values?: string[];
   minimum?: number;
   /** Sheet-qualified addresses, e.g. `Sheet1!H5`, mapped to expected cached values. */
@@ -78,6 +79,26 @@ export const HISTORICAL_FIXTURE_SHA256: Record<string, string> = {
   "history001/合并报表-第二季度.xlsx": "9a458ebf21171fae374c0dfe0d3a4b17492ee579c7bcffc0caeebc6ed0be038e",
   "history001/都森电子Q2_Datapack.xlsx": "93a28af9c18c51597c18027ab18a6e29b76daa05e0ec9a503acca7fe57e8757d",
 };
+
+/**
+ * 业务常识勾稽:任何交付物都不得出现 >100% 的占比。
+ *
+ * 加这条的原因是 HISTORY-005:deterministicScore=1.0 全过,文档里却写着
+ * 「前 5 大客户占 Q1 收入 116%」「Q4 单季营业利润占全年利润总额 135%」。
+ * 当时只有 judgeRubric 提到占比超 100%,靠 LLM 判——现在改成确定性断言。
+ */
+function noImpossibleShare(deliverableId: string): HistoricalArtifactAssertion {
+  return {
+    // 同一 Case 可能有多个交付物(H007 是 workbook + document),ID 必须按交付物区分,
+    // 否则报告里两条断言同名、无法定位是哪个文件出的问题。
+    id: `no-impossible-share-${deliverableId}`,
+    description: `占比类百分比不得超过 100%（${deliverableId}）`,
+    deliverableId,
+    kind: "no_impossible_share",
+    critical: true,
+    weight: 2,
+  };
+}
 
 function workbookContract(
   qualityProfile: "generic" | "financial_consolidation" = "generic",
@@ -183,6 +204,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
         weight: 4,
       },
       { id: "workbook-structure", description: "产物至少包含一个工作表", deliverableId: "workbook", kind: "xlsx_min_sheets", minimum: 1, critical: true },
+      noImpossibleShare("workbook"),
     ],
     judgeRubric: "明确只改 Q2 列，保留其他列/公式/格式，计算利润并说明校验，不声称改动不存在的原始文件。",
   },
@@ -220,6 +242,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
         critical: true,
         weight: 5,
       },
+      noImpossibleShare("workbook"),
     ],
     judgeRubric: "四类抵消均覆盖，借贷方向和金额正确；区分列报抵消与合并净额；说明来源、勾稽和待复核项。",
   },
@@ -275,6 +298,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
         critical: true,
         weight: 2,
       },
+      noImpossibleShare("workbook"),
     ],
     judgeRubric: "逐人给出税率档位、速算扣除数、全年应纳税所得额和月度个税；真实附件 G 列是全年专项附加扣除，口径必须为月薪×12-月社保公积金×12-G列-60000，不能把 G 列先按月扣除再乘 12；结果可在 Excel 中复核。",
   },
@@ -315,6 +339,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
         critical: true,
         weight: 5,
       },
+      noImpossibleShare("workbook"),
     ],
     judgeRubric: "先识别制度科目和公式依据，再输出可直接填入表格的公式；不遗漏制度明确科目，不把公式写成自然语言。",
   },
@@ -341,6 +366,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
         weight: 4,
       },
       { id: "reply-length", description: "文档具备可发送的完整正文", deliverableId: "document", kind: "docx_min_chars", minimum: 300, critical: true },
+      noImpossibleShare("document"),
     ],
     judgeRubric: "先完成数据问答，再输出语气正式、可直接发送的回复；结论有数据依据，未知事项明确标注。若同一指标出现互相冲突的数值却未解释、时间线把 Q1 之后事项写成 Q1 事实、占比超过 100% 却未澄清分母，或编造来源表无法支持的精确数字，均属于 blocking。",
   },
@@ -378,6 +404,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
         critical: true,
         weight: 5,
       },
+      noImpossibleShare("workbook"),
     ],
     judgeRubric: "覆盖多 Sheet 关系，结论和数字可追溯；不只给泛泛分析，能指出异常和复核边界。",
   },
@@ -395,6 +422,8 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
       { id: "forecast-metrics", description: "工作簿覆盖营收、研发和固定资产", deliverableId: "workbook", kind: "contains_all", values: ["营收", "研发", "固定资产"], critical: true, weight: 2 },
       { id: "forecast-formulas", description: "工作簿保留计算公式", deliverableId: "workbook", kind: "xlsx_min_formulas", minimum: 3, critical: true },
       { id: "forecast-document", description: "说明文档包含依据、假设和管理层确认事项", deliverableId: "document", kind: "contains_all", values: ["依据", "假设", "确认"], realValues: ["依据", "确认"], critical: true, weight: 2 },
+      noImpossibleShare("workbook"),
+      noImpossibleShare("document"),
     ],
     judgeRubric: "逐年给出三项预测，说明从母公司数据到子公司的分配/增长假设，区分已知数据和管理层待确认事项。生产线必须在集团年度营业收入实际达到 2 亿元后才能启动、启动次年建成；预测若在 2026/2027 未达门槛时写成已触发或已启动，属于 blocking，不能用“保守”解释规避协议字面条件。",
   },

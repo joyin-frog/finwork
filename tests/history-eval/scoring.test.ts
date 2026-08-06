@@ -200,4 +200,42 @@ assert.deepEqual(
   [latestEvidence],
 );
 
+// ── 「没测成」不得记成「测挂了」 ──────────────────────────────────────────
+// HISTORY-001 实测:1143 条公式全无缓存值(本机无重算 Provider),原先这类断言
+// 被判 failed,把确定性分打成 0。公式在、缓存值不在 = 未验证,不是答错。
+const staleTaxArtifact = artifact("workbook", xlsxMime, {
+  ...correctTaxArtifact,
+  cellValues: { "Sheet1!H5": null, "Sheet1!H10": null, "Sheet1!H18": null },
+  formulaValues: {
+    "Sheet1!H5": "=B5*C5-D5",
+    "Sheet1!H10": "=B10*C10-D10",
+    "Sheet1!H18": "=B18*C18-D18",
+  },
+});
+const staleScore = scoreArtifactAssertions(tax, [staleTaxArtifact], true);
+const staleCells = staleScore.assertionResults.find((result) => result.id === "tax-real-values")!;
+assert.equal(staleCells.status, "unverifiable", "公式无缓存值应判未验证，而不是失败");
+assert.equal(staleCells.passed, false, "未验证不等于通过");
+assert.match(staleCells.actual, /无缓存值|未验证/);
+assert.ok(staleScore.unverifiableCount >= 1, "未验证项应被计数");
+assert.equal(staleScore.criticalPassed, true, "未验证的关键项不得判定为关键失败");
+assert.ok(
+  staleScore.deterministicScore > wrongTaxScore.deterministicScore,
+  "未验证项应被排除出分母，不得与答错同等扣分",
+);
+
+// 反面:格子是空的且没有公式 —— 那就是真的没写,必须仍判失败。
+const emptyTaxArtifact = artifact("workbook", xlsxMime, {
+  ...correctTaxArtifact,
+  cellValues: { "Sheet1!H5": null, "Sheet1!H10": null, "Sheet1!H18": null },
+  formulaValues: {},
+});
+const emptyScore = scoreArtifactAssertions(tax, [emptyTaxArtifact], true);
+assert.equal(
+  emptyScore.assertionResults.find((result) => result.id === "tax-real-values")!.status,
+  "failed",
+  "无公式的空格子应判失败，不得借未验证蒙混",
+);
+assert.equal(emptyScore.unverifiableCount, 0, "无公式的空格子不应计入未验证");
+
 console.log("historical-finance-eval scoring: artifact contracts and assertions ✓");

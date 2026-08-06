@@ -130,6 +130,86 @@ export async function spreadsheetInspectCells(
   }
 }
 
+export type WorkbookEdit = {
+  sheet: string;
+  cell: string;
+  value?: string | number | boolean | null;
+  formula?: string;
+  clear?: boolean;
+  /** 显式声明才建表;表不存在且未声明时报 sheet_not_found,不静默新建。 */
+  createSheet?: boolean;
+};
+
+export type WorkbookPatchResult = {
+  applied: Array<{ sheet: string; cell: string }>;
+  missing: Array<{ sheet: string; cell: string; reason: string }>;
+  createdSheets: string[];
+  formulaCount: number;
+  cachedValueCount: number;
+  /**
+   * 因改动而失效、但引擎也算不出新值的既有公式:原缓存原样保留,需人工复核。
+   * 只包含「传播到了但解析不了」的格子——引擎能算出的都已进入 `backfilled`。
+   */
+  staleFormulas: Array<{ cell: string; formula: string }>;
+  staleFormulaCount: number;
+  /** 只写了公式、未提供结果的单元格数(不含依赖闭包发现的既有公式)。 */
+  formulaOnlyCount: number;
+  /**
+   * 被引擎成功算出并写回缓存的单元格,含两类来源(见 reason):
+   * - "explicit":模型自己新写的公式,没给结果,引擎补算。
+   * - "downstream":既有公式,因引用了本次改动的格子而失效,引擎重算后更新。
+   */
+  backfilled: Array<{ sheet: string; cell: string; value: string | number | boolean; reason: "explicit" | "downstream" }>;
+  backfilledCount: number;
+  /** 引擎也算不出的显式公式:多因依赖本机够不到的外部链接,需人工校验。 */
+  unresolvedFormulaCells: string[];
+  /** 引擎不可用/超时的原因;null 表示引擎正常工作。 */
+  engineNote: string | null;
+};
+
+/**
+ * 无损编辑既有工作簿:只重写目标单元格,其余字节原样搬运。
+ *
+ * 不要用 openpyxl 的 load→save 代替它。实测一次原样往返会清空全部公式缓存
+ * (真实工作簿 1164 → 0);外部链接的值一旦丢失,本机无论装不装 LibreOffice
+ * 都算不回来。
+ */
+export async function spreadsheetPatchWorkbook(
+  sourcePath: string,
+  outputPath: string,
+  edits: WorkbookEdit[],
+): Promise<RuntimeCommandResult<WorkbookPatchResult>> {
+  if (!fs.existsSync(sourcePath)) {
+    return { ok: false, errorCode: "file_not_found", detail: sourcePath };
+  }
+  if (edits.length === 0) {
+    return { ok: false, errorCode: "no_edits", detail: "未提供任何单元格改动" };
+  }
+  try {
+    // 必须宽于 finance_worker.py 的 ENGINE_TIMEOUT_SECONDS(45s)+闭包扫描/最终统计
+    // 的开销——实测真实大模板总耗时约 48s。留得太紧,Python 那边优雅降级(标记
+    // engine_timeout、保留原缓存)还没写完 JSON,这层就先把子进程硬杀了,模型
+    // 看到的会是一个裸的 "timeout after 60000ms" 而不是可读的降级说明。
+    const raw = await runPython([
+      "patch-workbook",
+      sourcePath,
+      outputPath,
+      JSON.stringify(edits),
+    ], { timeoutMs: 90_000 });
+    const parsed = JSON.parse(raw) as { ok?: boolean; error?: string } & WorkbookPatchResult;
+    if (!parsed.ok) {
+      return { ok: false, errorCode: "patch_failed", detail: parsed.error };
+    }
+    return { ok: true, data: parsed };
+  } catch (error) {
+    return {
+      ok: false,
+      errorCode: "patch_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function spreadsheetInspectFormulaCells(
   filePath: string,
   addresses: string[],

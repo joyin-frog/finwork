@@ -344,9 +344,12 @@ async function runCase(
         ? artifactScore.deterministicScore * 0.85 + judge.score * 0.15
         : null
     : null;
+  // 有未验证断言时不得判 passed:那是「没测」,不是「测过了」。
+  const hasUnverified = artifactScore.unverifiableCount > 0;
   const passed =
     hardGatePassed &&
     artifactScore.criticalPassed &&
+    !hasUnverified &&
     artifactScore.deterministicScore >= 0.85 &&
     qualityScore != null &&
     qualityScore >= QUALITY_THRESHOLD &&
@@ -364,11 +367,14 @@ async function runCase(
           ? "failed"
           : !hardGatePassed || !artifactScore.criticalPassed
             ? "failed"
-            : !semanticAvailable && semanticRequired
+            // 缺 Provider 导致的未验证项 → needs_review,不记模型失败。
+            : hasUnverified
               ? "needs_review"
-              : passed
-                ? "passed"
-                : "failed";
+              : !semanticAvailable && semanticRequired
+                ? "needs_review"
+                : passed
+                  ? "passed"
+                  : "failed";
   const toolReduction = 1 - toolCalls.length / gc.historicalToolCalls;
   const toolCounts = Object.fromEntries(
     [...new Set(toolCalls)].map((tool) => [
@@ -388,6 +394,7 @@ async function runCase(
     deliveryFailures: delivery.failures,
     deterministicScore: artifactScore.deterministicScore,
     criticalPassed: artifactScore.criticalPassed,
+    unverifiableCount: artifactScore.unverifiableCount,
     assertionResults: artifactScore.assertionResults,
     judgeScore: judge?.score ?? null,
     judgeBlocking: judge?.blocking ?? null,
@@ -430,7 +437,7 @@ async function runCase(
   writeFileSync(path.join(caseRoot, "result.json"), JSON.stringify(result, null, 2), "utf8");
   const qualityLabel = qualityScore == null ? "n/a" : qualityScore.toFixed(2);
   console.log(
-    `${gc.id} ${passed ? "PASS" : "FAIL"} quality=${qualityLabel} deterministic=${artifactScore.deterministicScore.toFixed(2)} tools=${toolCalls.length}/${gc.historicalToolCalls} reduction=${(toolReduction * 100).toFixed(0)}%`,
+    `${gc.id} ${outcome.toUpperCase()} quality=${qualityLabel} deterministic=${artifactScore.deterministicScore.toFixed(2)} unverified=${artifactScore.unverifiableCount} tools=${toolCalls.length}/${gc.historicalToolCalls} reduction=${(toolReduction * 100).toFixed(0)}%`,
   );
   return result;
 }

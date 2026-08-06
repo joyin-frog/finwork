@@ -10,6 +10,20 @@ import { validateGenericFile } from "./generic-file";
 
 const VALIDATOR_ID = "xlsx_generic";
 const FORMULA_ERRORS = ["#DIV/0!", "#REF!", "#VALUE!", "#NAME?", "#NULL!", "#NUM!", "#N/A"];
+
+/**
+ * Provider 能力缺失的错误码。
+ *
+ * 「没测成」不等于「测挂了」:本机没装 LibreOffice、artifact-tool 没配,都不说明
+ * 工作簿有问题。2026-08-05 实测:HISTORY-001 交出一个 1143 条公式的工作簿,唯一
+ * 阻断项是一张预览图没渲出来,结果 0 产物、确定性分 0——能验的四条断言也跟着废了。
+ * 这类缺失一律降为 warning,交付照走,由证据字段告诉下游哪些结论不可用。
+ */
+const CAPABILITY_UNAVAILABLE_CODES = new Set([
+  "recalc_unavailable",
+  "render_unavailable",
+  "artifact_tool_unavailable",
+]);
 type XlsxRuntime = {
   inspect: typeof spreadsheetInspect;
   recalc: typeof spreadsheetRecalc;
@@ -112,10 +126,18 @@ export async function validateXlsxFile(
   if (input.needsRecalc) {
     const recalc = await runtime.recalc(input.filePath);
     if (!recalc.ok) {
-      errors.push({
-        code: recalc.errorCode ?? "recalc_failed",
-        message: recalc.detail ?? "公式重算失败",
-      });
+      const code = recalc.errorCode ?? "recalc_failed";
+      if (CAPABILITY_UNAVAILABLE_CODES.has(code)) {
+        // 没有计算 Provider ≠ 工作簿有问题。交付照走,但公式缓存是旧的,
+        // 依赖缓存值的断言下游要标成「未验证」而不是「验证失败」。
+        evidence.recalcAvailable = false;
+        warnings.push({
+          code,
+          message: `${recalc.detail ?? "公式重算不可用"}；公式缓存未刷新，Excel/WPS 打开时会自动重算`,
+        });
+      } else {
+        errors.push({ code, message: recalc.detail ?? "公式重算失败" });
+      }
     } else {
       const recalcData = recalc.data;
       if (!recalcData?.outputPath) {
@@ -194,9 +216,14 @@ export async function validateXlsxFile(
     try {
       const render = await runtime.render(input.filePath, outDir);
       if (!render.ok) {
-        errors.push({
-          code: render.errorCode ?? "render_failed",
-          message: render.detail ?? "渲染可见页面失败",
+        // 渲染产出的是预览图,不是交付内容本身;渲不出来永远不该毙掉工作簿。
+        // 错误码要归一:LO resolver 对 recalc 和 render 返回同一个 recalc_unavailable,
+        // 直接透传会让报告说「重算不可用」而合同其实写着 needsRecalc:false。
+        const rawCode = render.errorCode ?? "render_failed";
+        evidence.renderAvailable = false;
+        warnings.push({
+          code: CAPABILITY_UNAVAILABLE_CODES.has(rawCode) ? "render_unavailable" : rawCode,
+          message: `${render.detail ?? "渲染可见页面失败"}；预览不可用，不影响文件本身`,
         });
       } else {
         evidence.render = { files: render.data?.files?.length ?? 0, provider: render.data?.provider };

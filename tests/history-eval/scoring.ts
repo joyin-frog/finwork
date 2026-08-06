@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import type { CompletionEvidence, TaskContract } from "@/lib/agent/run-contract";
-import { parseDocument, buildSpreadsheetMirror } from "@/lib/knowledge/parsers";
+import { parseDocument } from "@/lib/knowledge/parsers";
 import {
   spreadsheetCompareAllowedCells,
   spreadsheetExtractText,
@@ -11,6 +11,7 @@ import {
   spreadsheetRecalc,
 } from "@/lib/runtime/spreadsheet-runtime";
 import { sha256File } from "@/lib/deliverable/hash";
+import { findImpossibleShares } from "@/lib/domain/business-sense";
 import type {
   HistoricalArtifactAssertion,
   HistoricalFinanceCase,
@@ -47,6 +48,14 @@ export type AssertionResult = {
   critical: boolean;
   weight: number;
   passed: boolean;
+  /**
+   * `unverifiable` = 没测成,不是测挂了。
+   *
+   * 典型来源:断言要读公式的缓存值,但本机没有重算 Provider,缓存是空的。
+   * 把「没测」记成「测挂了」会直接污染能力评分——2026-08-05 的 HISTORY-001
+   * 就因此拿到确定性分 0,而它其实交出了一个 1143 条公式的工作簿。
+   */
+  status: "passed" | "failed" | "unverifiable";
   expected: string;
   actual: string;
 };
@@ -82,18 +91,19 @@ export async function inspectDeliveredArtifacts(
       if (evidence.mime === XLSX_MIME || evidence.deliveredPath.toLowerCase().endsWith(".xlsx")) {
         const inspected = await spreadsheetInspect(evidence.deliveredPath);
         if (!inspected.ok) throw new Error(inspected.detail ?? "工作簿检查失败");
-        try {
-          base.text = (await buildSpreadsheetMirror(evidence.deliveredPath)).text;
-        } catch {
-          // ExcelJS cannot parse some legacy comments/external-link metadata.
-          // The Python worker uses openpyxl and remains able to inspect the
-          // workbook, so preserve deterministic scoring through that path.
-          const extracted = await spreadsheetExtractText(evidence.deliveredPath);
-          if (!extracted.ok) {
-            throw new Error(extracted.detail ?? "工作簿文本提取失败");
-          }
-          base.text = extracted.data?.text ?? "";
+        // openpyxl 全量提取(不用 buildSpreadsheetMirror):后者以「第一行非空
+        // 列数」当表头宽度,超出这个宽度的列在任何一行都不会进入文本——
+        // 2026-08-06 实测:HISTORY-003 的列标题在第 4 行(第 1 行只有一个
+        // 标题格),导致 contains_all 断言读不到已经正确写入的关键词,把
+        // 「评测提取不完整」误判成「模型没做对」。buildSpreadsheetMirror
+        // 是为知识库 RAG 检索设计的规整表头假设,不适合这里的完整性要求;
+        // 现有断言只做子串匹配,不依赖它的「表头: 值」拼接格式,换掉不影响
+        // 任何既有 case。
+        const extracted = await spreadsheetExtractText(evidence.deliveredPath);
+        if (!extracted.ok) {
+          throw new Error(extracted.detail ?? "工作簿文本提取失败");
         }
+        base.text = extracted.data?.text ?? "";
         const sheets =
           (inspected.data as { sheets?: Array<Record<string, unknown>> } | undefined)?.sheets ?? [];
         base.sheetNames = sheets.map((sheet) => String(sheet.name ?? ""));
@@ -153,17 +163,15 @@ export async function inspectDeliveredArtifacts(
           }
         }
         const requestedFormulaCells = assertions
-          .filter((assertion) =>
-            assertion.deliverableId === evidence.contractDeliverableId &&
-            assertion.kind === "xlsx_formulas_equal"
-          )
-          .flatMap((assertion) =>
-            Object.keys(
-              assertion.realFormulas && fixtureRoot
-                ? assertion.realFormulas
-                : assertion.formulas ?? {},
-            )
-          );
+          .filter((assertion) => assertion.deliverableId === evidence.contractDeliverableId)
+          .flatMap((assertion) => [
+            ...Object.keys(assertion.formulas ?? {}),
+            ...Object.keys(assertion.realFormulas ?? {}),
+            // cells_equal 的地址也要取公式文本:用来区分「公式存在但没有缓存值」
+            // (无重算 Provider,应判未验证)和「格子本来就是空的」(应判失败)。
+            ...Object.keys(assertion.cells ?? {}),
+            ...Object.keys(assertion.realCells ?? {}),
+          ]);
         if (requestedFormulaCells.length > 0) {
           const inspectedFormulas = await spreadsheetInspectFormulaCells(
             evidence.deliveredPath,
@@ -259,6 +267,8 @@ export function scoreArtifactAssertions(
 ): {
   deterministicScore: number;
   criticalPassed: boolean;
+  /** 未验证项数量;>0 时不得宣称通过,应收敛到 needs_review。 */
+  unverifiableCount: number;
   assertionResults: AssertionResult[];
 } {
   const assertionResults = gc.artifactAssertions.map((assertion) =>
@@ -268,13 +278,19 @@ export function scoreArtifactAssertions(
     assertion.appliesTo === "all" ||
     (realMode ? assertion.appliesTo === "real" : assertion.appliesTo === "synthetic")
   ).map((assertion) => evaluateAssertion(assertion, artifacts, realMode));
-  const totalWeight = assertionResults.reduce((sum, result) => sum + result.weight, 0);
-  const passedWeight = assertionResults
+  // 未验证项既不进分子也不进分母:让「缺 Provider」不再稀释能力分。
+  // criticalPassed 同理只看真正失败的关键项;是否放行由 unverifiableCount 单独决定。
+  const scored = assertionResults.filter((result) => result.status !== "unverifiable");
+  const totalWeight = scored.reduce((sum, result) => sum + result.weight, 0);
+  const passedWeight = scored
     .filter((result) => result.passed)
     .reduce((sum, result) => sum + result.weight, 0);
   return {
     deterministicScore: totalWeight > 0 ? passedWeight / totalWeight : 1,
-    criticalPassed: assertionResults.every((result) => !result.critical || result.passed),
+    criticalPassed: assertionResults.every(
+      (result) => !result.critical || result.status !== "failed",
+    ),
+    unverifiableCount: assertionResults.filter((result) => result.status === "unverifiable").length,
     assertionResults,
   };
 }
@@ -329,6 +345,7 @@ function evaluateAssertion(
   const weight = assertion.weight ?? 1;
   const critical = assertion.critical ?? false;
   let passed = false;
+  let unverifiable = false;
   let expected = "";
   let actual = "";
 
@@ -364,16 +381,30 @@ function evaluateAssertion(
     case "xlsx_cells_equal": {
       const cells = realMode && assertion.realCells ? assertion.realCells : assertion.cells ?? {};
       const mismatches: string[] = [];
+      // 公式在、缓存值不在 = 没有重算 Provider,这条读不出来,不能算模型答错。
+      const staleFormulaCells: string[] = [];
       for (const [address, expectedValue] of Object.entries(cells)) {
-        const actualValue = targets.find((target) =>
+        const holder = targets.find((target) =>
           Object.prototype.hasOwnProperty.call(target.cellValues, address)
-        )?.cellValues[address];
-        if (!cellValuesEqual(actualValue, expectedValue)) {
-          mismatches.push(`${address}: expected ${expectedValue}, actual ${String(actualValue)}`);
+        );
+        const actualValue = holder?.cellValues[address];
+        if (cellValuesEqual(actualValue, expectedValue)) continue;
+        const formulaText = targets.find((target) =>
+          Object.prototype.hasOwnProperty.call(target.formulaValues, address)
+        )?.formulaValues[address];
+        if ((actualValue === null || actualValue === undefined) && formulaText) {
+          staleFormulaCells.push(`${address}(${formulaText})`);
+          continue;
         }
+        mismatches.push(`${address}: expected ${expectedValue}, actual ${String(actualValue)}`);
+      }
+      expected = Object.entries(cells).map(([address, value]) => `${address}=${value}`).join(", ");
+      if (targets.length > 0 && mismatches.length === 0 && staleFormulaCells.length > 0) {
+        unverifiable = true;
+        actual = `公式存在但无缓存值，缺重算 Provider，未验证：${staleFormulaCells.join("; ")}`;
+        break;
       }
       passed = targets.length > 0 && Object.keys(cells).length > 0 && mismatches.length === 0;
-      expected = Object.entries(cells).map(([address, value]) => `${address}=${value}`).join(", ");
       actual = mismatches.length > 0 ? mismatches.join("; ") : "全部匹配";
       break;
     }
@@ -423,6 +454,19 @@ function evaluateAssertion(
       actual = `正文字符数 = ${count}`;
       break;
     }
+    case "no_impossible_share": {
+      // 用原始 text 而非 normalizeText:后者去掉空白和逗号会破坏语境窗口与摘录。
+      const hits = targets.flatMap((artifact) => findImpossibleShares(artifact.text));
+      passed = targets.length > 0 && hits.length === 0;
+      expected = "占比类百分比均 <= 100%";
+      actual = targets.length === 0
+        ? "无交付物"
+        : hits.length === 0
+          ? "未发现不可能占比"
+          : `发现 ${hits.length} 处: ` +
+            hits.slice(0, 3).map((hit) => `${hit.percent}% @「${hit.excerpt}」`).join("; ");
+      break;
+    }
   }
 
   return {
@@ -431,6 +475,7 @@ function evaluateAssertion(
     critical,
     weight,
     passed,
+    status: unverifiable ? "unverifiable" : passed ? "passed" : "failed",
     expected,
     actual,
   };

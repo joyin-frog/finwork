@@ -84,17 +84,95 @@ const defaultSettings: AgentSettings = {
   telemetryInstallId: "",
 };
 
+type SettingsEnvelope = Partial<AgentSettings> & {
+  agent?: Partial<AgentSettings>;
+  claude?: Partial<AgentSettings>;
+};
+
+/** 信封解包层数上限;正常最多 1 层,多出来的是历史畸形文件,不能无限下钻。 */
+const MAX_ENVELOPE_DEPTH = 4;
+
+function isEnvelopeLayer(value: unknown): value is SettingsEnvelope {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * 逐层解开设置信封,返回真正承载字段的那一层。
+ *
+ * 磁盘上出现过三种形态:`{agent:…}`(当前写入格式)、`{claude:…}`(旧版),以及双层的
+ * `{claude:{agent:…}}`。第三种曾让 source 停在中间层——那层没有 apiUrl/mainModel 等
+ * 字段,于是全部读成 undefined 并**静默**回落默认值:用户在设置页填过的 API 地址、
+ * 模型、公司名凭空消失,界面上却毫无报错,只显示成"没配过"。
+ *
+ * AgentSettings 自身没有 agent/claude 字段(是 agentName),所以"还能继续下钻"
+ * 等价于"当前这层是信封",不会误伤真实设置。
+ */
+function unwrapSettingsEnvelope(parsed: SettingsEnvelope | null): {
+  source: Partial<AgentSettings>;
+  /** 是否已是写入器产出的规范形态;false 时调用方需幂等写回,避免旧形态永久滞留。 */
+  canonical: boolean;
+} {
+  if (!parsed) return { source: {}, canonical: true };
+  let current: SettingsEnvelope = parsed;
+  let depth = 0;
+  let viaLegacyKey = false;
+  while (depth < MAX_ENVELOPE_DEPTH) {
+    let next: SettingsEnvelope | null = null;
+    if (isEnvelopeLayer(current.agent)) {
+      next = current.agent;
+    } else if (isEnvelopeLayer(current.claude)) {
+      next = current.claude;
+      viaLegacyKey = true;
+    }
+    if (!next) break;
+    current = next;
+    depth += 1;
+  }
+  // 规范形态只有两种:裸对象(depth 0)与单层 {agent:…}(depth 1)。
+  // 走过 claude 或多于一层,都说明磁盘形态过时,需要写回。
+  return { source: current, canonical: !viaLegacyKey && depth <= 1 };
+}
+
+/** 只有「文件不存在」才是可以按默认值创建的正常首启;其余读失败一律视为磁盘有数据但读不动。 */
+function isFileMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
+
+/**
+ * 原子落盘:同目录临时文件 + rename。
+ *
+ * 直接 writeFile 会让并发读者看到写了一半的 JSON;而读侧一旦解析失败就会拿默认值
+ * 写回,构成真实的数据丢失链。2026-08-05 实测:一次并发读写把设置文件打成只剩
+ * 一个键。rename 在同一目录内是原子的,读者要么看到旧文件、要么看到新文件。
+ */
+async function writeSettingsFileAtomic(payload: unknown): Promise<void> {
+  const settingsPath = getSettingsPath();
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  const tempPath = `${settingsPath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+  try {
+    await fs.writeFile(tempPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+    await fs.rename(tempPath, settingsPath);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 export async function readAgentSettings(): Promise<AgentSettings> {
-  let parsed: (Partial<AgentSettings> & { agent?: Partial<AgentSettings>; claude?: Partial<AgentSettings> }) | null = null;
+  let parsed: SettingsEnvelope | null = null;
   let source: Partial<AgentSettings> = {};
+  let canonicalEnvelope = true;
+  // 文件缺失 ≠ 读不动。前者是首启,可以按默认值创建;后者说明磁盘上有内容但当前
+  // 读不了(半写、损坏、无权限),此时任何写回都会拿默认值覆盖掉用户的真实设置。
+  let readFailed = false;
   try {
     const raw = await fs.readFile(getSettingsPath(), "utf-8");
-    parsed = JSON.parse(raw) as Partial<AgentSettings> & { agent?: Partial<AgentSettings>; claude?: Partial<AgentSettings> };
-    source = parsed.agent ?? parsed.claude ?? parsed;
-  } catch {
-    // 文件不存在/损坏:用默认值;API Key 仍可能在系统密钥库里
+    parsed = JSON.parse(raw) as SettingsEnvelope;
+    ({ source, canonical: canonicalEnvelope } = unwrapSettingsEnvelope(parsed));
+  } catch (error) {
+    readFailed = !isFileMissing(error);
   }
-  const loadedLegacyEnvelope = Boolean(parsed?.claude && !parsed.agent);
+  const loadedLegacyEnvelope = !canonicalEnvelope;
 
   // API Key 一律从系统密钥库取;若 JSON 里还留着旧版明文 key,迁移进密钥库并从 JSON 抹掉。
   let apiKey = (await getApiKeySecret()).trim();
@@ -105,19 +183,19 @@ export async function readAgentSettings(): Promise<AgentSettings> {
   }
 
   // 首次读取时若无 installId 则生成并立即持久化(保证多次读取 installId 不变)。
+  //
+  // readFailed 时**只在内存里用新 id,绝不落盘**:这条路径曾把一份读不动的设置文件
+  // 覆盖成只剩 installId 一个键(2026-08-05 实测)。读不出来就不写,等下次读成功。
   let telemetryInstallId = (source.telemetryInstallId || "").trim();
   if (!telemetryInstallId) {
     telemetryInstallId = randomUUID();
-    // 写回设置文件以持久化;失败时 best-effort(不阻塞启动)。
-    try {
-      const nextSource = { ...source, telemetryInstallId };
-      const out = { agent: nextSource };
-      const settingsPath = getSettingsPath();
-      await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-      await fs.writeFile(settingsPath, `${JSON.stringify(out, null, 2)}
-`, 'utf-8');
-    } catch {
-      // best-effort
+    if (!readFailed) {
+      // 写回设置文件以持久化;失败时 best-effort(不阻塞启动)。
+      try {
+        await writeSettingsFileAtomic({ agent: { ...source, telemetryInstallId } });
+      } catch {
+        // best-effort
+      }
     }
   }
 
@@ -216,8 +294,7 @@ export async function writeAgentSettings(next: Partial<AgentSettings>) {
     // 白名单漏了它就会在每次写设置时静默删掉用户手写的费率声明。
     ...(settings.modelPricing ? { modelPricing: settings.modelPricing } : {}),
   };
-  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  await fs.writeFile(settingsPath, `${JSON.stringify({ agent: jsonPayload }, null, 2)}\n`, "utf-8");
+  await writeSettingsFileAtomic({ agent: jsonPayload });
   return toPublicAgentSettings(settings, apiKeyPersisted);
 }
 
@@ -229,11 +306,8 @@ async function migrateLegacyKey(
 ): Promise<void> {
   try {
     await setApiKeySecret(key);
-    delete (source as { apiKey?: string }).apiKey; // source 指向 parsed.claude 或 parsed,改它即改 parsed
-    const out = { agent: source };
-    const settingsPath = getSettingsPath();
-    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-    await fs.writeFile(settingsPath, `${JSON.stringify(out, null, 2)}\n`, "utf-8");
+    delete (source as { apiKey?: string }).apiKey; // source 指向解包后的真实设置对象,改它即改 parsed
+    await writeSettingsFileAtomic({ agent: source });
   } catch (err) {
     console.warn("[agent-settings] 旧版明文 key 迁移失败", err);
   }
@@ -323,22 +397,13 @@ async function persistMigratedModelConfig(
     subagentModel: migrated.subagentModel,
     telemetryInstallId,
   };
-  const out = { agent: nextSource };
-  const settingsPath = getSettingsPath();
-  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  await fs.writeFile(settingsPath, `${JSON.stringify(out, null, 2)}\n`, "utf-8");
+  await writeSettingsFileAtomic({ agent: nextSource });
 }
 
 async function persistAgentEnvelope(settings: AgentSettings): Promise<void> {
   const jsonPayload: Partial<AgentSettings> = { ...settings };
   delete jsonPayload.apiKey;
-  const settingsPath = getSettingsPath();
-  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  await fs.writeFile(
-    settingsPath,
-    `${JSON.stringify({ agent: jsonPayload }, null, 2)}\n`,
-    "utf-8",
-  );
+  await writeSettingsFileAtomic({ agent: jsonPayload });
 }
 
 // 头像只接受小图 data URL(客户端已压到 ~96px);非 data:image/ 前缀或超过 512KB 一律丢弃,

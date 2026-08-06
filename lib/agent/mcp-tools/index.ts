@@ -6,6 +6,12 @@ import { createRecordBusinessMetricsTool } from "./business-metrics";
 import { createBusinessAnalysisTool } from "./business-analysis-tool";
 import { createSearchKnowledgeTool, createQueryKnowledgeTool, createReadFileTool } from "./knowledge";
 import { createReadDocumentTool } from "./read-document";
+import { createPatchWorkbookTool } from "./patch-workbook";
+import {
+  createCheckWorkbookTiesTool,
+  createDetectDataIssuesTool,
+  createMergeTablesTool,
+} from "./workbook-checks";
 import { createScanSlipFolderTool } from "./scan-slip-folder";
 import { createKingdeeTools } from "./kingdee-tools";
 import { createFinanceTools } from "./finance-tools";
@@ -77,6 +83,16 @@ function createFinanceWorkerTools(
       createReadDocumentTool(sdk, {
         allowedRoots: [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])],
       }),
+      createPatchWorkbookTool(sdk, {
+        outputDir,
+        allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
+      }),
+      createCheckWorkbookTiesTool(sdk, {
+        outputDir,
+        allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
+      }),
+      createDetectDataIssuesTool(sdk),
+      createMergeTablesTool(sdk),
       createScanSlipFolderTool(sdk),
       createRememberConventionTool(sdk),
       createRememberRoleConventionTool(sdk),
