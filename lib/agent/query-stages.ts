@@ -12,7 +12,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { uniqueFilePath } from "@/lib/files/unique-name";
 import { isEnabled } from "@/lib/runtime/flags";
-import type { AgentAttachment, AgentMessage } from "@/lib/agent/claude-adapter";
+import type { AgentAttachment, AgentMessage } from "@/lib/agent/contracts";
 import { sanitizeAttachments } from "@/lib/agent/attachment-guard";
 import {
   createChatConversation,
@@ -21,7 +21,6 @@ import {
   getMessageAttachments,
   insertChatAttachment,
   insertChatMessage,
-  setChatConversationClaudeSessionId,
 } from "@/lib/db/sqlite";
 import { getConversationFilesDir } from "@/lib/runtime/paths";
 import { snapshotGeneratedFiles } from "@/lib/chat/generated-files";
@@ -30,7 +29,7 @@ import { specialistRoleUsabilityIssue } from "@/lib/agent/roles/availability";
 import { injectSkillHint } from "@/lib/agent/skill-hint";
 import { getUsageStatus } from "@/lib/usage/store";
 import { buildBlockedNotice } from "@/lib/usage/quota";
-import { readClaudeSettings } from "@/lib/settings/claude-settings";
+import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { createLogger } from "@/lib/runtime/logger";
 
 const log = createLogger("agent-query");
@@ -55,7 +54,7 @@ export type ParseInput = {
   request: Request;
   traceId: string;
   startedAt: number;
-  settings: Awaited<ReturnType<typeof readClaudeSettings>>;
+  settings: Awaited<ReturnType<typeof readAgentSettings>>;
   roleMode: string;
 };
 
@@ -146,8 +145,8 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
 export type SessionInput = ParseOutput;
 
 export type SessionOutput = SessionInput & {
-  existingClaudeSessionId: string | null;
-  claudeSessionId: string | null;
+  existingRuntimeSessionId: string | null;
+  runtimeSessionId: string | null;
   agentMessages: AgentMessage[];
   outputDir: string | undefined;
   beforeGenerate: Set<string>;
@@ -256,17 +255,17 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
 
   // Session staleness check
   const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
-  let existingClaudeSessionId = conversation?.claudeSessionId ?? null;
-  if (isEnabled("SESSION_LIVENESS_CHECK_ENABLED") && existingClaudeSessionId && conversation?.claudeSessionUpdatedAt) {
-    if (Date.now() - new Date(conversation.claudeSessionUpdatedAt).getTime() > SESSION_MAX_AGE_MS) {
+  let existingRuntimeSessionId = conversation?.runtimeSessionId ?? null;
+  if (isEnabled("SESSION_LIVENESS_CHECK_ENABLED") && existingRuntimeSessionId && conversation?.runtimeSessionUpdatedAt) {
+    if (Date.now() - new Date(conversation.runtimeSessionUpdatedAt).getTime() > SESSION_MAX_AGE_MS) {
       log.info("session stale", { traceId, conversationId });
-      existingClaudeSessionId = null;
+      existingRuntimeSessionId = null;
     }
   }
-  const claudeSessionId = conversationId ? existingClaudeSessionId ?? randomUUID() : null;
-  if (conversationId && claudeSessionId && !existingClaudeSessionId) {
-    setChatConversationClaudeSessionId(conversationId, claudeSessionId);
-  }
+  // locator 归 runtime 所有，Query 只搬运不铸造（见 lib/agent/session.ts）。Pi 的 locator
+  // 就是受控目录里的 .jsonl 路径，自铸 UUID 落库会在回合中途失败时留下永久卡死 resume 的
+  // 假 locator。首轮为 null，真实 locator 由回合结束时的回写填入。
+  const runtimeSessionId = conversationId ? existingRuntimeSessionId : null;
 
   // 用户引用的技能 → 注入"优先使用这些技能"提示(只改发给 agent 的副本,不污染已落库原文)。
   const agentMessages = injectSkillHint(messages, referencedSkills); // 裁剪职责下沉到 adapter（pickPromptMessages）
@@ -278,8 +277,8 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
   return {
     ...ctx,
     conversationId,
-    existingClaudeSessionId,
-    claudeSessionId,
+    existingRuntimeSessionId,
+    runtimeSessionId,
     agentMessages,
     outputDir,
     beforeGenerate,
@@ -357,10 +356,10 @@ export type RouterOutput = RouterInput & {
 };
 
 export const routerStage: Stage<RouterInput, RouterOutput> = async (ctx) => {
-  const { traceId, lastUserContent, messages, existingClaudeSessionId, conversationId } = ctx;
+  const { traceId, lastUserContent, messages, existingRuntimeSessionId, conversationId } = ctx;
 
   // 专员会话（E 刀）：不过路由器——cheap 直答/分层是主管人格的机制，专员回合恒走
-  // 完整 agent（角色系统提示 + 角色工具白名单在 claude-adapter 按 roleId 装配）。
+  // 完整 agent（角色系统提示 + 角色工具白名单在 Pi Service 按 roleId 装配）。
   if (ctx.sessionRoleId) {
     const routerResult = {
       path: "main" as const,
@@ -375,7 +374,7 @@ export const routerStage: Stage<RouterInput, RouterOutput> = async (ctx) => {
   // 路由器关闭时仍先过零成本本地问候直答(matchTrivialMessage),只跳过 LLM 分类调用
   const localTrivial = !isEnabled("ROUTER_ENABLED") && lastUserContent ? matchTrivialMessage(lastUserContent) : null;
   const routerResult = isEnabled("ROUTER_ENABLED") && lastUserContent
-    ? await runRouter(lastUserContent, messages, traceId, { claudeSessionId: existingClaudeSessionId, conversationId })
+    ? await runRouter(lastUserContent, messages, traceId, { runtimeSessionId: existingRuntimeSessionId, conversationId })
     : localTrivial
       ? { path: "cheap" as const, decision: localTrivial, latencyMs: 0 }
       : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
@@ -479,8 +478,8 @@ async function parseJsonRequest(request: Request) {
   const roleParam = parseRoleParam(body.role);
   const rawAttachments = body.attachments ?? [];
 
-  // Persist any dataUrl-only attachments to disk so downstream (claude-adapter,
-  // non-Anthropic gateways) can always read them via storagePath rather than
+  // Persist any dataUrl-only attachments to disk so downstream providers can
+  // always read them via storagePath rather than
   // relying on inline base64 blocks that some gateways silently drop.
   const attachments: AgentAttachment[] = [];
   for (const att of rawAttachments) {

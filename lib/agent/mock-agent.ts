@@ -1,14 +1,14 @@
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { AgentMessage, ClaudeAgentRunOptions } from "./claude-adapter";
+import type { AgentMessage, FinworkAgentRequest, FinworkAgentResult } from "./contracts";
 import type { AgentRuntimeEvent } from "./runtime-events";
 import { conversationDirFromOutputDir, getDeliveredDir } from "@/lib/deliverable/scope";
 
 /**
  * 确定性模拟 Agent —— 给 e2e 用。
  *
- * 真 Agent 走 SDK + 真 LLM:非确定、要密钥、慢、易抖,没法当 CI 常态门。本模块在
- * `FINANCE_AGENT_MOCK_AGENT=1` 时接管 runClaudeAgent,按"用户最后一句话的关键词"
+ * 真 Agent 走 Pi + 真 LLM:非确定、要密钥、慢、易抖,没法当 CI 常态门。本模块在
+ * `FINANCE_AGENT_MOCK_AGENT=1` 时接管主 Agent Service,按"用户最后一句话的关键词"
  * 挑一个脚本,沿真 Agent 同一套回调(emit / resolveUserQuestion)
  * 重放可预测的事件流,并把真实文件写进 outputDir —— 让"流式渲染 / 工具卡 / 生成文件
  * → 产物追踪 / 人机确认"这些 journey 能被确定性地 e2e。
@@ -20,7 +20,7 @@ export function isMockAgentEnabled(): boolean {
   return v === "1" || v === "true";
 }
 
-type MockResult = { mode: "mock"; claudeSessionId: string | null; content: string };
+export type MockAgentRunOptions = Omit<FinworkAgentRequest, "messages">;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -37,10 +37,10 @@ function lastUserText(messages: AgentMessage[]): string {
 
 export async function runMockAgent(
   messages: AgentMessage[],
-  runOptions: ClaudeAgentRunOptions = {}
-): Promise<MockResult> {
+  runOptions: MockAgentRunOptions = {}
+): Promise<FinworkAgentResult> {
   const text = lastUserText(messages);
-  const claudeSessionId = runOptions.claudeSessionId ?? "mock-session";
+  const runtimeSessionId = runOptions.runtimeSessionId ?? "mock-session";
   const delay = stepDelay();
   const emitEvent = (e: AgentRuntimeEvent) => runOptions.emit?.(e);
 
@@ -51,12 +51,12 @@ export async function runMockAgent(
     runOptions.emit?.({ type: "message_delta", channel: "text", delta: t });
     await sleep(delay);
   };
-  const done = (): MockResult => ({ mode: "mock", claudeSessionId, content: full });
+  const done = (): FinworkAgentResult => ({ mode: "mock", runtimeSessionId, content: full });
 
   // ── journey: 生成文件(写真文件进 outputDir,供产物追踪 + 预览验证)──────────
   if (/生成|导出|excel|表格|报表|xlsx|文件/i.test(text)) {
     await say("好的,我来生成一个示例表格。");
-    emitEvent({ type: "tool_started", toolCallId: "mock-gen-1", toolName: "run_python", input: { task: "build_xlsx" } });
+    emitEvent({ type: "tool_started", toolCallId: "mock-gen-1", toolName: "analyze_tabular", input: { task: "summarize_rows" } });
     await sleep(delay);
     const fileName = "示例报表.xlsx";
     if (runOptions.outputDir) {
@@ -78,7 +78,7 @@ export async function runMockAgent(
         path.join(deliveredDir, fileName)
       );
     }
-    emitEvent({ type: "tool_completed", toolCallId: "mock-gen-1", toolName: "run_python", content: `已生成 ${fileName}`, durationMs: 6 });
+    emitEvent({ type: "tool_completed", toolCallId: "mock-gen-1", toolName: "analyze_tabular", content: `已汇总 ${fileName}`, durationMs: 6 });
     await say(`已生成 ${fileName},可在下方查看。`);
     return done();
   }
@@ -151,9 +151,9 @@ export async function runMockAgent(
     await sleep(delay);
     const steps: Array<{ name: string; input: unknown; result: string; isError?: boolean }> = [
       { name: "Skill", input: { command: "finance-skills:finance-analysis" }, result: "已加载技能" },
-      // mcp 工具带 mcp__<server>__ 前缀(贴近真实),验证图标/剥前缀的归一化
-      { name: "mcp__finance__run_python", input: { code: "rev = Decimal('55379467.47')" }, result: "ok" },
-      { name: "mcp__finance__search_knowledge", input: { query: "差旅住宿标准" }, result: "命中 3 篇" },
+      // Pi 工具使用全局唯一的裸名，验证工具步骤时间线不依赖来源域前缀。
+      { name: "analyze_tabular", input: { rows: [{ revenue: 55379467.47 }] }, result: "ok" },
+      { name: "search_knowledge", input: { query: "差旅住宿标准" }, result: "命中 3 篇" },
       { name: "WebSearch", input: { query: "增值税最新税率" }, result: "找到若干结果" },
       { name: "Edit", input: { file_path: "/Users/user/report.md" }, result: "已写入" },
       { name: "Bash", input: { command: "ls /nonexistent" }, result: "No such file or directory", isError: true },

@@ -14,7 +14,7 @@ export function createReconciliationTools(sdk: Sdk) {
     "reconcile_bank_statement",
     [
       "银行流水对账(只读,只核对差异,不涉及任何付款/转账):把银行流水与账面/台账两张表按方向+金额+日期容差勾对,输出已匹配、银行有账无、账有银行无,以及疑似拆分/合并的清单。",
-      "【调用前置】各家银行流水格式不同,请先用 run_python(或 xlsx 技能)把两张表整理成结构化行(date/amount/direction)再调用本工具。",
+      "【调用前置】各家银行流水格式不同,请先用 read_document 读取并整理成结构化行(date/amount/direction)，再调用本工具。",
       "【差异处理】所有差异项(银行有账无/账有银行无/疑似拆合并)均需人工逐笔确认后再处理,本工具不会自动修账。"
     ].join("\n"),
     {

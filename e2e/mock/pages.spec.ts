@@ -23,7 +23,7 @@ test("设置-填 API Key → 保存回路 → 已配置", async ({ page }) => {
   await expect(async () => {
     await key.fill("sk-e2e-mock-key");
     const saved = page.waitForResponse(
-      (r) => r.url().includes("/api/settings/claude") && r.request().method() === "PUT",
+      (r) => r.url().includes("/api/settings/agent") && r.request().method() === "PUT",
       { timeout: 5_000 }
     );
     await key.blur();

@@ -31,7 +31,7 @@
 **B. 工具 + Python 导出（源码契约 + 脚本测试）**
 - [ ] `export_payslips({year, month, fileName?})` 工具在 `payroll.ts`：读 `listPayrollRecords` → `buildPayslipExport` → 照 `export_voucher_list` 模式 `execFileSync` 调 `finance_worker.py export-payslips-xlsx`（payload 只含姓名 + 金额，**无 PII**）→ 返回 `{filePath, fileName}` + 建议调 `finalize_deliverable`。draft 存在时文本里列出"仍是草稿未导出：…，请先确认"。文本经 `redact()`。
 - [ ] `finance_worker.py` 加 `cmd_export_payslips_xlsx()`（从 stdin 读 JSON，openpyxl 写"工资明细"sheet：表头 + 每人一行 + 合计行 + 顶部标注"{year}年{month}月 · 已确认"），并在 `main()` 分发 `export-payslips-xlsx`。复用既有防覆盖 guard，回显真实 `filePath`。
-- [ ] `tools/registry.ts` 注册 `mcp__finance_worker__export_payslips`，`riskLevel:"medium"`（敏感产物但只生成本地文件、可逆、不需确认门）；`roles/registry.ts` payroll-officer.tools 加裸名；`renderers.ts` 加摘要（复用 `formatPeriod`）。**三处注册 + 工具实现原子同提交**（否则 role-registry.test G1/G4d、tool-renderers.test AC7 中间态必红）。
+- [ ] `tools/registry.ts` 注册 `export_payslips`，`riskLevel:"medium"`（敏感产物但只生成本地文件、可逆、不需确认门）；`roles/registry.ts` payroll-officer.tools 加裸名；`renderers.ts` 加摘要（复用 `formatPeriod`）。**三处注册 + 工具实现原子同提交**（否则 role-registry.test G1/G4d、tool-renderers.test AC7 中间态必红）。
 - [ ] Python 脚本测试（仿 `tests/export-voucher-list.test.ts`）：`execFileSync` 调 `export-payslips-xlsx` 喂样例 → 断言文件生成、openpyxl 读回表头/某人金额/合计一致。
 
 **C. 数据信任**

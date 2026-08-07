@@ -1,7 +1,7 @@
 // Real end-to-end test of the four document skills (xlsx/docx/pptx/pdf):
 // sends a natural request for each format and asserts the agent AUTO-SELECTS the
 // right skill and actually GENERATES a file of that format (proves skill→Bash→
-// run_python→file generation, not just the extraction scripts the unit tests cover).
+// fixed export tools→file generation, not just the extraction scripts the unit tests cover).
 //
 //   node scripts/loop/with-server.mjs -- node scripts/loop/skill-smoke.mjs
 const BASE = process.env.BASE_URL || "http://127.0.0.1:3997";

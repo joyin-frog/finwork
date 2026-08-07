@@ -25,6 +25,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run eval:ar14:context
 
   build:
     if: inputs.run_build
@@ -45,6 +46,7 @@ jobs:
             nextcache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
             nextcache-${{ runner.os }}-
       - run: bash scripts/ci-cancel-aware.sh npm run build
+      - run: npm run eval:ar13:pi-only
 
   unit:
     if: inputs.run_unit
@@ -63,6 +65,7 @@ jobs:
           python -m venv workers/.venv
           workers/.venv/bin/python -m pip install --upgrade pip
           workers/.venv/bin/python -m pip install -r requirements.txt
+      # npm test 现在串起 test:pi(Pi 边界层)+ all.test.ts,两者仍是独立进程,见 package.json。
       - run: bash scripts/ci-cancel-aware.sh npm test
       - run: bash scripts/ci-cancel-aware.sh npm run eval:golden:ci
 
@@ -94,6 +97,8 @@ jobs:
       # ripgrep / 完整 .next/server 覆盖；并跑打包期硬校验：node:sqlite 可用、SDK 二进制存在）。
       - run: npm run build
       - run: npm run tauri:prepare
+      - name: Pi-only packaged preflight
+        run: npm run eval:ar14:packaged
       # 校验 Rust 外壳在 Windows 能编译（含 KILL_ON_JOB_CLOSE 的 Job Object FFI，mac 上被 cfg 隔离编不到）。
       - name: Cargo check (Windows shell, incl. Job Object FFI)
         working-directory: src-tauri

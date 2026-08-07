@@ -15,7 +15,7 @@
 | `lib/db/finance-store.ts` | 修改 | InvoiceLedgerEntry 类型扩展；recordInvoices 全列 INSERT；新增 InvoiceLedgerBreakdown 类型与 getInvoiceLedgerBreakdown 函数 |
 | `lib/agent/tools/finance/reimbursement.ts` | 修改 | record_reimbursement_invoices zod 加 taxRate/taxAmountYuan/counterparty；handler 内 taxRate parseFloat+范围校验、taxAmountYuan 元转分；direction 写死 'in'；certificationStatus 恒 NULL |
 | `lib/agent/mcp-tools/finance-tools.ts` | 修改 | 新增 query_invoice_ledger 工具定义；import getInvoiceLedgerBreakdown |
-| `lib/agent/tools/registry.ts` | 修改 | 注册 mcp__finance_worker__query_invoice_ledger（category finance，riskLevel safe） |
+| `lib/agent/tools/registry.ts` | 修改 | 注册 query_invoice_ledger（category finance，riskLevel safe） |
 | `lib/agent/tools/renderers.ts` | 修改 | summaries 补 query_invoice_ledger 中文摘要（T6 守卫要求） |
 | `lib/agent/roles/registry.ts` | 修改 | bookkeeper/tax-officer tools 数组加 "query_invoice_ledger"；dataScope 4 处旧表名更新（invoice_ledger→fact_invoices，payroll_records→fact_payroll，business_metrics→fact_metrics） |
 | `agent-skills/skills/filing-precheck/SKILL.md` | 修改 | A4 段升级：三分支（有登记/directionUnknownCount>0/台账为空） |
@@ -45,7 +45,7 @@
 
 ### `lib/agent/tools/registry.ts`
 
-- 在 Policy/tax tools 块末尾追加：`{ name: "mcp__finance_worker__query_invoice_ledger", category: "finance", riskLevel: "safe" }`。
+- 在 Policy/tax tools 块末尾追加：`{ name: "query_invoice_ledger", category: "finance", riskLevel: "safe" }`。
 
 ### `lib/agent/tools/renderers.ts`
 

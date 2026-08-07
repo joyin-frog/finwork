@@ -1,6 +1,6 @@
 import ChatPage from "@/app/chat/chat-page";
 import { getChatQuickPrompts } from "@/lib/domain/tax-calendar";
-import { readPublicClaudeSettings } from "@/lib/settings/claude-settings";
+import { readPublicAgentSettings } from "@/lib/settings/agent-settings";
 import { getSkill, isValidSkillName } from "@/lib/agent/skills-store";
 import { getRoleDefinition } from "@/lib/agent/roles/registry";
 import { getDisabledRoleIds } from "@/lib/agent/roles/availability";
@@ -14,7 +14,7 @@ export default async function NewChatPage({ searchParams }: { searchParams: Prom
   const roleDef = params.role ? getRoleDefinition(params.role) : undefined;
   const disabled = new Set(getDisabledRoleIds());
   const specialistRole = roleDef?.available && !disabled.has(roleDef.id) ? roleDef : undefined;
-  const settings = await readPublicClaudeSettings().catch(() => null);
+  const settings = await readPublicAgentSettings().catch(() => null);
   return (
     <ChatPage
       key={specialistRole ? `chat:new:${specialistRole.id}` : "chat:new"}

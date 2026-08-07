@@ -1,5 +1,5 @@
 /**
- * session-trust.ts — run_python 会话级信任存储
+ * session-trust.ts — 会话级工具信任存储
  *
  * 进程内、按 (conversationId, toolName) 作用域存储用户主动授权的信任。
  * 重启即失效；子代理调用路径永不写入（trust bypass 以「存在交互确认通道」为前提，见 built-in.ts）。
@@ -14,7 +14,7 @@
  *  精确匹配（不 trim/lowercase），与 EXPLICIT_CONFIRM_ANSWERS 白名单互不干涉。 */
 export const SESSION_TRUST_CONFIRM_ANSWER = "__confirm_trust_session__";
 
-const TRUST_STORE_SYMBOL = Symbol.for("finance-agent.run-python-session-trust");
+const TRUST_STORE_SYMBOL = Symbol.for("finance-agent.session-trust");
 
 function getTrustStore(): Set<string> {
   const root = globalThis as typeof globalThis & { [TRUST_STORE_SYMBOL]?: Set<string> };

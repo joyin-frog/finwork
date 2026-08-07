@@ -63,7 +63,7 @@ export const teamPanelTestPromise = (async () => {
       initializeFinanceDatabase(db, dbPath);
       db.close();
 
-      const { runSubagent } = await import("../lib/agent/subagent-runner.ts");
+      const { runPiSubagent: runSubagent } = await import("../lib/agent/pi/subagent-runner.ts");
       const parentOutputDir = path.join(dir, "out");
 
       // 无 API key 路径，但 conversationId 应被传递到 dispatch 行

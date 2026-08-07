@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { TaskContract } from "@/lib/agent/run-contract";
 import {
@@ -11,6 +12,7 @@ import {
   type FinalizeFile,
 } from "@/lib/deliverable";
 import type { SdkLike } from "./sdk-types";
+import { withFileMutationQueue } from "@/lib/agent/tools/file-mutation-queue";
 
 type Sdk = SdkLike;
 
@@ -99,7 +101,8 @@ export function createFinalizeDeliverableTool(
           (typeof (store as { submit?: unknown }).submit === "function"
             ? (store as MemoryDeliverableStore)
             : new MemoryDeliverableStore());
-        const result = await finalizeDeliverables(
+        const mutationKey = path.join(path.resolve(outputDir), ".finwork-deliverable-mutation");
+        const result = await withFileMutationQueue([mutationKey], () => finalizeDeliverables(
           args.files,
           {
             runId,
@@ -110,14 +113,16 @@ export function createFinalizeDeliverableTool(
             messageId: options.messageId,
           },
           { ...options.deps, store, evidenceSink }
-        );
+        ));
 
         if (!result.ok) {
           const detail =
             result.failures
               ?.map(
                 (f) =>
-                  `${f.name}(${f.contractDeliverableId}): ${f.errors.map((e) => e.message).join("; ")}`
+                  `${f.name}(${f.contractDeliverableId}): ${f.errors.map((e) =>
+                    `${e.code}${e.location ? `@${e.location}` : ""}: ${e.message}`
+                  ).join("; ")}`
               )
               .join("\n") ?? result.error;
           return {

@@ -17,7 +17,7 @@
 | ②垫片（入参重写） | **确认可行，通路已验证** | 静态：`PermissionResult.updatedInput`（sdk.d.ts:2030-2042）+ hook chain 已返回 `updatedInput`（chain.ts:42）。运行时 **E2a 实证**：canUseTool 返回 `updatedInput` 后，工具实际收到的是**重写后**的参数（120/300→1120/1300），改写生效。**可直接立 AR3b-垫片实施包** |
 | ②垫片的适用边界 | **对 MCP 工具"发成 JSON 字符串"场景救不了** | 运行时 **E2b 实证**：MCP 工具的 zod 校验发生在 canUseTool **之后**——canUseTool 返回的非法 `updatedInput` 被 zod 拒（MCP error -32602），返回 is_error 给模型。**推论**：若模型把参数发成 JSON 字符串，zod 会在垫片有机会介入前直接拒（垫片挂 canUseTool 层来不及）。要救此场景，垫片须挂进 **MCP 工具 handler 内部**（tool 回调入口自行宽松解析），而非 canUseTool。**AR3b-垫片方案据此定型** |
 | ①截断闸 | **必要性大幅下降，且挂点受限** | ①E2b 附带证明：MCP 工具的 zod 校验是**天然截断兜底**——参数残缺（形状不符）会被 zod 拒、返回 is_error 让模型重发，不会执行。finwork 的高风险写工具（金蝶导出等）都是带 zod schema 的 MCP 工具，**已被 zod 覆盖**。②E1 未能复现截断（§3.1），"截断时 SDK 是否执行工具"仍无正面观测。③**挂点受限**：见下方 E3/E3b |
-| allowedTools 绕过性（挂点关键） | **MCP 工具过闸门，内置工具绕过** | 运行时 **E3 vs E3b 实证**：MCP 工具（`mcp__exp__report_totals`）即使在 allowedTools 里**仍走 canUseTool**；但内置 **Bash** 在 allowedTools 里**完全绕过 canUseTool**（无回调日志、直接执行）。**推论**：任何挂在 canUseTool/hook chain 上的闸门对 allowedTools 里的内置工具无效；若要闸内置工具，须用 SDK 原生 PreToolUse hook 或把该工具移出 allowedTools |
+| allowedTools 绕过性（挂点关键） | **MCP 工具过闸门，内置工具绕过** | 运行时 **E3 vs E3b 实证**：MCP 工具（`exp__report_totals`）即使在 allowedTools 里**仍走 canUseTool**；但内置 **Bash** 在 allowedTools 里**完全绕过 canUseTool**（无回调日志、直接执行）。**推论**：任何挂在 canUseTool/hook chain 上的闸门对 allowedTools 里的内置工具无效；若要闸内置工具，须用 SDK 原生 PreToolUse hook 或把该工具移出 allowedTools |
 
 ## 1. 四问静态验证结果
 

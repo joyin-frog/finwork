@@ -181,6 +181,10 @@ Run 状态映射：
 ## 10. Related Documents
 
 - `ROADMAP-agent-runtime.md`
+- `design-pi-agent-runtime.md`
+- `design-agent-context-simplification.md`
+- `as0-agent-context-baseline.md`
+- `spike-pi-anthropic-replacement.md`
 - `spec-agent-event-contract.md`
 - `audit-agent-event-contract.md`
 - `spec-run-python-session-trust.md`

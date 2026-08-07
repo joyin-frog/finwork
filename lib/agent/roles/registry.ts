@@ -22,7 +22,7 @@ export type RoleDefinition = {
 
 // 所有角色共享的底座工具（现状内置文件/检索工具照旧放行，不在此列）
 export const SHARED_TOOLS = [
-  "run_python", "search_knowledge", "query_knowledge", "read_file", "finalize_deliverable",
+  "analyze_tabular", "search_knowledge", "query_knowledge", "read_file", "finalize_deliverable",
 ];
 
 export const ROLE_REGISTRY: RoleDefinition[] = [
@@ -207,9 +207,8 @@ export function getRoleDefinition(id: string): RoleDefinition | undefined {
 /**
  * 解析角色的实际可用工具全名列表。
  *
- * 组成 = builtin 工具（category==="builtin"）+ SHARED_TOOLS 裸名解析成全名 + role.tools 裸名解析成全名。
- * 裸名解析规则：先在 TOOL_REGISTRY 名字集中找 `mcp__finance_worker__<裸名>`，
- * 再找 `mcp__kingdee_worker__<裸名>`，否则抛错（fail-fast，防注册表写错工具名）。
+ * 组成 = builtin 工具（category==="builtin"）+ SHARED_TOOLS 与 role.tools 中登记的工具名。
+ * 工具名直接在 TOOL_REGISTRY 中校验，否则抛错（fail-fast，防注册表写错工具名）。
  * 返回值必然 ⊆ ALLOWED_TOOLS。
  */
 export function resolveRoleAllowedTools(roleId: string): string[] {
@@ -235,12 +234,6 @@ export function resolveRoleScopeTools(roleId: string): string[] {
   function resolveBare(bare: string): string {
     // 如果已经是全名（builtin 工具如 "Read"）
     if (toolFullNameSet.has(bare)) return bare;
-    // 尝试 finance_worker 前缀
-    const finName = `mcp__finance_worker__${bare}`;
-    if (toolFullNameSet.has(finName)) return finName;
-    // 尝试 kingdee_worker 前缀
-    const kingdeeName = `mcp__kingdee_worker__${bare}`;
-    if (toolFullNameSet.has(kingdeeName)) return kingdeeName;
     throw new Error(`resolveRoleScopeTools: 裸名 "${bare}" 在 TOOL_REGISTRY 中找不到对应全名`);
   }
 

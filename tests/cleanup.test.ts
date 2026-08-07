@@ -3,7 +3,7 @@ import path from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-// purgeStaleOutputDirs 只清 tmpdir 下的 finance-agent-output-* 回落目录(claude-adapter 无会话
+// purgeStaleOutputDirs 只清 tmpdir 下的 finance-agent-output-* 历史回落目录（无会话
 // outputDir 时才落这里,没人引用)。会话内 <files>/<conv>/generate 是持久产物(登记进
 // chat_attachments、由 /api/files 与文件库供文件),绝不能被它触碰——PR #21 审查发现早期实现
 // 误删该目录,本测试同时守住这条红线。

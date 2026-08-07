@@ -1,0 +1,36 @@
+{
+  "salesInvoices": [
+    {
+      "invoiceNo": "XS-202606-001",
+      "customer": "甲客户",
+      "invoiceDate": "2026-06-01",
+      "amountExcludingTax": 100000,
+      "taxAmount": 13000,
+      "settledAmount": 0
+    },
+    {
+      "invoiceNo": "XS-202606-002",
+      "customer": "乙客户",
+      "invoiceDate": "2026-06-15",
+      "amountExcludingTax": 50000,
+      "taxAmount": 6500,
+      "settledAmount": 0
+    }
+  ],
+  "contractObligations": [
+    {
+      "obligationId": "OBL-001",
+      "customer": "甲客户",
+      "dueDate": "2026-06-30",
+      "amount": 120000,
+      "settledAmount": 0
+    },
+    {
+      "obligationId": "OBL-002",
+      "customer": "乙客户",
+      "dueDate": "2026-08-15",
+      "amount": 60000,
+      "settledAmount": 0
+    }
+  ]
+}

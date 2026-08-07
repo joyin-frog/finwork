@@ -9,7 +9,7 @@ import { getToolSummary } from "../lib/agent/tools/renderers.ts";
 export const rendererVoucherFixesTestPromise = (async () => {
   // ── 1. process_voucher_batch: 9 笔应含"笔"不含"张" ──
   const batchResult = getToolSummary(
-    "mcp__kingdee_worker__process_voucher_batch",
+    "process_voucher_batch",
     { slips: new Array(9).fill({}) },
   );
   assert.ok(
@@ -22,12 +22,12 @@ export const rendererVoucherFixesTestPromise = (async () => {
   );
 
   // 零笔时不崩溃,回落兜底文案
-  const batchZero = getToolSummary("mcp__kingdee_worker__process_voucher_batch", { slips: [] });
+  const batchZero = getToolSummary("process_voucher_batch", { slips: [] });
   assert.ok(typeof batchZero === "string" && batchZero.length > 0, "process_voucher_batch FAIL: 空输入应返回非空字符串");
 
   // ── 2. export_voucher_list: 新 renderer ──
   const exportResult = getToolSummary(
-    "mcp__kingdee_worker__export_voucher_list",
+    "export_voucher_list",
     { vouchers: new Array(5).fill({}) },
   );
   assert.ok(
@@ -40,7 +40,7 @@ export const rendererVoucherFixesTestPromise = (async () => {
   );
 
   // 零凭证时
-  const exportZero = getToolSummary("mcp__kingdee_worker__export_voucher_list", { vouchers: [] });
+  const exportZero = getToolSummary("export_voucher_list", { vouchers: [] });
   assert.ok(/导出凭证清单/.test(exportZero), `export_voucher_list FAIL: 零凭证应含"导出凭证清单",实际:${exportZero}`);
 
   console.log("renderer-voucher-fixes: all checks passed ✓");

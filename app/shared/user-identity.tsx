@@ -29,7 +29,7 @@ export function UserIdentityProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/settings/claude");
+        const res = await fetch("/api/settings/agent");
         const payload = (await res.json()) as { ok: boolean; data?: { userName?: string; userAvatar?: string } };
         if (payload.ok && payload.data) {
           setName(payload.data.userName ?? "");

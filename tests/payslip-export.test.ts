@@ -258,10 +258,10 @@ print(json.dumps({
       "utf-8"
     );
     assert.ok(
-      regSrc.includes("mcp__finance_worker__export_payslips"),
+      regSrc.includes("export_payslips"),
       "C4 FAIL: registry.ts 缺少 export_payslips 注册"
     );
-    const idx = regSrc.indexOf("mcp__finance_worker__export_payslips");
+    const idx = regSrc.indexOf("export_payslips");
     const snippet = regSrc.slice(idx, idx + 200);
     assert.ok(snippet.includes("medium"), `C4 FAIL: export_payslips 应为 medium，实际：${snippet}`);
     console.log("payslip-export C4: registry.ts medium 注册 ✓");
@@ -302,7 +302,7 @@ print(json.dumps({
     const { resolveRoleAllowedTools } = await import("../lib/agent/roles/registry.ts");
     const tools = resolveRoleAllowedTools("payroll-officer");
     assert.ok(
-      tools.includes("mcp__finance_worker__export_payslips"),
+      tools.includes("export_payslips"),
       `C7 FAIL: resolveRoleAllowedTools(payroll-officer) 未含 export_payslips，实际：${tools.join(", ")}`
     );
     console.log("payslip-export C7: resolveRoleAllowedTools 含 export_payslips ✓");

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getTelemetryStatus } from "@/lib/telemetry/reporter";
-import { readPublicClaudeSettings } from "@/lib/settings/claude-settings";
+import { readPublicAgentSettings } from "@/lib/settings/agent-settings";
 
 export async function GET() {
-  const settings = await readPublicClaudeSettings();
+  const settings = await readPublicAgentSettings();
   const status = getTelemetryStatus();
   // §17.1: 判断 endpoint 是否由编译期内置 env 提供,只暴露 bool,绝不把 token 值发给前端。
   const endpointBuiltIn = !!(process.env.TELEMETRY_ENDPOINT ?? "").trim();

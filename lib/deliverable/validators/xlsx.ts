@@ -10,6 +10,20 @@ import { validateGenericFile } from "./generic-file";
 
 const VALIDATOR_ID = "xlsx_generic";
 const FORMULA_ERRORS = ["#DIV/0!", "#REF!", "#VALUE!", "#NAME?", "#NULL!", "#NUM!", "#N/A"];
+
+/**
+ * Provider 能力缺失的错误码。
+ *
+ * 「没测成」不等于「测挂了」:本机没装 LibreOffice、artifact-tool 没配,都不说明
+ * 工作簿有问题。2026-08-05 实测:HISTORY-001 交出一个 1143 条公式的工作簿,唯一
+ * 阻断项是一张预览图没渲出来,结果 0 产物、确定性分 0——能验的四条断言也跟着废了。
+ * 这类缺失一律降为 warning,交付照走,由证据字段告诉下游哪些结论不可用。
+ */
+const CAPABILITY_UNAVAILABLE_CODES = new Set([
+  "recalc_unavailable",
+  "render_unavailable",
+  "artifact_tool_unavailable",
+]);
 type XlsxRuntime = {
   inspect: typeof spreadsheetInspect;
   recalc: typeof spreadsheetRecalc;
@@ -65,6 +79,27 @@ export async function validateXlsxFile(
   if (sheets.length === 0) {
     errors.push({ code: "structure_empty", message: "工作簿无工作表" });
   }
+  if (input.needsRender) {
+    for (const sheet of sheets) {
+      const layoutIssues =
+        (sheet.layout_issues as Array<{
+          code?: unknown;
+          cell?: unknown;
+          text_length?: unknown;
+          column_width?: unknown;
+        }> | undefined) ?? [];
+      for (const issue of layoutIssues) {
+        if (issue.code !== "narrow_wrapped_text") continue;
+        errors.push({
+          code: "layout_narrow_wrapped_text",
+          message:
+            `长文本位于过窄列并启用换行（长度 ${Number(issue.text_length ?? 0)}，` +
+            `列宽 ${Number(issue.column_width ?? 0)}），会产生巨高行或竖排文字`,
+          location: `${String(sheet.name ?? "")}!${String(issue.cell ?? "?")}`,
+        });
+      }
+    }
+  }
 
   const initialFormulaState = analyzeFormulaState(sheets);
   let formulaCount = initialFormulaState.formulaCount;
@@ -91,10 +126,18 @@ export async function validateXlsxFile(
   if (input.needsRecalc) {
     const recalc = await runtime.recalc(input.filePath);
     if (!recalc.ok) {
-      errors.push({
-        code: recalc.errorCode ?? "recalc_failed",
-        message: recalc.detail ?? "公式重算失败",
-      });
+      const code = recalc.errorCode ?? "recalc_failed";
+      if (CAPABILITY_UNAVAILABLE_CODES.has(code)) {
+        // 没有计算 Provider ≠ 工作簿有问题。交付照走,但公式缓存是旧的,
+        // 依赖缓存值的断言下游要标成「未验证」而不是「验证失败」。
+        evidence.recalcAvailable = false;
+        warnings.push({
+          code,
+          message: `${recalc.detail ?? "公式重算不可用"}；公式缓存未刷新，Excel/WPS 打开时会自动重算`,
+        });
+      } else {
+        errors.push({ code, message: recalc.detail ?? "公式重算失败" });
+      }
     } else {
       const recalcData = recalc.data;
       if (!recalcData?.outputPath) {
@@ -106,7 +149,9 @@ export async function validateXlsxFile(
         const { outputPath, cleanupRoot, ...recalcEvidence } = recalcData;
         evidence.recalc = recalcEvidence;
         try {
-          const verified = await runtime.inspect(outputPath);
+          const verified = recalcData.inspection
+            ? { ok: true, data: recalcData.inspection }
+            : await runtime.inspect(outputPath);
           if (!verified.ok) {
             errors.push({
               code: "recalc_verify_failed",
@@ -126,10 +171,14 @@ export async function validateXlsxFile(
               });
             } else if (verifiedFormulaState.formulaErrors.length > 0) {
               errors.push(...verifiedFormulaState.formulaErrors);
-            } else if (input.requireFormulaCache && verifiedFormulaState.emptyCacheCount > 0) {
+            } else if (
+              input.requireFormulaCache &&
+              verifiedFormulaState.formulaCount > 0 &&
+              verifiedFormulaState.emptyCacheCount >= verifiedFormulaState.formulaCount
+            ) {
               errors.push({
                 code: "recalc_cache_empty",
-                message: "重算后的工作簿仍存在未缓存结果的公式",
+                message: "重算后的工作簿全部公式仍无缓存结果",
               });
             } else {
               fs.copyFileSync(outputPath, input.filePath);
@@ -140,6 +189,14 @@ export async function validateXlsxFile(
               formulaErrorCount = 0;
               evidence.formulaCount = formulaCount;
               evidence.emptyCacheCount = emptyCacheCount;
+              if (emptyCacheCount > 0) {
+                warnings.push({
+                  code: "formula_blank_results",
+                  message:
+                    `重算后有 ${emptyCacheCount} 个公式结果为空；` +
+                    "空字符串可由 IF 等公式合法产生，不作为重算失败",
+                });
+              }
             }
           }
         } catch (error) {
@@ -159,9 +216,14 @@ export async function validateXlsxFile(
     try {
       const render = await runtime.render(input.filePath, outDir);
       if (!render.ok) {
-        errors.push({
-          code: render.errorCode ?? "render_failed",
-          message: render.detail ?? "渲染可见页面失败",
+        // 渲染产出的是预览图,不是交付内容本身;渲不出来永远不该毙掉工作簿。
+        // 错误码要归一:LO resolver 对 recalc 和 render 返回同一个 recalc_unavailable,
+        // 直接透传会让报告说「重算不可用」而合同其实写着 needsRecalc:false。
+        const rawCode = render.errorCode ?? "render_failed";
+        evidence.renderAvailable = false;
+        warnings.push({
+          code: CAPABILITY_UNAVAILABLE_CODES.has(rawCode) ? "render_unavailable" : rawCode,
+          message: `${render.detail ?? "渲染可见页面失败"}；预览不可用，不影响文件本身`,
         });
       } else {
         evidence.render = { files: render.data?.files?.length ?? 0, provider: render.data?.provider };
@@ -202,11 +264,29 @@ function analyzeFormulaState(sheets: Array<Record<string, unknown>>): {
   const formulaErrors: ValidatorIssue[] = [];
   for (const sheet of sheets) {
     formulaCount += Number(sheet.formula_count ?? 0);
+    const explicitEmptyCount = sheet.formula_empty_cache_count;
+    if (typeof explicitEmptyCount === "number") {
+      emptyCacheCount += explicitEmptyCount;
+    }
+    const explicitErrors =
+      (sheet.formula_errors as Array<{ cell?: unknown; cached_value?: unknown }> | undefined);
+    if (explicitErrors) {
+      for (const formula of explicitErrors) {
+        formulaErrors.push({
+          code: "formula_error",
+          message: `公式错误值: ${String(formula.cached_value ?? "")}`,
+          location: `${String(sheet.name ?? "")}!${String(formula.cell ?? "?")}`,
+        });
+      }
+      continue;
+    }
     const samples =
       (sheet.formulas_sample as Array<{ cell?: string; cached_value?: unknown }> | undefined) ?? [];
     for (const formula of samples) {
       const cached = formula.cached_value;
-      if (cached == null || cached === "") emptyCacheCount += 1;
+      if (typeof explicitEmptyCount !== "number" && (cached == null || cached === "")) {
+        emptyCacheCount += 1;
+      }
       if (typeof cached === "string" && FORMULA_ERRORS.some((e) => cached.includes(e))) {
         formulaErrors.push({
           code: "formula_error",

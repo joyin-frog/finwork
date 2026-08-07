@@ -83,7 +83,7 @@ export const TOOLS_WITH_RESULT_CARD: readonly string[] = Object.keys(TOOL_CARD_R
  */
 export function ToolResultCard({ name, structured }: { name: string; structured: unknown }) {
   if (structured == null) return null;
-  const bare = name.replace(/^mcp__\w+__/, "");
+  const bare = name.replace(/^\w+__/, "");
   const s = structured as Record<string, unknown> | null;
 
   // kind 判别优先（WP4a 模式）：structured.kind 匹配时直接查 KIND 注册表渲染。
@@ -243,4 +243,3 @@ function VoucherValidationCard({ data }: { data: VoucherValidationCardData }) {
     </Surface>
   );
 }
-

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { isMockAgentEnabled, runMockAgent } from "../lib/agent/mock-agent.ts";
 import type { AgentRuntimeEvent } from "../lib/agent/runtime-events.ts";
-import type { ClaudeAgentRunOptions } from "../lib/agent/claude-adapter.ts";
+import type { MockAgentRunOptions } from "../lib/agent/mock-agent.ts";
 
 export const mockAgentTestPromise = (async () => {
   const prevFlag = process.env.FINANCE_AGENT_MOCK_AGENT;
@@ -13,7 +13,7 @@ export const mockAgentTestPromise = (async () => {
   try {
     assert.equal(isMockAgentEnabled(), true, "FAIL: 置位后应启用");
 
-    async function run(text: string, opts: Partial<ClaudeAgentRunOptions> = {}) {
+    async function run(text: string, opts: Partial<MockAgentRunOptions> = {}) {
       const chunks: string[] = [];
       const events: AgentRuntimeEvent[] = [];
       const res = await runMockAgent([{ role: "user", content: text }], {
@@ -29,7 +29,7 @@ export const mockAgentTestPromise = (async () => {
       return { res, chunks, events, full: chunks.join("") };
     }
 
-    // ── M1: 生成文件 → 写真产物 + run_python 工具事件,content 与流式一致 ──
+    // ── M1: 生成文件 → 写真产物 + analyze_tabular 工具事件,content 与流式一致 ──
     const tmp = mkdtempSync(path.join(os.tmpdir(), "mock-gen-"));
     const gen = await run("帮我生成一个报表", { outputDir: tmp, requestId: "mock-test-run" });
     assert.ok(existsSync(path.join(tmp, "示例报表.xlsx")), "M1 FAIL: 应写出产物文件");
@@ -38,8 +38,8 @@ export const mockAgentTestPromise = (async () => {
       "M1 FAIL: 应模拟 finalize 后的正式 delivered 副本"
     );
     assert.ok(
-      gen.events.some((e) => e.type === "tool_started" && e.toolName === "run_python"),
-      "M1 FAIL: 应有 run_python tool_started"
+      gen.events.some((e) => e.type === "tool_started" && e.toolName === "analyze_tabular"),
+      "M1 FAIL: 应有 analyze_tabular tool_started"
     );
     assert.ok(gen.events.some((e) => e.type === "tool_completed"), "M1 FAIL: 应有 tool_completed");
     assert.equal(gen.res.content, gen.full, "M1 FAIL: content 应与流式文本一致");

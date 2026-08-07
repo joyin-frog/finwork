@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { calculateCumulativePayroll } from "../lib/domain/tax-cumulative";
 import { validateReimbursements } from "../lib/domain/reimbursement";
@@ -17,10 +17,10 @@ import {
   initializeFinanceDatabase,
   listRecentChatConversations,
   openFinanceDatabase,
-  setChatConversationClaudeSessionId
+  setChatConversationRuntimeSession
 } from "../lib/db/sqlite";
-import { runClaudeAgent } from "../lib/agent/claude-adapter";
-import { toPublicClaudeSettings } from "../lib/settings/claude-settings";
+import { runPiAgent } from "../lib/agent/pi/agent-service";
+import { toPublicAgentSettings } from "../lib/settings/agent-settings";
 import { POST as postAgentQuery } from "../app/api/agent/query/route";
 import { getAppDataDir, getConversationFilesDir, getDatabasePath, getPythonPath, getSettingsPath } from "../lib/runtime/paths";
 import * as zod from "zod/v4";
@@ -109,26 +109,15 @@ wb.save("${xlsxPath}")
   assert.equal(inspected.sheets[0].formula_count, 1);
   assert.equal(inspected.sheets[0].frozen_panes, "A2");
 
-  // Python run (code interpreter) test
-  const runOutputDir = path.join(process.env.FINANCE_AGENT_APP_DATA_DIR!, "test-run-output");
-  mkdirSync(runOutputDir, { recursive: true });
-  const runResult = execFileSync(pythonPath, ["workers/finance_worker.py", "run"], {
+  // Fixed worker command test: CSV analysis is allowed; arbitrary stdin code is not.
+  const csvPath = path.join(process.env.FINANCE_AGENT_APP_DATA_DIR!, "test-expenses.csv");
+  writeFileSync(csvPath, "category,amount,invoice_no\n交通,100,INV-1\n交通,50,INV-2\n", "utf8");
+  const analysisResult = execFileSync(pythonPath, ["workers/finance_worker.py", "analyze-csv", csvPath], {
     encoding: "utf-8",
-    env: { ...process.env, FINANCE_AGENT_OUTPUT_DIR: runOutputDir },
-    input: `
-import openpyxl
-wb = openpyxl.Workbook()
-ws = wb.active
-ws.title = "RunTest"
-ws.append(["Col1", "Col2"])
-ws.append(["A", "B"])
-wb.save(Path(output_dir) / "generated.xlsx")
-`
   });
-  const runJson = JSON.parse(runResult);
-  assert.equal(runJson.files.length, 1, `expected 1 generated file, got ${runJson.files.length}`);
-  assert.equal(runJson.files[0].name, "generated.xlsx");
-  assert.ok(runJson.files[0].size_bytes > 0);
+  const analysisJson = JSON.parse(analysisResult);
+  assert.equal(analysisJson.row_count, 2);
+  assert.equal(analysisJson.by_category["交通"], 150);
 
   const analysis = summarizeExpenses([
     { category: "交通", amount: 100 },
@@ -146,13 +135,13 @@ wb.save(Path(output_dir) / "generated.xlsx")
 
   const longTitle = "请完整保留这条很长的财务对话标签，不要因为展示省略而截断数据库里的原始问题";
   const conversationId = createChatConversation(longTitle);
-  setChatConversationClaudeSessionId(conversationId, "11111111-1111-4111-8111-111111111111");
+  setChatConversationRuntimeSession(conversationId, "11111111-1111-4111-8111-111111111111");
   insertChatMessage(conversationId, "user", longTitle);
   insertChatMessage(conversationId, "assistant", "已保存完整回答");
   const recentConversations = listRecentChatConversations(10);
   assert.equal(countChatConversations(), 1);
   assert.equal(recentConversations[0].title, longTitle);
-  assert.equal(recentConversations[0].claudeSessionId, "11111111-1111-4111-8111-111111111111");
+  assert.equal(recentConversations[0].runtimeSessionId, "11111111-1111-4111-8111-111111111111");
   assert.deepEqual(
     recentConversations[0].messages.map((message) => message.role),
     ["user", "assistant"]
@@ -183,7 +172,7 @@ wb.save(Path(output_dir) / "generated.xlsx")
 
   db.close();
 
-  const publicSettings = toPublicClaudeSettings({
+  const publicSettings = toPublicAgentSettings({
     apiUrl: "https://api.anthropic.com",
     apiKey: "sk-ant-test-1234567890",
     model: "claude-sonnet-4-5",
@@ -198,7 +187,7 @@ wb.save(Path(output_dir) / "generated.xlsx")
   assert.equal(publicSettings.apiKeyPreview, "sk-a...7890");
   assert.equal(publicSettings.model, "claude-sonnet-4-5");
 
-  const agentResult = await runClaudeAgent([{ role: "user", content: "测试未配置时回退" }]);
+  const agentResult = await runPiAgent({ messages: [{ role: "user", content: "测试未配置时回退" }] });
   assert.equal(agentResult.mode, "mock");
 
   const routeResponse = await postAgentQuery(
@@ -213,13 +202,12 @@ wb.save(Path(output_dir) / "generated.xlsx")
   const routeJson = (await routeResponse.json()) as {
     data: {
       conversationId: number;
-      claudeSessionId: string;
-      conversation: { title: string; claudeSessionId: string; messages: Array<{ role: string; content: string }> };
+      runtimeSessionId: string | null;
+      conversation: { title: string; runtimeSessionId: string | null; messages: Array<{ role: string; content: string }> };
     };
   };
   assert.ok(routeJson.data.conversationId > 0);
-  assert.match(routeJson.data.claudeSessionId, /^[0-9a-f-]{36}$/);
-  assert.equal(routeJson.data.conversation.claudeSessionId, routeJson.data.claudeSessionId);
+  assert.equal(routeJson.data.conversation.runtimeSessionId, routeJson.data.runtimeSessionId);
   assert.equal(routeJson.data.conversation.title, "这是一条需要完整保存成标签的对话记录");
   assert.deepEqual(
     routeJson.data.conversation.messages.map((message) => message.role),

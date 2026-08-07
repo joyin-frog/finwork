@@ -210,7 +210,7 @@ DELETE FROM app_settings WHERE key = 'knowledge_embed_dim';
 
 均注册到 `finance_worker` MCP server（`lib/agent/mcp-tools/`）。`Read` 已是 builtin，新增的 `read_file` 与 builtin `Read` 并存——`read_file` 是受限版（只能读知识库目录与会话工作区），描述更聚焦。
 
-#### `mcp__finance_worker__search_knowledge`
+#### `search_knowledge`
 
 ```ts
 sdk.tool(
@@ -228,7 +228,7 @@ sdk.tool(
 )
 ```
 
-#### `mcp__finance_worker__grep_docs`
+#### `grep_docs`
 
 ```ts
 sdk.tool(
@@ -253,7 +253,7 @@ sdk.tool(
 )
 ```
 
-#### `mcp__finance_worker__read_file`
+#### `read_file`
 
 ```ts
 sdk.tool(
@@ -277,20 +277,20 @@ sdk.tool(
 ### 2.2 注册到 registry
 
 `lib/agent/tools/registry.ts`：
-- 删除：`mcp__finance_worker__search_knowledge_base`、`mcp__finance_worker__save_memory`、`mcp__finance_worker__recall_memory`、`mcp__finance_worker__forget_memory`。
+- 删除：`search_knowledge_base`、`save_memory`、`recall_memory`、`forget_memory`。
 - 新增：
   ```ts
-  { name: "mcp__finance_worker__search_knowledge", category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__grep_docs",        category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__read_file",        category: "finance", riskLevel: "safe" },
+  { name: "search_knowledge", category: "finance", riskLevel: "safe" },
+  { name: "grep_docs",        category: "finance", riskLevel: "safe" },
+  { name: "read_file",        category: "finance", riskLevel: "safe" },
   ```
 - `BASE_TOOLS` 删除 save/recall/forget_memory，加入三个新工具：
   ```ts
   export const BASE_TOOLS = [
     "Read", "Glob", "Grep", "AskUserQuestion",
-    "mcp__finance_worker__search_knowledge",
-    "mcp__finance_worker__grep_docs",
-    "mcp__finance_worker__read_file",
+    "search_knowledge",
+    "grep_docs",
+    "read_file",
   ];
   ```
 

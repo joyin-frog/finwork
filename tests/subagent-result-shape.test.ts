@@ -4,7 +4,6 @@
  * 回归锁：spawn_subagent 曾返回「裸字符串」而非 MCP CallToolResult 形状
  * （{ content: [{ type:"text", text }] }），导致 SDK 把每次子代理调用标成 isError，
  * 主 Agent 误判失败、反复重派（3 件活派 7 次）。真机验证修复后 isError=false。
- * 另：子代理可能跑 >60s，需覆盖 SDK 默认 60s 的 CLAUDE_CODE_STREAM_CLOSE_TIMEOUT。
  *
  * 运行：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true node --import tsx tests/subagent-result-shape.test.ts
  */
@@ -34,15 +33,5 @@ export const subagentResultShapeTestPromise = (async () => {
     console.log("SR1: spawn_subagent 返回 content[] 形状 ✓");
   }
 
-  // SR2: 主 Agent env 覆盖 SDK 60s stream-close 超时（子代理可能 >60s）
-  {
-    const a = src("lib/agent/claude-adapter.ts");
-    assert.ok(
-      a.includes("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT"),
-      "SR2 FAIL: claude-adapter 应设置 CLAUDE_CODE_STREAM_CLOSE_TIMEOUT（默认仅 60s，子代理会更久）"
-    );
-    console.log("SR2: 覆盖 stream-close 超时 ✓");
-  }
-
-  console.log("subagent-result-shape: all 2 checks passed ✓");
+  console.log("subagent-result-shape: CallToolResult shape ✓");
 })();

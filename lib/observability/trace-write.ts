@@ -1,6 +1,6 @@
 import { getDb } from "@/lib/db/sqlite";
 import { redact } from "@/lib/safety/pii";
-import type { ModelUsage } from "@anthropic-ai/claude-agent-sdk";
+import type { AgentModelUsage } from "@/lib/agent/contracts";
 
 export function writeAgentTrace(params: {
   traceId: string;
@@ -12,7 +12,7 @@ export function writeAgentTrace(params: {
   userMessage: string;
   finalAnswer: string;
   roleMode: string;
-  modelUsage?: Record<string, ModelUsage>;
+  modelUsage?: Record<string, AgentModelUsage>;
   totalCostUsd?: number;
   numTurns?: number;
   toolCallCount: number;
@@ -31,7 +31,7 @@ export function writeAgentTrace(params: {
     let modelUsageJson: string | null = null;
     if (modelUsage) {
       if (executionTier) {
-        const annotated: Record<string, ModelUsage & { executionTier?: "fast" | "reasoning" }> = {};
+        const annotated: Record<string, AgentModelUsage & { executionTier?: "fast" | "reasoning" }> = {};
         for (const [k, v] of Object.entries(modelUsage)) {
           annotated[k] = { ...v, executionTier };
         }

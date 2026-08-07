@@ -288,19 +288,19 @@ export const transferQueueTestPromise = (async () => {
   }
 
   // ── B1: 双台账行防护 ─────────────────────────────────────────────────────
-  // 验证 subagent-runner.ts 含 existingDispatchId 跳过 recordDispatchStart 的分支，
+  // 验证 Pi subagent runner 含 existingDispatchId 跳过 recordDispatchStart 的分支，
   // 以及 CAS start 全流程后 dispatch 表中该任务只有一行。
   {
     const fs = await import("node:fs");
 
     // 源码合约：existingDispatchId 分支必须存在
     const runnerSrc = fs.readFileSync(
-      new URL("../lib/agent/subagent-runner.ts", import.meta.url).pathname,
+      new URL("../lib/agent/pi/subagent-runner.ts", import.meta.url).pathname,
       "utf-8"
     );
     assert.ok(
-      runnerSrc.includes("existingDispatchId != null"),
-      "B1: subagent-runner 应有 existingDispatchId 分支以跳过 recordDispatchStart"
+      runnerSrc.includes("existingDispatchId ?? recordDispatchStart"),
+      "B1: Pi subagent runner 应有 existingDispatchId 分支以跳过 recordDispatchStart"
     );
 
     // DB 级验证：模拟 start 端点 CAS 后断言只有一行

@@ -28,8 +28,8 @@ export async function GET(request: Request) {
   // 模型网关可达性:对配置的 ANTHROPIC_BASE_URL 发一个短超时 GET。能连上(哪怕 4xx/404)即视为可达;
   // 抛错(DNS/拒连/超时)= 不可达。只测连通——不带 key、不下发任何会话内容。
   try {
-    const { readClaudeSettings } = await import("@/lib/settings/claude-settings");
-    const base = (await readClaudeSettings()).apiUrl?.trim() ?? "";
+    const { readAgentSettings } = await import("@/lib/settings/agent-settings");
+    const base = (await readAgentSettings()).apiUrl?.trim() ?? "";
     if (!base) {
       checks.gateway = { ok: false, detail: "apiUrl 未配置" };
     } else {

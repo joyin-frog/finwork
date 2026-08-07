@@ -40,7 +40,7 @@ test("首启向导:缺组件→自动装(进度条,无开始按钮)→下一步�
     await new Promise((r) => setTimeout(r, 400)); // 让安装态可见
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: { detail: "ok" } }) });
   });
-  await page.route("/api/settings/claude", async (route) => {
+  await page.route("/api/settings/agent", async (route) => {
     const req = route.request();
     if (req.method() === "PUT") {
       putBody = req.postDataJSON();

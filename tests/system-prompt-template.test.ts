@@ -35,7 +35,7 @@ export const systemPromptTemplateTestPromise = (async () => {
   }
   const daily = renderStaticPrefix(template, "小财", "公司内部打造", "daily");
   assert.ok(daily.includes("## 回答语气(日常模式)") && !daily.includes("专业模式"), "AC1 FAIL: daily 语气切换");
-  assert.ok(daily.endsWith("prompt 只是第一层。）"), "AC1 FAIL: 尾部空行应被裁掉(应以末行正文结尾,不留空行)");
+  assert.ok(!daily.endsWith("\n"), "AC1 FAIL: 尾部空行应被裁掉");
   assert.equal(renderStaticPrefix(template, "小财", "由测试公司打造"), tech, "AC1 FAIL: 缺省应走 tech");
   console.log("system-prompt-template AC1: render/tone/placeholder/strip ✓");
 

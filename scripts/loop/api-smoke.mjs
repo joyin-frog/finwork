@@ -83,7 +83,7 @@ async function main() {
     b?.ok && b.data && "payroll" in b.data && "business" in b.data ? true : "missing payroll/business");
   await expect2xx("chat/recent", "GET", "/api/chat/recent", {}, (b) => (b?.ok ?? b?.data) ? true : "no ok/data");
   await expectAlive("analysis/summary", "GET", "/api/analysis/summary");
-  await expect2xx("settings/claude", "GET", "/api/settings/claude", {}, (b) =>
+  await expect2xx("settings/agent", "GET", "/api/settings/agent", {}, (b) =>
     b?.apiKeyConfigured || b?.data?.apiKeyConfigured ? true : "apiKey not reported configured");
   await expectAlive("settings/doctor", "GET", "/api/settings/doctor");
   await expectAlive("metrics/tools", "GET", "/api/metrics/tools");

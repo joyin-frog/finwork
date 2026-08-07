@@ -11,7 +11,7 @@
 >   - `lib/agent/hooks/chain.ts:17-27`：`confirm` 动作在有 resolver 时调用 `ctx.resolveUserQuestion({question: prompt, header:"操作确认"})`；答案为空 / `n|no|取消|否` → deny，否则 allow。
 >   - `app/api/agent/query/route.ts:468-472`：主对话的 `resolveUserQuestion` 把**整个 question 对象**塞进 `{type:"ask_user", questionId, question}` SSE 事件并 enqueue。**question 对象原样透传，route.ts 无需改动。**
 >   - 前端 `app/chat/chat-page.tsx:212` 选出待答 ask_user，:1000 用 `AskUserPanel`（`app/components/ask-user-panel.tsx`）渲染吸附在输入框上方的浮层。
-> - **确认卡实际生效的 `high` 工具是 3 个**（`lib/agent/tools/registry.ts`）：`mcp__finance_worker__calculate_payroll_batch`、`mcp__finance_worker__confirm_payroll_period`（薪税专员）、`mcp__kingdee_worker__export_kingdee_draft`（记账专员）。
+> - **确认卡实际生效的 `high` 工具是 3 个**（`lib/agent/tools/registry.ts`）：`calculate_payroll_batch`、`confirm_payroll_period`（薪税专员）、`export_kingdee_draft`（记账专员）。
 >   - ⚠️ `Bash` 也标记 `riskLevel:"high"`（registry.ts:22），但它由 `createUnwiredToolHook` 在 hook 链**链首 deny**（`built-in.ts:68-80`），永远到不了 `risk-confirm`，不会弹确认卡——**测试与验证均无需为 Bash 构造 confirm 事件**。
 >   - `ALWAYS_CONFIRM_TOOLS`（`built-in.ts:146-150`：`remember_convention`、`update_company_profile`，本身 medium）也走 `{action:"confirm", prompt}` 路径，因此**也会被打上 `kind:"confirm"` 渲染成确认卡**。这是正确行为（它们本就要人确认），确认卡文案只依赖 `prompt`，对这两个工具同样成立，无需特判。
 

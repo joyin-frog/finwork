@@ -48,7 +48,7 @@ function makeStatusBody(enabled: boolean, builtIn = true) {
 test("遥测设置: 开关默认开 + 可关闭", async ({ page }) => {
   let settingsEnabled = true;
 
-  await page.route("/api/settings/claude", async (route) => {
+  await page.route("/api/settings/agent", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -131,7 +131,7 @@ test("遥测设置: 开关默认开 + 可关闭", async ({ page }) => {
 });
 
 test("遥测设置: 首启告知 toast 出现一次(disclosureShown 未见过)", async ({ page }) => {
-  await page.route("/api/settings/claude", async (route) => {
+  await page.route("/api/settings/agent", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",

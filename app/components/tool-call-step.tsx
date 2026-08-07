@@ -56,8 +56,7 @@ function conversationRelativePath(filePath: string, conversationId: string): str
 // 工具类型 → 可剥的中文动词前缀(行图标已移除,组头/renderer 文案承担类型语义)。
 // strip:剥掉类型动词前缀;relabel:剥空后用此固定文案兜底。
 const TOOL_VISUAL: Record<string, { strip?: RegExp; relabel?: string }> = {
-  // run_python 只剥前缀动词,保留后续业务描述(如"处理《X》");裸"执行 Python"剥空后兜底 relabel。
-  run_python: { strip: /^(?:运行|执行) Python[:：]?\s*/, relabel: "运行代码" },
+  analyze_tabular: { strip: /^结构化统计[:：]?\s*/ },
   Bash:       { strip: /^执行[:：]?\s*/ },
   Skill:      { strip: /^调用技能[:：]?\s*/ },
   Write:      { strip: /^写入\s*/ },
@@ -88,7 +87,7 @@ function toolVisual(name: string): { strip?: RegExp; relabel?: string } {
 // 同族连续行共用同一图标 → 有结构感又不"碎")。默认回落文档图标。
 const STEP_ICON_BY_FAMILY: Record<string, IconSvgElement> = {
   search: Search01Icon,     // 检索/查询/grep/web 搜索/科目匹配
-  command: CommandLineIcon, // Bash / run_python
+  command: CommandLineIcon, // Bash / fixed command tools
   read: File01Icon,         // 读取文件/识别单据/抓取网页
   write: PencilEdit01Icon,  // 写入/编辑
   skill: NoteIcon,          // 技能/子代理
@@ -99,7 +98,7 @@ const STEP_ICON_BY_FAMILY: Record<string, IconSvgElement> = {
 const TOOL_FAMILY: Record<string, keyof typeof STEP_ICON_BY_FAMILY> = {
   search_knowledge: "search", query_knowledge: "search", Grep: "search", Glob: "search",
   WebSearch: "search", query_kingdee_accounts: "search", map_voucher_account: "search",
-  Bash: "command", run_python: "command",
+  Bash: "command", analyze_tabular: "finance",
   Read: "read", read_file: "read", read_document: "read", WebFetch: "read", scan_slip_folder: "read",
   Write: "write", Edit: "write", MultiEdit: "write",
   Skill: "skill", spawn_subagent: "skill",
@@ -109,7 +108,7 @@ const TOOL_FAMILY: Record<string, keyof typeof STEP_ICON_BY_FAMILY> = {
 
 // 有家族图标返回之,无则返回 null(是否补节点由 StepIcon 按 threaded 决定)。
 function stepIcon(name: string): IconSvgElement | null {
-  const bare = name.replace(/^mcp__\w+__/, "");
+  const bare = name.replace(/^\w+__/, "");
   const family = TOOL_FAMILY[bare];
   return family ? STEP_ICON_BY_FAMILY[family] : null;
 }
@@ -516,7 +515,7 @@ function stepDisplayText(pair: ToolPair): string {
   const summary = getToolSummary(pair.name, pair.input, pair.result, pair.isError);
   // 失败步去掉"错误："前缀——列表里靠红色表达错误,文字不再重复
   if (pair.status === "error") return summary.replace(/^错误[:：]\s*/, "");
-  const visual = toolVisual(pair.name.replace(/^mcp__\w+__/, ""));
+  const visual = toolVisual(pair.name.replace(/^\w+__/, ""));
   let text = summary;
   if (visual.strip) text = summary.replace(visual.strip, "");
   text = text.replace(/[「『」』]/g, "").trim();

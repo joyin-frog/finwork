@@ -40,8 +40,8 @@ export const confirmGateTestPromise = (async () => {
   const { runBeforeHooks } = await import("../lib/agent/hooks/chain.ts");
   const { createRiskConfirmHook } = await import("../lib/agent/hooks/built-in.ts");
 
-  const HIGH_PAYROLL = "mcp__finance_worker__calculate_payroll_batch";
-  const HIGH_KINGDEE = "mcp__kingdee_worker__export_kingdee_draft";
+  const HIGH_PAYROLL = "calculate_payroll_batch";
+  const HIGH_KINGDEE = "export_kingdee_draft";
 
   // ── G1: confirm 路径打 kind:"confirm" ──────────────────────────────────
   {

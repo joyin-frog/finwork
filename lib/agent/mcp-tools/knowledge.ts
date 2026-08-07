@@ -75,15 +75,8 @@ export function createQueryKnowledgeTool(sdk: Sdk) {
   return sdk.tool(
     "query_knowledge",
     [
-      "用只读命令在知识库里精确定位、统计或多步钻取。当 search_knowledge 的关键词匹配不够精确,或需要先看有哪些文件、再取指定章节时使用。",
-      "工作目录是知识库文本(文件名即文档标题)。可用命令:rg grep cat head tail wc sort uniq cut ls find tr,可用 | 串成管道。",
-      "示例:",
-      "  ls                                  # 看知识库有哪些文档",
-      "  rg -l '差旅'                        # 哪些文档提到差旅",
-      "  rg -n '住宿标准' | head -20         # 定位关键词所在行",
-      "  head -80 报销管理制度.txt | tail -40 # 取第 40-80 行(章节)",
-      "  rg -c '发票' 报销管理制度.txt        # 统计某词出现次数",
-      "不支持重定向、命令串联、写入操作;只读检索。",
+      "在知识库文本中用只读命令精确定位、统计或钻取章节；普通关键词检索先用 search_knowledge。",
+      "支持 rg/grep/cat/head/tail/wc/sort/uniq/cut/ls/find/tr 及管道；不支持重定向、命令串联或写入。",
     ].join("\n"),
     {
       command: z.string().describe("单条命令或用 | 连接的管道,如 \"rg -n '标准' | head -20\""),

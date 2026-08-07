@@ -71,7 +71,7 @@ export const routerContinuationTestPromise = (async () => {
   const { runRouter } = await import("../lib/agent/router.ts");
 
   try {
-    // ── C1: 续轮（有 claudeSessionId + 上轮 complex_workflow）不发 LLM，沿用 intent ──
+    // ── C1: 续轮（有 runtimeSessionId + 上轮 complex_workflow）不发 LLM，沿用 intent ──
     {
       const conversationId = 1001;
       seedRoutingLog(db, conversationId, "complex_workflow", "main");
@@ -81,7 +81,7 @@ export const routerContinuationTestPromise = (async () => {
         "1 2026年1月 2 100000，十万",
         [],
         "trace-c1",
-        { claudeSessionId: "session-abc", conversationId }
+        { runtimeSessionId: "session-abc", conversationId }
       );
 
       assert.equal(llmCallCount, 0, "C1 FAIL: 续轮 complex_workflow 不应发起 LLM 调用");
@@ -93,7 +93,7 @@ export const routerContinuationTestPromise = (async () => {
       console.log("C1 ✓ continuation skips LLM, reuses complex_workflow intent");
     }
 
-    // ── C2: 首轮（无 claudeSessionId）不触发续轮路径 ──
+    // ── C2: 首轮（无 runtimeSessionId）不触发续轮路径 ──
     {
       const conversationId = 1002;
       llmCallCount = 0;
@@ -101,7 +101,7 @@ export const routerContinuationTestPromise = (async () => {
         "帮我算一下这个月工资",
         [],
         "trace-c2",
-        { claudeSessionId: null, conversationId }
+        { runtimeSessionId: null, conversationId }
       );
 
       // mock 模式下走 fallback，不打真 LLM
@@ -110,7 +110,7 @@ export const routerContinuationTestPromise = (async () => {
         !result.decision.reasoning.includes("continuation"),
         `C2 FAIL: 首轮不应触发续轮路径，reasoning: ${result.decision.reasoning}`
       );
-      console.log("C2 ✓ first turn without claudeSessionId does not trigger continuation");
+      console.log("C2 ✓ first turn without runtimeSessionId does not trigger continuation");
     }
 
     // ── C3: 上轮路径为 cheap 时，续轮不跳过（走 mock fallback）──
@@ -123,7 +123,7 @@ export const routerContinuationTestPromise = (async () => {
         "那这个月工资呢",
         [],
         "trace-c3",
-        { claudeSessionId: "session-xyz", conversationId }
+        { runtimeSessionId: "session-xyz", conversationId }
       );
 
       assert.equal(llmCallCount, 0, "C3 INFO: mock 模式不打真 LLM（预期）");
@@ -144,7 +144,7 @@ export const routerContinuationTestPromise = (async () => {
         "100000 十万",
         [],
         "trace-c4",
-        { claudeSessionId: "session-tool", conversationId }
+        { runtimeSessionId: "session-tool", conversationId }
       );
 
       assert.equal(llmCallCount, 0, "C4 FAIL: tool_task 续轮也不应发起 LLM 调用");
@@ -166,7 +166,7 @@ export const routerContinuationTestPromise = (async () => {
         "你好",
         [],
         "trace-c5",
-        { claudeSessionId: "session-greet", conversationId }
+        { runtimeSessionId: "session-greet", conversationId }
       );
 
       assert.equal(llmCallCount, 0, "C5 FAIL: 寒暄短路不应打 LLM");

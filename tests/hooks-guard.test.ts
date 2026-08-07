@@ -14,13 +14,13 @@ const base = (over: Partial<Ctx> & { toolName: string }): Ctx => ({ input: {}, o
   assert.equal((await before(base({ toolName: "Read", input: { file_path: "/a/data.csv" } }))).action, "allow", "RG FAIL: csv 文本应 allow(Read 能读)");
   assert.equal((await before(base({ toolName: "Read", input: { file_path: "/a/notes.txt" } }))).action, "allow", "RG FAIL: txt 应 allow");
   assert.equal((await before(base({ toolName: "Grep", input: { pattern: "x" } }))).action, "allow", "RG FAIL: 非文件工具应 allow");
-  assert.equal((await before(base({ toolName: "mcp__finance_worker__run_python", input: { code: "open('x.xlsx')" } }))).action, "allow", "RG FAIL: run_python 不受 read-guard 影响");
+  assert.equal((await before(base({ toolName: "analyze_tabular", input: { code: "open('x.xlsx')" } }))).action, "allow", "RG FAIL: analyze_tabular 不受 read-guard 影响");
   // deny 文案要给出正确替代工具
   const denyXlsx = await before(base({ toolName: "Read", input: { file_path: "/a/报表.xlsx" } }));
-  assert.ok(denyXlsx.action === "deny" && /run_python|openpyxl/.test(denyXlsx.reason), "RG FAIL: deny 文案应导向 run_python/openpyxl");
+  assert.ok(denyXlsx.action === "deny" && /analyze_tabular|openpyxl/.test(denyXlsx.reason), "RG FAIL: deny 文案应导向 analyze_tabular/openpyxl");
 
   // ── stuck-guard:连续同错 ≥5 → 断路;成功重置;有交互通道则弹选择（CR-R2 去掉 MAX_PY）──
-  const py = (over: Partial<Ctx> = {}): Ctx => base({ toolName: "mcp__finance_worker__run_python", input: { code: "x" }, ...over });
+  const py = (over: Partial<Ctx> = {}): Ctx => base({ toolName: "analyze_tabular", input: { code: "x" }, ...over });
   const err = (h: ReturnType<typeof createStuckGuardHook>) => h.after!({ ...py(), result: "boom", isError: true, durationMs: 1 } as never);
   const ok = (h: ReturnType<typeof createStuckGuardHook>) => h.after!({ ...py(), result: "ok", isError: false, durationMs: 1 } as never);
 

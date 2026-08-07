@@ -1,6 +1,7 @@
 import type { QualityProfile } from "@/lib/agent/run-contract";
 import type { ValidatorResult } from "../types";
 import { validateGenericFile } from "./generic-file";
+import { validateDocxFile } from "./docx";
 import { validateXlsxFile } from "./xlsx";
 
 export type ValidatorInput = {
@@ -63,14 +64,23 @@ const SPREADSHEET_MIMES = new Set([
   "application/vnd.ms-excel.sheet.macroEnabled.12",
   "application/vnd.ms-excel",
 ]);
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 /** 注册通用 file + xlsx validators（幂等）。financial_consolidation 复用 xlsx 门；领域断言归 Q2。 */
 export function ensureBuiltinValidatorsRegistered(): void {
   if (registry.some((v) => v.id === "generic_file")) return;
 
   registerValidator({
+    id: "docx_generic",
+    matches: (mime) => mime === DOCX_MIME,
+    validate: async (input) => validateDocxFile(input),
+  });
+
+  registerValidator({
     id: "generic_file",
-    matches: (mime, _profile) => !SPREADSHEET_MIMES.has(mime),
+    matches: (mime, _profile) =>
+      !SPREADSHEET_MIMES.has(mime) && mime !== DOCX_MIME,
     validate: async (input) => validateGenericFile(input),
   });
 

@@ -32,9 +32,9 @@ import { createRiskConfirmHook, createUnwiredToolHook } from "../lib/agent/hooks
 import { runBeforeHooks } from "../lib/agent/hooks/chain.ts";
 
 // ── 工具常量 ──────────────────────────────────────────────────────────────────
-const RUN_PYTHON = "mcp__finance_worker__run_python";
-const OTHER_HIGH = "mcp__finance_worker__calculate_payroll_batch";
-const KINGDEE = "mcp__kingdee_worker__export_kingdee_draft";
+const RUN_PYTHON = "run_python";
+const OTHER_HIGH = "calculate_payroll_batch";
+const KINGDEE = "export_kingdee_draft";
 
 /** 清空进程级信任存储（测试隔离用）。 */
 const TRUST_SYMBOL = Symbol.for("finance-agent.run-python-session-trust");

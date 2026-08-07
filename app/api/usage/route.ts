@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readClaudeSettings } from "@/lib/settings/claude-settings";
+import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { getUsageStatus } from "@/lib/usage/store";
 import { isEnabled } from "@/lib/runtime/flags";
 import { withApiError } from "@/lib/api/with-api-error";
@@ -9,7 +9,7 @@ export const GET = withApiError(async function GET() {
   if (!isEnabled("USAGE_LIMIT_ENABLED")) {
     return NextResponse.json({ ok: true, data: { enabled: false } });
   }
-  const settings = await readClaudeSettings().catch(() => null);
+  const settings = await readAgentSettings().catch(() => null);
   const usage = getUsageStatus({
     now: Date.now(),
     roles: {

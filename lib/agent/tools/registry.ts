@@ -21,68 +21,69 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "MultiEdit",        category: "builtin", riskLevel: "medium" },
   { name: "Bash",             category: "builtin", riskLevel: "high" },
   // Core MCP tools
-  { name: "mcp__finance_worker__run_python",            category: "finance", riskLevel: "high" },
-  { name: "mcp__finance_worker__spawn_subagent",        category: "finance", riskLevel: "medium" },
-  { name: "mcp__finance_worker__search_knowledge", category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__query_knowledge",  category: "finance", riskLevel: "medium" },
-  { name: "mcp__finance_worker__read_file",        category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__read_document",     category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__scan_slip_folder",  category: "finance", riskLevel: "safe" },
+  { name: "analyze_tabular",       category: "finance", riskLevel: "safe" },
+  { name: "spawn_subagent",        category: "finance", riskLevel: "medium" },
+  { name: "search_knowledge", category: "finance", riskLevel: "safe" },
+  { name: "query_knowledge",  category: "finance", riskLevel: "medium" },
+  { name: "read_file",        category: "finance", riskLevel: "safe" },
+  { name: "read_document",     category: "finance", riskLevel: "safe" },
+  { name: "scan_slip_folder",  category: "finance", riskLevel: "safe" },
   // 写入用户约定/角色口径:静默写入+对话内轻提示,记忆页可删(刀6 拍板去确认卡)
-  { name: "mcp__finance_worker__remember_convention", category: "finance", riskLevel: "medium" },
-  { name: "mcp__finance_worker__remember_role_convention", category: "finance", riskLevel: "medium" },
+  { name: "remember_convention", category: "finance", riskLevel: "medium" },
+  { name: "remember_role_convention", category: "finance", riskLevel: "medium" },
   // 经营数据登记
-  { name: "mcp__finance_worker__record_business_metrics", category: "finance", riskLevel: "medium" },
-  { name: "mcp__finance_worker__generate_business_analysis", category: "finance", riskLevel: "safe" },
+  { name: "record_business_metrics", category: "finance", riskLevel: "medium" },
+  { name: "generate_business_analysis", category: "finance", riskLevel: "safe" },
   // Payroll & reimbursement tools
-  { name: "mcp__finance_worker__calculate_payroll_batch",       category: "finance", riskLevel: "high" },
-  { name: "mcp__finance_worker__confirm_payroll_period",        category: "finance", riskLevel: "high" },
-  { name: "mcp__finance_worker__query_payroll_status",          category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__diff_payroll_period",           category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__export_payslips",               category: "finance", riskLevel: "medium" },
-  { name: "mcp__finance_worker__check_reimbursement_batch",     category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__record_reimbursement_invoices", category: "finance", riskLevel: "medium" },
+  { name: "calculate_payroll_batch",       category: "finance", riskLevel: "high" },
+  { name: "confirm_payroll_period",        category: "finance", riskLevel: "high" },
+  { name: "query_payroll_status",          category: "finance", riskLevel: "safe" },
+  { name: "diff_payroll_period",           category: "finance", riskLevel: "safe" },
+  { name: "export_payslips",               category: "finance", riskLevel: "medium" },
+  { name: "check_reimbursement_batch",     category: "finance", riskLevel: "safe" },
+  { name: "record_reimbursement_invoices", category: "finance", riskLevel: "medium" },
   // Reconciliation (read-only, never touches payment)
-  { name: "mcp__finance_worker__reconcile_bank_statement",      category: "finance", riskLevel: "safe" },
-  // Policy / tax tools(Excel/PPT/PDF 处理已迁到 SDK skill + run_python)
-  { name: "mcp__finance_worker__read_expense_policy",     category: "finance", riskLevel: "safe" },
-  { name: "mcp__finance_worker__tax_calculator",          category: "finance", riskLevel: "safe" },
+  { name: "reconcile_bank_statement",      category: "finance", riskLevel: "safe" },
+  // Policy / tax tools(文件提取走 read_document，结构化统计走 analyze_tabular)
+  { name: "read_expense_policy",     category: "finance", riskLevel: "safe" },
+  { name: "tax_calculator",          category: "finance", riskLevel: "safe" },
   // 发票台账只读汇总（WP1c）
-  { name: "mcp__finance_worker__query_invoice_ledger",    category: "finance", riskLevel: "safe" },
+  { name: "query_invoice_ledger",    category: "finance", riskLevel: "safe" },
   // 应收账龄只读清单（WP13a）
-  { name: "mcp__finance_worker__query_receivables",       category: "finance", riskLevel: "safe" },
+  { name: "query_receivables",       category: "finance", riskLevel: "safe" },
   // 销项发票登记 + 发票级账龄 + 回款落盘（WP13b）
-  { name: "mcp__finance_worker__record_sales_invoices",   category: "finance", riskLevel: "medium" },
-  { name: "mcp__finance_worker__record_invoice_settlement", category: "finance", riskLevel: "medium" },
-  { name: "mcp__finance_worker__query_sales_invoices",    category: "finance", riskLevel: "safe" },
+  { name: "record_sales_invoices",   category: "finance", riskLevel: "medium" },
+  { name: "record_invoice_settlement", category: "finance", riskLevel: "medium" },
+  { name: "query_sales_invoices",    category: "finance", riskLevel: "safe" },
   // Kingdee MCP tools
-  { name: "mcp__kingdee_worker__query_kingdee_accounts",    category: "finance", riskLevel: "safe" },
-  { name: "mcp__kingdee_worker__export_kingdee_draft",      category: "finance", riskLevel: "high" },
-  { name: "mcp__kingdee_worker__validate_kingdee_voucher",  category: "finance", riskLevel: "medium" },
-  { name: "mcp__kingdee_worker__import_kingdee_accounts",   category: "finance", riskLevel: "medium" },
+  { name: "query_kingdee_accounts",    category: "finance", riskLevel: "safe" },
+  { name: "export_kingdee_draft",      category: "finance", riskLevel: "high" },
+  { name: "validate_kingdee_voucher",  category: "finance", riskLevel: "medium" },
+  { name: "import_kingdee_accounts",   category: "finance", riskLevel: "medium" },
   // 单据→凭证:金额勾稽 / 科目映射 / 汇总(均只读,不写数据)
-  { name: "mcp__kingdee_worker__check_voucher_amount",      category: "finance", riskLevel: "safe" },
-  { name: "mcp__kingdee_worker__map_voucher_account",       category: "finance", riskLevel: "safe" },
-  { name: "mcp__kingdee_worker__summarize_vouchers",        category: "finance", riskLevel: "safe" },
-  { name: "mcp__kingdee_worker__build_voucher_lines",       category: "finance", riskLevel: "safe" },
-  { name: "mcp__kingdee_worker__build_voucher_sheet",       category: "finance", riskLevel: "safe" },
-  { name: "mcp__kingdee_worker__process_voucher_batch",     category: "finance", riskLevel: "safe" },
+  { name: "check_voucher_amount",      category: "finance", riskLevel: "safe" },
+  { name: "map_voucher_account",       category: "finance", riskLevel: "safe" },
+  { name: "summarize_vouchers",        category: "finance", riskLevel: "safe" },
+  { name: "build_voucher_lines",       category: "finance", riskLevel: "safe" },
+  { name: "build_voucher_sheet",       category: "finance", riskLevel: "safe" },
+  { name: "process_voucher_batch",     category: "finance", riskLevel: "safe" },
+  { name: "export_voucher_list",       category: "finance", riskLevel: "high" },
   // P1 合同归纳:结构化 metadata 起草工具
-  { name: "mcp__finance_worker__record_document_metadata",  category: "finance", riskLevel: "medium" },
+  { name: "record_document_metadata",  category: "finance", riskLevel: "medium" },
   // P3: 公司画像（税务筹划）
-  { name: "mcp__finance_worker__update_company_profile",    category: "finance", riskLevel: "medium" },
+  { name: "update_company_profile",    category: "finance", riskLevel: "medium" },
   // 收尾声明最终产物(只写声明标记;真正清理是收尾确定性执行 + 单独审计,不挂确认门)
-  { name: "mcp__finance_worker__finalize_deliverable",      category: "finance", riskLevel: "safe" },
+  { name: "finalize_deliverable",      category: "finance", riskLevel: "safe" },
   // WP14a: 物化可勾选清单工件（safe，无角色白名单，v1 主对话专用）
-  { name: "mcp__finance_worker__emit_checklist",            category: "finance", riskLevel: "safe" },
+  { name: "emit_checklist",            category: "finance", riskLevel: "safe" },
   // 功能4首刀: 申报前复核批跑（safe，读取画像+派发；不进任何角色白名单，子代理不可递归批跑）
-  { name: "mcp__finance_worker__run_filing_precheck_batch", category: "finance", riskLevel: "safe" },
+  { name: "run_filing_precheck_batch", category: "finance", riskLevel: "safe" },
   // 功能4第二刀: 银行对账批跑（safe，fan-out 资金专员；不进任何角色白名单，子代理不可递归批跑）
-  { name: "mcp__finance_worker__run_bank_recon_batch",      category: "finance", riskLevel: "safe" },
+  { name: "run_bank_recon_batch",      category: "finance", riskLevel: "safe" },
   // WP15: 撤销最近 agent 写操作（high 风险，经 confirm gate 拦截；无角色白名单——主对话动作）
-  { name: "mcp__finance_worker__undo_last_write",           category: "finance", riskLevel: "high" },
+  { name: "undo_last_write",           category: "finance", riskLevel: "high" },
   // D2·刀8: 越权转交卡（safe；主管与专员会话均可用；不进任何角色工具白名单——角色不可递归转交）
-  { name: "mcp__finance_worker__propose_transfer",          category: "finance", riskLevel: "safe" },
+  { name: "propose_transfer",          category: "finance", riskLevel: "safe" },
 ];
 
 // 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。
@@ -90,8 +91,8 @@ export const TOOL_REGISTRY: ToolDef[] = [
 // 注意：不 import built-in（会循环依赖，built-in 已依赖本模块的 getToolRiskLevel）。
 // remember_role_convention（刀6）静默写入；remember_convention 仍挂确认门。
 const CONFIRM_REQUIRED_TOOL_NAMES = new Set<string>([
-  "mcp__finance_worker__remember_convention",
-  "mcp__finance_worker__update_company_profile",
+  "remember_convention",
+  "update_company_profile",
 ]);
 
 /**

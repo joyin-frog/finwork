@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finwork × Pi Agent 接入图谱</title>
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --surface: #ffffff;
+    --surface-2: #f4f4f2;
+    --ink: #1c1b19;
+    --ink-2: #55534e;
+    --ink-3: #8a8781;
+    --line: #e3e2de;
+    --line-strong: #cfcdc7;
+    --accent: #2f6f5e;
+    --accent-soft: #e8f1ee;
+    --pi: #5b4b8a;
+    --pi-soft: #eeeaf6;
+    --warn: #a8620f;
+    --warn-soft: #fbf0e2;
+    --bad: #a33a2e;
+    --bad-soft: #fbeae7;
+    --ok: #2f6f5e;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a;
+      --surface: #1e1e23;
+      --surface-2: #26262c;
+      --ink: #eceae6;
+      --ink-2: #b4b1aa;
+      --ink-3: #837f78;
+      --line: #33333a;
+      --line-strong: #45454e;
+      --accent: #6dbfa5;
+      --accent-soft: #1c322c;
+      --pi: #a996de;
+      --pi-soft: #262238;
+      --warn: #e0a35c;
+      --warn-soft: #33281a;
+      --bad: #e08878;
+      --bad-soft: #33201d;
+      --ok: #6dbfa5;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #fbfbfa; --surface: #ffffff; --surface-2: #f4f4f2;
+    --ink: #1c1b19; --ink-2: #55534e; --ink-3: #8a8781;
+    --line: #e3e2de; --line-strong: #cfcdc7;
+    --accent: #2f6f5e; --accent-soft: #e8f1ee;
+    --pi: #5b4b8a; --pi-soft: #eeeaf6;
+    --warn: #a8620f; --warn-soft: #fbf0e2;
+    --bad: #a33a2e; --bad-soft: #fbeae7; --ok: #2f6f5e;
+  }
+  :root[data-theme="dark"] {
+    --bg: #16161a; --surface: #1e1e23; --surface-2: #26262c;
+    --ink: #eceae6; --ink-2: #b4b1aa; --ink-3: #837f78;
+    --line: #33333a; --line-strong: #45454e;
+    --accent: #6dbfa5; --accent-soft: #1c322c;
+    --pi: #a996de; --pi-soft: #262238;
+    --warn: #e0a35c; --warn-soft: #33281a;
+    --bad: #e08878; --bad-soft: #33201d; --ok: #6dbfa5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.62 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 48px 24px 96px; }
+
+  header.top { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 40px; }
+  h1 { font-size: 27px; line-height: 1.25; margin: 0 0 8px; letter-spacing: -0.01em; font-weight: 650; }
+  .sub { color: var(--ink-2); font-size: 14px; margin: 0; }
+  .meta { color: var(--ink-3); font-size: 12.5px; margin-top: 12px; font-family: var(--mono); }
+
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em;
+    color: var(--ink-3); font-weight: 620;
+    margin: 52px 0 18px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  h2:first-of-type { margin-top: 0; }
+
+  /* ── verdict cards ── */
+  .verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .verdict { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .verdict .n { font-size: 26px; font-weight: 640; letter-spacing: -0.02em; line-height: 1.1; }
+  .verdict .k { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
+  .verdict .d { font-size: 12.5px; color: var(--ink-2); margin-top: 8px; line-height: 1.5; }
+  .verdict.good .n { color: var(--ok); }
+  .verdict.warn .n { color: var(--warn); }
+  .verdict.bad  .n { color: var(--bad); }
+
+  /* ── stack diagram ── */
+  .stack { display: flex; flex-direction: column; gap: 0; }
+  .band {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .band.pi { background: var(--pi-soft); border-color: var(--pi); }
+  .band.seam { background: var(--accent-soft); border-color: var(--accent); }
+  .band-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .band-title { font-weight: 620; font-size: 14.5px; }
+  .band-file { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+  .band-note { font-size: 12.5px; color: var(--ink-2); }
+  .arrow {
+    align-self: center; color: var(--ink-3); font-size: 14px; line-height: 1;
+    padding: 7px 0; font-family: var(--mono);
+  }
+  .arrow em { font-style: normal; font-size: 11.5px; margin-left: 8px; color: var(--ink-3); }
+
+  .seams { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 8px; margin-top: 12px; }
+  .seam-chip {
+    background: var(--surface); border: 1px solid var(--line-strong);
+    border-radius: 8px; padding: 9px 11px;
+  }
+  .seam-chip .sn { font-family: var(--mono); font-size: 10.5px; color: var(--accent); font-weight: 600; }
+  .seam-chip .st { font-size: 13px; font-weight: 580; margin-top: 2px; }
+  .seam-chip .sf { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-top: 3px; word-break: break-all; }
+
+  .pi-pkgs { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; margin-top: 10px; }
+  .pkg { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 9px 11px; }
+  .pkg .pn { font-family: var(--mono); font-size: 11.5px; color: var(--pi); font-weight: 600; }
+  .pkg .pd { font-size: 12px; color: var(--ink-2); margin-top: 3px; }
+
+  /* ── tables ── */
+  .scroller {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--surface-2);
+  }
+  .scroller::-webkit-scrollbar { height: 9px; }
+  .scroller::-webkit-scrollbar-track { background: var(--surface-2); }
+  .scroller::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 5px; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--ink-3); font-weight: 620; background: var(--surface-2); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td code, .band-file code { font-family: var(--mono); font-size: 12px; }
+  code {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 0.5px 4px;
+  }
+  .num { font-family: var(--mono); color: var(--ink-3); font-size: 12px; white-space: nowrap; }
+
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+    padding: 2px 7px; border-radius: 5px; white-space: nowrap;
+  }
+  .tag.ok    { background: var(--accent-soft); color: var(--ok); }
+  .tag.dev   { background: var(--pi-soft); color: var(--pi); }
+  .tag.warn  { background: var(--warn-soft); color: var(--warn); }
+  .tag.bad   { background: var(--bad-soft); color: var(--bad); }
+  .tag.idle  { background: var(--surface-2); color: var(--ink-3); }
+
+  /* ── gap list ── */
+  .gaps { display: flex; flex-direction: column; gap: 10px; }
+  .gap {
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--line-strong);
+    border-radius: 8px; padding: 14px 16px;
+  }
+  .gap.p1 { border-left-color: var(--bad); }
+  .gap.p2 { border-left-color: var(--warn); }
+  .gap.p3 { border-left-color: var(--line-strong); }
+  .gap-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .gap-id { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+  .gap-title { font-weight: 620; font-size: 14.5px; }
+  .gap-body { font-size: 13.5px; color: var(--ink-2); margin-top: 6px; line-height: 1.6; }
+  .gap-where { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); margin-top: 7px; word-break: break-all; }
+
+  .foot { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Finwork × Pi Agent 接入图谱</h1>
+  <p class="sub">Claude Agent SDK → <code>@earendil-works/pi-*</code> 迁移后的实际接入形态、切入点清单、规范符合度与剩余工作</p>
+  <p class="meta">commit 85d342a · pi 0.82.1（三包精确锁定）· 2026-07-30</p>
+</header>
+
+<h2>一、总体结论</h2>
+<div class="verdicts">
+  <div class="verdict good">
+    <div class="n">0</div>
+    <div class="k">运行时 Claude SDK 残留</div>
+    <div class="d">依赖、源码、bundle、Tauri 资源均已清空；仅留两处不可执行的升级入口（旧 settings envelope 读一次、DB 列 rename）</div>
+  </div>
+  <div class="verdict good">
+    <div class="n">8</div>
+    <div class="k">Pi 切入点，全部收在 <code>lib/agent/pi/**</code></div>
+    <div class="d">1210 行边界代码。Query / SSE / UI / DB / 工具 handler 均不 import Pi 类型</div>
+  </div>
+  <div class="verdict warn">
+    <div class="n">2 / 8</div>
+    <div class="k">对 pi 默认做法的有意偏离</div>
+    <div class="d">自建 Skill loader、放弃 Extension 机制。两处都有正当理由，但只有一处写进了文档</div>
+  </div>
+  <div class="verdict bad">
+    <div class="n">13</div>
+    <div class="k">剩余工作项（3 高 / 5 中 / 5 低）</div>
+    <div class="d">最重的是 Pi session 无保留期治理与 CI 门缺口，都不是迁移逻辑本身的问题</div>
+  </div>
+</div>
+
+<h2>二、接入架构：数据怎么流下去，事件怎么流上来</h2>
+<div class="stack">
+
+  <div class="band">
+    <div class="band-head">
+      <span class="band-title">前端 / SSE 客户端</span>
+      <span class="band-file"><code>app/chat/chat-request.ts</code></span>
+    </div>
+    <div class="band-note">只认 <code>AgentRuntimeEvent</code>。<code>run_settled</code> / <code>queue_updated</code> 被静默消耗，UI 终态仍由旧帧驱动（AR2a 已知校准）</div>
+  </div>
+  <div class="arrow">↓ ↑ <em>SSE，唯一公共实时合同</em></div>
+
+  <div class="band">
+    <div class="band-head">
+      <span class="band-title">Query Pipeline</span>
+      <span class="band-file"><code>app/api/agent/query/route.ts:323</code></span>
+    </div>
+    <div class="band-note">全仓唯一调用 <code>runPiAgent()</code> 的地方。<code>run_started</code> / <code>run_ended</code> / <code>run_settled</code> 的唯一收口方；router、配额、trace、落库、CompletionGate 都在这层</div>
+  </div>
+  <div class="arrow">↓ <em>FinworkAgentRequest</em>　　↑ <em>FinworkAgentResult</em></div>
+
+  <div class="band seam">
+    <div class="band-head">
+      <span class="band-title">Finwork Agent Service（薄边界，非 runtime factory）</span>
+      <span class="band-file"><code>lib/agent/pi/agent-service.ts</code> · 438 行</span>
+    </div>
+    <div class="band-note">装配 prompt / 记忆 / 画像 / 角色白名单 / 上下文策略 / 工具 / 附件 / 超时 / 取消，创建或恢复 Pi session，把 Pi 事件翻成公共事件，返回中立 usage 与 session locator</div>
+    <div class="seams">
+      <div class="seam-chip"><div class="sn">S1</div><div class="st">Provider 注册</div><div class="sf">pi/provider.ts</div></div>
+      <div class="seam-chip"><div class="sn">S2</div><div class="st">Session 创建 / 恢复</div><div class="sf">pi/agent-service.ts</div></div>
+      <div class="seam-chip"><div class="sn">S3</div><div class="st">资源加载器</div><div class="sf">pi/resource-loader.ts</div></div>
+      <div class="seam-chip"><div class="sn">S4</div><div class="st">工具适配</div><div class="sf">pi/tool-adapter.ts</div></div>
+      <div class="seam-chip"><div class="sn">S5</div><div class="st">Skill 渐进披露</div><div class="sf">pi/skill-tool.ts</div></div>
+      <div class="seam-chip"><div class="sn">S6</div><div class="st">事件映射</div><div class="sf">pi/event-mapper.ts</div></div>
+      <div class="seam-chip"><div class="sn">S7</div><div class="st">子代理</div><div class="sf">pi/subagent-runner.ts</div></div>
+      <div class="seam-chip"><div class="sn">S8</div><div class="st">打包发现性</div><div class="sf">pi/packaged-preflight.ts</div></div>
+    </div>
+  </div>
+  <div class="arrow">↓ <em>createAgentSession() / session.prompt()</em>　　↑ <em>session.subscribe(AgentSessionEvent)</em></div>
+
+  <div class="band pi">
+    <div class="band-head">
+      <span class="band-title">Pi Agent Runtime</span>
+      <span class="band-file">pi 拥有 agent loop，Finwork 不重写第三套</span>
+    </div>
+    <div class="pi-pkgs">
+      <div class="pkg">
+        <div class="pn">@earendil-works/pi-coding-agent</div>
+        <div class="pd">AgentSession · SessionManager · SettingsManager · DefaultResourceLoader · ModelRuntime · ToolDefinition</div>
+      </div>
+      <div class="pkg">
+        <div class="pn">@earendil-works/pi-ai</div>
+        <div class="pd">InMemoryCredentialStore · anthropic-messages · Model / TSchema / ImageContent</div>
+      </div>
+      <div class="pkg">
+        <div class="pn">@earendil-works/pi-agent-core</div>
+        <div class="pd">经 coding-agent 间接接入，产品代码不直接调低层 loop（设计 §4 决策 3）</div>
+      </div>
+    </div>
+  </div>
+  <div class="arrow">↓ <em>anthropic-messages</em></div>
+
+  <div class="band">
+    <div class="band-head"><span class="band-title">用户自有 Anthropic 兼容网关</span></div>
+    <div class="band-note">API Key 从系统密钥库读出，只进 Pi 内存 credential store；不写 <code>~/.pi/agent/auth.json</code></div>
+  </div>
+</div>
+
+<h2>三、八个切入点：做了什么，符不符合 pi 的规范</h2>
+<div class="scroller">
+<table>
+  <thead>
+    <tr>
+      <th>#</th><th>切入点</th><th>用到的 Pi API</th><th>Finwork 的做法</th><th>规范判定</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="num">S1</td>
+      <td><strong>Provider 注册</strong><br><span class="num">pi/provider.ts</span></td>
+      <td><code>ModelRuntime.create({ credentials: InMemoryCredentialStore, modelsPath: null, allowModelNetwork: false })</code> + <code>registerProvider()</code></td>
+      <td>单一 <code>finwork-anthropic</code> provider，baseUrl / apiKey 来自 AgentSettings；三处网络自发现全关</td>
+      <td><span class="tag ok">符合</span><br><span class="band-note">但模型元数据是占位值 → 见 G2 / G3</span></td>
+    </tr>
+    <tr>
+      <td class="num">S2</td>
+      <td><strong>Session 创建 / 恢复</strong><br><span class="num">pi/agent-service.ts:120</span></td>
+      <td><code>SessionManager.create(cwd, sessionRoot)</code> / <code>SessionManager.open(locator, sessionRoot, cwd)</code></td>
+      <td>sessionRoot 强制 <code>app-data/pi-sessions</code>；恢复前用 <code>validatePiSessionLocator()</code> 做 realpath 越界校验 + <code>.jsonl</code> 后缀校验</td>
+      <td><span class="tag ok">符合且更严</span><br><span class="band-note">缺保留期治理 → 见 G1</span></td>
+    </tr>
+    <tr>
+      <td class="num">S3</td>
+      <td><strong>资源加载器</strong><br><span class="num">pi/resource-loader.ts</span></td>
+      <td><code>DefaultResourceLoader</code> + <code>systemPromptOverride</code> / <code>skillsOverride</code> / <code>additionalSkillPaths</code></td>
+      <td>ambient 全关（<code>noExtensions</code> / <code>noPromptTemplates</code> / <code>noThemes</code> / <code>noContextFiles</code>），只装 Finwork 内置 + 用户 Skill 白名单，system prompt 走既有 SSOT</td>
+      <td><span class="tag ok">符合</span><br><span class="band-note">override 钩子正是 pi 给宿主留的口</span></td>
+    </tr>
+    <tr>
+      <td class="num">S4</td>
+      <td><strong>工具适配</strong><br><span class="num">pi/tool-adapter.ts</span></td>
+      <td><code>createAgentSession({ noTools: "builtin", customTools })</code>；<code>ToolDefinition{ name, label, description, parameters: TSchema, execute }</code></td>
+      <td>45 个中立 <code>FinanceToolDefinition</code> → session-scoped custom tools。<strong>Zod 仍是权威校验</strong>（<code>parseAsync</code> 在 handler 前跑），JSON Schema 只用于模型可见性；授权 / 审计 / 计时包在 execute 内</td>
+      <td><span class="tag ok">符合</span><br><span class="band-note">"schema 给模型看、Zod 管执行" 是 pi 推荐形态，避免双份真相</span></td>
+    </tr>
+    <tr>
+      <td class="num">S5</td>
+      <td><strong>Skill 渐进披露</strong><br><span class="num">pi/skill-tool.ts</span></td>
+      <td>自建名为 <code>Skill</code> 的 custom tool + 自建 <code>&lt;available_skills&gt;</code> listing</td>
+      <td>pi 内置的 skill 注入依赖 builtin <code>read</code>，而 Finwork 把 builtin 全关了；因此自有化 listing 与受限 loader，避免为了 Skill 打开任意文件读取</td>
+      <td><span class="tag dev">有意偏离</span><br><span class="band-note">理由充分且已记入 AR14 报告；实测使 AS0-08 输入 token −42%</span></td>
+    </tr>
+    <tr>
+      <td class="num">S6</td>
+      <td><strong>事件映射</strong><br><span class="num">pi/event-mapper.ts</span></td>
+      <td><code>session.subscribe((e: AgentSessionEvent) =&gt; …)</code></td>
+      <td>Pi 事件类型止于此文件；未知事件 drop 并留 trace。主链路过滤掉 <code>run_started/ended/settled</code>，交 Query 单一收口；子代理保留这三个并带 <code>instanceId</code></td>
+      <td><span class="tag ok">符合铁律</span></td>
+    </tr>
+    <tr>
+      <td class="num">S7</td>
+      <td><strong>子代理</strong><br><span class="num">pi/subagent-runner.ts</span></td>
+      <td>每个子代理一个独立 <code>AgentSession</code> + 独立 sessionRoot + <code>subagent</code> 模型槽</td>
+      <td>pi 无原生子代理概念；depth / 角色白名单 / dispatch 台账 / instanceId 全归 Finwork。未注入执行器时 fail-closed，不隐藏回落</td>
+      <td><span class="tag ok">符合</span></td>
+    </tr>
+    <tr>
+      <td class="num">S8</td>
+      <td><strong>打包发现性</strong><br><span class="num">pi/packaged-preflight.ts</span></td>
+      <td>惰性 <code>import()</code> 所有 Pi 模块 + <code>instrumentation.ts</code> 环境变量守卫的 preflight</td>
+      <td>Pi 是纯 ESM，顶层 import 经 tsx CJS 链会 <code>ERR_PACKAGE_PATH_NOT_EXPORTED</code>；显式 preflight 让 Next standalone trace 到 Pi 依赖</td>
+      <td><span class="tag ok">符合 Next 约束</span></td>
+    </tr>
+    <tr>
+      <td class="num">S0</td>
+      <td><strong>Pi Extension</strong><br><span class="num">未实现</span></td>
+      <td><code>noExtensions: true</code></td>
+      <td>设计文档 §8 原本要求一个承载安全 hook / compaction 审计 / provider trace 的 Finwork extension；实现改成把授权内联进 tool-adapter</td>
+      <td><span class="tag warn">合理取舍，文档未同步</span><br><span class="band-note">builtin 全关后确实不需要 tool_call 拦截，但 SSOT 没改 → 见 G7</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>四、迁移进度看板</h2>
+<div class="scroller">
+<table>
+  <thead><tr><th>ID</th><th>工作包</th><th>状态</th><th>证据 / 缺口</th></tr></thead>
+  <tbody>
+    <tr><td class="num">AS0</td><td>上下文与行为基线</td><td><span class="tag ok">已完成</span></td><td>20 个 runtime 中立任务基线冻结，解锁 AR10</td></tr>
+    <tr><td class="num">AR10</td><td>Pi + Anthropic 替换 PoC</td><td><span class="tag ok">已完成</span></td><td>10 项 Pass Gate 全通过（E1–E9），MiniMax-M3 真实调用</td></tr>
+    <tr><td class="num">AR8</td><td>Pi Skill 资源目录</td><td><span class="tag ok">已 ship</span></td><td>Finwork-owned ResourceLoader，ambient 关闭</td></tr>
+    <tr><td class="num">AR9</td><td>Agent Service + 命名中立化</td><td><span class="tag ok">已 ship</span></td><td><code>contracts.ts</code> 80 行中立合同；<code>/api/settings/agent</code> 取代 <code>/claude</code></td></tr>
+    <tr><td class="num">AR11</td><td>中立工具目录 + Pi adapter</td><td><span class="tag ok">已 ship</span></td><td>45/45 工具，Zod 权威校验，AbortSignal 透传</td></tr>
+    <tr><td class="num">AR12</td><td>Pi 生产接入</td><td><span class="tag ok">已 ship</span></td><td>Query 唯一调用点已切；真实等价门通过</td></tr>
+    <tr><td class="num">AR13</td><td>Claude SDK 删除</td><td><span class="tag ok">已 ship</span></td><td><code>eval:ar13:pi-only</code> 审计依赖 / 源码 / bundle / Tauri 资源</td></tr>
+    <tr><td class="num">AS1</td><td>结构中立化</td><td><span class="tag ok">已 ship</span></td><td>与迁移 diff 分账完成</td></tr>
+    <tr><td class="num">AS2</td><td>Pi-native 语义精简</td><td><span class="tag warn">实现完成，验收中</span></td><td>静态 prompt −77.5%，Skill listing −47%；确定性任务子集已落</td></tr>
+    <tr><td class="num">AR14</td><td>Pi-only 发布门</td><td><span class="tag warn">进行中</span></td><td>本机 local gate 过；<strong>缺</strong> Windows x64 / 另一 macOS 架构 CI</td></tr>
+    <tr><td class="num">AS3</td><td>精简发布门</td><td><span class="tag warn">进行中（并入 AR14）</span></td><td>before/after 已出；<strong>缺</strong>完整 20-case golden</td></tr>
+    <tr><td class="num">AR5</td><td>steering 插话</td><td><span class="tag idle">底层已验证，未产品化</span></td><td>AR10 E7 验证 <code>steer</code>/<code>followUp</code> 可用；生产从不调用</td></tr>
+    <tr><td class="num">AR6</td><td>文件写串行化</td><td><span class="tag idle">未开始</span></td><td>与 Pi 迁移无依赖</td></tr>
+    <tr><td class="num">AR7</td><td>仓库外打包 smoke</td><td><span class="tag idle">未开始</span></td><td>与 Pi 迁移无依赖</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>五、剩余工作（按该先动哪个排序）</h2>
+<div class="gaps">
+
+  <div class="gap p1">
+    <div class="gap-head"><span class="gap-id">G1 · 高</span><span class="gap-title">Pi session 与 Pi 输出目录没有保留期治理</span></div>
+    <div class="gap-body">
+      AR13 删掉了 <code>pruneOldSessionTranscripts()</code>（Claude transcript 清理），<strong>没有补 Pi 版</strong>。
+      <code>runRetentionCycle()</code> 现在九项全是 DB 表；<code>purgeStaleOutputDirs()</code> 只扫 <code>os.tmpdir()</code> 下的 <code>finance-agent-output-*</code>。
+      结果：<code>app-data/pi-sessions/**.jsonl</code>、<code>pi-sessions/outputs/&lt;requestId&gt;/</code>、子代理的 <code>outputs/**/subagents/**/.pi-session/</code> 全部无界增长。
+      设计文档 §11 明确要求 "Pi session/config/transcript … 纳入 retention"，这条尚未兑现。
+    </div>
+    <div class="gap-where">lib/maintenance/retention.ts · lib/runtime/cleanup.ts:24 · lib/agent/pi/agent-service.ts:77 · lib/agent/pi/subagent-runner.ts:48</div>
+  </div>
+
+  <div class="gap p1">
+    <div class="gap-head"><span class="gap-id">G2 · 高</span><span class="gap-title"><code>test:pi</code> 不在 <code>npm test</code>，也不在 CI 里</span></div>
+    <div class="gap-body">
+      <code>tests/pi/{structure,handlers,cancellation,main-service}.mts</code> 只能靠 <code>npm run test:pi</code> 手动跑。
+      <code>tests/all.test.ts</code> 里没有它们（只有 <code>as2-context-policy</code>），CI 也只跑 <code>npm test</code> + <code>eval:ar13:pi-only</code> + <code>eval:ar14:{context,packaged}</code>。
+      整个 Pi 边界层（45 工具目录冻结、授权链、取消语义、主 Service 装配）在 CI 上无门 —— 改坏了不会红。
+    </div>
+    <div class="gap-where">package.json:47 · tests/all.test.ts · .github/workflows/ci-verify.yml</div>
+  </div>
+
+  <div class="gap p1">
+    <div class="gap-head"><span class="gap-id">G3 · 高</span><span class="gap-title">测试净减约 1100 行，多类行为没有等价替代</span></div>
+    <div class="gap-body">
+      本次删除：<code>agent-context</code>(202) · <code>recap-summary</code>(307) · <code>agent-attachments-json</code>(203) · <code>subagent-runner</code>(99) · <code>agent-event-stream</code>(94) · <code>sdk-pre-tool-use</code>(87) · <code>usage-accumulate</code>(70) · <code>skill-plugin</code>(48) · <code>agent-abort-retry</code>(25)。
+      新增 <code>tests/pi/**</code> 共 375 行。其中<strong>用量累计、附件 JSON 宽松化、事件流顺序、recap 重建</strong>这几类断言，删掉的是行为门、新增的是结构门，不是一一对应的替换。
+    </div>
+    <div class="gap-where">git show 85d342a --stat -- tests/</div>
+  </div>
+
+  <div class="gap p2">
+    <div class="gap-head"><span class="gap-id">G4 · 中</span><span class="gap-title">模型元数据是硬编码占位值</span></div>
+    <div class="gap-body">
+      <code>registerProvider</code> 里 <code>contextWindow: 200_000</code>、<code>maxTokens: 8_192</code>、<code>cost</code> 四项全 0。
+      AR10 findings 自己写着 "PoC 暂定 200000 / 8192，<strong>AR12 前需按网关模型元数据收口</strong>" —— 未做。
+      两个后果：① pi 的 compaction 按假上下文窗口判触发点，网关模型真实窗口不同就会压得过早或过晚；
+      ② <code>usage.cost.total</code> 必然为 0，<code>totalCostUsd</code> 恒 0 写进 <code>agent_traces</code> 与 telemetry projection（当前没有 UI 展示金额，所以只是数据字段失真，不是可见 bug）。
+    </div>
+    <div class="gap-where">lib/agent/pi/provider.ts:29-38 · lib/agent/pi/agent-service.ts:372</div>
+  </div>
+
+  <div class="gap p2">
+    <div class="gap-head"><span class="gap-id">G5 · 中</span><span class="gap-title">retry 三处关闭，网关抖动直接失败</span></div>
+    <div class="gap-body">
+      <code>SettingsManager.inMemory({ retry: { enabled: false } })</code> 出现在主 Service、子代理和 preflight 三处。
+      同时 <code>tests/agent-abort-retry.test.ts</code> 被删。迁移期关掉重试便于归因是对的，但发布前需要拍板：是打开 pi 自带 retry，还是明确记录"不重试"是产品决策。
+    </div>
+    <div class="gap-where">lib/agent/pi/agent-service.ts:108 · subagent-runner.ts:96 · packaged-preflight.ts:30</div>
+  </div>
+
+  <div class="gap p2">
+    <div class="gap-head"><span class="gap-id">G6 · 中</span><span class="gap-title">AR14 发布矩阵未闭</span></div>
+    <div class="gap-body">
+      缺 Windows x64 与另一 macOS 架构的 CI 打包门、完整 20-case 多 attempts golden、复杂 Excel/Word/PDF 正式交付门。
+      本机 <code>npm test</code> 还被 <code>workers/.venv</code> 缺 <code>openpyxl</code> 卡在 smoke fixture 初始化 —— 本机绿灯目前不可信，只能看远端。
+    </div>
+    <div class="gap-where">docs/spec/reports/ar14-as2-pi-only-context-20260730.md「发布门」</div>
+  </div>
+
+  <div class="gap p2">
+    <div class="gap-head"><span class="gap-id">G7 · 中</span><span class="gap-title">设计 SSOT 与实现漂移：Pi Extension</span></div>
+    <div class="gap-body">
+      <code>design-pi-agent-runtime.md</code> §8 花整节要求一个 Finwork Pi Extension 承载路径检查、安全 hook、compaction 审计、provider trace、abort/cleanup。
+      实现选择了 <code>noExtensions: true</code> + 把授权内联进 tool-adapter。这个取舍站得住（builtin 全关，无 tool_call 需要拦截），
+      但文档没改 —— 下个会话照 §8 开工就会做一遍无用返工。同一节的 "禁止未接线工具"、"provider 请求/错误 trace" 也确实没有落点。
+    </div>
+    <div class="gap-where">docs/spec/design-pi-agent-runtime.md §8 · lib/agent/pi/resource-loader.ts:42</div>
+  </div>
+
+  <div class="gap p2">
+    <div class="gap-head"><span class="gap-id">G8 · 中</span><span class="gap-title">compaction 配方在三处复制粘贴</span></div>
+    <div class="gap-body">
+      <code>{ enabled: true, reserveTokens: 16_384, keepRecentTokens: 8_192 }</code> 三份字面量。调压缩阈值时改一处漏两处，主 Agent 与子代理会静默走不同策略。抽一个常量即可。
+    </div>
+    <div class="gap-where">lib/agent/pi/agent-service.ts:109 · subagent-runner.ts:97 · packaged-preflight.ts:31</div>
+  </div>
+
+  <div class="gap p3">
+    <div class="gap-head"><span class="gap-id">G9 · 低</span><span class="gap-title">steering 是接好一半的死码</span></div>
+    <div class="gap-body">
+      <code>queue_update → queue_updated</code> 映射已在，前端静默消耗，<code>runtime-events.ts:66</code> 还写着"本期只定义不发射"。
+      而 AR10 E7 已经真实验证过 <code>steer</code> 先于 <code>followUp</code>、队列清空才 settled。这是 pi 白送、迁移已验证、产品没接的能力 —— 摘果子的成本最低。
+    </div>
+    <div class="gap-where">lib/agent/runtime-events.ts:66 · pi/event-mapper.ts:84 · app/chat/chat-request.ts:166</div>
+  </div>
+
+  <div class="gap p3">
+    <div class="gap-head"><span class="gap-id">G10 · 低</span><span class="gap-title"><code>thinkingLevel</code> 恒为 off</span></div>
+    <div class="gap-body">
+      Service 支持 5 档，Query 从不传，实际永远走 <code>"off"</code>。这与既有决策一致（"深度思考"= 切模型槽，不是切 thinking level），
+      但 provider 注册里声明了 <code>reasoning: true</code>，两者语义对不上。要么接上，要么把 <code>PiAgentServiceOptions.thinkingLevel</code> 标注为仅 harness 用。
+    </div>
+    <div class="gap-where">lib/agent/pi/agent-service.ts:44,171 · pi/provider.ts:33</div>
+  </div>
+
+  <div class="gap p3">
+    <div class="gap-head"><span class="gap-id">G11 · 低</span><span class="gap-title">Skill 工具的 description 承诺了代码没实现的约束</span></div>
+    <div class="gap-body">
+      描述里写"每个 Skill 每轮最多加载一次"，<code>execute</code> 里没有任何去重。模型重复加载同一 Skill 会白烧 token。要么加计数，要么删掉这句承诺。
+    </div>
+    <div class="gap-where">lib/agent/pi/skill-tool.ts:33</div>
+  </div>
+
+  <div class="gap p3">
+    <div class="gap-head"><span class="gap-id">G12 · 低</span><span class="gap-title">陈旧注释还在讲 Claude 双运行时</span></div>
+    <div class="gap-body">
+      <code>subagent-runner.ts:38</code> 写着 "the production Claude runner remains untouched until AR10 passes"；
+      <code>mcp-tools/index.ts:41</code> 写着 "Claude remains the legacy default"。两者都已不成立，会误导下一个读者以为还有回落路径。
+    </div>
+    <div class="gap-where">lib/agent/pi/subagent-runner.ts:38 · lib/agent/mcp-tools/index.ts:41</div>
+  </div>
+
+  <div class="gap p3">
+    <div class="gap-head"><span class="gap-id">G13 · 低</span><span class="gap-title">AS0 冻结的四个既存差异仍未处理</span></div>
+    <div class="gap-body">
+      <code>export_voucher_list</code> 不在风险注册表（回落 medium）、CompletionEvidence contract id 未注入、
+      <code>remember_convention</code> 的 session/global 语义歧义。这三条是迁移前就有意冻结的，现在 Pi-only 主链已稳，可以解冻了。
+    </div>
+    <div class="gap-where">docs/spec/spike-pi-anthropic-replacement-findings.md「既存差异」</div>
+  </div>
+
+</div>
+
+<h2>六、迁移做得好的地方（值得保持的约束）</h2>
+<div class="scroller">
+<table>
+  <thead><tr><th>约束</th><th>为什么重要</th><th>目前靠什么守住</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Pi 类型止于 <code>lib/agent/pi/**</code></strong></td>
+      <td>换 Provider 甚至换 runtime 都不用动 Query / SSE / UI / DB</td>
+      <td><code>eval:ar13:pi-only</code> 静态审计 + <code>contracts.ts</code> 的中立类型</td>
+    </tr>
+    <tr>
+      <td><strong>Zod 是唯一权威校验</strong></td>
+      <td>JSON Schema 转换若成第二真相，preprocess / refine 会静默失效</td>
+      <td>tool-adapter 在 handler 前 <code>parseAsync</code>；45 个工具共用一份 handler</td>
+    </tr>
+    <tr>
+      <td><strong>session 只能落 Finwork 受控目录</strong></td>
+      <td>防止 Pi 回落 <code>~/.pi</code>，也防止恢复任意路径的 session</td>
+      <td><code>validatePiSessionLocator()</code> realpath 校验 + <code>usesDefaultSessionDir()</code> 断言</td>
+    </tr>
+    <tr>
+      <td><strong>ambient 资源全关</strong></td>
+      <td>用户机器上的 <code>~/.pi</code> / <code>~/.claude</code> 扩展不得渗进财务 session</td>
+      <td>ResourceLoader 五个 <code>no*</code> 开关 + <code>noTools: "builtin"</code></td>
+    </tr>
+    <tr>
+      <td><strong>子代理执行器 fail-closed</strong></td>
+      <td>不注入就报错，而不是悄悄回落到旧 runner —— 这条消除了 Pi-only closure 的隐藏引用</td>
+      <td>中立工具目录不再动态回落，主 Service 与子代理各自显式注入</td>
+    </tr>
+    <tr>
+      <td><strong><code>run_settled</code> 单一收口</strong></td>
+      <td>终态语义只有一个所有者，子代理复用同合同但带 <code>instanceId</code></td>
+      <td><code>isQueryOwnedLifecycleEvent()</code> 在 Service 侧过滤</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p class="foot">
+  依据：commit <code>85d342a</code> 的实际代码，加 <code>docs/spec/ROADMAP-agent-runtime.md</code>、
+  <code>design-pi-agent-runtime.md</code>、<code>spike-pi-anthropic-replacement-findings.md</code>、
+  <code>reports/ar14-as2-pi-only-context-20260730.md</code>。
+  规范判定基于 pi 0.82.1 暴露的 API 契约与 pi 自身的设计取向（宿主拥有产品合同、pi 拥有 agent loop），
+  不代表 pi 官方有成文的接入规范文档。
+</p>
+
+</div>
+</body>
+</html>

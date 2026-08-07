@@ -10,7 +10,7 @@ export const provenanceTestPromise = (async () => {
   // ── P1: 无报销动作 → null(把样板限定在报销流程) ──
   assert.equal(
     buildReimbursementProvenance(tl([
-      { type: "tool_use", name: "mcp__finance_worker__tax_calculator", input: { type: "vat", amount: 100 } },
+      { type: "tool_use", name: "tax_calculator", input: { type: "vat", amount: 100 } },
       { type: "text", content: "增值税是…" },
     ])),
     null,
@@ -19,8 +19,8 @@ export const provenanceTestPromise = (async () => {
 
   // ── P2: 读了示例制度 → isExample=true,并带警示口径 ──
   const p2 = buildReimbursementProvenance(tl([
-    { type: "tool_use", name: "mcp__finance_worker__read_expense_policy", input: { section: "全部" } },
-    { type: "tool_result", name: "mcp__finance_worker__read_expense_policy", content: "⚠ 当前使用的是「示例报销制度」,结论可能与贵司实际标准不符。\n\n正文…" },
+    { type: "tool_use", name: "read_expense_policy", input: { section: "全部" } },
+    { type: "tool_result", name: "read_expense_policy", content: "⚠ 当前使用的是「示例报销制度」,结论可能与贵司实际标准不符。\n\n正文…" },
   ]));
   assert.ok(p2, "P2 FAIL: 读了制度应返回非空");
   assert.equal(p2!.policyBasis?.isExample, true, "P2 FAIL: 示例制度应判为 isExample");
@@ -28,11 +28,11 @@ export const provenanceTestPromise = (async () => {
 
   // ── P3: 真制度 + 核对笔数 + 知识库来源,机械汇总 + 去重 ──
   const p3 = buildReimbursementProvenance(tl([
-    { type: "tool_use", name: "mcp__finance_worker__read_expense_policy", input: { section: "差旅" } },
-    { type: "tool_result", name: "mcp__finance_worker__read_expense_policy", content: "第一章 差旅\n标准…(贵司真实制度,无示例标记)" },
-    { type: "tool_use", name: "mcp__finance_worker__read_file", input: { fileName: "差旅报销明细.xlsx" } },
-    { type: "tool_use", name: "mcp__finance_worker__read_file", input: { fileName: "差旅报销明细.xlsx" } },
-    { type: "tool_use", name: "mcp__finance_worker__check_reimbursement_batch", input: { items: [1, 2, 3] } },
+    { type: "tool_use", name: "read_expense_policy", input: { section: "差旅" } },
+    { type: "tool_result", name: "read_expense_policy", content: "第一章 差旅\n标准…(贵司真实制度,无示例标记)" },
+    { type: "tool_use", name: "read_file", input: { fileName: "差旅报销明细.xlsx" } },
+    { type: "tool_use", name: "read_file", input: { fileName: "差旅报销明细.xlsx" } },
+    { type: "tool_use", name: "check_reimbursement_batch", input: { items: [1, 2, 3] } },
   ]));
   assert.ok(p3, "P3 FAIL: 应返回非空");
   assert.equal(p3!.policyBasis?.isExample, false, "P3 FAIL: 无示例标记应判为真制度");

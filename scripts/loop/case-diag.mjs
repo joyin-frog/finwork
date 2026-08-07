@@ -5,7 +5,7 @@
 //
 //   node scripts/loop/case-diag.mjs complex-001,complex-002,...   (default: all complex)
 //   CONC=5 node scripts/loop/case-diag.mjs <ids>
-// Prereq: base sandbox (.claude/loop-sandbox/appdata) reset + KB-seeded.
+// Prereq: base sandbox (.finwork-test/loop-sandbox/appdata) reset + KB-seeded.
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
@@ -13,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const BASE = path.join(REPO, ".claude", "loop-sandbox", "appdata");
+const BASE = path.join(REPO, ".finwork-test", "loop-sandbox", "appdata");
 const PYRT = process.env.FINANCE_AGENT_PYTHON_RUNTIME_DIR
   || path.join(os.homedir(), "Library", "Application Support", "finance-agent", "python-runtime");
 
@@ -22,7 +22,7 @@ const ids = (process.argv[2] || DEFAULT).split(",").map((s) => s.trim()).filter(
 const CONC = Number(process.env.CONC || 5);
 
 async function runCase(id) {
-  const dir = path.join(REPO, ".claude", "loop-sandbox", `case-${id}`);
+  const dir = path.join(REPO, ".finwork-test", "loop-sandbox", `case-${id}`);
   await fs.rm(dir, { recursive: true, force: true });
   await fs.cp(BASE, dir, { recursive: true });
   const started = Date.now();
@@ -66,4 +66,4 @@ for (const r of results) {
   console.log(`  ${r.id}  score=${r.score?.toFixed(2)} tool=${r.tool} kw=${r.kw} judge=${r.judge} (${r.secs}s)\n     calls=[${r.calls.join(", ") || "无"}]${r.err ? " err=" + r.err : ""}`);
 }
 console.log(`\n  通过(≥0.75): ${pass}/${results.length}`);
-for (const id of ids) await fs.rm(path.join(REPO, ".claude", "loop-sandbox", `case-${id}`), { recursive: true, force: true }).catch(() => {});
+for (const id of ids) await fs.rm(path.join(REPO, ".finwork-test", "loop-sandbox", `case-${id}`), { recursive: true, force: true }).catch(() => {});

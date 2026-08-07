@@ -699,6 +699,6 @@ export function createKingdeeTools(sdk: Sdk, outputDir?: string) {
     sdk.tool("export_kingdee_draft", "导出一批记账凭证为金蝶K/3 Cloud格式草稿。当前为模拟模式生成JSON草稿供预览，不写入真实金蝶系统。", exportDraftSchema, withIdempotency("export_kingdee_draft", exportDraftHandler, { riskLevel: "high" })),
     sdk.tool("validate_kingdee_voucher", "校验金蝶凭证草稿的借贷平衡、科目有效性(对照贵司导入的科目表)、期间正确性。返回校验结果含错误列表和警告。", validateVoucherSchema, validateVoucherHandler),
     sdk.tool("import_kingdee_accounts", "导入贵司金蝶科目表(科目编码+名称+类别),覆盖此前导入。导入后查询/校验/凭证草稿都基于此表,不再用示例表。用户上传科目表后先调本工具。", importAccountsSchema, withIdempotency("import_kingdee_accounts", importAccountsHandler, { riskLevel: "medium" })),
-    sdk.tool("export_voucher_list", "【最终交付】把确认好的凭证列表导出为三 sheet xlsx:①对照清单(每行:日期/凭证字/摘要/科目编码/科目全名/核算维度类型/核算维度值/借方/贷方)②汇总(按科目+按文件小计)③待确认与跳过。导出前自动做借贷平衡+维度合法性双校验,违规返回错误不落文件。禁止用 run_python+openpyxl 手拼凭证行——统一用本工具。", exportVoucherListSchema, exportVoucherListHandler),
+    sdk.tool("export_voucher_list", "【最终交付】把确认好的凭证列表导出为三 sheet xlsx:①对照清单(每行:日期/凭证字/摘要/科目编码/科目全名/核算维度类型/核算维度值/借方/贷方)②汇总(按科目+按文件小计)③待确认与跳过。导出前自动做借贷平衡+维度合法性双校验,违规返回错误不落文件。统一使用本工具，不要手工拼接凭证文件。", exportVoucherListSchema, exportVoucherListHandler),
   ];
 }

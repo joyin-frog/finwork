@@ -1,6 +1,6 @@
-import { readClaudeSettings } from "@/lib/settings/claude-settings";
+import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { isMockAgentEnabled } from "./mock-agent";
-import type { AgentMessage } from "./claude-adapter";
+import type { AgentMessage } from "./contracts";
 import { getDb } from "@/lib/db/sqlite";
 import { redact } from "@/lib/safety/pii";
 import {
@@ -101,10 +101,10 @@ export function matchTrivialMessage(message: string): RouterDecision | null {
   return null;
 }
 
-/** 续轮快速路径上下文:有 claudeSessionId（会话可 resume）且提供 conversationId 时,
+/** 续轮快速路径上下文:有 runtimeSessionId（会话可 resume）且提供 conversationId 时,
  *  可查上一轮路由日志决定是否跳过 LLM 分类。 */
 export type RouterContext = {
-  claudeSessionId?: string | null;
+  runtimeSessionId?: string | null;
   conversationId?: number;
 };
 
@@ -112,7 +112,7 @@ export type RouterContext = {
  * 用 Messages API 直连做一次意图分类(JSON 文本输出,单次 HTTP)。
  * 任何失败(超时/网络/解析)都回退到"main 路径全 skills",不阻塞主流程。
  *
- * context.claudeSessionId 有值 + 上一轮路由 intent 是 complex_workflow/tool_task 时,
+ * context.runtimeSessionId 有值 + 上一轮路由 intent 是 complex_workflow/tool_task 时,
  * 跳过 LLM 路由,沿用上一轮 intent,节省 5–11s。
  */
 export async function runRouter(
@@ -130,8 +130,8 @@ export async function runRouter(
     return { decision: trivial, path: "cheap", latencyMs };
   }
 
-  // 续轮快速路径:本会话已有 claudeSessionId（可 resume）且上一轮路由是 complex/tool 时跳过 LLM。
-  if (context?.claudeSessionId && context.conversationId != null) {
+  // 续轮快速路径:本会话已有 runtimeSessionId（可 resume）且上一轮路由是 complex/tool 时跳过 LLM。
+  if (context?.runtimeSessionId && context.conversationId != null) {
     const prevRow = getLastRoutingRow(context.conversationId);
     if (prevRow && prevRow.path !== "cheap") {
       let prevIntent: RouterDecision["intent"] | null = null;
@@ -167,7 +167,7 @@ export async function runRouter(
   };
 
   try {
-    const settings = await readClaudeSettings();
+    const settings = await readAgentSettings();
     // mock 模式:不打真网关(确定性 / 离线 / 不耗 key),直接回退到主路径,交给模拟 Agent。
     // 问候等 trivial 短路在上面已处理,体验与真实一致。
     if (isMockAgentEnabled() || !settings.apiKey.trim()) {

@@ -3,13 +3,13 @@ import path from "node:path";
 import { getBundledPluginRoot, getUserPluginRoot, getSkillsStatePath } from "@/lib/runtime/paths";
 
 /**
- * 技能数据层:把 SDK 原生 plugin(SKILL.md 文件)暴露成可管理的列表。
+ * 技能数据层:把 Pi 原生 SKILL.md 文件暴露成可管理的列表。
  *
  * 模型(用户拍板):
  * - 内置技能 = agent-skills/(只读,随 app 分发):可看,恒启用,**不可启停/编辑/删除/改文件**。
  * - 用户技能 = <AppDataDir>/user-skills/(可写):新建、编辑描述/正文、编辑目录下任意文件、删除、启停。
  * - 名字内置/用户互斥(新建时与内置或已有用户技能重名则拒绝),不存在"覆盖内置"。
- * - 启停 = skills-state.json 里的 disabled 名单(SDK context filter,不删文件),仅对用户技能生效。
+ * - 启停 = skills-state.json 里的 disabled 名单(Pi ResourceLoader filter,不删文件),仅对用户技能生效。
  */
 
 export type SkillSource = "bundled" | "user";
@@ -150,15 +150,6 @@ async function writeState(state: SkillsState): Promise<void> {
 
 type ScannedSkill = ParsedSkill & { dir: string };
 
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** 扫描一个 plugin 根的 skills/ 目录,返回 name → 技能。读不到/无 SKILL.md 的目录跳过。 */
 async function scanRoot(root: string): Promise<Map<string, ScannedSkill>> {
   const out = new Map<string, ScannedSkill>();
@@ -235,18 +226,9 @@ export async function getSkill(name: string): Promise<SkillDetail | null> {
 
 // ── 写 ─────────────────────────────────────────────────────────────────
 
-/** 确保用户 plugin 骨架(.claude-plugin/plugin.json + skills/)存在。 */
+/** 确保用户 skill 根目录存在。 */
 async function ensureUserPlugin(): Promise<string> {
   const root = getUserPluginRoot();
-  const manifest = path.join(root, ".claude-plugin", "plugin.json");
-  if (!(await pathExists(manifest))) {
-    await fs.mkdir(path.dirname(manifest), { recursive: true });
-    await fs.writeFile(
-      manifest,
-      `${JSON.stringify({ name: USER_PLUGIN_NAME, version: "0.1.0", description: "用户自定义技能" }, null, 2)}\n`,
-      "utf-8",
-    );
-  }
   await fs.mkdir(path.join(root, "skills"), { recursive: true });
   return root;
 }

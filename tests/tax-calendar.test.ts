@@ -37,7 +37,8 @@ export const taxCalendarTestPromise = (async () => {
 
   // ── T4: system prompt 动态段包含财务日历 ─────────────────────────────
   const parts = buildSystemPromptParts({ now: new Date(2026, 5, 11) });
-  const dynamicPart = parts[2];
+  assert.equal(parts.length, 2, "T4 FAIL: AS2 后 system prompt 应只有静态段和动态段");
+  const dynamicPart = parts[1];
   assert.ok(dynamicPart.includes("## 财务日历"), "T4 FAIL: system prompt 应注入日历段");
   assert.ok(dynamicPart.includes("还有 4 天"), "T4 FAIL: system prompt 日历段应含截止信息");
 

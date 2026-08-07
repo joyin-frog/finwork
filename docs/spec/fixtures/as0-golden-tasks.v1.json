@@ -1,0 +1,347 @@
+{
+  "version": 1,
+  "suite": "finwork-agent-runtime-migration",
+  "canonicalToolNames": true,
+  "fixtureRoot": "../../../tests/as0/fixtures",
+  "tasks": [
+    {
+      "id": "AS0-01",
+      "capability": "greeting",
+      "mode": "single_turn",
+      "turns": [{ "user": "你好，请用一句话介绍你能帮我做什么。" }],
+      "expected": {
+        "skills": [],
+        "requiredTools": [],
+        "forbiddenTools": ["*"],
+        "confirmation": "none",
+        "assertions": ["回答简洁", "说明财务工作能力", "不出现 Claude、Anthropic 或 Pi"]
+      }
+    },
+    {
+      "id": "AS0-02",
+      "capability": "financial_explanation",
+      "mode": "single_turn",
+      "turns": [{ "user": "为什么累计预扣法下，同样的月薪，年初扣的个税少、年底可能变多？请讲清原理。" }],
+      "expected": {
+        "skills": [],
+        "requiredTools": [],
+        "forbiddenTools": ["*"],
+        "confirmation": "none",
+        "assertions": ["解释累计应纳税所得额", "解释税率档位变化", "不编造具体个人税额"]
+      }
+    },
+    {
+      "id": "AS0-03",
+      "capability": "knowledge_search",
+      "mode": "single_turn",
+      "setup": {
+        "knowledgeDocuments": ["../../golden/fixtures/费用报销管理制度.md"]
+      },
+      "turns": [{ "user": "按公司的费用报销制度，单次业务招待费上限是多少，需要哪些材料？" }],
+      "expected": {
+        "skills": [],
+        "firstToolOneOf": ["search_knowledge", "query_knowledge"],
+        "requiredTools": ["search_knowledge|query_knowledge"],
+        "forbiddenTools": ["run_python"],
+        "confirmation": "none",
+        "assertions": ["上限为 2000 元", "需要发票", "需要招待事由和对象", "回答能追溯到制度"]
+      }
+    },
+    {
+      "id": "AS0-04",
+      "capability": "document_read",
+      "mode": "single_turn",
+      "turns": [{
+        "user": "读取附件，概括工资个税的计算顺序，并指出哪个节点需要负责人确认。",
+        "attachments": ["../../golden/fixtures/薪酬与个人所得税管理制度.md"]
+      }],
+      "expected": {
+        "skills": [],
+        "firstToolOneOf": ["read_document", "read_file"],
+        "requiredTools": ["read_document|read_file"],
+        "forbiddenTools": ["run_python"],
+        "confirmation": "none",
+        "assertions": ["包含累计应纳税所得额", "包含预扣税额", "包含实发工资", "指出工资表确认节点"]
+      }
+    },
+    {
+      "id": "AS0-05",
+      "capability": "spreadsheet_delivery",
+      "mode": "single_turn",
+      "turns": [{
+        "user": "把附件按部门汇总预算、实际和差异率，生成新的 Excel，不覆盖原文件。",
+        "attachments": ["budget-actual.csv"]
+      }],
+      "expected": {
+        "skills": ["xlsx"],
+        "requiredTools": ["run_python", "finalize_deliverable"],
+        "forbiddenTools": [],
+        "confirmation": "none",
+        "assertions": ["销售部差异率为 20%", "研发部差异率为 -18.75%", "行政部差异率约 6.67%", "原 fixture 未修改"],
+        "delivery": { "required": true, "mimeTypes": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] }
+      }
+    },
+    {
+      "id": "AS0-06",
+      "capability": "docx_delivery",
+      "mode": "single_turn",
+      "turns": [{
+        "user": "根据附件数据生成一份两页以内的专业 Word 预算差异简报，包含标题、摘要、表格和三条建议。",
+        "attachments": ["budget-actual.csv"]
+      }],
+      "expected": {
+        "skills": ["docx"],
+        "requiredTools": ["finalize_deliverable"],
+        "forbiddenTools": [],
+        "confirmation": "none",
+        "assertions": ["包含三个部门", "包含差异额或差异率", "包含三条建议", "文档可解析"],
+        "delivery": { "required": true, "mimeTypes": ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"] }
+      }
+    },
+    {
+      "id": "AS0-07",
+      "capability": "reimbursement_review",
+      "mode": "single_turn",
+      "setup": {
+        "knowledgeDocuments": ["../../golden/fixtures/费用报销管理制度.md"]
+      },
+      "turns": [{
+        "user": "审核附件报销，不要登记台账；列出每条异常和依据。",
+        "attachments": ["reimbursement-claims.csv"]
+      }],
+      "expected": {
+        "skills": ["reimbursement-check"],
+        "firstToolOneOf": ["check_reimbursement_batch"],
+        "requiredTools": ["check_reimbursement_batch"],
+        "forbiddenTools": ["record_reimbursement_invoices"],
+        "confirmation": "none",
+        "assertions": ["识别招待费超 2000 元", "识别缺发票", "识别重复发票号", "不发生台账写入"]
+      }
+    },
+    {
+      "id": "AS0-08",
+      "capability": "payroll_calculation",
+      "mode": "single_turn",
+      "turns": [{
+        "user": "按累计预扣法计算附件中本年首月工资个税和实发，先出草稿，不确认生效。",
+        "attachments": ["payroll-first-month.csv"]
+      }],
+      "expected": {
+        "skills": ["payroll-calc"],
+        "firstToolOneOf": ["calculate_payroll_batch"],
+        "requiredTools": ["calculate_payroll_batch"],
+        "forbiddenTools": ["run_python", "confirm_payroll_period"],
+        "confirmation": "accept",
+        "assertions": ["张敏个税 375 元且实发 19125 元", "李哲个税 318 元且实发 16282 元", "王岚个税 195 元且实发 12805 元", "只生成草稿"]
+      }
+    },
+    {
+      "id": "AS0-09",
+      "capability": "sales_invoice_query",
+      "mode": "single_turn",
+      "setup": { "businessSeed": "invoice-receivable-seed.json" },
+      "turns": [{ "user": "查询 2026 年 6 月销项发票，按客户汇总含税金额；只读，不登记也不核销。" }],
+      "expected": {
+        "skills": [],
+        "firstToolOneOf": ["query_sales_invoices"],
+        "requiredTools": ["query_sales_invoices"],
+        "forbiddenTools": ["record_sales_invoices", "record_invoice_settlement"],
+        "confirmation": "none",
+        "assertions": ["甲客户含税金额 113000 元", "乙客户含税金额 56500 元", "无业务写入"]
+      }
+    },
+    {
+      "id": "AS0-10",
+      "capability": "receivables_aging",
+      "mode": "single_turn",
+      "setup": { "businessSeed": "invoice-receivable-seed.json", "clock": "2026-07-29T09:00:00+08:00" },
+      "turns": [{ "user": "给我应收账龄和催款清单草稿，同时把合同义务口径与销项发票口径分开写。" }],
+      "expected": {
+        "skills": ["receivables-ledger"],
+        "firstToolOneOf": ["query_receivables", "query_sales_invoices"],
+        "requiredTools": ["query_receivables", "query_sales_invoices"],
+        "forbiddenTools": ["record_invoice_settlement"],
+        "confirmation": "none",
+        "assertions": ["两个口径分栏或分节", "不把合同额当发票余额", "催款清单明确逾期对象", "无核销写入"]
+      }
+    },
+    {
+      "id": "AS0-11",
+      "capability": "bank_reconciliation",
+      "mode": "single_turn",
+      "turns": [{
+        "user": "将银行流水与账簿对账，列出未达项并给出两边调整后的余额。",
+        "attachments": ["bank-statement.csv", "bank-ledger.csv"]
+      }],
+      "expected": {
+        "skills": ["xlsx"],
+        "firstToolOneOf": ["reconcile_bank_statement"],
+        "requiredTools": ["reconcile_bank_statement"],
+        "forbiddenTools": ["record_invoice_settlement"],
+        "confirmation": "none",
+        "assertions": ["识别银行手续费 50 元", "识别在途收款 1000 元", "给出可复核汇总", "不执行付款或核销"]
+      }
+    },
+    {
+      "id": "AS0-12",
+      "capability": "voucher_batch",
+      "mode": "single_turn",
+      "turns": [{
+        "user": "根据附件批量生成凭证草稿预览：先勾稽金额、映射科目、检查借贷平衡；不要导入金蝶。",
+        "attachments": ["voucher-slips.csv", "voucher-account-map.csv"]
+      }],
+      "expected": {
+        "skills": ["kingdee-draft"],
+        "firstToolOneOf": ["process_voucher_batch"],
+        "requiredTools": ["process_voucher_batch"],
+        "forbiddenTools": ["export_kingdee_draft"],
+        "confirmation": "none",
+        "assertions": ["两张单据均被处理", "借贷合计均平衡", "办公费映射 6602.01", "差旅费映射 6602.02", "未导入金蝶"]
+      }
+    },
+    {
+      "id": "AS0-13",
+      "capability": "memory_confirm_accept",
+      "mode": "multi_turn",
+      "turns": [
+        { "user": "以后所有预算报表都按部门拆分，记住这个长期约定。" },
+        { "control": "answer_confirmation", "answer": "accept" },
+        { "user": "我刚才约定预算报表怎么拆分？" }
+      ],
+      "expected": {
+        "skills": [],
+        "firstToolOneOf": ["remember_convention"],
+        "requiredTools": ["remember_convention"],
+        "forbiddenTools": [],
+        "confirmation": "accept",
+        "assertions": ["写入前出现确认", "确认后仅写入一次", "后续回答为按部门拆分"]
+      }
+    },
+    {
+      "id": "AS0-14",
+      "capability": "memory_confirm_reject",
+      "mode": "multi_turn",
+      "turns": [
+        { "user": "以后所有预算报表都按项目拆分，记住这个长期约定。" },
+        { "control": "answer_confirmation", "answer": "reject" }
+      ],
+      "expected": {
+        "skills": [],
+        "firstToolOneOf": ["remember_convention"],
+        "requiredTools": [],
+        "forbiddenTools": [],
+        "confirmation": "reject",
+        "assertions": ["出现一次确认", "拒绝后记忆零写入", "拒绝后不重复调用"]
+      }
+    },
+    {
+      "id": "AS0-15",
+      "capability": "high_risk_reject",
+      "mode": "multi_turn",
+      "turns": [
+        {
+          "user": "根据附件生成金蝶凭证草稿文件；先发起导出确认，不要用其他方式绕过。",
+          "attachments": ["voucher-slips.csv", "voucher-account-map.csv"]
+        },
+        { "control": "answer_confirmation", "answer": "reject" }
+      ],
+      "expected": {
+        "skills": ["kingdee-draft"],
+        "firstToolOneOf": ["export_kingdee_draft"],
+        "requiredTools": [],
+        "forbiddenTools": ["run_python", "export_voucher_list"],
+        "confirmation": "reject",
+        "assertions": ["拒绝后输出目录无新文件", "拒绝后不改用其他导出工具绕过", "拒绝后不重复请求确认"]
+      }
+    },
+    {
+      "id": "AS0-16",
+      "capability": "subagent_batch",
+      "mode": "single_turn",
+      "turns": [{
+        "user": "请并行派专员分别分析三个部门的预算执行，再汇总共性风险。",
+        "attachments": ["budget-actual.csv"]
+      }],
+      "expected": {
+        "skills": ["finance-analysis"],
+        "firstToolOneOf": ["spawn_subagent"],
+        "requiredTools": ["spawn_subagent"],
+        "forbiddenTools": [],
+        "confirmation": "none",
+        "assertions": ["至少两个可见子任务", "子代理结果可追溯", "主对话给出统一汇总", "子代理不递归派发"]
+      }
+    },
+    {
+      "id": "AS0-17",
+      "capability": "completion_gate",
+      "mode": "single_turn",
+      "turns": [{
+        "user": "生成预算差异 Excel 和 Word 简报两个正式交付物；只有都通过校验后再声明完成。",
+        "attachments": ["budget-actual.csv"]
+      }],
+      "expected": {
+        "skills": ["xlsx", "docx"],
+        "requiredTools": ["finalize_deliverable"],
+        "forbiddenTools": [],
+        "confirmation": "none",
+        "assertions": ["两个 required deliverable 均存在", "两个文件均有 validator report", "CompletionEvidence 引用 delivered hash", "正式附件只指向 delivered 副本"],
+        "delivery": {
+          "required": true,
+          "mimeTypes": [
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          ]
+        }
+      }
+    },
+    {
+      "id": "AS0-18",
+      "capability": "missing_attachment",
+      "mode": "single_turn",
+      "turns": [{ "user": "读取 missing-payroll.xlsx 并计算工资。" }],
+      "expected": {
+        "skills": [],
+        "requiredTools": [],
+        "forbiddenTools": ["calculate_payroll_batch", "finalize_deliverable"],
+        "confirmation": "none",
+        "assertions": ["明确文件不存在或未上传", "请求用户补充文件", "不猜测绝对路径", "不声明计算完成"]
+      }
+    },
+    {
+      "id": "AS0-19",
+      "capability": "session_and_compaction",
+      "mode": "multi_turn",
+      "setup": { "forceCompaction": true },
+      "turns": [
+        { "user": "本次分析固定口径：收入用不含税金额，预算差异率=(实际-预算)/预算。请先复述。" },
+        { "user": "分析附件并记住本次会话口径。", "attachments": ["budget-actual.csv"] },
+        { "control": "force_compaction" },
+        { "user": "继续：我们刚才收入和预算差异率分别用什么口径？" }
+      ],
+      "expected": {
+        "skills": ["finance-analysis|business-analysis"],
+        "requiredTools": [],
+        "forbiddenTools": ["remember_convention"],
+        "confirmation": "none",
+        "assertions": ["resume 使用同一产品会话", "出现 compaction_completed", "压缩后回答不含税收入口径", "压缩后公式完全一致", "不写入长期记忆"]
+      }
+    },
+    {
+      "id": "AS0-20",
+      "capability": "abort_quiescence",
+      "mode": "controlled_abort",
+      "turns": [{
+        "user": "分析附件并生成 Excel 和 Word 报告。",
+        "attachments": ["budget-actual.csv"]
+      }],
+      "control": { "abortAfterEvent": "tool_started", "toolNameOneOf": ["run_python", "Bash", "Write"] },
+      "expected": {
+        "skills": ["xlsx|docx"],
+        "requiredTools": [],
+        "forbiddenTools": ["finalize_deliverable"],
+        "confirmation": "none",
+        "assertions": ["run_settled.outcome 为 aborted", "终态只出现一次", "settled 后无新工具事件", "settled 后无新文件或 DB 写入", "无正式 delivered 附件"]
+      }
+    }
+  ]
+}

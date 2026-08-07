@@ -16,14 +16,14 @@ async function main() {
 
   try {
     // 清除模块缓存,确保拿到干净实例。
-    const mod1 = await import("../lib/settings/claude-settings");
-    const settings1 = await mod1.readClaudeSettings();
+    const mod1 = await import("../lib/settings/agent-settings");
+    const settings1 = await mod1.readAgentSettings();
     const id1 = settings1.telemetryInstallId;
     ok(id1, "第一次读取应生成 installId");
 
     // 第二次读取不清 cache 但直接重新 import(因为 path 环境变量同,文件已落盘)。
-    // 重新 import 同模块会被 Node module cache 命中;直接调用 readClaudeSettings 再读一次即可。
-    const settings2 = await mod1.readClaudeSettings();
+    // 重新 import 同模块会被 Node module cache 命中;直接调用 readAgentSettings 再读一次即可。
+    const settings2 = await mod1.readAgentSettings();
     const id2 = settings2.telemetryInstallId;
 
     equal(id1, id2, "连读两次 installId 应相同(持久化生效)");

@@ -1,5 +1,5 @@
 import SkillCenter from "@/app/config/skill-center";
-import { readPublicClaudeSettings } from "@/lib/settings/claude-settings";
+import { readPublicAgentSettings } from "@/lib/settings/agent-settings";
 import { redirect } from "next/navigation";
 import { CONFIG_TAB_KEYS, LEGACY_CONFIG_TAB_REDIRECTS } from "@/app/config/tabs";
 
@@ -19,10 +19,10 @@ export default async function ConfigPage({
     : null;
   if (legacyTarget) redirect(`/config?tab=${legacyTarget}`);
   const initialTab = params?.tab && validTabs.has(params.tab) ? params.tab : "general";
-  const claudeSettings = await readPublicClaudeSettings();
+  const agentSettings = await readPublicAgentSettings();
   return (
     <SkillCenter
-      initialClaudeSettings={claudeSettings}
+      initialAgentSettings={agentSettings}
       initialTab={initialTab}
     />
   );

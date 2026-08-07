@@ -293,7 +293,7 @@ export const artifactChecklistTestPromise = (async () => {
 
   // emit_checklist 应在 TOOL_REGISTRY（safe + finance）
   const emitInRegistry = TOOL_REGISTRY.some(
-    (t) => t.name === "mcp__finance_worker__emit_checklist" && t.category === "finance" && t.riskLevel === "safe"
+    (t) => t.name === "emit_checklist" && t.category === "finance" && t.riskLevel === "safe"
   );
   assert.ok(emitInRegistry, "A7 FAIL: emit_checklist 应在 TOOL_REGISTRY(safe/finance)");
 

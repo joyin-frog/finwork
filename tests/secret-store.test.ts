@@ -15,22 +15,22 @@ export const secretStoreTestPromise = (async () => {
   process.env.FINANCE_AGENT_SETTINGS_PATH = settingsFile;
 
   try {
-    const { writeClaudeSettings, readClaudeSettings } = await import("../lib/settings/claude-settings");
+    const { writeAgentSettings, readAgentSettings } = await import("../lib/settings/agent-settings");
     const { getApiKeySecret, setApiKeySecret, _resetSecretCache } = await import("../lib/settings/secret-store");
 
     // ── T1: 写入后 settings.json 不含明文 key ───────────────────────
     _resetSecretCache();
-    await writeClaudeSettings({ apiUrl: "https://gw.example.com", apiKey: "sk-secret-123", model: "claude-x" });
+    await writeAgentSettings({ apiUrl: "https://gw.example.com", apiKey: "sk-secret-123", model: "provider-model-x" });
     const rawJson = await fs.readFile(settingsFile, "utf-8");
     ok(!rawJson.includes("sk-secret-123"), "T1 FAIL: settings.json 不应含明文 apiKey");
     const parsed = JSON.parse(rawJson);
-    ok(!parsed.claude.apiKey, "T1 FAIL: JSON 不应保留 apiKey 字段");
-    equal(parsed.claude.apiUrl, "https://gw.example.com", "T1 FAIL: 非密钥字段应正常持久化");
+    ok(!parsed.agent.apiKey, "T1 FAIL: JSON 不应保留 apiKey 字段");
+    equal(parsed.agent.apiUrl, "https://gw.example.com", "T1 FAIL: 非密钥字段应正常持久化");
     equal((await fs.readFile(secretFile, "utf-8")).trim(), "sk-secret-123", "T1 FAIL: key 应进 secret store");
 
     // ── T2: 读回拿到 key(来自 secret store) ───────────────────────
     _resetSecretCache();
-    const s = await readClaudeSettings();
+    const s = await readAgentSettings();
     equal(s.apiKey, "sk-secret-123", "T2 FAIL: 应从 secret store 读回 key");
     equal(s.apiUrl, "https://gw.example.com", "T2 FAIL: 非密钥字段应读回");
 
@@ -42,17 +42,18 @@ export const secretStoreTestPromise = (async () => {
       `${JSON.stringify({ claude: { apiUrl: "https://legacy", apiKey: "sk-legacy-999", model: "m" } }, null, 2)}\n`,
       "utf-8",
     );
-    const migrated = await readClaudeSettings();
+    const migrated = await readAgentSettings();
     equal(migrated.apiKey, "sk-legacy-999", "T3 FAIL: 应读出旧明文 key");
     const afterJson = await fs.readFile(settingsFile, "utf-8");
     ok(!afterJson.includes("sk-legacy-999"), "T3 FAIL: 迁移后 JSON 不应再含明文 key");
+    ok(JSON.parse(afterJson).agent, "T3 FAIL: 旧设置应一次性迁移到 agent envelope");
     equal((await fs.readFile(secretFile, "utf-8")).trim(), "sk-legacy-999", "T3 FAIL: 旧 key 应迁入 secret store");
 
     // ── T4: 清空 key ──────────────────────────────────────────────
     _resetSecretCache();
-    await writeClaudeSettings({ apiKey: "" });
+    await writeAgentSettings({ apiKey: "" });
     _resetSecretCache();
-    const cleared = await readClaudeSettings();
+    const cleared = await readAgentSettings();
     equal(cleared.apiKey, "", "T4 FAIL: 清空后 key 应为空");
     const stillThere = await fs.access(secretFile).then(() => true).catch(() => false);
     ok(!stillThere, "T4 FAIL: 清空后 secret 文件应删除");

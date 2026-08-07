@@ -1183,7 +1183,7 @@ export default function ChatPage({
                           type="button"
                           className={cn(
                             surfaceVariants({ level: "card", edge: "hairline", shape: "panel" }),
-                            "flex items-center justify-between gap-3 px-4 py-3 text-body hover:bg-accent transition-colors cursor-pointer"
+                            "shadow-none flex items-center justify-between gap-3 px-4 py-3 text-body hover:bg-accent transition-colors cursor-pointer"
                           )}
                           onClick={() => void sendMessage(item.prompt)}
                         >

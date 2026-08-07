@@ -40,7 +40,7 @@ MCP 工具工厂。schema 接受 title（string）和 items（array，max 50）�
 在 `createFinanceMcpServer` 工具数组末尾追加 `createEmitChecklistTool(sdk, undefined, conversationId)`。
 
 ### lib/agent/tools/registry.ts
-添加一条：`{ name: "mcp__finance_worker__emit_checklist", category: "finance", riskLevel: "safe" }`
+添加一条：`{ name: "emit_checklist", category: "finance", riskLevel: "safe" }`
 
 ### lib/agent/tools/renderers.ts
 在 `finalize_deliverable` 前插入 `emit_checklist` 渲染函数，格式：`物化清单「{title}」({n} 项)`。

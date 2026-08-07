@@ -31,11 +31,16 @@ export const knowledgeUiTestPromise = (async () => {
   const docCard = await readFile("app/knowledge/doc-card.tsx", "utf-8");
   assert.ok(docCard.includes("onToggleArchive") && docCard.includes("长期未使用"), "T4 FAIL: 卡片应有归档与长期未使用提示");
 
-  // ── T5: 检索阶梯写入 system prompt,grep_docs 退场 ─────────────────────
-  // 提示词正文现为单一来源 SYSTEM_PROMPT.md(系统提示常量已去除,见 spec-* / loadStaticTemplate)。
+  // ── T5: AS2 后检索选择语义下沉工具定义,grep_docs 退场 ────────────────
   const prompt = await readFile("lib/agent/SYSTEM_PROMPT.md", "utf-8");
   assert.ok(!prompt.includes("grep_docs"), "T5 FAIL: system prompt 不应再提 grep_docs");
-  assert.ok(prompt.includes("query_knowledge") && prompt.includes("检索阶梯"), "T5 FAIL: system prompt 应说明检索阶梯");
+  assert.ok(!prompt.includes("检索阶梯"), "T5 FAIL: system prompt 不应重复工具选择细节");
+  const knowledgeTools = await readFile("lib/agent/mcp-tools/knowledge.ts", "utf-8");
+  assert.ok(
+    knowledgeTools.includes("普通关键词检索先用 search_knowledge") &&
+      knowledgeTools.includes("如需精确文件操作或多步钻取，请改用 query_knowledge"),
+    "T5 FAIL: search/query 的选择边界必须保留在工具定义",
+  );
 
   console.log("knowledge-ui: all 5 checks passed ✓");
 })();

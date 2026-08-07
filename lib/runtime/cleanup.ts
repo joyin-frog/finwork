@@ -15,7 +15,7 @@ export function scheduleCleanup(_outputDir: string, _delayMs: number = CLEANUP_A
 
 /**
  * Remove os.tmpdir()/finance-agent-output-* fallback dirs older than maxAgeMs.
- * (claude-adapter 在无会话 outputDir 时才落 tmpdir;这些目录没人引用,可安全清理。)
+ * (旧版本在无会话 outputDir 时落 tmpdir；这些目录没人引用，可安全清理。)
  * Called at startup to prevent tmpdir accumulation.
  *
  * ⚠ 只清 tmpdir 回落目录。会话内 <files>/<conv>/generate 是持久产物——已登记进

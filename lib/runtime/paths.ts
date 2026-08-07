@@ -33,7 +33,7 @@ export function getSecretFallbackPath() {
   return process.env.FINANCE_AGENT_SECRET_FILE ?? path.join(getAppDataDir(), "local-secret");
 }
 
-/** SDK 原生 skill 的本地 plugin 目录(含 .claude-plugin/plugin.json + skills/);随 app 资源分发,只读。 */
+/** 内置 skill 根目录（包含 skills/）；随 app 资源分发，只读。 */
 export function getBundledPluginRoot() {
   return process.env.FINANCE_AGENT_BUNDLED_PLUGIN_DIR ?? path.join(getProjectRoot(), "agent-skills");
 }
@@ -52,6 +52,16 @@ export function getSkillsStatePath() {
 export function getConversationFilesDir(conversationId: number | string) {
   return process.env.FINANCE_AGENT_FILES_DIR
     ?? path.join(getAppDataDir(), "files", String(conversationId));
+}
+
+/** Pi 会话只允许落在 Finwork app-data；禁止回落到 ~/.pi 默认目录。 */
+export function getPiSessionDir() {
+  return process.env.FINANCE_AGENT_PI_SESSION_DIR ?? path.join(getAppDataDir(), "pi-sessions");
+}
+
+/** Pi ResourceLoader 的受控配置目录；不从用户默认 Pi 目录加载 ambient 资源。 */
+export function getPiAgentDir() {
+  return process.env.FINANCE_AGENT_PI_AGENT_DIR ?? path.join(getAppDataDir(), "pi-agent");
 }
 
 /** 内嵌 Python 运行时目录(打包态由 prepare-tauri 填充);相对项目根,便于在 Tauri 资源目录解析。 */
@@ -74,7 +84,7 @@ export function getBundledPythonArchive() {
  * python-build-standalone(内嵌/按需安装运行时)的解释器路径。
  * 注意 Windows 与 venv 不同:standalone 把 python.exe 放在**根目录**(dir/python.exe),
  * Scripts/ 只在 pip 装了控制台脚本后才有、且不含 python.exe。早期误用 Scripts/python.exe
- * 导致 Windows 上"解压后找不到 Python"安装失败、以及 run_python 找不到解释器。
+ * 导致 Windows 上"解压后找不到 Python"安装失败、以及固定 worker 找不到解释器。
  */
 function standalonePythonExe(dir: string) {
   return process.platform === "win32"
@@ -101,8 +111,8 @@ export function getPythonPath() {
   return venvPythonExe(path.join(getProjectRoot(), "workers", ".venv"));
 }
 
-/** Python 解释器所在目录(= getPythonPath 的 dirname)。前置到子进程 PATH,可让 skill 经 Bash
- *  跑的 `python`/`markitdown` 命中与 run_python 同一解释器+依赖(否则 Bash 用 PATH 上的系统 python)。 */
+/** Python 解释器所在目录(= getPythonPath 的 dirname)。前置到子进程 PATH,可让固定 Skill/worker
+ *  跑的 `python`/`markitdown` 命中同一解释器+依赖(否则 Bash 用 PATH 上的系统 python)。 */
 export function getPythonBinDir() {
   return path.dirname(getPythonPath());
 }
@@ -146,31 +156,6 @@ export function getBundledSystemPromptPath() {
 
 export function getConventionsPath() {
   return process.env.FINANCE_AGENT_CONVENTIONS_PATH ?? path.join(getAppDataDir(), "conventions.json");
-}
-
-/**
- * @anthropic-ai/claude-agent-sdk 的原生 CLI 二进制(claude / claude.exe)。
- * SDK 默认从按平台的 optionalDependencies 包(claude-agent-sdk-<plat>-<arch>)解析该二进制,但 Next
- * standalone 打包不会 trace 这个动态解析的可选平台包 → 打包态报 "Native CLI binary for win32-x64 not
- * found"。prepare-tauri 把该二进制拷进 bin/,这里解析它并经 options.pathToClaudeCodeExecutable 显式喂给
- * SDK(SDK 文档给的逃生口)。开发态返回 null → 让 SDK 自行解析已装好的平台包。
- */
-export function getBundledClaudeCliPath(): string | null {
-  if (process.env.FINANCE_AGENT_CLAUDE_CLI_PATH) return process.env.FINANCE_AGENT_CLAUDE_CLI_PATH;
-  const exe = process.platform === "win32" ? "claude.exe" : "claude";
-  const bundled = path.join(getProjectRoot(), "bin", exe);
-  return fs.existsSync(bundled) ? bundled : null;
-}
-
-/**
- * 内置 Claude CLI 子进程的 CLAUDE_CONFIG_DIR。
- * 不设时 CLI 默认写用户 ~/.claude/(persistSession:true 的会话 transcript 落
- * ~/.claude/projects/<cwd编码>/<sessionId>.jsonl,每回合追加、无上限,已实测确认)。
- * 指到应用数据目录,让落盘可控、可随 retention 清理、卸载即随目录带走,
- * 也避免污染开发者自己的 ~/.claude(CLI 自带清理判据不透明,不可依赖)。
- */
-export function getClaudeConfigDir() {
-  return process.env.FINANCE_AGENT_CLAUDE_CONFIG_DIR ?? path.join(getAppDataDir(), "claude-config");
 }
 
 export function getDefaultAppDataDir(

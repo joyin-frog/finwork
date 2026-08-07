@@ -8,9 +8,9 @@
  * - SS-4 buildSpecialistChatSystemPrompt：交互式 A 段（可提问）+ 角色 B 段 + 记忆段；无子代理"不能提问"纪律
  * - SS-5 会话角色维度落库：createChatConversation(roleId) → getChatConversation 回读；
  *        listConversationsForRole 并出直聊会话（isDirect）与派发会话
- * - SS-6 源码契约：/chat/new 支持 role 参数；claude-adapter 按 roleId 分支装配；routerStage 跳过专员会话
+ * - SS-6 源码契约：/chat/new 支持 role 参数；Pi Service 按 roleId 分支装配；routerStage 跳过专员会话
  * - SS-7 停用角色：specialistRoleUsabilityIssue / assertSpecialistRoleUsable fail-closed；
- *   runClaudeAgent({ roleId }) 在 mock 短路前抛错；恢复启用后可走 mock
+ *   runPiAgent({ roleId }) 在 mock 短路前抛错；恢复启用后可走 mock
  * - SS-8 sessionStage：非法 role 建会话 → 400；既有专员会话中途停用 → 403
  *
  * 运行：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true node --import tsx tests/specialist-session.test.ts
@@ -23,7 +23,12 @@ import { tmpdir } from "node:os";
 import { resolveRoleAllowedTools, resolveRoleScopeTools } from "../lib/agent/roles/registry.ts";
 import { createRoleScopeHook, createRiskConfirmHook } from "../lib/agent/hooks/built-in.ts";
 import { runBeforeHooks } from "../lib/agent/hooks/chain.ts";
-import { buildSpecialistChatSystemPrompt, buildSubagentSystemPrompt } from "../lib/agent/subagent-runner.ts";
+import {
+  buildSpecialistChatSystemPrompt,
+  buildSpecialistDynamicSystemContext,
+  buildSubagentSystemPrompt,
+} from "../lib/agent/subagent-prompts.ts";
+import { getRolePromptPath } from "../lib/agent/roles/prompt-files.ts";
 import { getRoleDefinition } from "../lib/agent/roles/registry.ts";
 
 export const specialistSessionTestPromise = (async () => {
@@ -34,15 +39,15 @@ export const specialistSessionTestPromise = (async () => {
     assert.ok(payrollScope.includes(t), `SS-1 FAIL: scope 应 ⊇ allowed，缺 ${t}`);
   }
   assert.ok(
-    payrollScope.includes("mcp__finance_worker__calculate_payroll_batch"),
+    payrollScope.includes("calculate_payroll_batch"),
     "SS-1 FAIL: 薪税域 scope 应含高风险的 calculate_payroll_batch（专员会话经确认卡执行）"
   );
   assert.ok(
-    !payrollAllowed.includes("mcp__finance_worker__calculate_payroll_batch"),
+    !payrollAllowed.includes("calculate_payroll_batch"),
     "SS-1 FAIL: allowed（免确认名单）不应含高风险工具"
   );
   assert.ok(
-    !payrollScope.includes("mcp__finance_worker__spawn_subagent"),
+    !payrollScope.includes("spawn_subagent"),
     "SS-1 FAIL: 角色 scope 不应含 spawn_subagent（不越级）"
   );
 
@@ -51,21 +56,21 @@ export const specialistSessionTestPromise = (async () => {
     ({ toolName, input: {}, outputDir: "/tmp", resolveUserQuestion });
   const scopeChain = [createRoleScopeHook("payroll-officer")];
 
-  const denySpawn = await runBeforeHooks(scopeChain, ctxFor("mcp__finance_worker__spawn_subagent"));
+  const denySpawn = await runBeforeHooks(scopeChain, ctxFor("spawn_subagent"));
   assert.equal(denySpawn.behavior, "deny", "SS-2 FAIL: spawn_subagent 必须 deny（专员不越级）");
 
-  const denyForeign = await runBeforeHooks(scopeChain, ctxFor("mcp__kingdee_worker__export_kingdee_draft"));
+  const denyForeign = await runBeforeHooks(scopeChain, ctxFor("export_kingdee_draft"));
   assert.equal(denyForeign.behavior, "deny", "SS-2 FAIL: 他角色域工具（导金蝶）应 deny");
   assert.match(denyForeign.message ?? "", /职责|边界/, "SS-2 FAIL: deny 文案应说明职责边界");
 
-  const allowInScope = await runBeforeHooks(scopeChain, ctxFor("mcp__finance_worker__query_payroll_status"));
+  const allowInScope = await runBeforeHooks(scopeChain, ctxFor("query_payroll_status"));
   assert.equal(allowInScope.behavior, "allow", "SS-2 FAIL: 域内工具应放行");
 
   const allowBuiltin = await runBeforeHooks(scopeChain, ctxFor("Read"));
   assert.equal(allowBuiltin.behavior, "allow", "SS-2 FAIL: 内置工具应穿透 role-scope（由既有闸管）");
 
   // 记忆沉淀（C2×E6）：本角色放行、写他角记忆必拦（roleId 是模型参数，不锁则破坏 C1 隔离）
-  const memTool = "mcp__finance_worker__remember_role_convention";
+  const memTool = "remember_role_convention";
   const allowOwnMemory = await runBeforeHooks(scopeChain, {
     toolName: memTool, input: { roleId: "payroll-officer", text: "口径", source: "测试" }, outputDir: "/tmp",
   });
@@ -77,9 +82,9 @@ export const specialistSessionTestPromise = (async () => {
 
   // ── SS-3: 域内高风险工具走确认门（role-scope 在前、risk-confirm 在后，与 adapter 链序一致）──
   const fullChain = [createRoleScopeHook("payroll-officer"), createRiskConfirmHook()];
-  const confirmed = await runBeforeHooks(fullChain, ctxFor("mcp__finance_worker__calculate_payroll_batch", async () => "确认"));
+  const confirmed = await runBeforeHooks(fullChain, ctxFor("calculate_payroll_batch", async () => "确认"));
   assert.equal(confirmed.behavior, "allow", "SS-3 FAIL: 域内高风险工具经用户确认后应放行");
-  const noResolver = await runBeforeHooks(fullChain, ctxFor("mcp__finance_worker__calculate_payroll_batch", undefined));
+  const noResolver = await runBeforeHooks(fullChain, ctxFor("calculate_payroll_batch", undefined));
   assert.equal(noResolver.behavior, "deny", "SS-3 FAIL: 无确认通道必须 fail-closed");
 
   // ── SS-4: 专员会话系统提示 ───────────────────────────────────────────────
@@ -93,6 +98,17 @@ export const specialistSessionTestPromise = (async () => {
   assert.ok(!chatPrompt.includes("你没有与用户对话的通道"), "SS-4 FAIL: 不应含子代理'不能提问'纪律");
   assert.ok(chatPrompt.includes("提问"), "SS-4 FAIL: 应鼓励向用户提问（交互式）");
   assert.ok(chatPrompt.includes("remember_role_convention") && chatPrompt.includes(`"${role.id}"`), "SS-4 FAIL: 应含本角色记忆沉淀指引（roleId 固定为本角色）");
+  assert.match(getRolePromptPath(role.id), new RegExp(`/roles/prompts/${role.id}\\.md$`), "SS-4 FAIL: 角色应有独立提示词文件路径");
+  const dynamicPrompt = buildSpecialistDynamicSystemContext(
+    "全局口径：金额不含税",
+    ["本角色只输出草稿"],
+    "/tmp/out",
+    new Date("2026-08-03T00:00:00Z"),
+  );
+  assert.match(dynamicPrompt, /2026年8月|财务日历/, "SS-4 FAIL: 专员动态段应含当前日期/财务日历");
+  assert.match(dynamicPrompt, /全局口径：金额不含税/, "SS-4 FAIL: 专员动态段应含全局记忆");
+  assert.match(dynamicPrompt, /本角色只输出草稿/, "SS-4 FAIL: 专员动态段应含角色记忆");
+  assert.match(dynamicPrompt, /\/tmp\/out/, "SS-4 FAIL: 专员动态段应含输出目录");
   // 财务纪律单一来源：两个 A 段都含同一段落
   const subPrompt = buildSubagentSystemPrompt(role, []);
   assert.ok(chatPrompt.includes("金额、税率、比率一律经工具计算") && subPrompt.includes("金额、税率、比率一律经工具计算"), "SS-4 FAIL: 财务纪律段应两处共用");
@@ -140,10 +156,10 @@ export const specialistSessionTestPromise = (async () => {
   const read = (p: string) => readFileSync(path.join(process.cwd(), p), "utf8");
   const newPage = read("app/chat/new/page.tsx");
   assert.ok(newPage.includes("role?: string") && newPage.includes("initialRole"), "SS-6 FAIL: /chat/new 应支持 role 参数并传 initialRole");
-  const adapter = read("lib/agent/claude-adapter.ts");
-  assert.ok(adapter.includes("resolveRoleAllowedTools(specialistRole.id)"), "SS-6 FAIL: adapter 应按角色收窄 allowedTools");
-  assert.ok(adapter.includes("buildSpecialistChatSystemPrompt"), "SS-6 FAIL: adapter 应用专员系统提示");
-  assert.ok(adapter.includes("createRoleScopeHook"), "SS-6 FAIL: adapter 应挂 role-scope hook");
+  const service = read("lib/agent/pi/agent-service.ts");
+  assert.ok(service.includes("resolveRoleAllowedTools(role.id)"), "SS-6 FAIL: Pi Service 应按角色收窄 allowedTools");
+  assert.ok(service.includes("buildSpecialistChatSystemPrompt"), "SS-6 FAIL: Pi Service 应用专员系统提示");
+  assert.ok(service.includes("createFinanceToolAuthorizer"), "SS-6 FAIL: Pi Service 应挂统一工具授权链");
   const stages = read("lib/agent/query-stages.ts");
   assert.ok(stages.includes("specialist session"), "SS-6 FAIL: routerStage 应跳过专员会话");
   const chatPage = read("app/chat/chat-page.tsx");
@@ -151,7 +167,7 @@ export const specialistSessionTestPromise = (async () => {
   const newPageSrc = read("app/chat/new/page.tsx");
   assert.ok(newPageSrc.includes("getDisabledRoleIds"), "SS-6 FAIL: /chat/new 应检查用户停用角色");
 
-  // ── SS-7: 停用角色 fail-closed + adapter 在 mock 前校验 ─────────────────
+  // ── SS-7: 停用角色 fail-closed + Pi Service 在 mock 前校验 ──────────────
   {
     const dir = mkdtempSync(path.join(tmpdir(), "fa-specialist-disabled-"));
     const dbPath = path.join(dir, "test.db");
@@ -180,15 +196,15 @@ export const specialistSessionTestPromise = (async () => {
         "SS-7 FAIL: assertSpecialistRoleUsable 应对停用角色抛错"
       );
 
-      const { runClaudeAgent } = await import("../lib/agent/claude-adapter.ts");
+      const { runPiAgent } = await import("../lib/agent/pi/agent-service.ts");
       await assert.rejects(
-        () => runClaudeAgent([{ role: "user", content: "你好" }], { roleId: "payroll-officer" }),
+        () => runPiAgent({ messages: [{ role: "user", content: "你好" }], roleId: "payroll-officer" }),
         /已停用/,
-        "SS-7 FAIL: runClaudeAgent 在 mock 短路前应对停用角色抛错"
+        "SS-7 FAIL: runPiAgent 在 mock 短路前应对停用角色抛错"
       );
 
       setRoleDisabled("payroll-officer", false);
-      const ok = await runClaudeAgent([{ role: "user", content: "你好" }], { roleId: "payroll-officer" });
+      const ok = await runPiAgent({ messages: [{ role: "user", content: "你好" }], roleId: "payroll-officer" });
       assert.equal(ok.mode, "mock", "SS-7 FAIL: 重新启用后 mock 路径应可跑通");
     } finally {
       if (savedDbPath === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
@@ -210,14 +226,14 @@ export const specialistSessionTestPromise = (async () => {
       getDb();
       const { setRoleDisabled } = await import("../lib/agent/roles/availability.ts");
       const { sessionStage } = await import("../lib/agent/query-stages.ts");
-      const { readClaudeSettings } = await import("../lib/settings/claude-settings.ts");
-      const settings = await readClaudeSettings().catch(() => ({ roleMode: "daily" as const }));
+      const { readAgentSettings } = await import("../lib/settings/agent-settings.ts");
+      const settings = await readAgentSettings().catch(() => ({ roleMode: "daily" as const }));
 
       const baseCtx = {
         request: new Request("http://localhost/api/agent/query"),
         traceId: "ss8",
         startedAt: Date.now(),
-        settings: settings as Awaited<ReturnType<typeof readClaudeSettings>>,
+        settings: settings as Awaited<ReturnType<typeof readAgentSettings>>,
         roleMode: "daily",
         messages: [{ role: "user" as const, content: "测一下" }],
         conversationId: undefined as number | undefined,

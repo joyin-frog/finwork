@@ -7,7 +7,7 @@
 | `lib/agent/roles/task-templates.ts` | 修改 | 在 filing-precheck 之后追加 `vat-filing-precheck` 与 `iit-filing-precheck` 两条 subagent 型模板 |
 | `lib/agent/mcp-tools/filing-precheck-batch.ts` | 新增 | `createRunFilingPrecheckBatchTool` 工具实现，含 deps 注入接口 |
 | `lib/agent/mcp-tools/index.ts` | 修改 | import 并注册 `createRunFilingPrecheckBatchTool`，透传 outputDir/traceId/conversationId/onSubagentEvent |
-| `lib/agent/tools/registry.ts` | 修改 | TOOL_REGISTRY 增 `mcp__finance_worker__run_filing_precheck_batch`（category: finance, riskLevel: safe） |
+| `lib/agent/tools/registry.ts` | 修改 | TOOL_REGISTRY 增 `run_filing_precheck_batch`（category: finance, riskLevel: safe） |
 | `lib/agent/tools/renderers.ts` | 修改 | summaries 增 `run_filing_precheck_batch` 中文摘要 renderer |
 | `tests/filing-precheck-batch.test.ts` | 新增 | 覆盖模板存在性/角色白名单/工具六条路径/TOOL_REGISTRY 登记 |
 | `tests/all.test.ts` | 修改 | 末尾追加注册 `filingPrecheckBatchTestPromise` |
@@ -33,7 +33,7 @@
 追加一行 import 与一行工具注册（紧接 emit_checklist 之后）。
 
 ### registry.ts
-追加一条：`{ name: "mcp__finance_worker__run_filing_precheck_batch", category: "finance", riskLevel: "safe" }`。未加入任何角色的 tools 白名单。
+追加一条：`{ name: "run_filing_precheck_batch", category: "finance", riskLevel: "safe" }`。未加入任何角色的 tools 白名单。
 
 ### renderers.ts
 在 finalize_deliverable 之前追加 `run_filing_precheck_batch` renderer，格式：`批跑申报前复核（增值税+个税）${period}` 或无期间时的缩略版。

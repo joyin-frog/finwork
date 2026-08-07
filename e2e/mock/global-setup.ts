@@ -8,7 +8,7 @@ export default function globalSetup() {
   // 不能从它脚下删库(已打开的 SQLite fd 会指向被 unlink 的旧 inode,状态错乱)。
   // 代价:状态跨次累积;要干净基线就重启 test:e2e:serve(它起服前会重置目录)。
   if (process.env.BASE_URL) return;
-  const dir = path.join(process.cwd(), ".claude", "e2e-mock", "appdata");
+  const dir = path.join(process.cwd(), ".finwork-test", "e2e-mock", "appdata");
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
 }

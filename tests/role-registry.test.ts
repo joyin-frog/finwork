@@ -31,7 +31,7 @@ export const roleRegistryTestPromise = (async () => {
   const toolFullNames = new Set<string>(TOOL_REGISTRY.map((t: { name: string }) => t.name));
 
   // ── G1: 每个 role.tools 的裸名都能在 TOOL_REGISTRY 中解析到全名 ──────
-  // 裸名（如 "tax_calculator"）对应 TOOL_REGISTRY 里的全名（如 "mcp__finance_worker__tax_calculator"）
+  // 裸名（如 "tax_calculator"）对应 TOOL_REGISTRY 里的全名（如 "tax_calculator"）
   // 裸名也可能直接是全名（builtin 工具）
   {
     for (const role of ROLE_REGISTRY) {
@@ -40,7 +40,7 @@ export const roleRegistryTestPromise = (async () => {
         if (toolFullNames.has(bare)) continue;
         // 再尝试带 mcp 前缀解析
         const matchedByBare = TOOL_REGISTRY.some(
-          (t: { name: string }) => t.name === `mcp__finance_worker__${bare}` || t.name === `mcp__kingdee_worker__${bare}`
+          (t: { name: string }) => t.name === `${bare}` || t.name === `${bare}`
         );
         assert.ok(
           matchedByBare,
@@ -94,11 +94,11 @@ export const roleRegistryTestPromise = (async () => {
   {
     const taxTools = resolveRoleAllowedTools("tax-officer");
     const hasPayrollStatus = taxTools.some(
-      (t: string) => t === "mcp__finance_worker__query_payroll_status"
+      (t: string) => t === "query_payroll_status"
     );
     assert.ok(
       hasPayrollStatus,
-      `G4b FAIL: tax-officer allowedTools 应含 mcp__finance_worker__query_payroll_status，实际: ${taxTools.join(", ")}`
+      `G4b FAIL: tax-officer allowedTools 应含 query_payroll_status，实际: ${taxTools.join(", ")}`
     );
   }
 
@@ -114,8 +114,8 @@ export const roleRegistryTestPromise = (async () => {
           ? sharedBare
           : TOOL_REGISTRY.find(
               (t: { name: string }) =>
-                t.name === `mcp__finance_worker__${sharedBare}` ||
-                t.name === `mcp__kingdee_worker__${sharedBare}`
+                t.name === `${sharedBare}` ||
+                t.name === `${sharedBare}`
             )?.name ?? sharedBare;
 
       const isAutoAllowed = ALLOWED_TOOLS.includes(sharedFullName);
@@ -142,8 +142,8 @@ export const roleRegistryTestPromise = (async () => {
         // 工具虽有定义，但必须从这个集合排除。
         const inAllowed =
           allowedSet.has(t) ||
-          allowedSet.has(`mcp__finance_worker__${t}`) ||
-          allowedSet.has(`mcp__kingdee_worker__${t}`);
+          allowedSet.has(`${t}`) ||
+          allowedSet.has(`${t}`);
         assert.ok(
           inAllowed,
           `G4d FAIL: role "${role.id}" allowedTools 含 "${t}"，不在 ALLOWED_TOOLS 中`
@@ -203,7 +203,7 @@ export const roleRegistryTestPromise = (async () => {
 
   // ── G6: buildSubagentSystemPrompt 输出包含必要锚点字符串 ──────────────
   {
-    const { buildSubagentSystemPrompt } = await import("../lib/agent/subagent-runner.ts");
+    const { buildSubagentSystemPrompt } = await import("../lib/agent/subagent-prompts.ts");
 
     const taxRole = getRoleDefinition("tax-officer");
     assert.ok(

@@ -4,7 +4,7 @@ title: Excel 表格处理
 summary: 读写、整理、对账 Excel 和 CSV 表格,加列、算公式、做图表、清洗数据。
 requires: "Excel 或 CSV 文件"
 category: file-tool
-description: 任何时候，当电子表格文件是主要输入或输出时，使用此技能。这意味着任何用户想要进行的操作：打开、读取、编辑或修复现有的 .xlsx、.xlsm、.csv 或 .tsv 文件（例如，添加列、计算公式、格式化、制作图表、清理混乱数据）；从零开始或从其他数据源创建新的电子表格；或在表格文件格式之间进行转换。尤其是当用户通过名称或路径引用电子表格文件时，并且想对其进行某些操作或从中生成某些内容时，应触发此技能。对于清理或重构混乱的表格数据文件（格式错误的行、错位的标题、垃圾数据）使其成为规范的电子表格，也应触发此技能。**比较、对账或找出两张/多张表的差异并把结果输出为电子表格**（如新旧科目表比对、台账对账、差异汇总报告）同样应触发此技能——不要因为它「像数据处理」就改用 run_python 手写。最终交付物必须是电子表格文件。当主要交付物是 Word 文档、HTML 报告、独立的 Python 脚本、数据库管道或 Google Sheets API 集成时，不要触发此技能，即使涉及表格数据也是如此。
+description: "用于读取、创建或编辑 Excel/CSV，也用于把比较、对账结果交付为表格；Word/PDF、纯分析文字或数据库任务不用。输入表格与目标，完成证据是可打开、公式无错误且不覆盖原件的表格。"
 ---
 
 
@@ -81,12 +81,47 @@ description: 任何时候，当电子表格文件是主要输入或输出时，�
 
 ### 重要要求
 
-**公式重算由产品 Runtime 负责**：不要通过 Bash 调用 `scripts/recalc.py`，也不要在任务中临时安装公式库或自行寻找 `soffice`。
+**修改用户已有的工作簿必须用 `patch_workbook` 工具，不得用 openpyxl 打开再保存。**
+
+openpyxl 的 `load_workbook()` → `save()` 会**清空整册公式的缓存值**（实测：一个真实工作簿 1164 条缓存 → 0 条，期间什么都没改）。缓存一旦丢失：
+
+- 含外部链接的公式（如 `=[2]资产负债表!$C$7`）在本机**永远算不回来**——那些外部文件不在这台机器上；
+- 所有依赖单元格取值的检查与断言全部读到空值；
+- 装不装 LibreOffice 都救不回来，因为这不是「没重算」，是「原始数据被删了」。
+
+`patch_workbook` 在 XML 层只重写你点名的单元格，其余字节原样保留，并会返回「下游待校验公式」清单。
+
+用它时注意两点：
+
+- **确定的数字直接用 `value` 写数值，不要写成 `formula: "=18299442.55"`。** 常数写成公式会得到一个没有缓存结果的单元格，读回是空的。
+- **只写了 `formula` 没写 `value` 的单元格，读回为空是正常的**，不是写入失败。需要求值就交给 `finalize_deliverable` 的重算流程；**绝不要因此用 openpyxl 重写整册去"修正"**——那会清空全部公式缓存值，得不偿失。
+
+**新建空白工作簿**仍然用 openpyxl/pandas，不依赖 LibreOffice——新文件本来就没有缓存可丢。
+
+**新增 sheet**：`patch_workbook` 的 edit 里加 `createSheet: true` 即可在既有工作簿里建表（不写这个标志、表名又不存在时会报 `sheet_not_found`，防止表名打错被静默变成一张空表）。
+
+### 检查类动作用工具，不要写脚本判断
+
+| 需求 | 用这个 | 别这样 |
+| --- | --- | --- |
+| 勾稽核对（资产=负债+权益、分季合计=全年、跨表一致） | `check_workbook_ties` | 用 Python 取数再心算比对 |
+| 查重复、必填缺失、金额离群、不该为负的负数 | `detect_data_issues` | 自己写判断逻辑 |
+| 多公司/多期间「科目-金额」表汇总成一张 | `merge_labeled_tables` | 手写 merge 脚本 |
+
+这些工具的判定确定、可复现，且读不到值时会明确判「未验证」而不是「不平」。
+`merge_labeled_tables` **不做抵消**，产出的合计是简单相加，不能直接当合并报表对外。
+
+**公式重算由产品 Runtime 负责**：不要通过 Bash 调用 `scripts/recalc.py`，不要自行寻找或启动 `soffice`，也不要为了绕过重算而在 Python 中手工模拟整套 Excel 公式引擎。
+
+**输入附件是只读的**：`patch_workbook` 的 `sourcePath` 指向附件原路径即可，它只读不写，输出落在本回合输出目录。若确需在 Python 中复制文件，用 `shutil.copyfile()` 并对输出执行 `chmod(0o600)`；不要用 `shutil.copy()` / `copy2()`，那会把沙箱里的只读 `0444` 一并带到副本。
+
+**控制单次工具输出大小**：复杂模型需要长 Python 脚本时，先用 `write` 创建短骨架，再用多次 `edit` 分段补充。不要在一次 `write` 中发送整个大型数据字典和脚本；工具参数被输出 token 上限截断后不会执行。
 
 当工作簿包含需要求值的公式、或正式交付依赖计算后的单元格值时：
-1. 使用产品 Spreadsheet Runtime 的 `recalc` / `probe` 能力（由应用提供，不依赖 Agent 猜环境）。
-2. 若 Runtime 报告 LibreOffice 不可用（`recalc_unavailable`），停止公式型交付并提示用户安装 LibreOffice；**不要跳过重算后假装已算完**。
-3. 静态只读分析可以在无 LibreOffice 时进行，但必须说明公式缓存可能过期。
+1. 先保存候选 XLSX，并做公式文本、关键输入值、工作表结构和修改范围的静态检查。
+2. 调用 `finalize_deliverable`；产品会在沙箱外自动执行 Spreadsheet Runtime 的重算、错误扫描与渲染验证。
+3. 只有当 `finalize_deliverable` 明确返回 `recalc_unavailable` 时，才停止公式型交付并报告阻塞；不要在调用前猜测运行时不可用。
+4. 静态只读分析可以在无 LibreOffice 时进行，但必须说明公式缓存可能过期。
 
 Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测不属于本 skill。
 ---
@@ -230,7 +265,7 @@ wb.save('modified.xlsx')
 
 ## 重算公式
 
-由 openpyxl 创建或修改的 Excel 文件包含作为字符串的公式，但没有计算后的值。**必须**通过产品 Spreadsheet Runtime 重算（`spreadsheet_runtime recalc` / 应用暴露的等价接口）：
+由 openpyxl 创建或修改的 Excel 文件包含作为字符串的公式，但没有计算后的值。保存工作簿后调用 `finalize_deliverable`，由产品 Spreadsheet Runtime 完成重算：
 
 - Runtime 使用系统 LibreOffice，并创建独立临时 UserInstallation
 - 在工作副本上重算，不原地修改用户上传文件
@@ -239,6 +274,8 @@ wb.save('modified.xlsx')
 
 不要：
 - 通过 Bash 执行 `scripts/recalc.py` 或直接调用 `soffice`
+- 因为 Bash 内不能启动 LibreOffice，就认定 Excel 无法写入或交付
+- 在 `finalize_deliverable` 之前手工模拟复杂公式缓存
 - 在任务中临时安装公式计算库做兜底
 - 在缺少重算能力时跳过并声称「已计算」
 

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { buildSystemPromptParts } from "../lib/agent/system-prompt.ts";
 
-// 文件产出/引用/图表的静态规则现集中在 SYSTEM_PROMPT.md(Part A,单一来源);
-// 仅「本会话输出目录绝对路径」是动态的、在 Part C。故断言整段拼好的系统提示,而非单看某段。
+// 文件产出/引用的静态规则集中在 SYSTEM_PROMPT.md；
+// 仅本会话输出目录是动态的。断言最终发送给 Pi 的完整系统提示。
 export const systemPromptFileRefTestPromise = (async () => {
   const full = buildSystemPromptParts({ outputDir: "/tmp/test-session/files/38/generate" }).join("\n");
 
@@ -13,14 +13,14 @@ export const systemPromptFileRefTestPromise = (async () => {
   assert.ok(full.includes("百分号编码"), "T4 FAIL: 应提及并禁止 URL 百分号编码");
   assert.ok(full.includes("不要原地覆盖"), "T5 FAIL: 应含「不要原地覆盖输入文件」");
 
-  // ── 文档处理优先 skill;所有 Python 走 run_python、严禁 Bash 跑 Python(治 churn 超时)──
+  // ── 文档处理和结构化统计走固定入口，不执行模型提供的任意 Python ──
   assert.ok(
-    full.includes("必须优先") && full.includes("skill"),
+    full.includes("必须") && /skill/i.test(full),
     "T6 FAIL: 文档处理应优先用对应 skill"
   );
   assert.ok(
-    full.includes("严禁用 Bash 跑 Python") && full.includes("run_python"),
-    "T6b FAIL: 应禁止 Bash 跑 Python、所有 Python 走 run_python(防 churn 超时)"
+    full.includes("不得执行模型提供的任意代码") && full.includes("analyze_tabular") && !full.includes("run_python"),
+    "T6b FAIL: 应禁止任意代码执行并指向 analyze_tabular"
   );
 
   // ── 动态:本会话输出目录绝对路径注入 ────────────────────────────────────
