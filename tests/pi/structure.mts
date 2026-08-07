@@ -12,8 +12,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const definitions = buildFinanceToolDefinitions("/tmp/finwork-pi-structure");
-assert.equal(definitions.length, 45, "AS0 production catalog count must stay frozen");
-assert.equal(new Set(definitions.map((item) => item.id)).size, 45, "tool ids must be unique");
+// 45 → 49:新增 patch_workbook / check_workbook_ties / detect_data_issues /
+// merge_labeled_tables(无损 xlsx 编辑 + 跨表勾稽/质量检测/多表合并,见 CONTEXT.md）。
+assert.equal(definitions.length, 49, "AS0 production catalog count must stay frozen");
+assert.equal(new Set(definitions.map((item) => item.id)).size, 49, "tool ids must be unique");
 
 for (const id of [
   "read_document",
@@ -160,4 +162,4 @@ assert.match(
   /PI_SUBAGENT_INJECTED/,
 );
 
-console.log("Pi structure ✓ 45 definitions, schema/Zod, safety gates, event mapper and subagent seam");
+console.log("Pi structure ✓ 49 definitions, schema/Zod, safety gates, event mapper and subagent seam");

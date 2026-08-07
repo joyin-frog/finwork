@@ -118,10 +118,10 @@ export async function inspectDeliveredArtifacts(
           if (explicitErrors) return sum + explicitErrors.length;
           const formulas =
             (sheet.formulas_sample as Array<{ cached_value?: unknown }> | undefined) ?? [];
-          return sum + formulas.filter((formula) =>
-            typeof formula.cached_value === "string" &&
-            FORMULA_ERRORS.some((error) => formula.cached_value!.includes(error))
-          ).length;
+          return sum + formulas.filter((formula) => {
+            const cachedValue = formula.cached_value;
+            return typeof cachedValue === "string" && FORMULA_ERRORS.some((error) => cachedValue.includes(error));
+          }).length;
         }, 0);
         const requestedCells = assertions
           .filter((assertion) => assertion.deliverableId === evidence.contractDeliverableId)

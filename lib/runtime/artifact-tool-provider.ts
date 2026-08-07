@@ -35,8 +35,10 @@ function loadArtifactTool(): { module: ArtifactModule; packagePath: string; vers
   if (!packagePath) return null;
   try {
     const packageJson = JSON.parse(fs.readFileSync(path.join(packagePath, "package.json"), "utf8")) as { version?: string };
-    const module = createRequire(path.join(packagePath, "package.json"))("@oai/artifact-tool") as ArtifactModule;
-    return { module, packagePath, version: packageJson.version };
+    // 变量名不能叫 module——Next.js/webpack 会把它当模块包装器的保留标识符处理
+    // (@next/next/no-assign-module-variable)。
+    const mod = createRequire(path.join(packagePath, "package.json"))("@oai/artifact-tool") as ArtifactModule;
+    return { module: mod, packagePath, version: packageJson.version };
   } catch {
     return null;
   }
