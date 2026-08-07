@@ -7,6 +7,7 @@ import {
   type FinworkBuiltinRoots,
 } from "../../lib/agent/pi/builtin-tools.ts";
 import { evaluateBuiltinToolCall } from "../../lib/agent/pi/extension.ts";
+import { isBashSandboxAvailable } from "../../lib/agent/tools/bash-sandbox.ts";
 
 const root = mkdtempSync(path.join(tmpdir(), "finwork-pi-extension-"));
 const filesDir = path.join(root, "files", "42");
@@ -18,11 +19,16 @@ mkdirSync(deliveredDir, { recursive: true });
 const roots: FinworkBuiltinRoots = { writeRoot: outputDir, readRoot: filesDir };
 
 // ── L1-1 工具构造：真实构造 pi 内置工具（不是名字清单），确认名字与 schema 形状 ──
+// bash 的唯一边界是 OS 沙箱（builtin-tools.ts fail-closed 设计：拿不到沙箱就不注册），
+// 而沙箱当前只有 macOS 的 sandbox-exec 实现——CI 的 Linux runner 上 bash 本就不该出现,
+// 断言必须跟着 isBashSandboxAvailable() 走,不能假定所有平台都有 bash。
 const tools = await createFinworkBuiltinTools(roots);
+const expectedNames = ["edit", "find", "grep", "ls", "read", "write"];
+if (isBashSandboxAvailable()) expectedNames.push("bash");
 assert.deepEqual(
   tools.map((tool) => tool.name).sort(),
-  ["bash", "edit", "find", "grep", "ls", "read", "write"],
-  "L1-1 FAIL: 应注册 pi 的 read/grep/find/ls/write/edit/bash（小写名）",
+  expectedNames.sort(),
+  "L1-1 FAIL: 应注册 pi 的 read/grep/find/ls/write/edit（有沙箱时还有 bash，小写名）",
 );
 // 闸依赖入参形状：pi 用 `path`（不是 Claude 时代的 `file_path`）。形状漂移必须让测试红。
 for (const name of ["read", "write", "edit"]) {
@@ -31,11 +37,13 @@ for (const name of ["read", "write", "edit"]) {
   };
   assert.ok(schema.properties?.path, `L1-1 FAIL: ${name} 的入参应有 path 字段`);
 }
-assert.ok(
-  (tools.find((tool) => tool.name === "bash")!.parameters as { properties?: Record<string, unknown> })
-    .properties?.command,
-  "L1-1 FAIL: bash 的入参应有 command 字段",
-);
+if (isBashSandboxAvailable()) {
+  assert.ok(
+    (tools.find((tool) => tool.name === "bash")!.parameters as { properties?: Record<string, unknown> })
+      .properties?.command,
+    "L1-1 FAIL: bash 的入参应有 command 字段",
+  );
+}
 
 // ── L1-2 写类工具：outputDir 之内放行，之外拒绝 ──
 assert.equal(

@@ -45,7 +45,9 @@ try {
     preflightObserved: Boolean(result),
     serviceLoaded: result?.serviceLoaded === true,
     piEsmLoaded: result?.piEsmLoaded === true,
-    allToolsFound: result?.toolCount === 45,
+    // 45 → 49：新增 patch_workbook / check_workbook_ties / detect_data_issues /
+    // merge_labeled_tables（见 CONTEXT.md）。
+    allToolsFound: result?.toolCount === 49,
     resourceLoaderLoaded: result?.resourceLoaderLoaded === true,
     controlledSessionDir: result?.controlledSessionDir === true,
   };

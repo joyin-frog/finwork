@@ -4,7 +4,9 @@ import { buildFinanceToolDefinitions } from "../../../lib/agent/mcp-tools/index.
 if (typeof buildPiPrompt !== "function" || typeof validatePiSessionLocator !== "function") {
   throw new Error("Pi main service exports missing");
 }
-if (buildFinanceToolDefinitions("/tmp/finwork-ar13-pi-only").length !== 45) {
+// 45 → 49：新增 patch_workbook / check_workbook_ties / detect_data_issues /
+// merge_labeled_tables（见 CONTEXT.md）。
+if (buildFinanceToolDefinitions("/tmp/finwork-ar13-pi-only").length !== 49) {
   throw new Error("Pi finance catalog incomplete");
 }
 console.log("AR13_PI_ONLY_OK");
