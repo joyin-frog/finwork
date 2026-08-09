@@ -152,25 +152,10 @@ export const resizablePreviewPanelTestPromise = (async () => {
   }
   console.log("B7: 预览分隔区统一为整高透明拖拽区 ✓");
 
-  // ─── C. 三处采纳源码契约 ──────────────────────────────────────────────────
+  // ─── C. 共享预览采纳源码契约 ──────────────────────────────────────────────
 
   const SHELL_IMPORT = "ResizablePreviewPanel";
   const DIVIDER_CLASS = "cursor-col-resize";
-
-  // C1: files/page.tsx 使用壳
-  {
-    const filesSrc = src("app/files/page.tsx");
-    assert.ok(
-      filesSrc.includes(SHELL_IMPORT),
-      "C1a FAIL: app/files/page.tsx 应 import 并用 ResizablePreviewPanel"
-    );
-    // 不再手写分隔条（排除壳文件自身，只检查 files 页）
-    assert.ok(
-      !filesSrc.includes(DIVIDER_CLASS),
-      "C1b FAIL: app/files/page.tsx 不应再手写 cursor-col-resize（已由壳统一管理）"
-    );
-  }
-  console.log("C1: files/page.tsx 采纳壳 ✓");
 
   // C2: knowledge/page.tsx 使用壳
   {

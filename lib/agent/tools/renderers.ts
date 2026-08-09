@@ -27,7 +27,7 @@ const summaries: Record<string, SummaryFn> = {
   MultiEdit:  (i) => `编辑 ${shortPath(str(i, "file_path"))}`,
   Glob:       (i) => `查找文件 ${str(i, "pattern")}`,
   Grep:       (i) => `搜索「${str(i, "pattern")}」`,
-  Bash:       (i) => { const cmd = str(i, "command"); return cmd ? `执行：${cmd.slice(0, 60)}` : "执行命令"; },
+  Bash:       (i) => bashSummary(i),
   WebSearch:  (i) => `搜索「${str(i, "query")}」`,
   WebFetch:   (i) => `获取 ${str(i, "url").slice(0, 60)}`,
   Monitor:    () => "监控进程",
@@ -41,7 +41,7 @@ const summaries: Record<string, SummaryFn> = {
   analyze_tabular: (i) => {
     const rows = Array.isArray((i as Record<string, unknown>)?.rows) ? (i as Record<string, unknown>).rows as unknown[] : [];
     const groups = Array.isArray((i as Record<string, unknown>)?.groupBy) ? (i as Record<string, unknown>).groupBy as unknown[] : [];
-    return `结构化统计${groups.length ? `（按 ${groups.join("、")} 分组）` : ""}：${rows.length} 行`;
+    return `整理表格数据${groups.length ? `（按 ${groups.join("、")} 分组）` : ""}：${rows.length} 行`;
   },
 
   // ─── 财务工具(finance_worker) ───
@@ -69,6 +69,8 @@ const summaries: Record<string, SummaryFn> = {
     if (hasBudget || hasPrior) return "生成经营分析表(四能力×三基准)";
     return "生成经营分析表(偿债/盈利/营运/发展)";
   },
+  check_workbook_ties: () => "勾稽校验",
+  patch_workbook: () => "更新工作簿",
   spawn_subagent: (i) => {
     // 新参数 role(角色 id);历史会话事件里存的是旧参数 skill,保留兼容渲染
     const roleName = getRoleDefinition(str(i, "role"))?.name;
@@ -166,8 +168,8 @@ const summaries: Record<string, SummaryFn> = {
       if (f && typeof f === "object" && "name" in (f as object)) return String((f as { name: unknown }).name);
       return String(f);
     }).filter(Boolean);
-    if (names.length === 1) return `确定交付 ${names[0]}`;
-    return names.length ? `确定交付 ${names.length} 个文件` : "确定最终交付";
+    if (names.length === 1) return `确认交付文件 ${names[0]}`;
+    return names.length ? `确认交付文件 ${names.length} 个` : "确认交付文件";
   },
 
   // ─── 金蝶工具(kingdee_worker) ───
@@ -251,20 +253,20 @@ export function getToolSummary(
   if (isError && result) {
     return `错误：${summarizeToolError(result)}`;
   }
-  const bare = toolName.replace(/^\w+__/, "");
+  const bare = toolName.replace(/^.*__/, "");
   const fn = summaries[bare] ?? summaries[toolName];
   return fn ? fn(input, result, isError) : formatToolLabel(toolName);
 }
 
 /** 该工具是否有专门的摘要文案(用于校验财务工具不落入英文兜底)。 */
 export function hasToolSummary(toolName: string): boolean {
-  const bare = toolName.replace(/^\w+__/, "");
+  const bare = toolName.replace(/^.*__/, "");
   return Boolean(summaries[bare] ?? summaries[toolName]);
 }
 
 export function formatToolLabel(name: string): string {
   return name
-    .replace(/^\w+__/, "")
+    .replace(/^.*__/, "")
     .replace(/[_-]/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -291,4 +293,23 @@ function shortPath(p: string): string {
   if (!p) return "";
   const parts = p.replace(/\\/g, "/").split("/");
   return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : p;
+}
+
+/** Bash 事件的输入历史上有 command / code / 纯字符串三种形态,统一提炼成可读动作。 */
+function bashSummary(input: unknown): string {
+  const raw = str(input, "command") || str(input, "code") || str(input, "cmd") || (typeof input === "string" ? input : "");
+  if (!raw) return "执行命令";
+
+  const command = raw.replace(/\s+/g, " ").trim();
+  if (/\bpython(?:3)?\b/.test(command)) {
+    const intent = pythonCodeIntent(raw);
+    return intent ? `执行 Python：${intent}` : "执行 Python 脚本";
+  }
+  if (/\b(?:rg|grep)\b/.test(command)) return `搜索内容：${command.slice(0, 52)}`;
+  if (/\bmkdir\b/.test(command) && /\bls\b/.test(command)) return "准备输出目录并查看文件";
+  if (/\bmkdir\b/.test(command)) return `创建目录：${command.slice(0, 52)}`;
+  if (/\b(?:cat|head|tail)\b/.test(command)) return `读取文件内容：${command.slice(0, 48)}`;
+  if (/\b(?:ls|find)\b/.test(command)) return `查看文件：${command.slice(0, 48)}`;
+  if (/\b(?:git)\b/.test(command)) return `检查 Git 状态：${command.slice(0, 44)}`;
+  return `执行：${command.slice(0, 60)}`;
 }

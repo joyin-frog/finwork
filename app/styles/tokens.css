@@ -8,6 +8,7 @@
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.21 0 0);
+  --sidebar-foreground: oklch(0.38 0 0);
   --primary: oklch(0.546 0.215 262.9);
   --primary-foreground: oklch(0.97 0 0);
   --ring: oklch(0.655 0 0);
@@ -15,16 +16,17 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --sidebar: oklch(0.96 0 224 / 0.1);
+  --sidebar: oklch(0.994 0 0);
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.96 0 0.9);
+  --muted: oklch(0.961 0 0);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.95 0 0.5);
+  --accent: oklch(0.961 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.55 0.16 27);
-  --border: oklch(0.95 0 0);
-  --input: oklch(0.922 0 0);
+  /* Reference light palette: white page/card, separated by a quiet gray line. */
+  --border: oklch(0.94 0 0);
+  --input: oklch(0.961 0 0);
 
   /* 状态色：同一业务语义在两种界面风格中保持一致。 */
   --tone-alarm: oklch(0.55 0.15 27);
@@ -53,25 +55,27 @@
 }
 
 .dark {
-  --background: oklch(0.25 0 0);
+  /* Reference dark palette sampled from the supplied screenshot: #262626 page, #2e2e2e cards. */
+  --background: oklch(0.269 0 0);
   --foreground: oklch(0.95 0 0);
+  --sidebar-foreground: oklch(0.82 0 0);
   --primary: oklch(0.62 0.19 262.9);
   --primary-foreground: oklch(0.915 0 0);
   --ring: oklch(0.5 0 0);
-  --card: oklch(0.3 0 0 / 0.5);
+  --card: oklch(0.301 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: oklch(0.345 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --sidebar: oklch(0.275 0 0.5);
+  --sidebar: oklch(0.301 0 0);
   --secondary: oklch(0.274 0.006 286.033);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.4 0 0);
+  --muted: oklch(0.356 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.35 0 0 / 50%);
+  --accent: oklch(0.356 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.68 0.14 25);
-  --border: oklch(1 0 0 / 5%);
-  --input: oklch(1 0 0 / 15%);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(0.325 0 0);
 
   --tone-alarm: oklch(0.70 0.14 25);
   --tone-warn: oklch(0.72 0.12 50);

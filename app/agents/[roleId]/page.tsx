@@ -415,7 +415,7 @@ function MemoryTabView({ roleId, roleName }: { roleId: string; roleName: string 
   return (
     <AgentTabSurface className="flex flex-col gap-3">
       <div
-        className="fa-toned rounded-[var(--radius)] px-3 py-2 text-meta"
+        className="fa-toned rounded-md px-3 py-2 text-meta"
         style={{ "--tone": "var(--tone-analysis)" } as CSSProperties}
       >
         独立记忆 · 仅「{roleName}」可见，不与其他角色共享。派活时会作为该角色的口径注入。
@@ -532,7 +532,7 @@ function ConversationsTabView({ roleId }: { roleId: string }) {
           <Link
             key={c.conversationId}
             href={`/chat/recent?id=${c.conversationId}`}
-            className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius)] hover:bg-accent/40 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent/40 transition-colors"
           >
             <HugeiconsIcon icon={BubbleChatIcon} size={15} className="shrink-0 text-muted-foreground" />
             <span className="flex-1 min-w-0 truncate text-body">{c.title}</span>

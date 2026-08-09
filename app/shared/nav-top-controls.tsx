@@ -21,7 +21,7 @@ export function NavTopControls() {
           onClick={() => setSearchOpen(true)}
           aria-label="搜索"
           // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-          className="icon-btn relative inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-accent hover:text-foreground"
+          className="icon-btn relative inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-foreground/10 hover:text-foreground"
         >
           <HugeiconsIcon icon={Search01Icon} size={16} />
         </button>
@@ -32,7 +32,7 @@ export function NavTopControls() {
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? "展开菜单" : "收起菜单"}
           // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-          className="icon-btn relative inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-accent hover:text-foreground"
+          className="icon-btn relative inline-flex items-center justify-center rounded-lg text-foreground/60 cursor-pointer transition-colors hover:bg-foreground/10 hover:text-foreground"
         >
           {/* 收起态显示"展开"图标、展开态显示"收起"图标——两态两 icon,与经典风格页头(SidebarToggle 用 LayoutAlignLeft)一致 */}
           <HugeiconsIcon icon={collapsed ? LayoutAlignLeftIcon : PanelLeftIcon} size={16} />

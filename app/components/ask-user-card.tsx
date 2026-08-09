@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowRight01Icon, ChevronRightIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { SuccessIcon, HelpIcon } from "@/lib/icons";
 import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
@@ -152,11 +152,12 @@ export function AskAnsweredSummary({ header, answer }: { header?: string; answer
   // 多问:折叠成一行「用户已确认 N 个问题」,点开在框内逐条 问→答 —— 不再把 JSON 平铺成一坨。
   if (multi && multi.length > 1) {
     return (
-      <details className="text-body min-w-0">
+      <details className="details-fold text-body min-w-0">
         {/* 与工具步骤组的折叠头同款:无前导图标 + group flex + py-1 + gap-2,chevron 默认隐藏 hover 显现 */}
         <summary className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
           <span className="min-w-0 truncate">用户已确认 {multi.length} 个问题</span>
-          <HugeiconsIcon icon={ChevronRightIcon} size={14} className="details-chevron shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity" aria-hidden="true" />
+          <HugeiconsIcon icon={ArrowRight01Icon} size={14} className="details-chevron details-chevron-closed shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity" aria-hidden="true" />
+          <HugeiconsIcon icon={ArrowDown01Icon} size={14} className="details-chevron details-chevron-open shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity" aria-hidden="true" />
         </summary>
         <div className="mt-1.5 flex flex-col gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
           {multi.map(([q, a], i) => (

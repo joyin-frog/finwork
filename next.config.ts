@@ -25,7 +25,13 @@ const nextConfig: NextConfig = {
     ],
   },
   devIndicators: false,
-  serverExternalPackages: [],
+  // 服务端重依赖交给 Node 在运行时加载，避免每次 dev/build 都被 Webpack 重新打包；
+  // 客户端预览依赖仍由各自的 dynamic import 控制，不在这里外置。
+  serverExternalPackages: [
+    "@anthropic-ai/claude-agent-sdk",
+    "exceljs",
+    "mammoth",
+  ],
   experimental: {
     serverActions: {
       bodySizeLimit: "8mb"

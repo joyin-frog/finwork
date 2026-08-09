@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   }
   return NextResponse.json({
     ok: true,
-    data: { files: searchFilesByTitle(q), conversations: searchConversations(q) },
+    // 独立「对话文件」页已移除;全局搜索只展示仍有落点的知识库文档。
+    data: { files: searchFilesByTitle(q).filter((file) => file.kind === "knowledge"), conversations: searchConversations(q) },
   });
 }

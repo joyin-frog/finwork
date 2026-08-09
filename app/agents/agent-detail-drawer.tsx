@@ -3,8 +3,8 @@
 /**
  * agent-detail-drawer.tsx — 角色详情右侧抽屉
  *
- * 复用 usePreviewResize（listMinW=460，与 files 页对齐）。
- * maximized 时左侧网格 hidden——既有语义，照 app/files/page.tsx 接法。
+ * 复用 usePreviewResize（listMinW=460，与共享预览布局对齐）。
+ * maximized 时左侧网格 hidden——既有语义，复用共享预览壳接法。
  * 文件产物（finalize_deliverable 声明的文件）→ 点开渲染 FilePreviewPage。
  *
  * 注意：本组件只是抽屉内容区，由 page.tsx 控制显隐和 mainRef。

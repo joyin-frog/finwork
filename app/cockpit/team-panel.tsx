@@ -195,7 +195,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
                   title="派活"
                   aria-label={`让${item.name}派活`}
                   // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                  className="shrink-0 inline-grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  className="shrink-0 inline-grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                   onClick={handleDispatch}
                 >
                   <HugeiconsIcon icon={ComputerUserIcon} size={14} />

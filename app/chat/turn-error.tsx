@@ -7,9 +7,9 @@ import { humanizeAgentError } from "@/lib/agent/agent-error";
 export function TurnError({ error }: { error?: string | null }) {
   if (!error) return null;
   return (
-    // 全宽:与对话正文同宽,不再 self-start 缩成窄条(和 usage_blocked 等其它提示统一走 Callout 全宽)。
+    // 错误提示与 usage_blocked 使用同一信息卡宽度，避免短提示铺满整行。
     <div className="mt-1">
-      <Callout variant="warn" className="w-full">
+      <Callout variant="warn" className="w-2/3 min-w-[280px] max-w-full">
         {humanizeAgentError(error).message}
       </Callout>
     </div>

@@ -169,6 +169,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
           const { storagePath } = parsed;
           const file = files.find((item) => item.storagePath === storagePath);
           const previewFile: PreviewableConversationFile = {
+            id: file?.id?.toString(),
             fileName: file?.name ?? parsed.name,
             mimeType: file?.mimeType ?? guessMimeType(parsed.name),
             sizeBytes: file?.sizeBytes ?? 0,

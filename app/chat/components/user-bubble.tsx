@@ -102,7 +102,7 @@ export function UserBubble({
         </div>
       ) : null}
       {displayText.trim() ? (
-        <div className={cn(surfaceVariants({ level: "page", edge: "none", shape: "overlay" }), "md-content bg-primary/8 px-4 py-2")}>
+        <div className={cn(surfaceVariants({ level: "page", edge: "none", shape: "overlay" }), "md-content bg-muted px-4 py-2 dark:bg-sidebar")}>
           <MarkdownMessage content={displayText} conversationId={conversationId} files={files} onPreviewFile={onPreviewFile} />
         </div>
       ) : null}

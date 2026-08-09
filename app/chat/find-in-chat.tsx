@@ -220,34 +220,34 @@ export function FindInChat({ open, initialQuery = "", threadRef, onClose, conten
       <Button
         type="button"
         variant="ghost"
-        size="icon-xs"
+        size="icon"
         onClick={goPrev}
         aria-label="上一个"
         className="text-muted-foreground hover:text-foreground"
         disabled={totalCount === 0}
       >
-        <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
+        <HugeiconsIcon icon={ArrowUp01Icon} size={16} />
       </Button>
       <Button
         type="button"
         variant="ghost"
-        size="icon-xs"
+        size="icon"
         onClick={goNext}
         aria-label="下一个"
         className="text-muted-foreground hover:text-foreground"
         disabled={totalCount === 0}
       >
-        <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
+        <HugeiconsIcon icon={ArrowDown01Icon} size={16} />
       </Button>
       <Button
         type="button"
         variant="ghost"
-        size="icon-xs"
+        size="icon"
         onClick={handleClose}
         aria-label="关闭查找"
         className="text-muted-foreground hover:text-foreground"
       >
-        <HugeiconsIcon icon={Cancel01Icon} size={14} />
+        <HugeiconsIcon icon={Cancel01Icon} size={16} />
       </Button>
     </div>
   );

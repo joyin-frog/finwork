@@ -169,7 +169,18 @@ export function summarizeToolSegment(items: SegmentTimelineItem[]): string {
   const totalMs = steps.reduce((acc, s) => acc + s.durationMs, 0);
 
   let summary: string;
-  if (distinctLabels.length === 1) {
+  const allTabular = steps.every((s) => s.toolName.replace(/^.*__/, "") === "analyze_tabular");
+  const allCommands = steps.every((s) => s.toolName.replace(/^.*__/, "") === "Bash");
+  if (allCommands) {
+    summary = `执行命令 · ${totalSteps} 步`;
+  } else if (allTabular) {
+    const counts = steps.map((s, index) => {
+      const input = (s.items[0].event as { input?: Record<string, unknown> }).input ?? {};
+      const rows = Array.isArray(input.rows) ? input.rows.length : 0;
+      return `第${index + 1}次 ${rows} 行`;
+    });
+    summary = `整理表格数据：${counts.join("、")}`;
+  } else if (distinctLabels.length === 1) {
     // 同质组:动词 ×N：对象列表(取各步 renderer 文案的对象部分,去重取前 2)
     summary = totalSteps === 1 ? distinctLabels[0] : `${distinctLabels[0]} ×${totalSteps}`;
     const objects: string[] = [];

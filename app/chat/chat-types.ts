@@ -42,6 +42,7 @@ export type FolderRef = {
 };
 
 export type ReferencedFile = {
+  id?: string;
   name: string;
   mimeType: string;
   sizeBytes: number;

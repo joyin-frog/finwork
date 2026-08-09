@@ -133,6 +133,16 @@ type OpenWithApp = {
   iconUrl?: string;
 };
 
+async function fetchOpenWithApps(selection: PreviewFileSelection): Promise<OpenWithApp[]> {
+  const params = new URLSearchParams({
+    name: selection.name,
+    mimeType: selection.mimeType ?? inferMimeType(selection.name),
+  });
+  const response = await fetch(`/api/open-with/apps?${params.toString()}`);
+  const payload = (await response.json()) as { ok: boolean; data?: { apps: OpenWithApp[] } };
+  return payload.ok ? payload.data?.apps ?? [] : [];
+}
+
 export function FilePreviewPage({
   selection,
   onSelectionChange,
@@ -187,6 +197,32 @@ export function FilePreviewPage({
   useEffect(() => {
     setCurrentSelection(selection);
   }, [selection]);
+
+  // 对话记录里的文件预览需要在打开时就准备好“打开方式”按钮的应用图标。
+  // 当前 API 返回的是按文件类型匹配的应用列表；优先使用其中第一个有图标的应用，
+  // 没有图标时由按钮回退到应用字母标识。
+  useEffect(() => {
+    setOpenMenuOpen(false);
+    setOpenWithApps(null);
+    if (currentSelection?.kind !== "conversation") return;
+
+    let cancelled = false;
+    setLoadingOpenWithApps(true);
+    void fetchOpenWithApps(currentSelection)
+      .then((apps) => {
+        if (!cancelled) setOpenWithApps(apps);
+      })
+      .catch(() => {
+        if (!cancelled) setOpenWithApps([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOpenWithApps(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSelection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,13 +337,7 @@ export function FilePreviewPage({
     if (openWithApps || loadingOpenWithApps) return;
     setLoadingOpenWithApps(true);
     try {
-      const params = new URLSearchParams({
-        name: currentSelection.name,
-        mimeType: currentSelection.mimeType ?? inferMimeType(currentSelection.name)
-      });
-      const response = await fetch(`/api/open-with/apps?${params.toString()}`);
-      const payload = (await response.json()) as { ok: boolean; data?: { apps: OpenWithApp[] } };
-      setOpenWithApps(payload.ok ? payload.data?.apps ?? [] : []);
+      setOpenWithApps(await fetchOpenWithApps(currentSelection));
     } catch {
       setOpenWithApps([]);
     } finally {
@@ -434,6 +464,9 @@ export function FilePreviewPage({
   const previewAccent = currentSelection ? fileAccentColor(currentSelection.name) : "var(--primary)";
   const emptyTitle = title || "右侧现在是文件预览页";
   const emptyDescription = description || "点击顶部面板中的文件，或者用系统文件选择器打开本地文件。";
+  const openWithPreviewApp = currentSelection?.kind === "conversation"
+    ? openWithApps?.find((app) => app.iconUrl) ?? openWithApps?.[0]
+    : undefined;
 
   return (
     <section className={`preview-page-shell${docked ? " is-docked" : ""}${isMaximized ? " is-maximized" : ""}`}>
@@ -450,6 +483,15 @@ export function FilePreviewPage({
                 aria-expanded={openMenuOpen}
                 aria-haspopup="menu"
               >
+                {openWithPreviewApp?.iconUrl ? (
+                  <img className="size-4 shrink-0 rounded-sm object-contain" src={openWithPreviewApp.iconUrl} alt="" />
+                ) : openWithPreviewApp ? (
+                  <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-muted text-[10px] font-medium">
+                    {getAppGlyph(openWithPreviewApp.name)}
+                  </span>
+                ) : (
+                  <HugeiconsIcon icon={Folder02Icon} size={16} />
+                )}
                 <span>打开方式</span>
                 <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
               </button>
@@ -505,7 +547,7 @@ export function FilePreviewPage({
           {currentSelection?.kind === "conversation" && currentSelection.attachmentId ? (
             <>
               <button
-                className="preview-open-button"
+                className="preview-open-button preview-icon-button"
                 type="button"
                 onClick={() => setConfirmOpen(true)}
                 disabled={promoting}
@@ -517,8 +559,8 @@ export function FilePreviewPage({
               <ConfirmDialog
                 open={confirmOpen}
                 onOpenChange={setConfirmOpen}
-                title="加入知识库?"
-                description={`将「${currentSelection.name}」加入知识库,之后它的内容可被检索到。`}
+                title="加入知识库"
+                description={`将「${currentSelection.name}」加入知识库，之后它的内容可被检索到。`}
                 confirmLabel="加入"
                 onConfirm={() => void addCurrentToKnowledge()}
               />
@@ -526,7 +568,7 @@ export function FilePreviewPage({
           ) : null}
           {onMaximize ? (
             <button
-              className="preview-open-button"
+              className="preview-open-button preview-icon-button"
               type="button"
               onClick={onMaximize}
               aria-label={isMaximized ? "还原预览" : "放大预览"}

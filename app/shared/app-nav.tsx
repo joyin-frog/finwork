@@ -37,8 +37,7 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
-import { ROLE_LABELS } from "@/lib/domain/role-ui";
-import { roleNavIcon } from "@/lib/domain/role-icons";
+import { ROLE_LABELS, ROLE_UI } from "@/lib/domain/role-ui";
 import {
   ConversationStatusMark,
   resolveConversationStatus,
@@ -48,9 +47,10 @@ import { Input } from "@/components/ui/input";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowDown01Icon,
+  ArrowRight01Icon,
   DashboardSquare02Icon,
   LibraryIcon,
-  MoreHorizontalIcon,
+  MoreVerticalIcon,
   Edit02Icon,
   PinIcon,
   PinOffIcon,
@@ -58,6 +58,7 @@ import {
   Settings02Icon,
   Delete02Icon,
   NoteIcon,
+  User02Icon,
 } from "@hugeicons/core-free-icons";
 
 type ConversationSummary = {
@@ -71,7 +72,7 @@ type ConversationSummary = {
   hasError?: boolean;
 };
 
-type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "files" | "agents" | "skills";
+type NavActive = "cockpit" | "chat" | "knowledge" | "config" | "agents" | "skills";
 type ChatActive = "new" | "recent";
 
 function NavActivePill({ reduce }: { reduce: boolean | null }) {
@@ -128,15 +129,15 @@ function SectionFoldHeader({
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      className="group/fold flex min-h-8 w-full items-center gap-1 pl-2 pr-2 text-meta font-medium text-muted-foreground transition-colors hover:text-foreground"
+      className="group/fold flex min-h-[30px] w-full items-center gap-1 pl-2 pr-2 text-meta font-normal text-muted-foreground transition-colors hover:text-foreground"
     >
       <span>{label}</span>
       <HugeiconsIcon
-        icon={ArrowDown01Icon}
+        icon={open ? ArrowDown01Icon : ArrowRight01Icon}
         size={12}
         className={cn(
-          "opacity-0 transition-[opacity,transform] group-hover/fold:opacity-100 group-focus-visible/fold:opacity-100 motion-reduce:transition-none",
-          open && "rotate-180"
+          open ? "opacity-0 group-hover/fold:opacity-100 group-focus-visible/fold:opacity-100" : "opacity-100",
+          "transition-opacity motion-reduce:transition-none"
         )}
       />
       {trailing ? <span className="ml-auto flex items-center gap-1.5">{trailing}</span> : null}
@@ -166,7 +167,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
-    collapsed,
+    collapsed, setCollapsed,
     navWidth, setNavWidth,
     agentsOpen, setAgentsOpen,
     pinnedOpen, setPinnedOpen,
@@ -255,16 +256,16 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   const navLinkClass = (isActive: boolean) =>
     cn(
       // pl-2 = gap-2：图标距左缘 = 图标距标题；20px 槽 + gap-2 = 28px 图形列。
-      "relative isolate flex items-center gap-2 pl-2 pr-3 min-h-[36px] rounded-md text-body transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
+      "relative isolate flex items-center gap-2 pl-2 pr-3 min-h-[30px] rounded-md text-body text-sidebar-foreground transition-[color,background-color,transform] duration-150 motion-safe:active:scale-[0.98]",
       isActive
-        ? "text-primary font-medium"
-        : "text-foreground hover:bg-accent hover:text-accent-foreground"
+        ? "text-foreground font-medium"
+        : "hover:bg-foreground/10 hover:text-foreground"
     );
 
   function NavGlyph({ icon }: { icon: typeof ChatAddIcon }) {
     return (
       <span className="flex size-5 shrink-0 items-center justify-center">
-        <HugeiconsIcon icon={icon} size={16} aria-hidden="true" />
+        <HugeiconsIcon icon={icon} size={14} aria-hidden="true" />
       </span>
     );
   }
@@ -274,7 +275,8 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     const isRunning = r.status === "running";
     const isBlocked = (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending;
     const disabled = !r.available || r.userDisabled;
-    // 中性线性图标（与一级导航同阶）；状态点只在进行中/待拍板时出现。
+    const roleTone = ROLE_UI[r.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral";
+    // 六个岗位统一使用用户图标；岗位差异由语义色背景表达，状态点只在进行中/待拍板时出现。
     const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;
     const dotLabel = isRunning ? "在忙" : "待拍板";
     return (
@@ -284,16 +286,21 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         title={r.name}
         className={cn(
           // 正文阶默认 400；悬停只换底色，不加深字色。选中态加 medium。
-          "group relative flex items-center gap-2 rounded-[var(--radius)] pl-2 pr-2 min-h-[32px] text-body transition-colors",
+          "group relative flex items-center gap-2 rounded-md pl-2 pr-2 min-h-[30px] text-body transition-colors",
           isActive
-            ? "bg-primary/10 text-primary font-medium"
-            : disabled
-              ? "text-muted-foreground/50 hover:bg-accent"
-              : "text-foreground hover:bg-accent"
+              ? "bg-primary/10 text-foreground font-medium"
+              : disabled
+                ? "text-muted-foreground/50 hover:bg-foreground/10"
+                : "text-sidebar-foreground hover:bg-foreground/10 hover:text-foreground"
         )}
       >
         <span className="relative shrink-0 flex size-5 items-center justify-center">
-          <HugeiconsIcon icon={roleNavIcon(r.roleId)} size={16} aria-hidden="true" />
+          <span
+            className={cn("fa-toned flex size-5 items-center justify-center rounded-md", disabled && "opacity-50")}
+            style={{ "--tone": `var(${roleTone})` } as CSSProperties}
+          >
+            <HugeiconsIcon icon={User02Icon} size={14} aria-hidden="true" />
+          </span>
           {dotTone && (
             <span
               className={cn("fa-tone-dot absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar", isRunning && "fa-dot-pulse")}
@@ -332,7 +339,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
     return (
       <motion.div
         key={c.id}
-        layout={!reduce}
+        layout={!reduce && !dragging}
         initial={reduce ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={reduce ? undefined : { opacity: 0 }}
@@ -346,19 +353,19 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
           renamingId === c.id
             ? ""
             : isActive
-              ? "bg-primary/10 text-primary font-medium"
-              : "text-foreground hover:bg-accent"
+              ? "bg-primary/10 text-foreground font-medium"
+              : "text-sidebar-foreground hover:bg-foreground/10 hover:text-foreground"
         )}
       >
         <ContextMenu>
           <ContextMenuTrigger asChild disabled={renamingId === c.id}>
-            <div className="flex min-h-[32px] min-w-0 flex-1 items-center">
+            <div className="flex min-h-[30px] min-w-0 flex-1 items-center">
               {renamingId === c.id ? (
-                <div className="flex min-h-[32px] flex-1 min-w-0 items-center gap-2 pl-2 pr-2">
+                <div className="flex min-h-[30px] flex-1 min-w-0 items-center gap-2 pl-2 pr-2">
                   {graphicSlot}
                   <Input
                     ref={renameInputRef}
-                    className="h-7 flex-1 px-2 py-1 text-body"
+                    className="sidebar-rename-input h-7 flex-1 pl-0 pr-2 py-1 text-body"
                     value={renameDraft}
                     onChange={(e) => setRenameDraft(e.target.value)}
                     onKeyDown={(e) => {
@@ -372,7 +379,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                 <Link
                   href={`/chat/recent?id=${c.id}`}
                   title={c.roleId ? `${ROLE_LABELS[c.roleId] ?? c.roleId} · 专员会话 · ${c.title}` : c.title}
-                  className="flex min-h-[32px] flex-1 min-w-0 items-center gap-2 pl-2 pr-2 py-1"
+                    className="flex min-h-[30px] flex-1 min-w-0 items-center gap-2 pl-2 pr-2 py-1"
                 >
                   {graphicSlot}
                   <span className="min-w-0 truncate">{c.title}</span>
@@ -388,7 +395,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                       // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                       className="opacity-0 group-hover:opacity-100 mr-1 p-1 rounded text-muted-foreground transition hover:bg-foreground/10"
                     >
-                      <HugeiconsIcon icon={MoreHorizontalIcon} size={14} />
+                      <HugeiconsIcon icon={MoreVerticalIcon} size={14} />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-32">
@@ -455,7 +462,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       >
       {/* 顶栏:左侧为 macOS 红绿灯预留(DragHandle 拖拽区);右侧放收起按钮(展开态才在侧栏里)。
           Windows 无红绿灯,靠 .app-nav-topbar 的平台样式改为靠左,不留左上角空档(见 globals.css)。 */}
-      <div className="app-nav-topbar relative h-11 shrink-0 flex items-center justify-end pr-2">
+      <div className="app-nav-topbar relative h-[46px] shrink-0 flex items-center justify-end pr-2">
         <DragHandle />
         <NavTopControls />
       </div>
@@ -473,8 +480,8 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               <NavGlyph icon={DashboardSquare02Icon} />
               <span>总览</span>
             </Link>
-            <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "files" || active === "knowledge")}>
-              {(active === "files" || active === "knowledge") && <NavActivePill reduce={reduce} />}
+            <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "knowledge")}>
+              {active === "knowledge" && <NavActivePill reduce={reduce} />}
               <NavGlyph icon={LibraryIcon} />
               <span>知识库</span>
             </Link>
@@ -564,9 +571,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             </nav>
           </div>
 
-          <div className="flex flex-col gap-0.5 px-3 py-2 shrink-0">
+          <div className="relative flex h-[46px] flex-col justify-center gap-0 px-3 py-0 shrink-0">
             {/* 与上方对话列表隔一条发丝线 */}
-            <div className="mx-1 mb-1 border-t border-border" />
+            <div className="absolute inset-x-0 top-0 border-t border-border" />
             {/* 用户头像行:左侧头像+名字,右侧保留「设置」齿轮图标;整行点击打开设置。
                 hover 提示带上设置快捷键(mod+,),与顶部其它入口一致。 */}
             <ShortcutHint label="设置" combo="mod+," side="right">
@@ -577,14 +584,14 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                 aria-label="设置"
                 // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                 className={cn(
-                  "group flex items-center gap-2 rounded-md pl-1.5 pr-1 min-h-[40px] transition-colors",
-                  active === "config" ? "bg-primary/10" : "hover:bg-accent"
+                  "group flex h-[30px] min-h-[30px] items-center gap-2 rounded-md pl-1.5 pr-1 transition-colors",
+                active === "config" ? "bg-primary/10" : "hover:bg-foreground/10"
                 )}
               >
-                <UserAvatar name={userName} avatar={userAvatar} size="default" />
+                <UserAvatar name={userName} avatar={userAvatar} size="sm" />
                 <span className="flex-1 min-w-0 truncate text-small text-foreground">{userName || "用户"}</span>
                 <span className="shrink-0 p-1 text-muted-foreground transition-colors group-hover:text-foreground" aria-hidden>
-                  <HugeiconsIcon icon={Settings02Icon} size={16} />
+                  <HugeiconsIcon icon={Settings02Icon} size={14} />
                 </span>
               </Link>
             </ShortcutHint>
@@ -628,11 +635,17 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
             e.preventDefault();
             const startX = e.clientX;
             const startW = navWidth;
+            let latestW = startW;
             setDragging(true);
             const onMove = (ev: MouseEvent) => {
-              setNavWidth(startW + (ev.clientX - startX));
+              latestW = startW + (ev.clientX - startX);
+              setNavWidth(latestW);
             };
             const onUp = () => {
+              if (latestW < MIN_NAV_WIDTH) {
+                setNavWidth(DEFAULT_NAV_WIDTH);
+                setCollapsed(true);
+              }
               setDragging(false);
               document.removeEventListener("mousemove", onMove);
               document.removeEventListener("mouseup", onUp);

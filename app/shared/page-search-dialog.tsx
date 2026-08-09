@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeholder, label, onSubmit, className }: {
+export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeholder, label, onSubmit, className, alwaysVisible = false }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   value: string;
@@ -17,6 +17,8 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
   onSubmit?: () => void;
   /** 覆盖外层左右缩进；设置侧栏应与菜单 nav 同为 px-2，使搜索宽与 hover 齐。 */
   className?: string;
+  /** 常驻搜索栏：用于设置侧栏，与下方菜单保持同一行高和宽度。 */
+  alwaysVisible?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,14 +40,14 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  if (!open) return null;
+  if (!open && !alwaysVisible) return null;
 
   return (
-    <div className={cn("flex shrink-0 justify-end border-b border-border px-3.5 py-2", className)}>
+    <div className={cn("flex h-[46px] shrink-0 items-center border-b border-border px-2", className)}>
       <form
         role="search"
         // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-        className="flex h-9 w-full max-w-[280px] items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-xs"
+        className="flex h-[30px] w-full items-center gap-2 rounded-md border border-input bg-background px-2 shadow-xs"
         onSubmit={(event) => { event.preventDefault(); onSubmit?.(); }}
       >
         <HugeiconsIcon icon={Search01Icon} size={16} className="shrink-0 text-muted-foreground" />
@@ -57,16 +59,18 @@ export function PageSearchBar({ open, onOpenChange, value, onValueChange, placeh
           aria-label={label}
           className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-0 text-body shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label="关闭搜索"
-          onClick={() => onOpenChange(false)}
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-        >
-          <HugeiconsIcon icon={Cancel01Icon} size={14} />
-        </Button>
+        {!alwaysVisible && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="关闭搜索"
+            onClick={() => onOpenChange(false)}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={14} />
+          </Button>
+        )}
       </form>
     </div>
   );

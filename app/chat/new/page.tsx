@@ -5,7 +5,7 @@ import { getSkill, isValidSkillName } from "@/lib/agent/skills-store";
 import { getRoleDefinition } from "@/lib/agent/roles/registry";
 import { getDisabledRoleIds } from "@/lib/agent/roles/availability";
 
-export default async function NewChatPage({ searchParams }: { searchParams: Promise<{ prompt?: string; skill?: string; role?: string }> }) {
+export default async function NewChatPage({ searchParams }: { searchParams: Promise<{ prompt?: string; skill?: string; role?: string; mock?: string }> }) {
   const params = await searchParams;
   // Next 已对 searchParams 解码;再 decode 会让含 % 的文本抛 URIError
   const initialSkill = params.skill && isValidSkillName(params.skill) ? await getSkill(params.skill) : null;
@@ -15,6 +15,7 @@ export default async function NewChatPage({ searchParams }: { searchParams: Prom
   const disabled = new Set(getDisabledRoleIds());
   const specialistRole = roleDef?.available && !disabled.has(roleDef.id) ? roleDef : undefined;
   const settings = await readPublicAgentSettings().catch(() => null);
+  const mockMode = params.mock === "all";
   return (
     <ChatPage
       key={specialistRole ? `chat:new:${specialistRole.id}` : "chat:new"}
@@ -24,6 +25,7 @@ export default async function NewChatPage({ searchParams }: { searchParams: Prom
       initialSkill={initialSkill ? { name: initialSkill.name, description: initialSkill.description } : undefined}
       initialRole={specialistRole ? { id: specialistRole.id, name: specialistRole.name } : undefined}
       roleMode={settings?.roleMode ?? "daily"}
+      mockMode={mockMode}
     />
   );
 }

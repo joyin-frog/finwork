@@ -250,7 +250,7 @@ function TaskRow({ row, selected, onSelect }: { row: DispatchRow; selected: bool
         <span className="fa-tone-pill text-meta shrink-0" style={{ "--tone": tone } as CSSProperties}>{tag}</span>
         <span className="flex-1 min-w-0 truncate text-body">{row.label ?? row.summary ?? `#${row.id}`}</span>
         {row.period && (
-          <span className="shrink-0 text-meta text-muted-foreground bg-muted/60 rounded-[var(--radius)] px-1">{row.period}</span>
+          <span className="shrink-0 text-meta text-muted-foreground bg-muted/60 rounded-[var(--radius-4)] px-1">{row.period}</span>
         )}
         <span className="shrink-0 text-meta text-muted-foreground whitespace-nowrap tabular-nums">{relativeTime(row.startedAt)}</span>
       </Surface>
@@ -366,7 +366,7 @@ function TaskPreview({
           {/* 排队中：任务摘要 + 来源会话 + 现在开始 / 移除 */}
           {queued && (
             <section
-              className="fa-toned rounded-[var(--radius)] px-3 py-2.5 flex flex-col gap-2"
+              className="fa-toned rounded-lg px-3 py-2.5 flex flex-col gap-2"
               style={{ "--tone": "var(--tone-analysis,var(--muted-foreground))", borderLeft: "2px solid var(--tone-analysis,var(--muted-foreground))" } as CSSProperties}
             >
               <p className="text-meta font-semibold" style={{ color: "var(--tone-analysis,var(--muted-foreground))" }}>等待启动</p>
@@ -392,7 +392,7 @@ function TaskPreview({
           {/* 待拍板：疑点/停在确认门 + 去处理 + 确认 */}
           {pending && (
             <section
-              className="fa-toned rounded-[var(--radius)] px-3 py-2.5 flex flex-col gap-2"
+              className="fa-toned rounded-lg px-3 py-2.5 flex flex-col gap-2"
               style={{ "--tone": "var(--tone-notice)", borderLeft: "2px solid var(--tone-notice)" } as CSSProperties}
             >
               <p className="text-meta font-semibold" style={{ color: "var(--tone-notice)" }}>
@@ -427,7 +427,7 @@ function TaskPreview({
           {/* 失败：摘要 + 查看会话（不写「已完成」） */}
           {failed && (
             <section
-              className="fa-toned rounded-[var(--radius)] px-3 py-2.5 flex flex-col gap-2"
+              className="fa-toned rounded-lg px-3 py-2.5 flex flex-col gap-2"
               style={{ "--tone": "var(--tone-alarm)", borderLeft: "2px solid var(--tone-alarm)" } as CSSProperties}
             >
               <p className="text-meta font-semibold" style={{ color: "var(--tone-alarm)" }}>任务失败</p>

@@ -34,7 +34,7 @@ export function Callout({
   const { icon: defaultIcon, accent } = VARIANTS[variant];
   return (
     <Surface
-      level="page"
+      level="card"
       edge="hairline"
       shape="card"
       role={variant === "warn" ? "alert" : "status"}

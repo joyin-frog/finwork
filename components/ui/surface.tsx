@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  * 实施注意（spec-ui-foundation.md reviewer 附带）：
  *   --radius-chip 只在 :root 声明，Surface 用
  *   rounded-[var(--radius-chip)] 任意值语法消费，
- *   与 shadow-[var(--elevation-*)] 同一机制。
+ *   与 shadow-[var(--elevation-1)] 同一机制。
  *
  * variant 值全部来自三个试点文件的现状写法，视觉零变化。
  */
@@ -52,7 +52,7 @@ const surfaceVariants = cva("", {
      *   control : rounded-md（试点 19 处）
      *   card    : rounded-lg（resource-card 卡片本体等）
      *   panel   : rounded-xl
-     *   overlay : rounded-2xl
+     *   overlay : rounded-xl
      *   pill    : rounded-full（5 处）
      */
     shape: {
@@ -61,7 +61,7 @@ const surfaceVariants = cva("", {
       control: "rounded-md",
       card: "rounded-lg",
       panel: "rounded-xl",
-      overlay: "rounded-2xl",
+      overlay: "rounded-xl",
       pill: "rounded-full",
     },
     /**

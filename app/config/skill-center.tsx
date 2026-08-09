@@ -2,9 +2,7 @@
 
 import { useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Search01Icon } from "@hugeicons/core-free-icons";
 import { PageSearchBar } from "@/app/shared/page-search-dialog";
-import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import type { PublicAgentSettings } from "@/lib/settings/agent-settings";
 import { CONFIG_TABS, type ConfigTabKey } from "@/app/config/tabs";
 import { GeneralSettings } from "./general/general-settings";
@@ -16,7 +14,6 @@ import { AboutSettings } from "./about/about-settings";
 import { SaveStatusText, type SaveStatus } from "@/app/config/settings-ui";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
-import { useShortcutEvent } from "@/app/shared/global-shortcuts";
 import { useUserIdentity } from "@/app/shared/user-identity";
 import { cn } from "@/lib/utils";
 
@@ -42,9 +39,7 @@ export default function SkillCenter({
   const [activeTab, setActiveTab] = useState<SettingsTab>(isSettingsTab(initialTab) ? initialTab : "general");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [query, setQuery] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
   const identity = useUserIdentity();
-  useShortcutEvent("search-settings", () => setSearchOpen(true));
 
   const saveAgentRef = useRef(saveAgentSettings);
   saveAgentRef.current = saveAgentSettings;
@@ -117,31 +112,19 @@ export default function SkillCenter({
         <DragHandle />
         <SidebarToggle />
         <h1 className="text-title font-semibold">设置</h1>
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <ShortcutHint label="搜索" combo="mod+f">
-            <button
-              type="button"
-              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-              className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", query && "bg-accent text-foreground")}
-              onClick={() => setSearchOpen(true)}
-              aria-label="搜索设置"
-            >
-              <HugeiconsIcon icon={Search01Icon} size={16} />
-            </button>
-          </ShortcutHint>
-        </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar: shares the outer box with content, just a vertical divider — no gap, no separate corners */}
         <aside className="w-52 shrink-0 flex flex-col border-r border-border overflow-hidden">
           <PageSearchBar
-            open={searchOpen}
-            onOpenChange={(open) => { setSearchOpen(open); if (!open) setQuery(""); }}
+            open
+            onOpenChange={() => setQuery("")}
             value={query}
             onValueChange={setQuery}
             placeholder="搜索设置"
             label="设置"
             className="px-2"
+            alwaysVisible
           />
           {/* Tab list */}
           <nav className="flex flex-col gap-0.5 px-2 py-2 flex-1 overflow-y-auto">
@@ -156,13 +139,13 @@ export default function SkillCenter({
                   onClick={(e) => { e.preventDefault(); openTab(tab.key); }}
                   // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-md text-body transition-colors",
+                    "flex min-h-[30px] items-center gap-2 px-3 py-1 rounded-md text-body transition-colors",
                     activeTab === tab.key
                       ? "bg-accent text-accent-foreground font-medium"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      : "text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
                   )}
                 >
-                  <HugeiconsIcon icon={tab.icon} size={15} />
+                  <HugeiconsIcon icon={tab.icon} size={14} />
                   <span>{tab.label}</span>
                 </a>
               ))
@@ -173,8 +156,8 @@ export default function SkillCenter({
         {/* Right content */}
         <div className="relative flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0">
-            <h2 className="text-title font-semibold">{activeTabMeta.label}</h2>
-            <SaveStatusText status={saveStatus} />
+              <h2 className="text-title font-semibold">{activeTabMeta.label}</h2>
+              <SaveStatusText status={saveStatus} />
           </div>
           <div className="flex-1 overflow-auto px-6 pb-6">
             {activeTab === "general" && (

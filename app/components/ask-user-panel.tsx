@@ -1,16 +1,15 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Edit02Icon, HelpCircleIcon, ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { HelpCircleIcon, ArrowLeft01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Marker, MarkerContent } from "@/components/ui/marker";
-import { Kbd } from "@/components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Surface } from "@/components/ui/surface";
@@ -27,10 +26,13 @@ export function AskUserPanel({
   questionId,
   question,
   onResolved,
+  demo = false,
 }: {
   questionId: string;
   question: AskUserQuestionPayload;
   onResolved?: () => void;
+  /** 视觉演示模式：不请求后端，点击后只关闭演示卡。 */
+  demo?: boolean;
 }) {
   const subs = useMemo(() => getSubQuestions(question), [question]);
   const multiQ = subs.length > 1;
@@ -54,6 +56,13 @@ export function AskUserPanel({
     if (submittedRef.current) return;
     submittedRef.current = true;
     setSubmitting(true);
+    if (demo) {
+      window.setTimeout(() => {
+        setSubmitting(false);
+        onResolved?.();
+      }, 180);
+      return;
+    }
     try {
       const res = await fetch("/api/agent/answer", {
         method: "POST",
@@ -109,23 +118,6 @@ export function AskUserPanel({
     }
     void submit(ans);
   }
-
-  function ignore() {
-    void submit("");
-  }
-
-  // ESC = 忽略(提交空,等同跳过/取消)
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        ignore();
-      }
-    };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── 确认卡分支 ────────────────────────────────────────────────────────────
   // kind==="confirm" 时渲染高风险动作确认卡:后果告警色、两按钮、无文本输入框。
@@ -204,14 +196,12 @@ export function AskUserPanel({
   }
 
   return (
-    <Surface level="card" edge="hairline" shape="overlay" className="shadow-none px-4 pt-3 pb-3 flex flex-col gap-3">
-      {/* 顶部:走光「正在询问」+ header;多题显示进度点。
-          aria-label 给这个 live region 一个可访问名(否则内容只算 description、SR 与
-          getByRole({name}) 都取不到),扫光统一用品牌色。 */}
-      <Marker role="status" aria-label={`正在询问${sub.header ? ` · ${sub.header}` : ""}`} className="justify-between text-meta">
-        <MarkerContent className="shimmer shimmer-color-primary text-muted-foreground">正在询问{sub.header ? ` · ${sub.header}` : ""}</MarkerContent>
+    <div className="relative">
+      {/* 叠式半卡片：标题放在全宽背板里，主体卡片向上压住背板下半截。 */}
+      <div className="relative z-0 flex h-auto min-h-16 items-start rounded-t-xl bg-muted px-4 pt-2.5 pb-5 text-body whitespace-pre-line">
+        {sub.question}
         {multiQ ? (
-          <div className="flex items-center gap-1.5">
+          <div className="absolute right-4 top-3 flex items-center gap-1.5">
             <span className="text-caption text-muted-foreground tabular-nums">{curIdx + 1}/{subs.length}</span>
             <div className="flex items-center gap-1">
               {subs.map((_, i) => (
@@ -226,101 +216,95 @@ export function AskUserPanel({
             </div>
           </div>
         ) : null}
-      </Marker>
+      </div>
 
-      {/* 问题 */}
-      <div className="text-title whitespace-pre-line">{sub.question}</div>
-
-      {/* 编号选项(Command 提供高亮/键盘导航;无 CommandInput→不过滤、全列) */}
-      {options.length > 0 && (
-        <Command loop shouldFilter={false} className="bg-transparent">
-          <CommandList className="max-h-60">
-            <CommandGroup className="p-0">
-              {options.map((o, i) => {
-                const on = selected.includes(o.label);
-                return (
-                  <CommandItem
-                    key={o.label}
-                    value={o.label}
-                    onSelect={() => toggle(o.label)}
-                    // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-                    className="gap-2 rounded-lg px-2 py-2 cursor-pointer"
-                  >
-                    <span
+      <Surface level="card" edge="hairline" shape="overlay" className="relative z-10 -mt-5 bg-card dark:bg-background shadow-none px-4 pt-4 pb-3 flex flex-col gap-3">
+        {options.length > 0 && (
+          <Command loop shouldFilter={false} className="bg-transparent p-0">
+            <CommandList className="max-h-60">
+              <CommandGroup className="overflow-visible p-0">
+                {options.map((o, i) => {
+                  const on = selected.includes(o.label);
+                  return (
+                    <CommandItem
+                      key={o.label}
+                      value={o.label}
+                      onSelect={() => toggle(o.label)}
                       // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                       className={cn(
-                        "flex size-5 shrink-0 items-center justify-center rounded-full border text-caption tabular-nums",
-                        on ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
+                        "mb-2 h-[30px] min-h-0 gap-2 rounded-md! border border-border bg-card px-2 py-0 shadow-[var(--elevation-1)] cursor-pointer last:mb-0 [&>svg:last-child]:hidden",
+                        on && "bg-primary/10 text-foreground",
                       )}
                     >
-                      {on && sub.multiSelect ? "✓" : i + 1}
-                    </span>
-                    <span className="flex-1 text-body">{o.label}</span>
-                    {o.description ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-muted-foreground/50 hover:text-muted-foreground">
-                            <HugeiconsIcon icon={HelpCircleIcon} size={14} />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">{o.description}</TooltipContent>
-                      </Tooltip>
-                    ) : null}
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      )}
-
-      {/* 自由输入(输了就以它为答案) */}
-      <InputGroup>
-        <InputGroupAddon>
-          <HugeiconsIcon icon={Edit02Icon} size={14} className="text-muted-foreground" />
-        </InputGroupAddon>
-        <InputGroupInput
-          placeholder="或直接告诉我你的想法…"
-          value={custom}
-          disabled={submitting}
-          onChange={(e) => setCustom(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              proceed();
-            }
-          }}
-        />
-      </InputGroup>
-
-      {/* 底部操作:多题=上一题/下一题·末题提交;单题=忽略/提交 */}
-      <div className="flex items-center justify-between gap-2">
-        {multiQ ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setCurIdx((i) => Math.max(i - 1, 0))}
-            disabled={submitting || curIdx === 0}
-            className="text-muted-foreground"
-          >
-            <HugeiconsIcon icon={ArrowLeft01Icon} size={14} /> 上一题
-          </Button>
-        ) : (
-          <Button variant="ghost" size="sm" onClick={ignore} disabled={submitting} className="text-muted-foreground">
-            忽略 <Kbd>ESC</Kbd>
-          </Button>
+                      <span
+                        // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
+                        className={cn(
+                          "flex size-5 shrink-0 items-center justify-center rounded-full border text-caption tabular-nums",
+                          on ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
+                        )}
+                      >
+                        {on && sub.multiSelect ? "✓" : i + 1}
+                      </span>
+                      <span className="flex-1 text-body">{o.label}</span>
+                      {o.description ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="ml-auto text-muted-foreground/50 hover:text-muted-foreground">
+                              <HugeiconsIcon icon={HelpCircleIcon} size={14} />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">{o.description}</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
         )}
 
-        {multiQ && !isLast ? (
-          <Button size="sm" onClick={proceed} disabled={submitting}>
-            下一题 <HugeiconsIcon icon={ArrowRight01Icon} size={14} />
-          </Button>
-        ) : (
-          <Button size="sm" onClick={proceed} disabled={submitting}>
-            提交 <span className="ml-0.5 opacity-60">⏎</span>
-          </Button>
-        )}
-      </div>
-    </Surface>
+        {/* 自由输入与选项行共用同一水平起止线、行高和圆角。 */}
+        <InputGroup className="h-[30px] w-full rounded-md">
+          <InputGroupInput
+            className="h-[30px] rounded-md px-2 text-body"
+            placeholder="或直接告诉我你的想法…"
+            value={custom}
+            disabled={submitting}
+            onChange={(e) => setCustom(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                proceed();
+              }
+            }}
+          />
+        </InputGroup>
+
+        <div className={cn("flex items-center gap-2", multiQ ? "justify-between" : "justify-end")}>
+          {multiQ ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurIdx((i) => Math.max(i - 1, 0))}
+              disabled={submitting || curIdx === 0}
+              className="text-muted-foreground"
+            >
+              <HugeiconsIcon icon={ArrowLeft01Icon} size={14} /> 上一题
+            </Button>
+          ) : null}
+
+          {multiQ && !isLast ? (
+            <Button size="sm" onClick={proceed} disabled={submitting}>
+              下一题 <HugeiconsIcon icon={ArrowRight01Icon} size={14} />
+            </Button>
+          ) : (
+            <Button size="sm" onClick={proceed} disabled={submitting}>
+              提交 <span className="ml-0.5 opacity-60">⏎</span>
+            </Button>
+          )}
+        </div>
+      </Surface>
+    </div>
   );
 }

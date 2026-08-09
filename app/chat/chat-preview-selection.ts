@@ -10,6 +10,7 @@ type DraftAttachmentLike = {
 };
 
 type DisplayFileLike = {
+  id?: string | number;
   name: string;
   mimeType: string;
   sizeBytes: number;
@@ -19,6 +20,7 @@ type DisplayFileLike = {
 };
 
 type ReferencedFileLike = {
+  id?: string;
   name: string;
   mimeType: string;
   sizeBytes: number;
@@ -58,6 +60,7 @@ export function previewSelectionFromReferencedFile(
   return {
     kind: "conversation",
     conversationId,
+    attachmentId: file.id,
     storagePath: file.storagePath,
     name: file.name,
     mimeType: file.mimeType,
@@ -73,6 +76,7 @@ export function previewSelectionFromDisplayFile(
     return {
       kind: "conversation",
       conversationId,
+      attachmentId: file.id?.toString(),
       storagePath: file.storagePath,
       name: file.name,
       mimeType: file.mimeType,

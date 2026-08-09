@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
+import dynamic from "next/dynamic";
 import {
   ArrowUp02Icon,
   AttachmentIcon,
@@ -46,7 +47,6 @@ import type {
   FolderRef,
 } from "@/app/chat/chat-types";
 import type { ChatQuickPrompt } from "@/lib/domain/tax-calendar";
-import { ChatPreviewSidebar } from "@/app/chat/chat-preview-sidebar";
 import {
   previewSelectionFromConversationFile,
   previewSelectionFromDisplayFile,
@@ -97,6 +97,14 @@ import { useChatNavigation } from "@/app/chat/hooks/use-chat-navigation";
 import { useAttachments } from "@/app/chat/hooks/use-attachments";
 import { useRunStatus } from "@/app/chat/hooks/use-run-status";
 import { canShowFileTaskSuccess } from "@/lib/agent/run-status-labels";
+import { MOCK_CHAT_MESSAGES, MOCK_PENDING_QUESTION } from "@/app/chat/mock-conversation";
+
+// 文件预览链包含 PDF/Office/文档解析依赖，仅在用户打开右侧预览时加载。
+// 这条链不应进入对话页首屏和其他页面的初始客户端依赖图。
+const ChatPreviewSidebar = dynamic(
+  () => import("@/app/chat/chat-preview-sidebar").then((mod) => mod.ChatPreviewSidebar),
+  { ssr: false },
+);
 
 type ChatMode = "new" | "recent";
 
@@ -111,6 +119,7 @@ export default function ChatPage({
   initialRole,
   quickPrompts,
   roleMode = "daily",
+  mockMode = false,
 }: {
   mode: ChatMode;
   initialConversationId?: number | null;
@@ -120,6 +129,8 @@ export default function ChatPage({
   initialRole?: { id: string; name: string };
   quickPrompts?: ChatQuickPrompt[];
   roleMode?: RoleMode;
+  /** 仅用于视觉调试：用一组静态消息覆盖真实会话数据。 */
+  mockMode?: boolean;
 }) {
   const {
     refreshConversations,
@@ -132,7 +143,7 @@ export default function ChatPage({
   const [conversationId, setConversationId] = useState<number | null>(initialConversationId);
   const urlUpdatedRef = useRef(false);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => mockMode ? MOCK_CHAT_MESSAGES : []);
   const [draft, setDraft] = useState(() => {
     if (initialDraft) return initialDraft;
     if (typeof window === "undefined") return "";
@@ -158,6 +169,7 @@ export default function ChatPage({
   const activeTimeline: TimelineItem[] = turn?.timeline ?? [];
   // 待答的 ask_user → 吸附在输入框上方的浮层;已答的在时间线里以紧凑摘要呈现
   const pendingAsk = useMemo(() => {
+    if (mockMode) return null;
     if (!loading) return null;
     const answered = new Set<string>();
     for (const t of activeTimeline) if (t.event.type === "ask_user_answered") answered.add(t.event.questionId);
@@ -166,7 +178,7 @@ export default function ChatPage({
       if (e.type === "ask_user" && !answered.has(e.questionId)) return e;
     }
     return null;
-  }, [loading, activeTimeline]);
+  }, [loading, activeTimeline, mockMode]);
   // 渲染用消息 = 已落库/已加载的历史;若本会话有进行中(或刚结束待收尾)的回合,
   // 在其上叠加"用户消息 + 助手流式气泡"(收尾 effect 会把最终消息写回本地 messages 后清掉回合)。
   const displayMessages: Message[] = useMemo(() => {
@@ -519,11 +531,11 @@ export default function ChatPage({
   }, [conversationFiles]);
 
   useEffect(() => {
-    if (mode !== "recent" || !conversationId) return;
+    if (mockMode || mode !== "recent" || !conversationId) return;
     let cancelled = false;
     void loadConversation(conversationId, () => cancelled);
     return () => { cancelled = true; };
-  }, [conversationId, mode]);
+  }, [conversationId, mode, mockMode]);
 
   // ask-user 面板消失后刷新信任列表（用户可能刚勾了「本次对话不再询问」）。
   const prevPendingAskRef = useRef<typeof pendingAsk>(null);
@@ -930,6 +942,7 @@ export default function ChatPage({
         text: file.text
       })),
       ...outgoingRefAttachments.map((file) => ({
+        id: file.id,
         name: file.name,
         mimeType: file.mimeType,
         sizeBytes: file.sizeBytes,
@@ -981,6 +994,7 @@ export default function ChatPage({
     return files
       .filter((f) => f.storagePath)
       .map((f) => ({
+        id: f.id?.toString(),
         name: f.name,
         mimeType: f.mimeType,
         sizeBytes: f.sizeBytes,
@@ -1046,7 +1060,7 @@ export default function ChatPage({
                   {sessionRole.name.slice(0, 1)}
                 </span>
               )}
-              <h1 data-tauri-drag-region className="flex-1 min-w-0 text-title truncate">
+              <h1 data-tauri-drag-region className="flex-1 min-w-0 text-body truncate">
                 {sessionRole ? `${sessionRole.name} · 专员会话` : displayTitle}
               </h1>
               {sessionRole && (
@@ -1116,6 +1130,15 @@ export default function ChatPage({
                         qualityStatus={authoritativeRun.qualityStatus}
                         terminationReason={authoritativeRun.terminationReason}
                         recentStep={authoritativeRun.latestCheckpoint?.lastCompletedStage ?? null}
+                        className="w-full"
+                      />
+                    </div>
+                  ) : mockMode ? (
+                    <div className="mb-3">
+                      <RunStatusBanner
+                        status="waiting_user"
+                        qualityStatus="unverified"
+                        recentStep="演示状态：等待用户确认下一步口径"
                         className="w-full"
                       />
                     </div>
@@ -1203,11 +1226,17 @@ export default function ChatPage({
                     questionId={pendingAsk.questionId}
                     question={pendingAsk.question}
                   />
+                ) : mockMode ? (
+                  <AskUserPanel
+                    questionId={MOCK_PENDING_QUESTION.questionId}
+                    question={MOCK_PENDING_QUESTION.question}
+                    demo
+                  />
                 ) : (
                 <form
                   className={cn(
                     surfaceVariants({ level: "card", edge: "hairline", shape: "overlay" }),
-                    "px-4 pt-3 pb-2 flex flex-col gap-2"
+                    "rounded-xl px-3 pt-3 pb-1 flex flex-col gap-2 dark:bg-input"
                   )}
                   onSubmit={(event) => {
                     event.preventDefault();
@@ -1287,8 +1316,7 @@ export default function ChatPage({
                             variant="ghost"
                             size="icon"
                             className={cn(
-                              surfaceVariants({ level: "page", edge: "none", shape: "pill" }),
-                              "size-8 text-muted-foreground"
+                              "size-7 rounded-full bg-transparent text-muted-foreground"
                             )}
                             aria-label="添加内容"
                           >
@@ -1311,9 +1339,9 @@ export default function ChatPage({
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    <div className="flex items-center gap-0.5">
-                      <DeepThinkToggle active={modelTier === "reasoning"} onToggle={(on) => setModelTier(on ? "reasoning" : "fast")} />
+                    <div className="flex items-center gap-2">
                       <UsageRing usage={usage} />
+                      <DeepThinkToggle active={modelTier === "reasoning"} onToggle={(on) => setModelTier(on ? "reasoning" : "fast")} />
                       {loading ? (
                         <button className="composer-send-button stop" type="button" aria-label="停止生成" onClick={stopGeneration}>
                           <HugeiconsIcon icon={StopIcon} size={16} />
