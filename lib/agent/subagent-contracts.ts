@@ -1,4 +1,5 @@
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
+import type { AgentFoundationContext } from "@/lib/agent/contracts";
 
 export type SubagentTask = {
   roleId: string;
@@ -23,6 +24,8 @@ export type SubagentRunOptions = {
   signal?: AbortSignal;
   conversationId?: string;
   traceId?: string;
+  memoryContext?: Partial<import("@/lib/memory-v2/contracts").MemoryRuntimeContext> | null;
+  foundation?: AgentFoundationContext;
   onEvent?: (event: AgentRuntimeEvent, instanceId: string) => void;
 };
 
@@ -35,4 +38,3 @@ export type SubagentParallelExecutor = (
   tasks: SubagentTask[],
   options: SubagentRunOptions & { concurrency?: number },
 ) => Promise<SubagentResult[]>;
-

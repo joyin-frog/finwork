@@ -239,7 +239,7 @@ export const toolCallStepUiTestPromise = (async () => {
     assert.ok(/min-w-0 truncate text-body/.test(pageSrc2), "C-D4 FAIL: 「已处理 N 步」折叠头应为 text-body");
     // ask-user 摘要行 body 字号(折叠头 padding 已对齐工具组的 summary py-1,details 只保留 text-body)
     const askSrc = src("app/components/ask-user-card.tsx");
-    assert.ok(askSrc.includes('details className="text-body'), "C-D5 FAIL: 已确认摘要行应为 text-body");
+    assert.ok(/<details\s+className="[^"]*\bdetails-fold\b[^"]*\btext-body\b/.test(askSrc), "C-D5 FAIL: 已确认摘要行应为 text-body 且使用统一折叠样式");
     // C-E: 呼吸感与连接线(第三轮)
     assert.ok(!/py-0\.5 text-body/.test(stepSrc2), "C-E1 FAIL: 步骤/组行应为 py-1(呼吸感对齐 Claude)");
     // 连接线为直线(fa-thread 伪元素竖线),行首图标即节点;不再是愣直 border-l

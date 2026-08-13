@@ -205,6 +205,10 @@ async function finalizeOneFile(args: {
     qualityProfile: req.qualityProfile,
     expectedSha256: workingSha,
     needsRecalc: sheetReq?.needsRecalc,
+    recalcPolicy:
+      sheetReq?.needsRecalc === true || req.qualityProfile === "financial_consolidation"
+        ? "required"
+        : "best_effort",
     needsRender: sheetReq?.needsRender,
     requireFormulaCache: sheetReq?.needsRecalc === true,
   });

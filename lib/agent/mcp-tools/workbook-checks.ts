@@ -2,9 +2,14 @@ import path from "node:path";
 import { existsSync, realpathSync } from "node:fs";
 import { z } from "zod/v4";
 import { spreadsheetInspectCells } from "@/lib/runtime/spreadsheet-runtime";
-import { checkWorkbookTies, type TieCheck } from "@/lib/domain/workbook-ties";
-import { detectDataIssues, type DataRow } from "@/lib/domain/data-quality";
-import { mergeLabeledTables, type MergeSource } from "@/lib/domain/table-merge";
+import type { TieCheck } from "@/lib/domain/workbook-ties";
+import type { DataRow } from "@/lib/domain/data-quality";
+import type { MergeSource } from "@/lib/domain/table-merge";
+import {
+  evaluateDataQualityCapability,
+  evaluateTableMergeCapability,
+  evaluateWorkbookTieCapability,
+} from "@/lib/business-rules";
 import type { SdkLike } from "./sdk-types";
 
 const scalar = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -66,7 +71,7 @@ export function createCheckWorkbookTiesTool(
           isError: true as const,
         };
       }
-      const results = checkWorkbookTies(read.data.values, args.checks);
+      const { results } = evaluateWorkbookTieCapability(read.data.values, args.checks);
       const counts = {
         passed: results.filter((r) => r.status === "passed").length,
         failed: results.filter((r) => r.status === "failed").length,
@@ -105,7 +110,7 @@ export function createDetectDataIssuesTool(sdk: SdkLike) {
       numericFields?: string[];
       nonNegativeFields?: string[];
     }) => {
-      const issues = detectDataIssues(args.rows, args);
+      const { issues } = evaluateDataQualityCapability(args.rows, args);
       if (issues.length === 0) {
         return { content: [{ type: "text" as const, text: `检测 ${args.rows.length} 行，未发现声明范围内的问题。` }] };
       }
@@ -141,7 +146,7 @@ export function createMergeTablesTool(sdk: SdkLike) {
       })).min(1).max(50),
     },
     async (args: { sources: MergeSource[] }) => {
-      const merged = mergeLabeledTables(args.sources);
+      const { merged } = evaluateTableMergeCapability(args.sources);
       const header = merged.columns.join(" | ");
       const body = merged.rows
         .slice(0, 300)

@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod/v4";
-import { getPythonPath, getProjectRoot, getAppDataDir } from "@/lib/runtime/paths";
-import { pythonSpawnEnv } from "@/lib/runtime/python-env";
+import { getAppDataDir } from "@/lib/runtime/paths";
+import { runDocumentWorker } from "@/lib/resource/document-worker-pool";
 import { redact } from "@/lib/safety/pii";
 import type { SdkLike } from "./sdk-types";
 import { DocCache } from "./doc-cache";
@@ -62,20 +61,11 @@ export function createReadDocumentTool(
       }
       try {
         const stat = statSync(filePath);
-        const worker = path.join(getProjectRoot(), "workers", "finance_worker.py");
         const text = await docCache.getOrCompute(
           resolvedPath,
           stat.mtimeMs,
           stat.size,
-          async (fp) => {
-            const out = execFileSync(getPythonPath(), [worker, cmd, fp], {
-              encoding: "utf-8",
-              maxBuffer: 20 * 1024 * 1024,
-              timeout: 180_000,
-              env: pythonSpawnEnv(),
-            });
-            return out.trim();
-          }
+          async (fp) => runDocumentWorker(cmd, fp)
         );
         return { content: [{ type: "text" as const, text: redact(text) || "(未提取到文本;若为扫描件请确认清晰度)" }] };
       } catch (err: unknown) {

@@ -87,9 +87,9 @@ export const windowChromeLayoutTestPromise = (async () => {
   assert.match(navTop, /collisionPadding=\{8\}/, "侧栏顶栏 ShortcutHint 应带 collisionPadding");
   assert.match(navTop, /sideOffset=\{6\}/, "侧栏顶栏 ShortcutHint 应带 sideOffset");
 
-  // macOS 零变化：侧栏顶栏继续 h-11，不因 Windows 统一高度被顺手改掉。
+  // 侧栏顶栏与主内容、预览标题栏统一为 46px；Windows 自绘标题栏仍单独消费窗口 token。
   const nav = read("app/shared/app-nav.tsx");
-  assert.match(nav, /app-nav-topbar[^"]*\bh-11\b|"[^"]*\bh-11\b[^"]*app-nav-topbar/, "macOS 侧栏顶栏应保持 h-11");
+  assert.match(nav, /app-nav-topbar[^"]*h-\[46px\]|"[^"]*h-\[46px\][^"]*app-nav-topbar/, "侧栏顶栏应保持 46px");
 
   // 原生窗口标题修复：conf 的 title 因 create:false 不生效，必须在建窗链上设置。
   const lib = read("src-tauri/src/lib.rs");

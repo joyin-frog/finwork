@@ -22,7 +22,8 @@ export type RoleDefinition = {
 
 // 所有角色共享的底座工具（现状内置文件/检索工具照旧放行，不在此列）
 export const SHARED_TOOLS = [
-  "analyze_tabular", "search_knowledge", "query_knowledge", "read_file", "finalize_deliverable",
+  "analyze_tabular", "search_knowledge", "query_knowledge", "read_file", "read_document",
+  "inspect_document_structure", "finalize_deliverable",
 ];
 
 export const ROLE_REGISTRY: RoleDefinition[] = [
@@ -37,6 +38,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
       "check_reimbursement_batch", "record_reimbursement_invoices", "read_expense_policy",
       "query_invoice_ledger",
       "record_document_metadata", "query_kingdee_accounts", "validate_kingdee_voucher",
+      "patch_document",
       "export_kingdee_draft",   // high：子代理内被确认门拒，白名单表达域归属
       // 单据→凭证(voucher-from-slips 合入后补挂,2026-07-02)
       "read_document", "scan_slip_folder", "check_voucher_amount", "map_voucher_account",
@@ -179,7 +181,7 @@ export const ROLE_REGISTRY: RoleDefinition[] = [
     // record_business_metrics 不进白名单(PR #16 review 修复,2026-07-02):该工具 riskLevel=medium,
     // 子代理内确认门只拦 high/ALWAYS_CONFIRM,子代理可无人确认写入 business_metrics——
     // 会把分析师的"推测"结论静默升级成 user_dictated 事实源,踩红线 3。写权限收回主对话(人在场可走确认)。
-    tools: ["generate_business_analysis"],
+    tools: ["generate_business_analysis", "patch_document", "research_web"],
     dataScope: ["fact_metrics（只读）", "用户上传的报表/费用/工资汇总文件"],
     deliverables: ["analysis_report", "metric_table"],
     boundaries: [

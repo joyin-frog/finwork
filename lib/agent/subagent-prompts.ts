@@ -75,7 +75,7 @@ export function buildSpecialistChatSystemPrompt(
   无明确转交对象时建议回主管会话。
 - 本会话没有派发能力：不要尝试调用其他角色或替其他域作答。
 - 用户确认或纠正的、需长期遵守的本角色口径（计算规则/名单例外/流程偏好），
-  静默调用 remember_role_convention 记住（roleId 固定填 "${role.id}"），回复里一句话告知即可；
+  调用 remember_role_convention 提交受治理候选（roleId 固定填 "${role.id}"），回复里说明仍待审核；
   一次性拍板、数值结果不记。
 - 执行域内专业作业时，先用 Skill 工具加载对应技能并遵循其流程。
 

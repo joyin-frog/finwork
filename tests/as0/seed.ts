@@ -51,7 +51,18 @@ export async function seedAttempt(args: {
       mimeType: "text/markdown",
       sizeBytes: statSync(target).size,
       storagePath: target,
-      embedRunner: async () => [],
+      embedRunner: async (texts) => texts.map((text) => {
+        // AS0 fixtures need stable, non-empty vectors so Retrieval v2 exercises
+        // the same indexing contract as production without downloading a model.
+        let a = 0;
+        let b = 0;
+        for (let index = 0; index < text.length; index += 1) {
+          const code = text.charCodeAt(index);
+          a = (a + code * (index + 1)) % 104729;
+          b = (b + code * 31) % 130363;
+        }
+        return [a / 104729, b / 130363, text.length % 997 / 997, 0.1];
+      }),
     });
   }
 

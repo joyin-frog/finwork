@@ -235,12 +235,14 @@ export const navV3TestPromise = (async () => {
     assert.equal(opened2.activeKey, "page:agents:bookkeeper", "F3 FAIL: 新开标签应激活自己");
   }
 
-  // ── 抛光: 侧栏角色行使用中性 Hugeicons，只在有事时显示状态点 ──
+  // ── 抛光: 六个岗位统一 User02Icon，用岗位 tone 背景区分，只在有事时显示状态点 ──
   {
     const navSrc = src("app/shared/app-nav.tsx");
     const roleRowBody = navSrc.slice(navSrc.indexOf("function renderRoleRow"), navSrc.indexOf("function renderConversationRow"));
-    assert.ok(roleRowBody.includes("roleNavIcon"), "抛光 FAIL: 侧栏角色行应走 roleNavIcon 中性图标");
-    assert.ok(!roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 侧栏角色行不应再上岗位 tone 字标");
+    assert.ok(roleRowBody.includes("icon={User02Icon}"), "抛光 FAIL: 侧栏角色行应统一使用 User02Icon");
+    assert.ok(roleRowBody.includes("size={14}"), "抛光 FAIL: 侧栏角色图标应为 14px");
+    assert.ok(roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 岗位差异应由 ROLE_UI tone 背景表达");
+    assert.ok(roleRowBody.includes('style={{ "--tone": `var(${roleTone})` }'), "抛光 FAIL: 岗位 tone 应写入语义背景变量");
     assert.ok(!roleRowBody.includes('borderRadius: "50%"'), "抛光 FAIL: 侧栏角色不应再用圆形字标");
     assert.ok(!roleRowBody.includes("r.name.slice(0, 1)"), "抛光 FAIL: 侧栏角色不应再取名称首字");
     assert.ok(!navSrc.includes("ROLE_NAV_ICONS"), "抛光 FAIL: 不得再维护与 ROLE_UI 脱节的 ROLE_NAV_ICONS");

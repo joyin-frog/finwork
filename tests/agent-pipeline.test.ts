@@ -10,6 +10,7 @@ export const agentPipelineTestPromise = (async () => {
   const routeSource = [
     fs.readFileSync(path.join(import.meta.dirname, "../app/api/agent/query/route.ts"), "utf-8"),
     fs.readFileSync(path.join(import.meta.dirname, "../lib/agent/query-stages.ts"), "utf-8"),
+    fs.readFileSync(path.join(import.meta.dirname, "../lib/agent/turn-persistence.ts"), "utf-8"),
   ].join("\n");
   const assistantInserts = routeSource.match(/insertChatMessage\(conversationId, "assistant"/g) ?? [];
   assert.equal(assistantInserts.length, 1, "AC5 FAIL: assistant 消息落库必须只在共用收尾函数中出现 1 处");

@@ -12,9 +12,13 @@ type ArtifactModule = {
 type CachedWorkbook = {
   fingerprint: string;
   workbook: any;
+  weightBytes: number;
+  accessedAt: number;
 };
 
 const workbookCache = new Map<string, CachedWorkbook>();
+const MAX_WORKBOOK_CACHE_ENTRIES = Math.max(1, Number(process.env.FINANCE_AGENT_WORKBOOK_CACHE_ENTRIES ?? 4));
+const MAX_WORKBOOK_CACHE_BYTES = Math.max(16 * 1024 * 1024, Number(process.env.FINANCE_AGENT_WORKBOOK_CACHE_BYTES ?? 256 * 1024 * 1024));
 
 export type ArtifactToolProbe = {
   provider: "artifact_tool";
@@ -64,6 +68,15 @@ export function artifactToolClearCache(): void {
   workbookCache.clear();
 }
 
+export function artifactToolCacheStats(): { entries: number; estimatedBytes: number; maxEntries: number; maxBytes: number } {
+  return {
+    entries: workbookCache.size,
+    estimatedBytes: [...workbookCache.values()].reduce((total, entry) => total + entry.weightBytes, 0),
+    maxEntries: MAX_WORKBOOK_CACHE_ENTRIES,
+    maxBytes: MAX_WORKBOOK_CACHE_BYTES,
+  };
+}
+
 function fileFingerprint(filePath: string): string {
   const stat = fs.statSync(filePath);
   return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
@@ -72,10 +85,31 @@ function fileFingerprint(filePath: string): string {
 async function importWorkbook(filePath: string, loaded: { module: ArtifactModule }): Promise<any> {
   const fingerprint = fileFingerprint(filePath);
   const cached = workbookCache.get(filePath);
-  if (cached?.fingerprint === fingerprint) return cached.workbook;
+  if (cached?.fingerprint === fingerprint) {
+    cached.accessedAt = Date.now();
+    return cached.workbook;
+  }
+  if (cached) workbookCache.delete(filePath);
   const workbook = await loaded.module.SpreadsheetFile.importXlsx(new Uint8Array(fs.readFileSync(filePath)));
-  workbookCache.set(filePath, { fingerprint, workbook });
+  // Workbook objects expand well beyond the XLSX zip size. A conservative
+  // multiplier keeps the process bounded even when the provider cannot report
+  // its exact retained heap size.
+  const weightBytes = Math.max(fs.statSync(filePath).size * 6, 1024 * 1024);
+  if (weightBytes <= MAX_WORKBOOK_CACHE_BYTES) {
+    workbookCache.set(filePath, { fingerprint, workbook, weightBytes, accessedAt: Date.now() });
+    evictWorkbookCache();
+  }
   return workbook;
+}
+
+function evictWorkbookCache(): void {
+  let total = [...workbookCache.values()].reduce((sum, entry) => sum + entry.weightBytes, 0);
+  while (workbookCache.size > MAX_WORKBOOK_CACHE_ENTRIES || total > MAX_WORKBOOK_CACHE_BYTES) {
+    const oldest = [...workbookCache.entries()].sort((a, b) => a[1].accessedAt - b[1].accessedAt)[0];
+    if (!oldest) break;
+    workbookCache.delete(oldest[0]);
+    total -= oldest[1].weightBytes;
+  }
 }
 
 /** Artifact-tool inspection with the same high-level shape as finance_worker inspect. */

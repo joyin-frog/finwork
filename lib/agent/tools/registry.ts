@@ -22,11 +22,21 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "Bash",             category: "builtin", riskLevel: "high" },
   // Core MCP tools
   { name: "analyze_tabular",       category: "finance", riskLevel: "safe" },
+  { name: "create_workbook",       category: "finance", riskLevel: "medium" },
   { name: "spawn_subagent",        category: "finance", riskLevel: "medium" },
   { name: "search_knowledge", category: "finance", riskLevel: "safe" },
   { name: "query_knowledge",  category: "finance", riskLevel: "medium" },
   { name: "read_file",        category: "finance", riskLevel: "safe" },
   { name: "read_document",     category: "finance", riskLevel: "safe" },
+  { name: "inspect_document_structure", category: "finance", riskLevel: "safe" },
+  { name: "patch_document", category: "finance", riskLevel: "medium" },
+  // Workbook primitives: deterministic inspection/transform tools exposed by
+  // the production finance catalog. Keep these in the registry so risk,
+  // confirmation and renderer policy never fall back to implicit defaults.
+  { name: "patch_workbook",       category: "finance", riskLevel: "medium" },
+  { name: "check_workbook_ties", category: "finance", riskLevel: "safe" },
+  { name: "detect_data_issues",  category: "finance", riskLevel: "safe" },
+  { name: "merge_labeled_tables", category: "finance", riskLevel: "safe" },
   { name: "scan_slip_folder",  category: "finance", riskLevel: "safe" },
   // 写入用户约定/角色口径:静默写入+对话内轻提示,记忆页可删(刀6 拍板去确认卡)
   { name: "remember_convention", category: "finance", riskLevel: "medium" },
@@ -34,6 +44,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   // 经营数据登记
   { name: "record_business_metrics", category: "finance", riskLevel: "medium" },
   { name: "generate_business_analysis", category: "finance", riskLevel: "safe" },
+  { name: "research_web", category: "finance", riskLevel: "safe" },
   // Payroll & reimbursement tools
   { name: "calculate_payroll_batch",       category: "finance", riskLevel: "high" },
   { name: "confirm_payroll_period",        category: "finance", riskLevel: "high" },

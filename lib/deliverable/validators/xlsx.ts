@@ -17,7 +17,7 @@ const FORMULA_ERRORS = ["#DIV/0!", "#REF!", "#VALUE!", "#NAME?", "#NULL!", "#NUM
  * 「没测成」不等于「测挂了」:本机没装 LibreOffice、artifact-tool 没配,都不说明
  * 工作簿有问题。2026-08-05 实测:HISTORY-001 交出一个 1143 条公式的工作簿,唯一
  * 阻断项是一张预览图没渲出来,结果 0 产物、确定性分 0——能验的四条断言也跟着废了。
- * 这类缺失一律降为 warning,交付照走,由证据字段告诉下游哪些结论不可用。
+ * 是否阻断由 ValidatorInput.recalcPolicy 决定：正式交付 required，普通诊断 best_effort。
  */
 const CAPABILITY_UNAVAILABLE_CODES = new Set([
   "recalc_unavailable",
@@ -128,13 +128,15 @@ export async function validateXlsxFile(
     if (!recalc.ok) {
       const code = recalc.errorCode ?? "recalc_failed";
       if (CAPABILITY_UNAVAILABLE_CODES.has(code)) {
-        // 没有计算 Provider ≠ 工作簿有问题。交付照走,但公式缓存是旧的,
-        // 依赖缓存值的断言下游要标成「未验证」而不是「验证失败」。
         evidence.recalcAvailable = false;
-        warnings.push({
+        const issue = {
           code,
-          message: `${recalc.detail ?? "公式重算不可用"}；公式缓存未刷新，Excel/WPS 打开时会自动重算`,
-        });
+          message: input.recalcPolicy === "required"
+            ? `${recalc.detail ?? "公式重算不可用"}；正式交付禁止使用未真实重算的工作簿`
+            : `${recalc.detail ?? "公式重算不可用"}；公式缓存未刷新，Excel/WPS 打开时会自动重算`,
+        };
+        if (input.recalcPolicy === "required") errors.push(issue);
+        else warnings.push(issue);
       } else {
         errors.push({ code, message: recalc.detail ?? "公式重算失败" });
       }

@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { reviseMemorySection } from "@/lib/memory/file-store";
+import { submitMemoryCandidate } from "@/lib/memory-v2";
 import type { SdkLike } from "./sdk-types";
 
 type Sdk = SdkLike;
@@ -10,7 +10,7 @@ export function createRememberConventionTool(sdk: Sdk) {
     [
       "新增、修改或取消跨对话长期生效的工作约定；本次会话口径、临时决定、结果和任务状态不要调用。",
       "新增填 text；修改同时填旧原文 replaces 和新 text；纯取消只填 replaces。忠实转述，不扩写或追加否定条目。",
-      "系统会向用户确认后才写入。专员职责域口径改用 remember_role_convention。",
+      "系统会向用户确认后提交受治理候选；候选经冲突检查、审批和验证后才会进入后续提示词。专员职责域口径改用 remember_role_convention。",
     ].join("\n"),
     {
       text: z.string().min(2).max(300).nullish().describe("约定原文,一句话,财务语言;纯取消某约定时可不填"),
@@ -28,30 +28,36 @@ export function createRememberConventionTool(sdk: Sdk) {
             isError: true as const
           };
         }
-        const date = new Date().toISOString().slice(0, 10);
-        const { removed, added } = await reviseMemorySection("## 工作约定", {
-          addLine: text ? `- [${date}] ${text}` : undefined,
-          removeMatch: replaces || undefined,
+        const result = submitMemoryCandidate({
+          text,
+          replaces,
+          source: "remember_convention",
+          conversationId: args.conversationId ?? undefined,
         });
-
-        // 如实复述实际发生了什么(不再凭感觉说"已更新",红线 4)
         let message: string;
-        if (added && removed.length) {
-          message = `已更新工作约定:删除「${removed.join("」「")}」,改记「${added}」。可在 设置 → 记忆 查看修改。`;
-        } else if (added) {
-          message = `已记住这条约定:「${added}」。之后处理相关任务我会自动遵守;可在 设置 → 记忆 查看或修改。`;
-        } else if (removed.length) {
-          message = `已删除工作约定:「${removed.join("」「")}」,以后不再按此处理。可在 设置 → 记忆 查看。`;
+        if (result.candidate && result.deletions.length) {
+          message = `旧约定已按删除证明清理，新约定「${text}」已提交为候选；审核通过前不会进入后续提示词。`;
+        } else if (result.candidate && result.duplicate) {
+          message = `相同约定候选已存在，未重复提交；审核通过前不会进入后续提示词。`;
+        } else if (result.candidate) {
+          message = `约定「${text}」已提交为受治理候选；审核通过前不会进入后续提示词。`;
+        } else if (result.deletions.length) {
+          message = `已删除工作约定「${replaces}」，并生成 ${result.deletions.length} 份删除证明。`;
         } else {
-          message = `没找到要替换/删除的约定「${replaces}」,记忆未改动。可在 设置 → 记忆 查看现有约定。`;
+          message = `没找到要替换或删除的约定「${replaces}」，记忆未改动。`;
         }
         return {
           content: [{ type: "text" as const, text: message }],
-          structuredContent: { added, removed, date }
+          structuredContent: {
+            candidateId: result.candidate?.id,
+            candidateStatus: result.candidate?.approvalStatus,
+            duplicate: result.duplicate,
+            deletions: result.deletions,
+          }
         };
       } catch (error) {
         return {
-          content: [{ type: "text" as const, text: `约定保存失败:${error instanceof Error ? error.message : String(error)}` }],
+          content: [{ type: "text" as const, text: `约定候选提交失败:${error instanceof Error ? error.message : String(error)}` }],
           isError: true as const
         };
       }

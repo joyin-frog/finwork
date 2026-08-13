@@ -108,10 +108,11 @@ export const surfaceVariantsTestPromise = (async () => {
     "shape=panel should produce rounded-xl"
   );
 
-  // shape=overlay → rounded-2xl
+  // shape=overlay → rounded-xl
+  // 圆角系统已统一收敛到 0/4/8/12/16/pill，overlay 与 panel 共用 16px。
   assert.ok(
-    surfaceVariants({ shape: "overlay" }).includes("rounded-2xl"),
-    "shape=overlay should produce rounded-2xl"
+    surfaceVariants({ shape: "overlay" }).includes("rounded-xl"),
+    "shape=overlay should produce rounded-xl"
   );
 
   // shape=pill → rounded-full

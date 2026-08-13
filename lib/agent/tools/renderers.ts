@@ -43,20 +43,32 @@ const summaries: Record<string, SummaryFn> = {
     const groups = Array.isArray((i as Record<string, unknown>)?.groupBy) ? (i as Record<string, unknown>).groupBy as unknown[] : [];
     return `整理表格数据${groups.length ? `（按 ${groups.join("、")} 分组）` : ""}：${rows.length} 行`;
   },
+  create_workbook: (i) => {
+    const sheets = arrayLen(i, "sheets");
+    const outputName = str(i, "outputName");
+    return `创建工作簿${outputName ? `：${outputName}` : ""}${sheets ? `（${sheets} 张表）` : ""}`;
+  },
 
   // ─── 财务工具(finance_worker) ───
   search_knowledge: (i) => { const q = str(i, "query"); return q ? `检索知识库：${q.slice(0, 24)}` : "检索知识库"; },
   query_knowledge: (i) => {
-    const c = str(i, "command");
-    if (!c) return "查询知识库";
-    // 优先提取 rg 模式(rg '...' 或 rg "..." 形式);否则截断命令
-    const rgMatch = c.match(/\brg\s+['"](.*?)['"]/);
-    const display = rgMatch ? `(rg) ${rgMatch[1].slice(0, 32)}` : c.slice(0, 32);
-    return `查询知识库：${display}`;
+    const query = str(i, "query");
+    return query ? `查询知识库：${query.slice(0, 32)}` : "查询知识库";
   },
   read_file: (i) => { const f = str(i, "fileName"); return f ? `读取资料：${f}` : "读取资料"; },
+  research_web: (i) => {
+    const subject = str(i, "legalName");
+    const topics = Array.isArray((i as Record<string, unknown>)?.topics)
+      ? (i as Record<string, unknown>).topics as unknown[]
+      : [];
+    return subject
+      ? `联网尽调：${subject}${topics.length ? `（${topics.length} 个维度）` : ""}`
+      : "执行可复核联网尽调";
+  },
+  inspect_document_structure: (i) => { const f = str(i, "sourcePath").split(/[\\/]/).at(-1); return f ? `检查文档结构：${f}` : "检查文档结构"; },
+  patch_document: (i) => { const f = str(i, "outputName"); return f ? `修改文档：${f}` : "修改文档"; },
   remember_convention: (i) => { const t = str(i, "text"); const r = str(i, "replaces"); return t ? (r ? `更新约定「${t.slice(0, 40)}」` : `记住约定「${t.slice(0, 40)}」`) : (r ? `取消约定「${r.slice(0, 40)}」` : "更新工作约定"); },
-  remember_role_convention: (i) => { const t = str(i, "text"); const role = getRoleDefinition(str(i, "roleId"))?.name; return t ? `记住口径「${t.slice(0, 40)}」${role ? ` → ${role}` : ""}` : "记录角色口径"; },
+  remember_role_convention: (i) => { const t = str(i, "text"); const role = getRoleDefinition(str(i, "roleId"))?.name; return t ? `提交口径候选「${t.slice(0, 40)}」${role ? ` → ${role}` : ""}` : "提交角色口径候选"; },
   propose_transfer: (i) => { const role = getRoleDefinition(str(i, "targetRoleId"))?.name ?? str(i, "targetRoleId"); const s = str(i, "taskSummary"); return s ? `建议转交「${role}」：${s.slice(0, 30)}` : `建议转交给${role}`; },
   record_business_metrics: (i) => {
     const rows = Array.isArray((i as Record<string, unknown>)?.rows) ? (i as Record<string, unknown>).rows as unknown[] : [];
@@ -71,6 +83,14 @@ const summaries: Record<string, SummaryFn> = {
   },
   check_workbook_ties: () => "勾稽校验",
   patch_workbook: () => "更新工作簿",
+  detect_data_issues: (i) => {
+    const rows = arrayLen(i, "rows");
+    return `检查数据质量${rows ? `（${rows} 行）` : ""}`;
+  },
+  merge_labeled_tables: (i) => {
+    const sources = arrayLen(i, "sources");
+    return `合并科目表${sources ? `（${sources} 个来源）` : ""}`;
+  },
   spawn_subagent: (i) => {
     // 新参数 role(角色 id);历史会话事件里存的是旧参数 skill,保留兼容渲染
     const roleName = getRoleDefinition(str(i, "role"))?.name;

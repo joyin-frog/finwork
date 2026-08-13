@@ -1,4 +1,5 @@
 import { createAnalyzeTabularTool } from "./analyze-tabular";
+import { createCreateWorkbookTool } from "./create-workbook";
 import { createSpawnSubagentTool } from "./subagent";
 import { createRememberConventionTool } from "./conventions";
 import { createRememberRoleConventionTool } from "./role-conventions";
@@ -7,6 +8,7 @@ import { createBusinessAnalysisTool } from "./business-analysis-tool";
 import { createSearchKnowledgeTool, createQueryKnowledgeTool, createReadFileTool } from "./knowledge";
 import { createReadDocumentTool } from "./read-document";
 import { createPatchWorkbookTool } from "./patch-workbook";
+import { createInspectDocumentStructureTool, createPatchDocumentTool } from "./document-operations";
 import {
   createCheckWorkbookTiesTool,
   createDetectDataIssuesTool,
@@ -27,6 +29,7 @@ import { createRunFilingPrecheckBatchTool } from "./filing-precheck-batch";
 import { createRunBankReconBatchTool } from "./bank-recon-batch";
 import { createUndoLastWriteTool } from "./undo-write";
 import { createProposeTransferTool } from "./propose-transfer";
+import { createResearchWebTool } from "./research";
 import type { SdkLike } from "./sdk-types";
 import {
   createFinanceToolCollector,
@@ -38,6 +41,8 @@ import type {
   SubagentExecutor,
   SubagentParallelExecutor,
 } from "@/lib/agent/subagent-contracts";
+import type { MemoryRuntimeContext } from "@/lib/memory-v2/contracts";
+import type { AgentFoundationContext } from "@/lib/agent/contracts";
 
 type Sdk = SdkLike & { createSdkMcpServer: NonNullable<SdkLike["createSdkMcpServer"]> };
 
@@ -47,8 +52,12 @@ export type FinanceMcpServerOptions = {
   /** Runtime-owned subagent seams. Claude remains the legacy default. */
   subagentExecutor?: SubagentExecutor;
   subagentParallelExecutor?: SubagentParallelExecutor;
+  /** Authoritative memory boundary inherited by every spawned worker. */
+  memoryContext?: Partial<MemoryRuntimeContext> | null;
   /** 本回合用户附件的只读根；供 read_document 使用。 */
   readDocumentAllowedRoots?: string[];
+  /** Production-owned task/case/run identity inherited by nested execution. */
+  foundation?: AgentFoundationContext;
 };
 
 function createFinanceWorkerTools(
@@ -69,6 +78,7 @@ function createFinanceWorkerTools(
   };
   return [
     createAnalyzeTabularTool(sdk),
+      createCreateWorkbookTool(sdk, { outputDir }),
       createSpawnSubagentTool(
         sdk,
         outputDir,
@@ -76,6 +86,8 @@ function createFinanceWorkerTools(
         conversationId,
         onSubagentEvent,
         serverOptions?.subagentExecutor,
+        serverOptions?.memoryContext,
+        serverOptions?.foundation,
       ),
       createSearchKnowledgeTool(sdk),
       createQueryKnowledgeTool(sdk),
@@ -84,6 +96,14 @@ function createFinanceWorkerTools(
         allowedRoots: [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])],
       }),
       createPatchWorkbookTool(sdk, {
+        outputDir,
+        allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
+      }),
+      createInspectDocumentStructureTool(sdk, {
+        outputDir,
+        allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
+      }),
+      createPatchDocumentTool(sdk, {
         outputDir,
         allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
       }),
@@ -98,6 +118,7 @@ function createFinanceWorkerTools(
       createRememberRoleConventionTool(sdk),
       createRecordBusinessMetricsTool(sdk),
       createBusinessAnalysisTool(sdk),
+      createResearchWebTool(sdk, serverOptions?.foundation),
       ...createPayrollTools(sdk, outputDir),
       ...createReimbursementTools(sdk),
       ...createSalesInvoiceTools(sdk),
@@ -118,7 +139,11 @@ function createFinanceWorkerTools(
         conversationId,
         onSubagentEvent,
         serverOptions?.subagentParallelExecutor
-          ? { run: serverOptions.subagentParallelExecutor }
+          ? {
+              run: serverOptions.subagentParallelExecutor,
+              memoryContext: serverOptions.memoryContext,
+              foundation: serverOptions.foundation,
+            }
           : undefined,
       ),
       // 功能4第二刀: 银行对账批跑（N 个账户并行派发）
@@ -129,7 +154,11 @@ function createFinanceWorkerTools(
         conversationId,
         onSubagentEvent,
         serverOptions?.subagentParallelExecutor
-          ? { run: serverOptions.subagentParallelExecutor }
+          ? {
+              run: serverOptions.subagentParallelExecutor,
+              memoryContext: serverOptions.memoryContext,
+              foundation: serverOptions.foundation,
+            }
           : undefined,
       ),
       // WP15: 撤销最近 agent 写操作（high 风险，confirm gate 拦截）

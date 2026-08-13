@@ -12,6 +12,8 @@ export type ValidatorInput = {
   /** 绑定校验时的候选 hash；变化则失效 */
   expectedSha256?: string;
   needsRecalc?: boolean;
+  /** 正式交付必须有真实重算 Provider；普通诊断可保留 best_effort。 */
+  recalcPolicy?: "required" | "best_effort";
   needsRender?: boolean;
   /** Profile 要求公式缓存非空（公式型交付） */
   requireFormulaCache?: boolean;

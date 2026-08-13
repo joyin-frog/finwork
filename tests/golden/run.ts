@@ -4,6 +4,8 @@ import { runPiAgent } from "@/lib/agent/pi/agent-service";
 import type { AgentMessage } from "@/lib/agent/contracts";
 import { buildMessagesUrl } from "@/lib/agent/router";
 import { getModelConfigReadiness } from "@/lib/settings/model-config";
+import { executionRequirementsFromToolGroups } from "@/lib/capability/execution-gate";
+import { withTransientProviderRetry } from "@/lib/evaluation/transient-provider-retry";
 import { ALL_GOLDEN_CASES, type GoldenCase } from "./cases";
 
 const SKIP_LLM = process.env.SKIP_LLM === "true";
@@ -12,6 +14,7 @@ const PASS_THRESHOLD = SKIP_LLM ? 0.5 : 0.75;
 const SAMPLE = Number(process.env.GOLDEN_SAMPLE || 0);
 const CATEGORIES = (process.env.GOLDEN_CATEGORY || "").split(",").map((s) => s.trim()).filter(Boolean);
 const CASE_IDS = (process.env.GOLDEN_CASE_ID || "").split(",").map((s) => s.trim()).filter(Boolean);
+const PROVIDER_MAX_ATTEMPTS = Math.min(5, Math.max(1, Number(process.env.GOLDEN_PROVIDER_MAX_ATTEMPTS || 3) || 3));
 const CASES: GoldenCase[] = (() => {
   let pool = ALL_GOLDEN_CASES;
   if (CASE_IDS.length) pool = pool.filter((c) => CASE_IDS.includes(c.id));
@@ -40,6 +43,7 @@ type CaseResult = {
   response: string;
   error?: string;
   durationMs: number;
+  providerAttempts: number;
 };
 
 async function main() {
@@ -68,14 +72,32 @@ async function main() {
 
     const started = Date.now();
     try {
-      const { toolCalls, response } = await runCase(gc);
+      const agentRun = await withTransientProviderRetry(
+        () => runCase(gc),
+        {
+          maxAttempts: SKIP_LLM ? 1 : PROVIDER_MAX_ATTEMPTS,
+          onRetry: ({ nextAttempt, delayMs, decision }) => {
+            process.stdout.write(`\n  ↻ provider retry ${nextAttempt}/${PROVIDER_MAX_ATTEMPTS} in ${delayMs}ms (${decision.reason}) ... `);
+          },
+        },
+      );
+      const { toolCalls, response } = agentRun.value;
 
       const toolScore = computeToolScore(gc, toolCalls);
       const keywordScore = computeKeywordScore(gc, response);
 
       let judgeScore: number | null = null;
       if (!SKIP_LLM && hasApiKey) {
-        judgeScore = await runJudge(gc, response, toolCalls);
+        const judgeRun = await withTransientProviderRetry(
+          () => runJudge(gc, response, toolCalls),
+          {
+            maxAttempts: PROVIDER_MAX_ATTEMPTS,
+            onRetry: ({ nextAttempt, delayMs, decision }) => {
+              process.stdout.write(`\n  ↻ judge retry ${nextAttempt}/${PROVIDER_MAX_ATTEMPTS} in ${delayMs}ms (${decision.reason}) ... `);
+            },
+          },
+        );
+        judgeScore = judgeRun.value;
       }
 
       const finalScore = judgeScore != null
@@ -89,6 +111,7 @@ async function main() {
         caseId: gc.id, category: gc.category, passed, score: finalScore,
         toolScore, keywordScore, judgeScore, toolCalls, response,
         durationMs: Date.now() - started,
+        providerAttempts: agentRun.attempts,
       });
 
       console.log(passed ? `✅ ${finalScore.toFixed(2)}` : `❌ ${finalScore.toFixed(2)}`);
@@ -98,6 +121,7 @@ async function main() {
         toolScore: 0, keywordScore: 0, judgeScore: null, toolCalls: [],
         response: "", error: err instanceof Error ? err.message : String(err),
         durationMs: Date.now() - started,
+        providerAttempts: 1,
       });
       console.log(`💥 ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -152,6 +176,10 @@ async function runCase(gc: GoldenCase): Promise<{ toolCalls: string[]; response:
           toolCalls.push(event.toolName);
         }
       },
+    }, {
+      executionRequirements: executionRequirementsFromToolGroups(
+        gc.expectations.expected_tool_calls_loose ?? [],
+      ),
     });
 
   return { toolCalls, response: result.content };

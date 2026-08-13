@@ -19,12 +19,8 @@ import {
   getPiSessionDir,
   getProjectRoot,
 } from "@/lib/runtime/paths";
-import { ensureConventionsMigrated } from "@/lib/memory/migrate-conventions";
-import { readMemoryMarkdown } from "@/lib/memory/file-store";
 import { readCompanyProfile } from "@/lib/profile/file-store";
-import { listRecentNegativeReasons } from "@/lib/db/sqlite";
 import { assertSpecialistRoleUsable } from "@/lib/agent/roles/availability";
-import { getRoleMemoryForPrompt } from "@/lib/db/role-memory-store";
 import { resolveRoleAllowedTools } from "@/lib/agent/roles/registry";
 import {
   buildSpecialistChatSystemPrompt,
@@ -33,6 +29,7 @@ import {
 import { buildFinanceToolDefinitions } from "@/lib/agent/mcp-tools";
 import { createFinanceToolAuthorizer } from "@/lib/agent/tools/authorize";
 import { createPiFinanceTools } from "@/lib/agent/pi/tool-adapter";
+import { createFinanceCapabilityRuntime } from "@/lib/agent/tools/capability-runtime";
 import { createFinworkModelRuntime } from "@/lib/agent/pi/provider";
 import { createFinworkPiResourceLoader, resolveFinworkSkillRoots } from "@/lib/agent/pi/resource-loader";
 import { PiEventMapper } from "@/lib/agent/pi/event-mapper";
@@ -55,6 +52,16 @@ import {
   deriveTaskContractForTurn,
   type TaskContract,
 } from "@/lib/agent/run-contract";
+import {
+  loadGovernedPromptMemory,
+  resolveMemoryRuntimeContext,
+} from "@/lib/memory-v2/prompt";
+import {
+  CapabilityExecutionLedger,
+  evaluateExecutionRequirements,
+  executionRequirementsForSpreadsheetTask,
+  type ExecutionRequirement,
+} from "@/lib/capability/execution-gate";
 
 export type PiAgentServiceOptions = {
   /** AR10 harness 可覆盖到临时目录；生产缺省固定为 Finwork app-data。 */
@@ -85,7 +92,31 @@ export type PiAgentServiceOptions = {
   };
   /** abort() 可能等待 SDK 的 waitForIdle；为清理设置独立上限。 */
   abortTimeoutMs?: number;
+  /**
+   * 受控评测或业务工作流追加的执行合同。门禁只接受成功的 tool_completed 事实，
+   * 不接受模型文字、tool_started 或失败调用代替真实执行。
+   */
+  executionRequirements?: ExecutionRequirement[];
 };
+
+function mergeExecutionRequirements(
+  requirements: readonly ExecutionRequirement[],
+): ExecutionRequirement[] {
+  const unique = new Map<string, ExecutionRequirement>();
+  for (const requirement of requirements) {
+    const anyOf = [...new Set(requirement.anyOf.map((item) => item.trim()).filter(Boolean))].sort();
+    if (!anyOf.length) continue;
+    const normalized = {
+      ...requirement,
+      id: requirement.id.trim(),
+      anyOf,
+      minimumCount: Math.max(1, requirement.minimumCount ?? 1),
+    };
+    const key = `${normalized.id}|${normalized.anyOf.join("|")}|${normalized.minimumCount}`;
+    unique.set(key, normalized);
+  }
+  return [...unique.values()];
+}
 
 /**
  * Pi-only Finwork Agent Service.
@@ -122,22 +153,54 @@ export async function runPiAgent(
   );
   mkdirSync(outputDir, { recursive: true });
 
-  const roleMemories = role ? safeRoleMemories(role.id) : [];
+  // Query pipeline normally injects this contract. Direct runPiAgent callers must
+  // get the same completion and governed-memory boundary.
+  const taskContract = request.taskContract ?? deriveTaskContractForTurn({
+    intent: request.intent,
+    attachments: request.attachments,
+  });
+  const executionRequirements = mergeExecutionRequirements([
+    ...executionRequirementsForSpreadsheetTask({
+      hasSpreadsheet: taskContract.taskKind !== "text",
+      needsWrite: taskContract.spreadsheetRequirement?.needsWrite === true,
+      needsValidation: taskContract.requiredDeliverables.length > 0,
+    }),
+    ...(serviceOptions.executionRequirements ?? []),
+  ]);
+  const executionLedger = new CapabilityExecutionLedger();
+  executionLedger.seed("agent.turn");
+  const completionRequired =
+    taskContract.requiredDeliverables.length > 0 || executionRequirements.length > 0;
+  const memoryContext = resolveMemoryRuntimeContext({
+    explicit: request.memoryContext,
+    taskContract,
+  });
+  const governedMemory = await loadGovernedPromptMemory({
+    roleId: role?.id,
+    context: memoryContext,
+  });
+  if (governedMemory.status === "degraded") {
+    console.warn("[pi-agent] governed memory unavailable; legacy fallback forbidden:", governedMemory.reason);
+  }
+
+  // Static role prompt must not freeze request-scoped memory. Governed summaries
+  // are injected only through the dynamic external-context section below.
   const systemPrompt = role
-    ? buildSpecialistChatSystemPrompt(role, roleMemories, outputDir)
+    ? buildSpecialistChatSystemPrompt(role, [], outputDir)
     : undefined;
-  const memoryMarkdown = await readMemoryMarkdown();
-  if (!role) await ensureConventionsMigrated().catch(() => undefined);
   const roleDynamicSystemContext = role
-    ? () => buildSpecialistDynamicSystemContext(memoryMarkdown, roleMemories, outputDir)
+    ? () => buildSpecialistDynamicSystemContext(
+        governedMemory.markdown,
+        [],
+        outputDir,
+      )
     : undefined;
   const promptContext = role
     ? undefined
     : {
         identity: { companyName: settings.companyName, agentName: settings.agentName },
-        memoryMarkdown,
+        memoryMarkdown: governedMemory.markdown,
         roleMode: settings.roleMode,
-        recentNegativeFeedback: safeRecentNegativeReasons(),
         outputDir,
         companyProfile: await readCompanyProfile().catch(() => ({})),
       };
@@ -148,13 +211,6 @@ export async function runPiAgent(
         attachments: request.attachments,
         intent: request.intent,
       });
-
-  // Query pipeline 会预先注入合同；直接调用 runPiAgent（评测、CLI、测试）也必须有同样的
-  // 完成语义，否则模型可以在生成工作文件后直接 stop，绕过质量门。
-  const taskContract = request.taskContract ?? deriveTaskContractForTurn({
-    intent: request.intent,
-    attachments: request.attachments,
-  });
 
   const { modelRuntime, model, pricingKnown } = await createFinworkModelRuntime(settings, modelId);
   const { createAgentSession, SessionManager, SettingsManager } = await import(
@@ -226,7 +282,7 @@ export async function runPiAgent(
   let externallyAborted = request.signal?.aborted === true;
   let repairRounds = 0;
   let repairStopReason: FinworkAgentResult["repairStopReason"] =
-    taskContract.requiredDeliverables.length ? "max_rounds" : "not_required";
+    completionRequired ? "max_rounds" : "not_required";
   const mapper = new PiEventMapper();
   const currentRunMessages: AgentSessionEvent[] = [];
   const emitQuestion = wrapQuestionResolver(request.resolveUserQuestion, request.emit);
@@ -239,6 +295,8 @@ export async function runPiAgent(
       subagentExecutor: runPiSubagent,
       subagentParallelExecutor: runPiSubagentsParallel,
       readDocumentAllowedRoots: builtinRoots.readRoots,
+      memoryContext,
+      foundation: request.foundation,
       ...(taskContract
         ? { finalize: { taskContract, runId: request.requestId ?? request.traceId ?? "unknown" } }
         : {}),
@@ -249,14 +307,22 @@ export async function runPiAgent(
     : contextPolicy?.toolIds
       ? new Set(contextPolicy.toolIds)
       : null;
+  const enabledDefinitions = allowed
+    ? definitions.filter((definition) => allowed.has(definition.id))
+    : definitions;
   const financeTools = createPiFinanceTools(
-    allowed ? definitions.filter((definition) => allowed.has(definition.id)) : definitions,
+    enabledDefinitions,
     createFinanceToolAuthorizer({
       outputDir,
       roleId: role?.id,
       conversationId: request.conversationId,
       resolveUserQuestion: emitQuestion,
       emit: request.emit,
+    }),
+    createFinanceCapabilityRuntime(enabledDefinitions, {
+      runId: request.foundation?.runId ?? request.requestId ?? request.traceId ?? randomUUID(),
+      ...(request.foundation ? { caseId: request.foundation.caseId } : {}),
+      ...(request.foundation ? { foundation: request.foundation } : {}),
     }),
   );
   const builtinTools = await createFinworkBuiltinTools(builtinRoots);
@@ -290,6 +356,7 @@ export async function runPiAgent(
       currentRunMessages.push(event);
       const mapped = mapper.map(event);
       for (const runtimeEvent of mapped.events) {
+        executionLedger.record(runtimeEvent);
         if (!isQueryOwnedLifecycleEvent(runtimeEvent.type)) request.emit?.(runtimeEvent);
       }
     });
@@ -355,9 +422,23 @@ export async function runPiAgent(
             const maxRepairRounds = Math.max(0, Math.min(5, serviceOptions.maxRepairRounds ?? 2));
             const completionDecision = async () => {
               const base = decideSettleFromCompletionGate(runId, taskContract);
-              if (base.outcome !== "completed" || !serviceOptions.completionVerifier) {
+              if (base.outcome !== "completed") {
                 return base;
               }
+              const executionGate = evaluateExecutionRequirements(
+                executionRequirements,
+                executionLedger.snapshot(),
+              );
+              if (!executionGate.ok) {
+                return {
+                  outcome: "error" as const,
+                  qualityStatus: "failed" as const,
+                  terminationReason: "validation_failed" as const,
+                  gateMessage: executionGate.message,
+                  diagnosticFingerprint: executionGate.diagnosticFingerprint,
+                };
+              }
+              if (!serviceOptions.completionVerifier) return base;
               const verificationTimeoutMs = serviceOptions.verificationTimeoutMs ?? 60_000;
               const taskVerification = await withTimeout(
                 serviceOptions.completionVerifier({ runId, taskContract }),
@@ -382,7 +463,7 @@ export async function runPiAgent(
               };
             };
             let previousFingerprint: string | undefined;
-            while (taskContract.requiredDeliverables.length > 0 && repairRounds < maxRepairRounds) {
+            while (completionRequired && repairRounds < maxRepairRounds) {
               const gate = await completionDecision();
               if (gate.outcome === "completed") {
                 repairStopReason = "completed";
@@ -402,8 +483,13 @@ export async function runPiAgent(
                   [
                     `系统验证发现本次任务尚未完成（第 ${repairRounds}/${maxRepairRounds} 次修复）。`,
                     gate.gateMessage,
-                    "请按上述具体文件、位置和错误修复当前输出目录中的工作文件。",
-                    "完成修复后必须再次调用 finalize_deliverable；不要只回复说明文字。",
+                    "请成功调用门禁列出的受控工具并完成实际操作；失败调用不计入，不能只回复说明文字。",
+                    ...(taskContract.requiredDeliverables.length > 0
+                      ? [
+                          "请按上述具体文件、位置和错误修复当前输出目录中的工作文件。",
+                          "完成修复后必须再次调用 finalize_deliverable。",
+                        ]
+                      : []),
                     "如果缺少必要输入或无法安全判断，请明确说明阻塞原因，不要猜测数字。",
                   ].join("\n"),
                 ),
@@ -412,7 +498,7 @@ export async function runPiAgent(
               await awaitAbortable(session.waitForIdle(), operationAbort.signal);
             }
 
-            const finalGate = taskContract.requiredDeliverables.length
+            const finalGate = completionRequired
               ? await completionDecision()
               : { outcome: "completed" as const, qualityStatus: "not_applicable" as const };
             if (finalGate.outcome !== "completed") {
@@ -435,7 +521,7 @@ export async function runPiAgent(
               meta.__terminationReason = "validation_failed";
               throw error;
             }
-            repairStopReason = taskContract.requiredDeliverables.length
+            repairStopReason = completionRequired
               ? "completed"
               : "not_required";
           } catch (error) {
@@ -478,7 +564,7 @@ export async function runPiAgent(
       terminationReason: accounting.stopReason,
       repairRounds,
       repairStopReason,
-      verificationStatus: taskContract.requiredDeliverables.length ? "passed" : "not_applicable",
+      verificationStatus: completionRequired ? "passed" : "not_applicable",
     };
   } finally {
     liveHandle?.release();
@@ -617,11 +703,11 @@ export function buildPiPrompt(
         // 反复排查,直到超时(HISTORY-002 实测 27 个脚本、40 分钟、0 交付)。
         "**改动用户上传的表格（含填写模板、工作底稿）必须用 `patch_workbook` 工具，不得用 openpyxl/pandas 打开再保存。** 后者会清空整册公式的缓存值，模板里既有的公式将全部读不出结果，且含外部链接的数据无法恢复。`patch_workbook` 只重写你点名的单元格，其余原样保留，并会自动为新写入的公式补算结果。",
         "附件里若提供了模板或工作底稿，**填它，不要另起炉灶重建一张同名表**：模板自带的公式就是计算逻辑，重建等于把它们全丢掉。",
-        "只有**新建空白表格**才用受限 bash 调用 Python/openpyxl/pandas；bash 当前目录就是本次会话输出目录，使用相对目标路径。不要执行 find /、find ~ 或全盘搜索，直接使用提示词提供的附件绝对路径读取。附件在沙箱中只读：确需复制文件时使用 shutil.copyfile 并把输出 chmod 为 0o600，不要用 shutil.copy/copy2（会把沙箱只读权限一并带过去）。",
-        "生成脚本较长时，先用 write 创建短骨架，再用多次 edit 分段补充；不要把整个大脚本塞进一次 write，以免模型输出上限截断工具参数。",
+        "**新建空白表格必须调用 `create_workbook`**；不要用 Bash、Python、openpyxl 或 pandas 直接生成或改写 XLSX。现有工作簿只用 `patch_workbook` 做受控增量修改。附件在沙箱中只读，不得覆盖原件。",
+        "工作簿内容较多时，把创建或修改请求拆成多次受控工具调用；不要用超长脚本绕过工具合同。",
         taskContract?.spreadsheetRequirement?.needsRecalc ||
         taskContract?.spreadsheetRequirement?.needsRender
-          ? "写入 XLSX 不依赖 LibreOffice：先用 openpyxl/pandas 正常保存候选文件。合同要求的 LibreOffice 重算/渲染由 finalize_deliverable 在沙箱外的受控运行时自动完成；不要在 bash 中自行启动 soffice，也不要手工模拟整套 Excel 公式缓存。你仍需先做静态公式、关键输入值、结构和修改范围检查，然后立即调用 finalize_deliverable；只有该工具明确返回 recalc_unavailable 才能报告重算阻塞。"
+          ? "写入 XLSX 后，合同要求的重算与渲染由 `finalize_deliverable` 在沙箱外的受控运行时完成；不要在 Bash 中启动 soffice，也不要手工伪造公式缓存。先执行静态公式、关键输入值、结构和修改范围检查，再调用 finalize_deliverable；只有该工具明确返回 recalc_unavailable 才能报告重算阻塞。"
           : "",
         "完成后必须检查输出文件，并调用 finalize_deliverable 正式交付。",
       ].filter(Boolean).join("\n"),
@@ -821,23 +907,6 @@ export function lastAssistantError(events: AgentSessionEvent[]): string | undefi
 
 function isQueryOwnedLifecycleEvent(type: string): boolean {
   return type === "run_started" || type === "run_ended" || type === "run_settled";
-}
-
-function safeRoleMemories(roleId: string): string[] {
-  try {
-    return getRoleMemoryForPrompt(roleId);
-  } catch {
-    return [];
-  }
-}
-
-function safeRecentNegativeReasons(): string[] | undefined {
-  try {
-    const reasons = listRecentNegativeReasons(7, 5);
-    return reasons.length ? reasons : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function isPiImage(mimeType: string): mimeType is ImageContent["mimeType"] {

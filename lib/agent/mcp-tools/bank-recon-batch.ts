@@ -22,6 +22,8 @@ import type {
   SubagentTask,
 } from "@/lib/agent/subagent-contracts";
 import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
+import type { MemoryRuntimeContext } from "@/lib/memory-v2/contracts";
+import type { AgentFoundationContext } from "@/lib/agent/contracts";
 
 type Sdk = SdkLike;
 
@@ -33,6 +35,9 @@ export type BankReconBatchDeps = {
   run?: RunParallelFn;
   /** 注入替代 fs.existsSync（测试用）；生产路径缺省调用真实函数 */
   fileExists?: (p: string) => boolean;
+  /** Runtime-authoritative memory scope inherited by every batch child. */
+  memoryContext?: Partial<MemoryRuntimeContext> | null;
+  foundation?: AgentFoundationContext;
 };
 
 export function createRunBankReconBatchTool(
@@ -161,6 +166,8 @@ export function createRunBankReconBatchTool(
         parentOutputDir: outputDir,
         traceId,
         conversationId,
+        memoryContext: deps?.memoryContext,
+        foundation: deps?.foundation,
         onEvent: onSubagentEvent,
         signal: execution?.signal,
       });

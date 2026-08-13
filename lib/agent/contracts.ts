@@ -1,4 +1,18 @@
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
+import type { PrincipalRef } from "@/lib/capability/common";
+import type { ResourceBudget } from "@/lib/resource/contracts";
+import type { DataHandlingPolicy } from "@/lib/security/contracts";
+
+/** Production-owned identity shared by a task, its case and nested runs. */
+export type AgentFoundationContext = {
+  taskId: string;
+  caseId: string;
+  runId: string;
+  tenantId: string;
+  principal: PrincipalRef;
+  security: DataHandlingPolicy;
+  budget: ResourceBudget;
+};
 
 export type AgentMessage = {
   role: "user" | "assistant";
@@ -47,9 +61,13 @@ export type FinworkAgentRequest = {
   conversationId?: number;
   roleId?: string | null;
   taskContract?: import("./run-contract").TaskContract | null;
+  /** Explicit governance boundary for Memory v2. Free-form chat must not invent these fields. */
+  memoryContext?: Partial<import("@/lib/memory-v2/contracts").MemoryRuntimeContext> | null;
   executionTier?: import("@/lib/settings/model-config").ExecutionTier | null;
   /** Router fact used only for conservative context narrowing; absence keeps the full catalog. */
   intent?: AgentIntent;
+  /** Agent code must propagate this identity instead of deriving another case id. */
+  foundation?: AgentFoundationContext;
 };
 
 export type FinworkAgentUsage = {

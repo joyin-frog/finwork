@@ -35,8 +35,7 @@ export const windowsHardeningTestPromise = (async () => {
   // 开工 rg 现场枚举出的调用点清单（无注入 6 处 + 已注入 4 处 + installer pip）
   const callsites: Array<{ file: string; label: string }> = [
     // 无注入 6 处（本 spec 主因）
-    { file: "lib/knowledge/parsers/index.ts",           label: "parsers/index extractViaWorker" },
-    { file: "lib/knowledge/parsers/index.ts",           label: "parsers/index parseImageDocument" },
+    { file: "lib/resource/document-worker-pool.ts",     label: "shared document worker pool" },
     { file: "lib/domain/reconciliation.ts",             label: "reconciliation" },
     { file: "lib/domain/reimbursement.ts",              label: "reimbursement" },
     { file: "lib/domain/tax-cumulative.ts",             label: "tax-cumulative" },
@@ -44,7 +43,6 @@ export const windowsHardeningTestPromise = (async () => {
     // python-doctor defaultRunner 函数体
     { file: "lib/runtime/python-doctor.ts",             label: "python-doctor defaultRunner" },
     // 固定 worker 调用点改用 helper 消除手拼
-    { file: "lib/agent/mcp-tools/read-document.ts",     label: "read-document" },
     { file: "lib/agent/mcp-tools/kingdee-tools.ts",     label: "kingdee-tools" },
     { file: "lib/agent/tools/finance/payroll.ts",       label: "payroll" },
     // pip 调用点（installer）

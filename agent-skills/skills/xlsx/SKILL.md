@@ -96,7 +96,7 @@ openpyxl 的 `load_workbook()` → `save()` 会**清空整册公式的缓存值*
 - **确定的数字直接用 `value` 写数值，不要写成 `formula: "=18299442.55"`。** 常数写成公式会得到一个没有缓存结果的单元格，读回是空的。
 - **只写了 `formula` 没写 `value` 的单元格，读回为空是正常的**，不是写入失败。需要求值就交给 `finalize_deliverable` 的重算流程；**绝不要因此用 openpyxl 重写整册去"修正"**——那会清空全部公式缓存值，得不偿失。
 
-**新建空白工作簿**仍然用 openpyxl/pandas，不依赖 LibreOffice——新文件本来就没有缓存可丢。
+**新建工作簿必须用 `create_workbook`**。它只接收声明式工作表、行、单元格和公式，不执行 Python/Bash，也不会覆盖同名文件。已有模板或工作底稿仍必须用 `patch_workbook`，不能重建。
 
 **新增 sheet**：`patch_workbook` 的 edit 里加 `createSheet: true` 即可在既有工作簿里建表（不写这个标志、表名又不存在时会报 `sheet_not_found`，防止表名打错被静默变成一张空表）。
 
@@ -113,9 +113,9 @@ openpyxl 的 `load_workbook()` → `save()` 会**清空整册公式的缓存值*
 
 **公式重算由产品 Runtime 负责**：不要通过 Bash 调用 `scripts/recalc.py`，不要自行寻找或启动 `soffice`，也不要为了绕过重算而在 Python 中手工模拟整套 Excel 公式引擎。
 
-**输入附件是只读的**：`patch_workbook` 的 `sourcePath` 指向附件原路径即可，它只读不写，输出落在本回合输出目录。若确需在 Python 中复制文件，用 `shutil.copyfile()` 并对输出执行 `chmod(0o600)`；不要用 `shutil.copy()` / `copy2()`，那会把沙箱里的只读 `0444` 一并带到副本。
+**输入附件是只读的**：`patch_workbook` 的 `sourcePath` 指向附件原路径即可，它只读不写，输出落在本回合输出目录。不要用 Bash、Write、Python 或临时脚本复制、改写用户附件。
 
-**控制单次工具输出大小**：复杂模型需要长 Python 脚本时，先用 `write` 创建短骨架，再用多次 `edit` 分段补充。不要在一次 `write` 中发送整个大型数据字典和脚本；工具参数被输出 token 上限截断后不会执行。
+**控制单次工具输出大小**：`create_workbook` 和 `patch_workbook` 都有显式上限。超出时按工作表或连续编辑批次拆分调用；不要改用 Bash/Write/Python 绕过限制。
 
 当工作簿包含需要求值的公式、或正式交付依赖计算后的单元格值时：
 1. 先保存候选 XLSX，并做公式文本、关键输入值、工作表结构和修改范围的静态检查。
@@ -126,230 +126,49 @@ openpyxl 的 `load_workbook()` → `save()` 会**清空整册公式的缓存值*
 Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测不属于本 skill。
 ---
 
-## 读取和分析数据
+## 声明式工作流
 
-### 使用 pandas 进行数据分析
-对于数据分析、可视化和基本操作，使用 **pandas**，它提供强大的数据操作能力：
+### 读取与分析
+1. 用 `read_document` 读取 Excel/CSV，保留工作表名、行列定位和来源证据。
+2. 合计、平均、最大最小、分组和差异统计必须用 `analyze_tabular`，不要心算。
+3. 勾稽、数据质量和多表归并分别使用 `check_workbook_ties`、`detect_data_issues`、`merge_labeled_tables`。
 
-```python
-import pandas as pd
+### 新建工作簿
+1. 先确定工作表、列、单位、数据来源和计算口径。
+2. 用 `create_workbook` 传入声明式 `sheets[].rows`。
+3. 需要动态计算的格子使用 `{ "formula": "SUM(B2:B9)", "result": 5000 }`；普通字符串即使以 `=` 开头也保持文本。
+4. 给标题行设置 `headerRows`；需要冻结表头时设置 `freezeRows`；明细表可设置 `autoFilter`。
+5. 不得用 Bash、Write、Python、openpyxl、pandas 或临时脚本代替 `create_workbook`。
 
-# 读取 Excel
-df = pd.read_excel('file.xlsx')  # 默认：第一个工作表
-all_sheets = pd.read_excel('file.xlsx', sheet_name=None)  # 所有工作表以字典形式返回
+### 修改既有工作簿
+1. 用 `patch_workbook`，只改明确的单元格。
+2. 不覆盖原件；需要连续修改时把上一次输出作为下一次输入。
+3. 模板自带公式和格式优先，不能重建同名表来“简化”。
 
-# 分析
-df.head()      # 预览数据
-df.info()      # 列信息
-df.describe()  # 统计信息
+## 关键：使用公式，而非硬编码计算结果
 
-# 写入 Excel
-df.to_excel('output.xlsx', index=False)
-```
+- 合计：`SUM(B2:B9)`
+- 差异率：`(C2-B2)/B2`
+- 平均值：`AVERAGE(D2:D19)`
+- 跨表引用：`利润表!B12`
 
----
+公式放在单元格对象的 `formula` 字段中；确定的原始数据放在 `value` 中。不要把确定数字伪装成公式，也不要在模型外算完后只写死最终结果。
 
-## Excel 文件工作流程
+## 交付与验证
 
-## 关键：使用公式，而非硬编码值
+1. 检查工作表结构、公式文本、关键输入、单位和来源。
+2. 有公式时检查边界条件：零分母、负数、空值、跨表引用、起止行和最右侧列。
+3. 调用 `finalize_deliverable`，由产品 Runtime 在工作副本上重算、扫描公式错误并做渲染验证。
+4. `#REF!`、`#DIV/0!`、`#VALUE!`、`#N/A`、`#NAME?` 任一存在都不能交付。
+5. Runtime 返回 `recalc_unavailable` 时必须停止公式型交付并报告阻塞；不得硬编码结果、安装临时依赖或绕过门禁。
+6. 只有 `finalize_deliverable` 返回正式 CompletionEvidence 后，才能向用户声明文件已交付。
 
-**始终使用 Excel 公式，而不是在 Python 中计算并硬编码结果。** 这确保电子表格保持动态和可更新。
+## 最终检查清单
 
-### ❌ 错误做法 - 硬编码计算值
-```python
-# 错误：在 Python 中计算并硬编码结果
-total = df['Sales'].sum()
-sheet['B10'] = total  # 硬编码为 5000
-
-# 错误：在 Python 中计算增长率
-growth = (df.iloc[-1]['Revenue'] - df.iloc[0]['Revenue']) / df.iloc[0]['Revenue']
-sheet['C5'] = growth  # 硬编码为 0.15
-
-# 错误：在 Python 中计算平均值
-avg = sum(values) / len(values)
-sheet['D20'] = avg  # 硬编码为 42.5
-```
-
-### ✅ 正确做法 - 使用 Excel 公式
-```python
-# 正确：让 Excel 计算总和
-sheet['B10'] = '=SUM(B2:B9)'
-
-# 正确：增长率用 Excel 公式
-sheet['C5'] = '=(C4-C2)/C2'
-
-# 正确：使用 Excel 函数求平均值
-sheet['D20'] = '=AVERAGE(D2:D19)'
-```
-
-这适用于所有计算——合计、百分比、比率、差值等。电子表格应该能够在源数据变化时重新计算。
-
----
-
-## 常用工作流程
-1. **选择工具**：数据操作用 pandas，公式/格式化用 openpyxl
-2. **创建/加载**：创建新工作簿或加载现有文件
-3. **修改**：添加/编辑数据、公式和格式
-4. **保存**：写入文件
-5. **重算公式（如果使用了公式则为强制步骤）**：调用产品 Spreadsheet Runtime `recalc`（不要用 Bash / 临时 pip / 直接 `soffice`）
-6. **验证并修复任何错误**：
-   - Runtime 返回包含错误详情的结果
-   - 如果发现 `#REF!` / `#DIV/0!` / `#VALUE!` / `#NAME?` 等，修复后再次重算
-   - 需要修复的常见错误：
-     - `#REF!`：无效的单元格引用
-     - `#DIV/0!`：除以零
-     - `#VALUE!`：公式中数据类型错误
-     - `#NAME?`：无法识别的公式名称
-
----
-
-### 创建新的 Excel 文件
-
-```python
-# 使用 openpyxl 处理公式和格式
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
-
-wb = Workbook()
-sheet = wb.active
-
-# 添加数据
-sheet['A1'] = 'Hello'
-sheet['B1'] = 'World'
-sheet.append(['Row', 'of', 'data'])
-
-# 添加公式
-sheet['B2'] = '=SUM(A1:A10)'
-
-# 格式化
-sheet['A1'].font = Font(bold=True, color='FF0000')
-sheet['A1'].fill = PatternFill('solid', start_color='FFFF00')
-sheet['A1'].alignment = Alignment(horizontal='center')
-
-# 列宽
-sheet.column_dimensions['A'].width = 20
-
-wb.save('output.xlsx')
-```
-
----
-
-### 编辑现有的 Excel 文件
-
-```python
-# 使用 openpyxl 保留公式和格式
-from openpyxl import load_workbook
-
-# 加载现有文件
-wb = load_workbook('existing.xlsx')
-sheet = wb.active  # 或使用 wb['SheetName'] 指定工作表
-
-# 处理多个工作表
-for sheet_name in wb.sheetnames:
-    sheet = wb[sheet_name]
-    print(f"工作表：{sheet_name}")
-
-# 修改单元格
-sheet['A1'] = '新值'
-sheet.insert_rows(2)  # 在第 2 行处插入行
-sheet.delete_cols(3)  # 删除第 3 列
-
-# 添加新工作表
-new_sheet = wb.create_sheet('NewSheet')
-new_sheet['A1'] = '数据'
-
-wb.save('modified.xlsx')
-```
-
----
-
-## 重算公式
-
-由 openpyxl 创建或修改的 Excel 文件包含作为字符串的公式，但没有计算后的值。保存工作簿后调用 `finalize_deliverable`，由产品 Spreadsheet Runtime 完成重算：
-
-- Runtime 使用系统 LibreOffice，并创建独立临时 UserInstallation
-- 在工作副本上重算，不原地修改用户上传文件
-- 超时、非零退出、输出未更新均视为失败
-- 缺 LibreOffice 时返回 `recalc_unavailable`——此时不得用 Python 硬编码结果冒充公式值
-
-不要：
-- 通过 Bash 执行 `scripts/recalc.py` 或直接调用 `soffice`
-- 因为 Bash 内不能启动 LibreOffice，就认定 Excel 无法写入或交付
-- 在 `finalize_deliverable` 之前手工模拟复杂公式缓存
-- 在任务中临时安装公式计算库做兜底
-- 在缺少重算能力时跳过并声称「已计算」
-
----
-
-## 公式验证清单
-
-确保公式正确运行的快速检查项：
-
-### 基本验证
-- [ ] **测试 2-3 个示例引用**：在构建完整模型前，验证它们是否拉取了正确的值
-- [ ] **列映射**：确认 Excel 列对应正确（例如，第 64 列 = BL，而非 BK）
-- [ ] **行偏移**：记住 Excel 行是从 1 开始的（DataFrame 第 5 行 = Excel 第 6 行）
-
-### 常见陷阱
-- [ ] **NaN 处理**：使用 `pd.notna()` 检查空值
-- [ ] **最右侧列**：财年数据通常在第 50+ 列
-- [ ] **多个匹配项**：搜索所有匹配项，而不仅仅是第一个
-- [ ] **除以零**：在公式中使用 `/` 前检查分母（#DIV/0!）
-- [ ] **错误的引用**：验证所有单元格引用指向预期的单元格（#REF!）
-- [ ] **跨工作表引用**：使用正确的格式（Sheet1!A1）链接工作表
-
-### 公式测试策略
-- [ ] **从小处着手**：在广泛应用之前，先对 2-3 个单元格测试公式
-- [ ] **验证依赖关系**：检查公式中引用的所有单元格是否存在
-- [ ] **测试边界情况**：包括零、负数和非常大的值
-
----
-
-### 解读重算结果
-产品 Runtime 返回包含错误详情的结构，例如：
-```json
-{
-  "status": "success",
-  "total_errors": 0,
-  "total_formulas": 42,
-  "error_summary": {
-    "#REF!": {
-      "count": 2,
-      "locations": ["Sheet1!B5", "Sheet1!C10"]
-    }
-  }
-}
-```
-
----
-
-## 最佳实践
-
-### 库的选择
-- **pandas**：最适合数据分析、批量操作和简单数据导出
-- **openpyxl**：最适合复杂格式、公式和 Excel 特定功能
-
-### 使用 openpyxl
-- 单元格索引从 1 开始（row=1, column=1 对应单元格 A1）
-- 使用 `data_only=True` 读取计算后的值：`load_workbook('file.xlsx', data_only=True)`
-- **警告**：如果以 `data_only=True` 打开并保存，公式将被替换为值并永久丢失
-- 对于大文件：读取时使用 `read_only=True`，写入时使用 `write_only=True`
-- 公式被保留但不会被求值——使用产品 Spreadsheet Runtime 重算更新值
-
-### 使用 pandas
-- 指定数据类型以避免推断问题：`pd.read_excel('file.xlsx', dtype={'id': str})`
-- 对于大文件，读取指定的列：`pd.read_excel('file.xlsx', usecols=['A', 'C', 'E'])`
-- 正确处理日期：`pd.read_excel('file.xlsx', parse_dates=['date_column'])`
-
----
-
-## 代码风格指南
-**重要提示**：在生成用于 Excel 操作的 Python 代码时：
-- 编写简洁、精炼的 Python 代码，避免不必要的注释
-- 避免冗长的变量名和冗余操作
-- 避免不必要的 print 语句
-
-**对于 Excel 文件本身**：
-- 为包含复杂公式或重要假设的单元格添加注释
-- 记录硬编码值的数据来源
-- 为关键计算和模型部分添加说明
+- [ ] 原附件未被修改或覆盖
+- [ ] 每张表名称、列、单位和期间明确
+- [ ] 动态计算使用公式，不是硬编码最终值
+- [ ] 公式引用和边界条件已检查
+- [ ] 财务勾稽和业务断言已通过
+- [ ] 公式错误为零
+- [ ] 文件可打开、可渲染，且有正式交付证据

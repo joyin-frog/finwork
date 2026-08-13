@@ -119,11 +119,13 @@ const xlsxPrompt = buildPiPrompt(
   }],
 );
 assert.match(xlsxPrompt.text, /先用 read 加载 xlsx Skill：.*agent-skills\/skills\/xlsx\/SKILL\.md/);
-assert.match(xlsxPrompt.text, /bash 调用 Python\/openpyxl\/pandas/);
-assert.match(xlsxPrompt.text, /bash 当前目录就是本次会话输出目录/);
+assert.match(xlsxPrompt.text, /改动用户上传的表格.*必须用 `patch_workbook`/);
+assert.match(xlsxPrompt.text, /新建空白表格必须调用 `create_workbook`/);
+assert.match(xlsxPrompt.text, /不要用 Bash、Python、openpyxl 或 pandas 直接生成或改写 XLSX/);
 assert.match(xlsxPrompt.text, /附件在沙箱中只读/);
-assert.match(xlsxPrompt.text, /不要用 shutil\.copy\/copy2/);
-assert.match(xlsxPrompt.text, /多次 edit 分段补充/);
+assert.match(xlsxPrompt.text, /不得覆盖原件/);
+assert.match(xlsxPrompt.text, /拆成多次受控工具调用/);
+assert.match(xlsxPrompt.text, /不要用超长脚本绕过工具合同/);
 assert.match(xlsxPrompt.text, /finalize_deliverable/);
 const xlsxRecalcPrompt = buildPiPrompt(
   [{ role: "user", content: "生成需要重算的 Excel" }],
@@ -148,8 +150,8 @@ const xlsxRecalcPrompt = buildPiPrompt(
     expectationSnapshot: {},
   },
 );
-assert.match(xlsxRecalcPrompt.text, /由 finalize_deliverable 在沙箱外的受控运行时自动完成/);
-assert.match(xlsxRecalcPrompt.text, /不要在 bash 中自行启动 soffice/);
+assert.match(xlsxRecalcPrompt.text, /由 `finalize_deliverable` 在沙箱外的受控运行时完成/);
+assert.match(xlsxRecalcPrompt.text, /不要在 Bash 中启动 soffice/);
 
 const transientErrorThenSuccess = [
   {

@@ -55,7 +55,7 @@ export function createArtifact(
   const now = new Date().toISOString().replace("T", " ").replace("Z", "");
 
   db.prepare(`
-    INSERT INTO artifacts (id, kind, conversation_id, title, payload, state, created_at, updated_at)
+    INSERT INTO checklist_artifacts (id, kind, conversation_id, title, payload, state, created_at, updated_at)
     VALUES (?, 'checklist', ?, ?, ?, '{}', ?, ?)
   `).run(id, opts.conversationId, opts.title, payload, now, now);
 
@@ -65,7 +65,7 @@ export function createArtifact(
 export function getArtifact(db: DatabaseSync, id: string): Artifact | null {
   const row = db.prepare(`
     SELECT id, kind, conversation_id, title, payload, state, created_at, updated_at
-    FROM artifacts WHERE id = ?
+    FROM checklist_artifacts WHERE id = ?
   `).get(id) as {
     id: string; kind: string; conversation_id: number | null;
     title: string; payload: string; state: string;
@@ -119,7 +119,7 @@ export function patchArtifactState(
 
   // 原子合并：json_patch 把 {"itemId": state} 合入现有 state，避免并发读-改-写互相覆盖。
   db.prepare(`
-    UPDATE artifacts SET state = json_patch(state, json_object(?, ?)), updated_at = ? WHERE id = ?
+    UPDATE checklist_artifacts SET state = json_patch(state, json_object(?, ?)), updated_at = ? WHERE id = ?
   `).run(itemId, state, now, id);
 
   return true;
