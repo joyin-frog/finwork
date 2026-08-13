@@ -154,8 +154,8 @@ export_kingdee_draft(batch)
 
 仓库已包含 `src-tauri/`，用于 Windows 和 macOS 桌面壳：
 
-- `npm run tauri:dev`：开发模式，Tauri 打开 `http://localhost:3000`，由 Next dev server 提供页面和 API。
-- `npm run tauri:build`：生产打包入口，会先执行 Next standalone build 并准备 `src-tauri/resources/next-server`。
+- `pnpm tauri:dev`：开发模式，Tauri 打开 `http://localhost:3000`，由 Next dev server 提供页面和 API（`npm run tauri:dev` 兼容）。
+- `pnpm tauri:build`：生产打包入口，会先执行 Next standalone build 并准备 `src-tauri/resources/next-server`（`npm run tauri:build` 兼容）。
 - 打包机必须安装 Rust toolchain，使 `cargo --version` 可用；macOS 还需要 Xcode Command Line Tools，Windows 需要 Microsoft C++ Build Tools / Windows SDK。
 
 当前生产打包的关键约束：

@@ -2,8 +2,9 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, s
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { getDatabasePath, getConversationFilesDir } from "@/lib/runtime/paths";
+import { getDatabasePath, getConversationFilesDir, getResourceWorkspaceDir } from "@/lib/runtime/paths";
 import { canonicalStoragePathKey } from "@/lib/knowledge/storage";
+import { maintainResourceState } from "@/lib/resource/maintenance";
 import { isFeatureEventName } from "@/lib/telemetry/feature-events";
 import { runMigrations, LATEST_VERSION, getUserVersion } from "./migrations";
 
@@ -89,8 +90,24 @@ export function getDb(): DatabaseSync {
     // 实例化单例 → 一次启动刷多份全量备份"。关键写操作(如工资确认)仍走各自的显式
     // backupDatabase 无条件备份(见 tools/finance/payroll),数据安全不受影响。
     scheduleStartupBackup(db, currentPath);
+    scheduleStartupResourceMaintenance(db);
   }
   return _db;
+}
+
+function scheduleStartupResourceMaintenance(db: DatabaseSync) {
+  setImmediate(() => {
+    // 测试或运行期切换数据库路径时，旧连接可能已经关闭。
+    if (_db !== db) return;
+    try {
+      const queryOnly = db.prepare("PRAGMA query_only").get() as { query_only?: number } | undefined;
+      if (Number(queryOnly?.query_only ?? 0) === 1) return;
+      maintainResourceState(db, getResourceWorkspaceDir());
+    } catch (error) {
+      // 维护失败不能阻断用户请求；保留明确日志供诊断，下一次启动会再次尝试。
+      console.error(`[resource] 启动维护失败:${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
 }
 
 const BACKUP_MIN_INTERVAL_MS = 12 * 60 * 60 * 1000;

@@ -10,6 +10,10 @@ export const instrumentationWiringTestPromise = (async () => {
 
   assert.ok(src.includes("purgeStaleOutputDirs()"), "register 应调用 purgeStaleOutputDirs(清理陈旧输出目录)");
   assert.ok(src.includes("purgeOldServerLogs()"), "register 应调用 purgeOldServerLogs(清理过期 server-*.log)");
+  assert.ok(
+    src.includes("synchronizeProductionFinanceCapabilityCatalog()"),
+    "register 应在启动期同步生产 Capability 目录",
+  );
 
   console.log("instrumentation-wiring: all checks passed ✓");
 })();

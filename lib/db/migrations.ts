@@ -23,6 +23,7 @@ import { DatabaseSync } from "node:sqlite";
 import { addColumnIfMissing, initializeSchema } from "./schema";
 import { deriveCashObligations } from "../domain/cash-obligations";
 import { upDeliverablesV22 } from "../deliverable/schema-v22";
+import { createManualMemoryConflictKey } from "../memory-v2/manual";
 
 export type Migration = {
   version: number;
@@ -1064,6 +1065,1360 @@ export const MIGRATIONS: Migration[] = [
           "ALTER TABLE chat_conversations RENAME COLUMN claude_session_updated_at TO runtime_session_updated_at"
         );
       }
+    },
+  },
+  {
+    version: 24,
+    name: "capability_kernel",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS capability_definitions (
+          capability_id       TEXT NOT NULL,
+          version             TEXT NOT NULL,
+          title               TEXT NOT NULL,
+          input_schema_id     TEXT NOT NULL,
+          output_schema_id    TEXT NOT NULL,
+          manifest_json       TEXT NOT NULL,
+          checksum            TEXT NOT NULL,
+          status              TEXT NOT NULL CHECK(status IN ('available','unavailable','deprecated')),
+          unavailable_reason  TEXT,
+          created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (capability_id, version),
+          CHECK(
+            (status = 'unavailable' AND unavailable_reason IS NOT NULL)
+            OR (status <> 'unavailable' AND unavailable_reason IS NULL)
+          )
+        );
+        CREATE INDEX IF NOT EXISTS idx_capability_definitions_status
+          ON capability_definitions(status, capability_id, version);
+
+        CREATE TABLE IF NOT EXISTS capability_aliases (
+          alias          TEXT PRIMARY KEY,
+          capability_id  TEXT NOT NULL,
+          version        TEXT NOT NULL,
+          created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (capability_id, version)
+            REFERENCES capability_definitions(capability_id, version) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_capability_aliases_target
+          ON capability_aliases(capability_id, version);
+
+        CREATE TABLE IF NOT EXISTS capability_instances (
+          instance_id       TEXT PRIMARY KEY,
+          capability_id     TEXT NOT NULL,
+          version           TEXT NOT NULL,
+          provider_id       TEXT NOT NULL,
+          status            TEXT NOT NULL CHECK(status IN ('available','unavailable','degraded')),
+          dependency_health TEXT NOT NULL DEFAULT '{}',
+          preflight_json     TEXT,
+          checked_at        TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (capability_id, version)
+            REFERENCES capability_definitions(capability_id, version) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_capability_instances_lookup
+          ON capability_instances(capability_id, version, status);
+
+        CREATE TABLE IF NOT EXISTS capability_attempts (
+          attempt_id       TEXT PRIMARY KEY,
+          invocation_id    TEXT NOT NULL,
+          run_id           TEXT NOT NULL,
+          case_id          TEXT,
+          capability_id    TEXT NOT NULL,
+          version          TEXT NOT NULL,
+          attempt_no       INTEGER NOT NULL CHECK(attempt_no > 0),
+          input_hash       TEXT NOT NULL,
+          idempotency_key  TEXT,
+          status           TEXT NOT NULL CHECK(status IN ('running','succeeded','failed','canceled')),
+          failure_kind     TEXT,
+          failure_json     TEXT,
+          output_json      TEXT,
+          started_at       TEXT NOT NULL,
+          ended_at         TEXT,
+          UNIQUE(invocation_id, attempt_no)
+        );
+        CREATE INDEX IF NOT EXISTS idx_capability_attempts_invocation
+          ON capability_attempts(invocation_id, attempt_no);
+        CREATE INDEX IF NOT EXISTS idx_capability_attempts_run
+          ON capability_attempts(run_id, started_at);
+        CREATE INDEX IF NOT EXISTS idx_capability_attempts_idempotency
+          ON capability_attempts(capability_id, version, idempotency_key, status);
+      `);
+    },
+  },
+  {
+    version: 25,
+    name: "task_case_orchestration",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS task_contracts (
+          task_id        TEXT PRIMARY KEY,
+          contract_version INTEGER NOT NULL CHECK(contract_version = 3),
+          contract_json  TEXT NOT NULL,
+          contract_hash  TEXT NOT NULL,
+          created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS cases (
+          case_id              TEXT PRIMARY KEY,
+          task_id              TEXT NOT NULL REFERENCES task_contracts(task_id),
+          run_id               TEXT,
+          state                TEXT NOT NULL CHECK(state IN (
+            'draft','waiting_for_input','preflight','planned','running','waiting_for_human',
+            'validating','repairing','finalizing','delivered','failed','canceled'
+          )),
+          plan_version         INTEGER NOT NULL DEFAULT 1,
+          latest_checkpoint_id TEXT,
+          failure_json         TEXT,
+          created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+          ended_at             TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_cases_task ON cases(task_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_cases_state ON cases(state, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS case_nodes (
+          node_id            TEXT PRIMARY KEY,
+          case_id            TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          capability_id      TEXT NOT NULL,
+          capability_version TEXT NOT NULL,
+          status             TEXT NOT NULL CHECK(status IN (
+            'pending','ready','running','waiting_for_human','validating','succeeded','failed','skipped','canceled'
+          )),
+          input_json         TEXT NOT NULL,
+          input_hash         TEXT NOT NULL,
+          output_json        TEXT,
+          idempotency_key    TEXT,
+          ordinal            INTEGER NOT NULL,
+          started_at         TEXT,
+          ended_at           TEXT,
+          UNIQUE(case_id, ordinal)
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_nodes_case_status
+          ON case_nodes(case_id, status, ordinal);
+
+        CREATE TABLE IF NOT EXISTS case_edges (
+          case_id       TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          from_node_id  TEXT NOT NULL REFERENCES case_nodes(node_id) ON DELETE CASCADE,
+          to_node_id    TEXT NOT NULL REFERENCES case_nodes(node_id) ON DELETE CASCADE,
+          edge_type     TEXT NOT NULL DEFAULT 'depends_on' CHECK(edge_type IN ('depends_on','data','control')),
+          PRIMARY KEY (case_id, from_node_id, to_node_id, edge_type),
+          CHECK(from_node_id <> to_node_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_edges_to ON case_edges(case_id, to_node_id);
+
+        CREATE TABLE IF NOT EXISTS case_step_attempts (
+          step_attempt_id TEXT PRIMARY KEY,
+          case_id         TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          node_id         TEXT NOT NULL REFERENCES case_nodes(node_id) ON DELETE CASCADE,
+          attempt_no      INTEGER NOT NULL CHECK(attempt_no > 0),
+          capability_attempt_id TEXT,
+          status          TEXT NOT NULL CHECK(status IN ('running','succeeded','failed','canceled')),
+          failure_json    TEXT,
+          started_at      TEXT NOT NULL,
+          ended_at        TEXT,
+          UNIQUE(node_id, attempt_no)
+        );
+
+        CREATE TABLE IF NOT EXISTS case_checkpoints (
+          checkpoint_id  TEXT PRIMARY KEY,
+          case_id        TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          sequence_no    INTEGER NOT NULL CHECK(sequence_no > 0),
+          state          TEXT NOT NULL,
+          snapshot_json  TEXT NOT NULL,
+          snapshot_hash  TEXT NOT NULL,
+          created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(case_id, sequence_no)
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_checkpoints_latest
+          ON case_checkpoints(case_id, sequence_no DESC);
+
+        CREATE TABLE IF NOT EXISTS case_human_decisions (
+          decision_id    TEXT PRIMARY KEY,
+          case_id        TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          spec_id        TEXT NOT NULL,
+          status         TEXT NOT NULL CHECK(status IN ('pending','approved','rejected','expired','canceled')),
+          prompt         TEXT NOT NULL,
+          answer_json    TEXT,
+          requested_at   TEXT NOT NULL,
+          resolved_at    TEXT,
+          UNIQUE(case_id, spec_id)
+        );
+      `);
+    },
+  },
+  {
+    version: 26,
+    name: "artifact_graph_and_cas",
+    up: (db) => {
+      const legacyArtifacts = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='artifacts'"
+      ).get();
+      const checklistArtifacts = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='checklist_artifacts'"
+      ).get();
+      if (legacyArtifacts && !checklistArtifacts) {
+        const columns = new Set(
+          (db.prepare("PRAGMA table_info(artifacts)").all() as Array<{ name: string }>).map((column) => column.name)
+        );
+        if (columns.has("payload") && columns.has("state")) {
+          db.exec("ALTER TABLE artifacts RENAME TO checklist_artifacts");
+          db.exec("DROP INDEX IF EXISTS idx_artifacts_conversation_id");
+          db.exec(
+            "CREATE INDEX IF NOT EXISTS idx_checklist_artifacts_conversation_id ON checklist_artifacts(conversation_id)"
+          );
+        }
+      }
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS artifacts (
+          artifact_id       TEXT PRIMARY KEY,
+          kind              TEXT NOT NULL,
+          logical_name      TEXT NOT NULL,
+          owner_case_id     TEXT REFERENCES cases(case_id),
+          classification    TEXT NOT NULL CHECK(classification IN ('public','internal','confidential','restricted')),
+          lifecycle_state   TEXT NOT NULL CHECK(lifecycle_state IN ('staging','candidate','delivered','archived','tombstoned')),
+          current_version_id TEXT,
+          retention_json    TEXT NOT NULL,
+          created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_artifacts_case_state
+          ON artifacts(owner_case_id, lifecycle_state, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS artifact_versions (
+          version_id       TEXT PRIMARY KEY,
+          artifact_id      TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE CASCADE,
+          version_no       INTEGER NOT NULL CHECK(version_no > 0),
+          sha256           TEXT NOT NULL,
+          size_bytes       INTEGER NOT NULL CHECK(size_bytes >= 0),
+          media_type       TEXT NOT NULL,
+          cas_uri          TEXT NOT NULL,
+          state            TEXT NOT NULL CHECK(state IN ('staging','candidate','delivered','archived','tombstoned')),
+          producer_json    TEXT NOT NULL,
+          metadata_json    TEXT NOT NULL DEFAULT '{}',
+          created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(artifact_id, version_no),
+          UNIQUE(sha256, artifact_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_artifact_versions_hash ON artifact_versions(sha256);
+        CREATE INDEX IF NOT EXISTS idx_artifact_versions_state ON artifact_versions(state, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS artifact_refs (
+          ref_id               TEXT PRIMARY KEY,
+          artifact_version_id  TEXT NOT NULL REFERENCES artifact_versions(version_id) ON DELETE CASCADE,
+          ref_type             TEXT NOT NULL CHECK(ref_type IN ('case_input','case_output','evidence','citation','memory','knowledge','delivery')),
+          owner_id             TEXT NOT NULL,
+          locator_json         TEXT,
+          created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(artifact_version_id, ref_type, owner_id, locator_json)
+        );
+        CREATE INDEX IF NOT EXISTS idx_artifact_refs_owner ON artifact_refs(ref_type, owner_id);
+
+        CREATE TABLE IF NOT EXISTS artifact_edges (
+          edge_id          TEXT PRIMARY KEY,
+          from_version_id  TEXT NOT NULL REFERENCES artifact_versions(version_id),
+          to_version_id    TEXT NOT NULL REFERENCES artifact_versions(version_id),
+          relation         TEXT NOT NULL CHECK(relation IN ('derived_from','transformed_from','validated_by','supersedes','contains')),
+          metadata_json    TEXT NOT NULL DEFAULT '{}',
+          created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(from_version_id, to_version_id, relation),
+          CHECK(from_version_id <> to_version_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS artifact_leases (
+          lease_id             TEXT PRIMARY KEY,
+          artifact_version_id  TEXT NOT NULL REFERENCES artifact_versions(version_id) ON DELETE CASCADE,
+          holder               TEXT NOT NULL,
+          purpose              TEXT NOT NULL,
+          expires_at           TEXT NOT NULL,
+          released_at          TEXT,
+          created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_artifact_leases_active
+          ON artifact_leases(artifact_version_id, expires_at) WHERE released_at IS NULL;
+      `);
+    },
+  },
+  {
+    version: 27,
+    name: "evidence_ledger",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS evidence_records (
+          evidence_id         TEXT PRIMARY KEY,
+          case_id             TEXT NOT NULL REFERENCES cases(case_id),
+          evidence_type       TEXT NOT NULL CHECK(evidence_type IN ('source','extraction','transform','assertion','delivery')),
+          artifact_version_id TEXT NOT NULL REFERENCES artifact_versions(version_id),
+          locator_json        TEXT,
+          producer_json       TEXT NOT NULL,
+          input_refs_json     TEXT NOT NULL DEFAULT '[]',
+          output_hash         TEXT NOT NULL,
+          confidence          REAL CHECK(confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+          uncertainty_json    TEXT,
+          policy_decision_id  TEXT NOT NULL,
+          created_at          TEXT NOT NULL,
+          CHECK(evidence_type <> 'source' OR locator_json IS NOT NULL)
+        );
+        CREATE INDEX IF NOT EXISTS idx_evidence_records_case
+          ON evidence_records(case_id, evidence_type, created_at);
+        CREATE INDEX IF NOT EXISTS idx_evidence_records_artifact
+          ON evidence_records(artifact_version_id, evidence_type);
+
+        CREATE TABLE IF NOT EXISTS claims (
+          claim_id          TEXT PRIMARY KEY,
+          case_id           TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          statement         TEXT NOT NULL,
+          structured_json   TEXT,
+          status            TEXT NOT NULL CHECK(status IN ('candidate','verified','contradicted','superseded')),
+          created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_claims_case_status ON claims(case_id, status, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS claim_evidence (
+          claim_id     TEXT NOT NULL REFERENCES claims(claim_id) ON DELETE CASCADE,
+          evidence_id  TEXT NOT NULL REFERENCES evidence_records(evidence_id),
+          role         TEXT NOT NULL DEFAULT 'supports' CHECK(role IN ('supports','contradicts','context')),
+          created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (claim_id, evidence_id, role)
+        );
+
+        CREATE TABLE IF NOT EXISTS citation_records (
+          citation_id         TEXT PRIMARY KEY,
+          claim_id            TEXT NOT NULL REFERENCES claims(claim_id) ON DELETE CASCADE,
+          artifact_version_id TEXT NOT NULL REFERENCES artifact_versions(version_id),
+          locator_json        TEXT NOT NULL,
+          quote_hash          TEXT NOT NULL,
+          created_at          TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_citation_records_claim ON citation_records(claim_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS assertion_results (
+          assertion_id        TEXT NOT NULL,
+          case_id             TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          validator_id        TEXT NOT NULL,
+          status              TEXT NOT NULL CHECK(status IN ('passed','failed','unverified','not_applicable')),
+          blocking            INTEGER NOT NULL CHECK(blocking IN (0,1)),
+          evidence_id         TEXT REFERENCES evidence_records(evidence_id),
+          details_json        TEXT NOT NULL DEFAULT '{}',
+          created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (case_id, assertion_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_assertion_results_gate
+          ON assertion_results(case_id, blocking, status);
+      `);
+    },
+  },
+  {
+    version: 28,
+    name: "governed_memory_v2",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS memory_records_v2 (
+          memory_id             TEXT PRIMARY KEY,
+          kind                  TEXT NOT NULL CHECK(kind IN ('working','episodic','semantic','procedural','feedback')),
+          scope_json            TEXT NOT NULL,
+          scope_tenant_id       TEXT,
+          scope_principal_id    TEXT,
+          scope_case_id         TEXT,
+          scope_role_id         TEXT,
+          entity_refs_json      TEXT NOT NULL DEFAULT '[]',
+          effective_period_json TEXT,
+          period_start          TEXT,
+          period_end            TEXT,
+          content_json          TEXT NOT NULL,
+          conflict_key          TEXT NOT NULL,
+          source_evidence_json  TEXT NOT NULL,
+          confidence            REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+          sensitivity           TEXT NOT NULL CHECK(sensitivity IN ('public','internal','confidential','restricted')),
+          approval_status       TEXT NOT NULL CHECK(approval_status IN ('candidate','approved','rejected','expired')),
+          supersedes_json       TEXT NOT NULL DEFAULT '[]',
+          conflicts_with_json   TEXT NOT NULL DEFAULT '[]',
+          created_at            TEXT NOT NULL,
+          last_used_at          TEXT,
+          expires_at            TEXT,
+          owner_json            TEXT NOT NULL,
+          content_hash          TEXT NOT NULL,
+          revision              INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
+          CHECK(scope_tenant_id IS NOT NULL OR scope_principal_id IS NOT NULL OR scope_case_id IS NOT NULL OR scope_role_id IS NOT NULL),
+          CHECK((period_start IS NULL AND period_end IS NULL) OR (period_start IS NOT NULL AND period_end IS NOT NULL)),
+          CHECK(expires_at IS NULL OR expires_at > created_at)
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_v2_scope_status
+          ON memory_records_v2(scope_tenant_id, scope_principal_id, scope_role_id, approval_status, kind);
+        CREATE INDEX IF NOT EXISTS idx_memory_v2_case_status
+          ON memory_records_v2(scope_case_id, approval_status, kind);
+        CREATE INDEX IF NOT EXISTS idx_memory_v2_conflict
+          ON memory_records_v2(conflict_key, approval_status, period_start, period_end);
+        CREATE INDEX IF NOT EXISTS idx_memory_v2_expiry
+          ON memory_records_v2(approval_status, expires_at) WHERE expires_at IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS memory_relations_v2 (
+          from_memory_id TEXT NOT NULL REFERENCES memory_records_v2(memory_id) ON DELETE CASCADE,
+          to_memory_id   TEXT NOT NULL REFERENCES memory_records_v2(memory_id) ON DELETE CASCADE,
+          relation       TEXT NOT NULL CHECK(relation IN ('supersedes','conflicts_with')),
+          created_at     TEXT NOT NULL,
+          PRIMARY KEY(from_memory_id, to_memory_id, relation),
+          CHECK(from_memory_id <> to_memory_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS memory_access_log_v2 (
+          access_id       TEXT PRIMARY KEY,
+          memory_id       TEXT NOT NULL,
+          principal_json  TEXT NOT NULL,
+          action          TEXT NOT NULL CHECK(action IN ('created','selected','approved','rejected','expired','corrected','deletion_requested','deleted','retained')),
+          reason          TEXT,
+          evidence_json   TEXT NOT NULL DEFAULT '[]',
+          created_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_access_log_memory
+          ON memory_access_log_v2(memory_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS memory_deletion_requests_v2 (
+          request_id        TEXT PRIMARY KEY,
+          memory_id         TEXT NOT NULL,
+          requester_json    TEXT NOT NULL,
+          status            TEXT NOT NULL CHECK(status IN ('completed','retained')),
+          retention_reason  TEXT,
+          deletion_proof    TEXT,
+          requested_at      TEXT NOT NULL,
+          completed_at      TEXT,
+          CHECK(
+            (status = 'completed' AND deletion_proof IS NOT NULL AND completed_at IS NOT NULL AND retention_reason IS NULL)
+            OR
+            (status = 'retained' AND retention_reason IS NOT NULL AND deletion_proof IS NULL)
+          )
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_deletion_requests_memory
+          ON memory_deletion_requests_v2(memory_id, requested_at DESC);
+
+        CREATE TABLE IF NOT EXISTS memory_migration_log_v2 (
+          source_kind      TEXT NOT NULL,
+          source_id        TEXT NOT NULL,
+          memory_id        TEXT NOT NULL REFERENCES memory_records_v2(memory_id) ON DELETE CASCADE,
+          source_hash      TEXT NOT NULL,
+          migrated_at     TEXT NOT NULL,
+          PRIMARY KEY(source_kind, source_id)
+        );
+      `);
+    },
+  },
+  {
+    version: 29,
+    name: "retrieval_v2",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS retrieval_documents (
+          document_id          TEXT PRIMARY KEY,
+          artifact_id          TEXT NOT NULL REFERENCES artifacts(artifact_id),
+          artifact_version_id  TEXT NOT NULL REFERENCES artifact_versions(version_id),
+          content_hash         TEXT NOT NULL,
+          title                TEXT NOT NULL,
+          document_type        TEXT NOT NULL,
+          entity_refs_json     TEXT NOT NULL DEFAULT '[]',
+          period_start         TEXT,
+          period_end           TEXT,
+          effective_date       TEXT,
+          classification       TEXT NOT NULL CHECK(classification IN ('public','internal','confidential','restricted')),
+          parser_version       TEXT NOT NULL,
+          chunker_version      TEXT NOT NULL,
+          embedding_model      TEXT NOT NULL,
+          permission_revision  INTEGER NOT NULL DEFAULT 1 CHECK(permission_revision > 0),
+          index_status         TEXT NOT NULL CHECK(index_status IN ('queued','indexing','ready','failed','stale','revoked')),
+          error_code           TEXT,
+          error_message        TEXT,
+          indexed_at           TEXT,
+          created_at           TEXT NOT NULL,
+          updated_at           TEXT NOT NULL,
+          UNIQUE(artifact_version_id, parser_version, chunker_version, embedding_model),
+          CHECK((period_start IS NULL AND period_end IS NULL) OR (period_start IS NOT NULL AND period_end IS NOT NULL)),
+          CHECK(
+            (index_status = 'failed' AND error_code IS NOT NULL AND error_message IS NOT NULL)
+            OR
+            (index_status <> 'failed' AND error_code IS NULL AND error_message IS NULL)
+          )
+        );
+        CREATE INDEX IF NOT EXISTS idx_retrieval_documents_filter
+          ON retrieval_documents(index_status, document_type, effective_date, period_start, period_end);
+        CREATE INDEX IF NOT EXISTS idx_retrieval_documents_hash
+          ON retrieval_documents(content_hash, parser_version, chunker_version, embedding_model);
+
+        CREATE TABLE IF NOT EXISTS retrieval_document_acl (
+          document_id    TEXT NOT NULL REFERENCES retrieval_documents(document_id) ON DELETE CASCADE,
+          principal_type TEXT NOT NULL CHECK(principal_type IN ('user','agent','service')),
+          principal_id   TEXT NOT NULL,
+          tenant_id      TEXT NOT NULL DEFAULT '',
+          granted_at     TEXT NOT NULL,
+          revoked_at     TEXT,
+          PRIMARY KEY(document_id, principal_type, principal_id, tenant_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_retrieval_acl_active
+          ON retrieval_document_acl(principal_type, principal_id, tenant_id, document_id)
+          WHERE revoked_at IS NULL;
+
+        CREATE TABLE IF NOT EXISTS retrieval_ingestion_jobs (
+          job_id          TEXT PRIMARY KEY,
+          document_id     TEXT NOT NULL REFERENCES retrieval_documents(document_id) ON DELETE CASCADE,
+          status          TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','retryable','canceled')),
+          attempt_count   INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+          lease_owner     TEXT,
+          lease_expires_at TEXT,
+          error_code      TEXT,
+          error_message   TEXT,
+          queued_at       TEXT NOT NULL,
+          started_at      TEXT,
+          completed_at    TEXT,
+          updated_at      TEXT NOT NULL,
+          CHECK(
+            (status IN ('failed','retryable') AND error_code IS NOT NULL AND error_message IS NOT NULL)
+            OR
+            (status NOT IN ('failed','retryable') AND error_code IS NULL AND error_message IS NULL)
+          )
+        );
+        CREATE INDEX IF NOT EXISTS idx_retrieval_jobs_claim
+          ON retrieval_ingestion_jobs(status, queued_at, lease_expires_at);
+
+        CREATE TABLE IF NOT EXISTS retrieval_chunks (
+          chunk_id            TEXT PRIMARY KEY,
+          document_id         TEXT NOT NULL REFERENCES retrieval_documents(document_id) ON DELETE CASCADE,
+          artifact_version_id TEXT NOT NULL REFERENCES artifact_versions(version_id),
+          parent_chunk_id      TEXT REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          ordinal              INTEGER NOT NULL CHECK(ordinal >= 0),
+          node_type            TEXT NOT NULL CHECK(node_type IN ('document','section','paragraph','list','table','table_row','sheet','sheet_range','page','code')),
+          depth                INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0),
+          heading              TEXT,
+          text                 TEXT NOT NULL,
+          text_hash            TEXT NOT NULL,
+          locator_json         TEXT NOT NULL,
+          char_start           INTEGER NOT NULL CHECK(char_start >= 0),
+          char_end             INTEGER NOT NULL CHECK(char_end > char_start),
+          token_count          INTEGER NOT NULL CHECK(token_count >= 0),
+          embedding            BLOB,
+          embedding_dim        INTEGER CHECK(embedding_dim IS NULL OR embedding_dim > 0),
+          active               INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+          created_at           TEXT NOT NULL,
+          UNIQUE(document_id, ordinal),
+          CHECK((embedding IS NULL AND embedding_dim IS NULL) OR (embedding IS NOT NULL AND embedding_dim IS NOT NULL))
+        );
+        CREATE INDEX IF NOT EXISTS idx_retrieval_chunks_document
+          ON retrieval_chunks(document_id, active, ordinal);
+        CREATE INDEX IF NOT EXISTS idx_retrieval_chunks_parent
+          ON retrieval_chunks(parent_chunk_id, active);
+
+        CREATE TABLE IF NOT EXISTS retrieval_chunk_edges (
+          from_chunk_id TEXT NOT NULL REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          to_chunk_id   TEXT NOT NULL REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          relation      TEXT NOT NULL CHECK(relation IN ('parent','next','previous','table_header','same_section')),
+          PRIMARY KEY(from_chunk_id, to_chunk_id, relation),
+          CHECK(from_chunk_id <> to_chunk_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS retrieval_lexical_terms (
+          term       TEXT NOT NULL,
+          chunk_id   TEXT NOT NULL REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          term_freq  INTEGER NOT NULL CHECK(term_freq > 0),
+          PRIMARY KEY(term, chunk_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_retrieval_lexical_chunk
+          ON retrieval_lexical_terms(chunk_id);
+
+        CREATE TABLE IF NOT EXISTS retrieval_ann_buckets (
+          model       TEXT NOT NULL,
+          band_no     INTEGER NOT NULL CHECK(band_no >= 0),
+          bucket_hash TEXT NOT NULL,
+          chunk_id    TEXT NOT NULL REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          PRIMARY KEY(model, band_no, bucket_hash, chunk_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_retrieval_ann_chunk
+          ON retrieval_ann_buckets(chunk_id);
+
+        CREATE TABLE IF NOT EXISTS retrieval_query_cache (
+          cache_key              TEXT PRIMARY KEY,
+          principal_fingerprint  TEXT NOT NULL,
+          permission_fingerprint TEXT NOT NULL,
+          query_hash             TEXT NOT NULL,
+          result_json            TEXT NOT NULL,
+          created_at             TEXT NOT NULL,
+          expires_at             TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_retrieval_cache_expiry
+          ON retrieval_query_cache(expires_at);
+      `);
+    },
+  },
+  {
+    version: 30,
+    name: "business_case_graph",
+    up: (db) => {
+      addColumnIfMissing(db, "cases", "case_kind", "TEXT NOT NULL DEFAULT 'financial_consolidation'");
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS case_business_nodes (
+          node_id              TEXT PRIMARY KEY,
+          case_id              TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          node_kind            TEXT NOT NULL CHECK(node_kind IN (
+            'entity','period','contract','invoice','voucher','obligation','assumption','approval','risk'
+          )),
+          title                TEXT NOT NULL,
+          status               TEXT NOT NULL CHECK(status IN ('active','resolved','superseded','canceled')),
+          data_json            TEXT NOT NULL,
+          artifact_versions_json TEXT NOT NULL DEFAULT '[]',
+          evidence_ids_json    TEXT NOT NULL DEFAULT '[]',
+          created_at           TEXT NOT NULL,
+          updated_at           TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_business_nodes_kind
+          ON case_business_nodes(case_id, node_kind, status);
+
+        CREATE TABLE IF NOT EXISTS case_business_edges (
+          case_id          TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          from_node_id     TEXT NOT NULL REFERENCES case_business_nodes(node_id) ON DELETE CASCADE,
+          to_node_id       TEXT NOT NULL REFERENCES case_business_nodes(node_id) ON DELETE CASCADE,
+          relation         TEXT NOT NULL,
+          evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+          created_at       TEXT NOT NULL,
+          PRIMARY KEY(case_id, from_node_id, to_node_id, relation),
+          CHECK(from_node_id <> to_node_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS case_run_bindings (
+          case_id            TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          run_id             TEXT NOT NULL,
+          role_id            TEXT NOT NULL,
+          capability_ids_json TEXT NOT NULL,
+          state              TEXT NOT NULL CHECK(state IN ('queued','running','waiting_user','succeeded','failed','canceled')),
+          started_at         TEXT NOT NULL,
+          ended_at           TEXT,
+          PRIMARY KEY(case_id, run_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_run_bindings_state
+          ON case_run_bindings(case_id, state, started_at);
+
+        CREATE TABLE IF NOT EXISTS case_deadlines (
+          deadline_id        TEXT PRIMARY KEY,
+          case_id            TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          obligation_node_id TEXT NOT NULL REFERENCES case_business_nodes(node_id) ON DELETE CASCADE,
+          due_at              TEXT NOT NULL,
+          remind_at           TEXT,
+          status              TEXT NOT NULL CHECK(status IN ('scheduled','notified','completed','canceled','overdue')),
+          timezone            TEXT NOT NULL,
+          created_at          TEXT NOT NULL,
+          updated_at          TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_deadlines_due
+          ON case_deadlines(status, remind_at, due_at);
+
+        CREATE TABLE IF NOT EXISTS case_history_events (
+          event_id          TEXT PRIMARY KEY,
+          case_id           TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          sequence_no       INTEGER NOT NULL CHECK(sequence_no > 0),
+          event_type        TEXT NOT NULL,
+          reason            TEXT NOT NULL,
+          actor_json        TEXT NOT NULL,
+          run_id            TEXT,
+          decision_id       TEXT,
+          evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+          payload_json      TEXT NOT NULL,
+          previous_hash     TEXT,
+          event_hash        TEXT NOT NULL,
+          created_at        TEXT NOT NULL,
+          UNIQUE(case_id, sequence_no)
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_history_sequence
+          ON case_history_events(case_id, sequence_no);
+      `);
+    },
+  },
+  {
+    version: 31,
+    name: "research_evidence_foundation",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS research_plans (
+          plan_id       TEXT PRIMARY KEY,
+          case_id       TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          provider_id   TEXT NOT NULL,
+          plan_json     TEXT NOT NULL,
+          status        TEXT NOT NULL CHECK(status IN ('running','succeeded','failed')),
+          error_message TEXT,
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          CHECK((status='failed' AND error_message IS NOT NULL) OR status<>'failed')
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_plans_case ON research_plans(case_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS research_snapshots (
+          snapshot_id        TEXT PRIMARY KEY,
+          plan_id            TEXT NOT NULL REFERENCES research_plans(plan_id) ON DELETE CASCADE,
+          candidate_id       TEXT NOT NULL,
+          artifact_version_id TEXT NOT NULL REFERENCES artifact_versions(version_id),
+          requested_url      TEXT NOT NULL,
+          final_url          TEXT NOT NULL,
+          fetched_at         TEXT NOT NULL,
+          http_status        INTEGER NOT NULL,
+          headers_json       TEXT NOT NULL,
+          locale             TEXT NOT NULL,
+          content_type       TEXT NOT NULL,
+          license            TEXT,
+          robots_allowed     INTEGER NOT NULL CHECK(robots_allowed IN (0,1)),
+          source_class       TEXT NOT NULL,
+          rating_json        TEXT NOT NULL,
+          taints_json        TEXT NOT NULL,
+          content_hash       TEXT NOT NULL,
+          UNIQUE(plan_id, candidate_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_snapshots_plan ON research_snapshots(plan_id, fetched_at);
+
+        CREATE TABLE IF NOT EXISTS research_claim_bindings (
+          claim_id       TEXT PRIMARY KEY REFERENCES claims(claim_id) ON DELETE CASCADE,
+          evidence_id    TEXT NOT NULL REFERENCES evidence_records(evidence_id),
+          citation_id    TEXT NOT NULL REFERENCES citation_records(citation_id),
+          snapshot_id    TEXT NOT NULL REFERENCES research_snapshots(snapshot_id),
+          topic          TEXT NOT NULL CHECK(topic IN (
+            'entity','ownership','people','litigation','penalty','finance','media','related_parties'
+          )),
+          locator_json   TEXT NOT NULL,
+          quote_hash     TEXT NOT NULL,
+          status         TEXT NOT NULL CHECK(status IN ('candidate','verified','contradicted'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_research_claims_snapshot ON research_claim_bindings(snapshot_id, topic);
+
+        CREATE TABLE IF NOT EXISTS research_reports (
+          plan_id              TEXT PRIMARY KEY REFERENCES research_plans(plan_id) ON DELETE CASCADE,
+          conflicts_json       TEXT NOT NULL,
+          coverage_json        TEXT NOT NULL,
+          unknowns_json        TEXT NOT NULL,
+          rejected_sources_json TEXT NOT NULL,
+          created_at           TEXT NOT NULL
+        );
+      `);
+    },
+  },
+  {
+    version: 32,
+    name: "security_kernel",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS security_acl_grants (
+          grant_id            TEXT PRIMARY KEY,
+          principal_id        TEXT NOT NULL,
+          principal_type      TEXT NOT NULL CHECK(principal_type IN ('user','agent','service')),
+          tenant_id           TEXT NOT NULL,
+          case_id             TEXT,
+          artifact_version_id TEXT,
+          capability_id       TEXT,
+          actions_json        TEXT NOT NULL,
+          grant_json          TEXT NOT NULL,
+          expires_at          TEXT,
+          revoked_at          TEXT,
+          created_at          TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_security_acl_match
+          ON security_acl_grants(principal_id, principal_type, tenant_id, case_id, capability_id, revoked_at, expires_at);
+
+        CREATE TABLE IF NOT EXISTS security_egress_grants (
+          grant_id       TEXT PRIMARY KEY,
+          principal_id   TEXT NOT NULL,
+          tenant_id      TEXT NOT NULL,
+          case_id        TEXT,
+          capability_id  TEXT NOT NULL,
+          domain         TEXT NOT NULL,
+          grant_json     TEXT NOT NULL,
+          expires_at     TEXT NOT NULL,
+          revoked_at     TEXT,
+          created_at     TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_security_egress_match
+          ON security_egress_grants(principal_id, tenant_id, case_id, capability_id, domain, revoked_at, expires_at);
+
+        CREATE TABLE IF NOT EXISTS secret_leases (
+          lease_id            TEXT PRIMARY KEY,
+          secret_id           TEXT NOT NULL,
+          principal_json      TEXT NOT NULL,
+          capability_id       TEXT NOT NULL,
+          destination_domain  TEXT NOT NULL,
+          expires_at          TEXT NOT NULL,
+          remaining_uses      INTEGER NOT NULL CHECK(remaining_uses >= 0),
+          revoked_at          TEXT,
+          created_at          TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_secret_leases_active
+          ON secret_leases(secret_id, capability_id, destination_domain, expires_at, revoked_at);
+
+        CREATE TABLE IF NOT EXISTS quarantine_items (
+          quarantine_id      TEXT PRIMARY KEY,
+          artifact_id        TEXT NOT NULL,
+          artifact_version_id TEXT NOT NULL,
+          source_path_hash   TEXT NOT NULL,
+          verdict            TEXT NOT NULL CHECK(verdict IN ('pending','clean','malicious','scan_failed')),
+          scanner_id         TEXT,
+          reason_code        TEXT,
+          created_at         TEXT NOT NULL,
+          scanned_at         TEXT,
+          released_at        TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_quarantine_verdict ON quarantine_items(verdict, created_at);
+
+        CREATE TABLE IF NOT EXISTS external_export_requests (
+          request_id          TEXT PRIMARY KEY,
+          principal_json      TEXT NOT NULL,
+          tenant_id           TEXT NOT NULL,
+          case_id             TEXT,
+          artifact_version_id TEXT NOT NULL,
+          capability_id       TEXT NOT NULL,
+          destination_domain  TEXT NOT NULL,
+          classification      TEXT NOT NULL,
+          findings_json       TEXT NOT NULL,
+          status              TEXT NOT NULL CHECK(status IN ('pending','approved','denied','expired','completed')),
+          approver_json       TEXT,
+          reason              TEXT,
+          expires_at          TEXT NOT NULL,
+          created_at          TEXT NOT NULL,
+          decided_at          TEXT,
+          completed_at        TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_external_export_authorize
+          ON external_export_requests(artifact_version_id, capability_id, destination_domain, status, expires_at);
+
+        CREATE TABLE IF NOT EXISTS security_audit_events (
+          event_id       TEXT PRIMARY KEY,
+          sequence_no    INTEGER NOT NULL UNIQUE CHECK(sequence_no > 0),
+          event_type     TEXT NOT NULL,
+          principal_json TEXT NOT NULL,
+          tenant_id      TEXT NOT NULL,
+          case_id        TEXT,
+          capability_id  TEXT,
+          payload_json   TEXT NOT NULL,
+          previous_hash  TEXT,
+          event_hash     TEXT NOT NULL,
+          created_at     TEXT NOT NULL
+        );
+      `);
+    },
+  },
+  {
+    version: 33,
+    name: "artifact_lifecycle_gc",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS artifact_holds (
+          hold_id              TEXT PRIMARY KEY,
+          artifact_version_id  TEXT NOT NULL REFERENCES artifact_versions(version_id) ON DELETE CASCADE,
+          hold_type            TEXT NOT NULL CHECK(hold_type IN ('legal_hold','pin')),
+          owner_id             TEXT NOT NULL,
+          reason               TEXT NOT NULL,
+          expires_at           TEXT,
+          released_at          TEXT,
+          created_at           TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_artifact_holds_active
+          ON artifact_holds(artifact_version_id, hold_type, expires_at, released_at);
+
+        CREATE TABLE IF NOT EXISTS artifact_gc_runs (
+          run_id            TEXT PRIMARY KEY,
+          mode              TEXT NOT NULL CHECK(mode IN ('dry_run','tombstone','physical_delete')),
+          status            TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
+          policy_json       TEXT NOT NULL,
+          stats_json        TEXT NOT NULL DEFAULT '{}',
+          error_message     TEXT,
+          started_at        TEXT NOT NULL,
+          completed_at      TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS artifact_gc_candidates (
+          run_id                TEXT NOT NULL REFERENCES artifact_gc_runs(run_id) ON DELETE CASCADE,
+          artifact_version_id   TEXT NOT NULL,
+          artifact_id           TEXT NOT NULL,
+          sha256                TEXT NOT NULL,
+          size_bytes            INTEGER NOT NULL CHECK(size_bytes >= 0),
+          reason                TEXT NOT NULL,
+          status                TEXT NOT NULL CHECK(status IN ('planned','tombstoned','deleting','deleted','restored','failed')),
+          tombstoned_at         TEXT,
+          delete_after          TEXT,
+          error_message         TEXT,
+          PRIMARY KEY(run_id, artifact_version_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_artifact_gc_candidates_status
+          ON artifact_gc_candidates(status, delete_after);
+
+        CREATE TABLE IF NOT EXISTS artifact_lifecycle_events (
+          event_id              TEXT PRIMARY KEY,
+          artifact_id           TEXT NOT NULL,
+          artifact_version_id   TEXT,
+          event_type            TEXT NOT NULL CHECK(event_type IN ('hold','release','gc_plan','tombstone','restore','physical_delete','delete_failed')),
+          actor_id              TEXT NOT NULL,
+          details_json          TEXT NOT NULL DEFAULT '{}',
+          created_at            TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_artifact_lifecycle_events_artifact
+          ON artifact_lifecycle_events(artifact_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    version: 34,
+    name: "resource_governance",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS resource_budget_scopes (
+          scope_id       TEXT PRIMARY KEY,
+          scope_type     TEXT NOT NULL CHECK(scope_type IN ('global','case','run')),
+          scope_key      TEXT NOT NULL,
+          budget_json    TEXT NOT NULL,
+          usage_json     TEXT NOT NULL DEFAULT '{}',
+          active_count   INTEGER NOT NULL DEFAULT 0 CHECK(active_count >= 0),
+          revision       INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
+          updated_at     TEXT NOT NULL,
+          UNIQUE(scope_type, scope_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS resource_reservations (
+          reservation_id TEXT PRIMARY KEY,
+          run_id          TEXT NOT NULL,
+          case_id         TEXT,
+          capability_id   TEXT NOT NULL,
+          request_json    TEXT NOT NULL,
+          usage_json      TEXT NOT NULL DEFAULT '{}',
+          status          TEXT NOT NULL CHECK(status IN ('active','released','exhausted','cancelled')),
+          created_at      TEXT NOT NULL,
+          released_at     TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_resource_reservations_active
+          ON resource_reservations(status, run_id, case_id);
+
+        CREATE TABLE IF NOT EXISTS resource_usage_events (
+          event_id        TEXT PRIMARY KEY,
+          reservation_id TEXT REFERENCES resource_reservations(reservation_id) ON DELETE SET NULL,
+          run_id          TEXT NOT NULL,
+          case_id         TEXT,
+          metric          TEXT NOT NULL,
+          delta           INTEGER NOT NULL,
+          sampled_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_resource_usage_scope
+          ON resource_usage_events(run_id, case_id, metric, sampled_at DESC);
+
+        CREATE TABLE IF NOT EXISTS worker_jobs (
+          job_id          TEXT PRIMARY KEY,
+          pool_name       TEXT NOT NULL,
+          run_id          TEXT NOT NULL,
+          case_id         TEXT,
+          priority        INTEGER NOT NULL,
+          status          TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled','timed_out')),
+          payload_hash    TEXT NOT NULL,
+          enqueued_at     TEXT NOT NULL,
+          started_at      TEXT,
+          heartbeat_at    TEXT,
+          ended_at        TEXT,
+          error_message   TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_worker_jobs_queue
+          ON worker_jobs(pool_name, status, priority DESC, enqueued_at ASC);
+
+        CREATE TABLE IF NOT EXISTS incremental_cache_entries (
+          cache_key           TEXT PRIMARY KEY,
+          namespace           TEXT NOT NULL,
+          artifact_version_id TEXT REFERENCES artifact_versions(version_id) ON DELETE SET NULL,
+          value_json          TEXT,
+          size_bytes          INTEGER NOT NULL CHECK(size_bytes >= 0),
+          authorization_hash  TEXT NOT NULL,
+          created_at          TEXT NOT NULL,
+          accessed_at         TEXT NOT NULL,
+          expires_at          TEXT,
+          hit_count           INTEGER NOT NULL DEFAULT 0 CHECK(hit_count >= 0)
+        );
+        CREATE INDEX IF NOT EXISTS idx_incremental_cache_lru
+          ON incremental_cache_entries(namespace, accessed_at ASC);
+
+        CREATE TABLE IF NOT EXISTS resource_metric_snapshots (
+          snapshot_id     TEXT PRIMARY KEY,
+          run_id          TEXT,
+          case_id         TEXT,
+          metrics_json    TEXT NOT NULL,
+          captured_at     TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_resource_metrics_time
+          ON resource_metric_snapshots(captured_at DESC);
+      `);
+    },
+  },
+  {
+    version: 35,
+    name: "evaluation_observability_and_rollout",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS evaluation_manifests (
+          manifest_id     TEXT NOT NULL,
+          version         TEXT NOT NULL,
+          case_kind       TEXT NOT NULL,
+          manifest_json   TEXT NOT NULL,
+          manifest_hash   TEXT NOT NULL,
+          created_at      TEXT NOT NULL,
+          updated_at      TEXT NOT NULL,
+          PRIMARY KEY(manifest_id, version)
+        );
+
+        CREATE TABLE IF NOT EXISTS evaluation_runs (
+          eval_run_id     TEXT PRIMARY KEY,
+          manifest_id     TEXT NOT NULL,
+          manifest_version TEXT NOT NULL,
+          status          TEXT NOT NULL CHECK(status IN ('running','passed','failed','error')),
+          fault_domain    TEXT CHECK(fault_domain IS NULL OR fault_domain IN
+            ('model','capability','dependency','validator','policy','resource','evaluator')),
+          result_json     TEXT NOT NULL DEFAULT '{}',
+          started_at      TEXT NOT NULL,
+          ended_at        TEXT,
+          FOREIGN KEY(manifest_id, manifest_version)
+            REFERENCES evaluation_manifests(manifest_id, version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_evaluation_runs_manifest
+          ON evaluation_runs(manifest_id, manifest_version, started_at DESC);
+
+        CREATE TABLE IF NOT EXISTS evaluation_scorecards (
+          scorecard_id    TEXT PRIMARY KEY,
+          eval_run_id     TEXT NOT NULL REFERENCES evaluation_runs(eval_run_id) ON DELETE CASCADE,
+          dimension       TEXT NOT NULL CHECK(dimension IN ('contract','artifact','evidence','memory','rag','security','performance')),
+          score           REAL NOT NULL CHECK(score >= 0 AND score <= 1),
+          passed          INTEGER NOT NULL CHECK(passed IN (0,1)),
+          details_json    TEXT NOT NULL DEFAULT '{}',
+          created_at      TEXT NOT NULL,
+          UNIQUE(eval_run_id, dimension)
+        );
+
+        CREATE TABLE IF NOT EXISTS foundation_diagnostics (
+          snapshot_id     TEXT PRIMARY KEY,
+          snapshot_json   TEXT NOT NULL,
+          captured_at     TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_foundation_diagnostics_time
+          ON foundation_diagnostics(captured_at DESC);
+
+        CREATE TABLE IF NOT EXISTS capability_rollout_epochs (
+          epoch           INTEGER PRIMARY KEY AUTOINCREMENT,
+          mode            TEXT NOT NULL CHECK(mode IN ('shadow','cutover','rollback')),
+          authority       TEXT NOT NULL CHECK(authority IN ('legacy','new')),
+          state           TEXT NOT NULL CHECK(state IN ('active','retired')),
+          reason          TEXT NOT NULL,
+          created_at      TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_capability_rollout_single_active
+          ON capability_rollout_epochs(state) WHERE state = 'active';
+
+        CREATE TABLE IF NOT EXISTS capability_shadow_comparisons (
+          comparison_id   TEXT PRIMARY KEY,
+          case_id         TEXT,
+          run_id          TEXT,
+          legacy_hash     TEXT NOT NULL,
+          new_hash        TEXT NOT NULL,
+          equivalent      INTEGER NOT NULL CHECK(equivalent IN (0,1)),
+          outcome         TEXT NOT NULL CHECK(outcome IN ('matched','mismatched','inconclusive')),
+          details_json    TEXT NOT NULL DEFAULT '{}',
+          created_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_capability_shadow_case
+          ON capability_shadow_comparisons(case_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    version: 36,
+    name: "knowledge_retrieval_v2_binding",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS knowledge_retrieval_bindings (
+          knowledge_document_id INTEGER PRIMARY KEY
+            REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+          artifact_id           TEXT NOT NULL REFERENCES artifacts(artifact_id),
+          artifact_version_id   TEXT NOT NULL UNIQUE REFERENCES artifact_versions(version_id),
+          retrieval_document_id TEXT NOT NULL UNIQUE REFERENCES retrieval_documents(document_id),
+          source_content_hash   TEXT NOT NULL,
+          indexed_at            TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_retrieval_artifact
+          ON knowledge_retrieval_bindings(artifact_id, artifact_version_id);
+        CREATE INDEX IF NOT EXISTS idx_knowledge_retrieval_source_hash
+          ON knowledge_retrieval_bindings(source_content_hash);
+      `);
+    },
+  },
+  {
+    version: 37,
+    name: "resource_soak_and_temp_workspace_lifecycle",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS resource_soak_runs (
+          run_id                 TEXT PRIMARY KEY,
+          contract_hash          TEXT NOT NULL,
+          mode                   TEXT NOT NULL CHECK(mode IN ('real','accelerated')),
+          status                 TEXT NOT NULL CHECK(status IN ('running','completed','failed','cancelled')),
+          target_wall_ms         INTEGER NOT NULL CHECK(target_wall_ms > 0),
+          accumulated_wall_ms    INTEGER NOT NULL DEFAULT 0 CHECK(accumulated_wall_ms >= 0),
+          baseline_rss_bytes     INTEGER NOT NULL CHECK(baseline_rss_bytes > 0),
+          peak_rss_bytes         INTEGER NOT NULL CHECK(peak_rss_bytes > 0),
+          peak_heap_bytes        INTEGER NOT NULL CHECK(peak_heap_bytes >= 0),
+          peak_temp_bytes        INTEGER NOT NULL DEFAULT 0 CHECK(peak_temp_bytes >= 0),
+          peak_queue_depth       INTEGER NOT NULL DEFAULT 0 CHECK(peak_queue_depth >= 0),
+          iterations             INTEGER NOT NULL DEFAULT 0 CHECK(iterations >= 0),
+          resume_count           INTEGER NOT NULL DEFAULT 0 CHECK(resume_count >= 0),
+          lease_owner_id         TEXT,
+          lease_expires_at       TEXT,
+          started_at             TEXT NOT NULL,
+          last_resumed_at        TEXT NOT NULL,
+          last_checkpoint_at     TEXT NOT NULL,
+          completed_at           TEXT,
+          failure_json           TEXT,
+          final_evidence_hash    TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS resource_soak_checkpoints (
+          checkpoint_id          TEXT PRIMARY KEY,
+          run_id                 TEXT NOT NULL REFERENCES resource_soak_runs(run_id) ON DELETE CASCADE,
+          sequence_no            INTEGER NOT NULL CHECK(sequence_no >= 0),
+          elapsed_wall_ms        INTEGER NOT NULL CHECK(elapsed_wall_ms >= 0),
+          metrics_json           TEXT NOT NULL,
+          invariants_json        TEXT NOT NULL,
+          prior_checkpoint_hash  TEXT,
+          checkpoint_hash        TEXT NOT NULL,
+          captured_at            TEXT NOT NULL,
+          UNIQUE(run_id, sequence_no),
+          UNIQUE(run_id, checkpoint_hash)
+        );
+        CREATE INDEX IF NOT EXISTS idx_resource_soak_checkpoint_time
+          ON resource_soak_checkpoints(run_id, sequence_no DESC);
+
+        CREATE TABLE IF NOT EXISTS resource_temp_workspaces (
+          workspace_id       TEXT PRIMARY KEY,
+          owner_run_id       TEXT NOT NULL,
+          path               TEXT NOT NULL UNIQUE,
+          state              TEXT NOT NULL CHECK(state IN ('active','tombstoned','deleted','failed')),
+          created_at         TEXT NOT NULL,
+          heartbeat_at       TEXT NOT NULL,
+          delete_after       TEXT,
+          deleted_at         TEXT,
+          last_size_bytes    INTEGER NOT NULL DEFAULT 0 CHECK(last_size_bytes >= 0),
+          error_message      TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_resource_temp_workspace_sweep
+          ON resource_temp_workspaces(state, delete_after);
+      `);
+    },
+  },
+  {
+    version: 38,
+    name: "governed_memory_archive_lifecycle",
+    up: (db) => {
+      addColumnIfMissing(db, "memory_records_v2", "lifecycle_status", "TEXT NOT NULL DEFAULT 'active' CHECK(lifecycle_status IN ('active','archived'))");
+      addColumnIfMissing(db, "memory_records_v2", "archived_at", "TEXT");
+      addColumnIfMissing(db, "memory_records_v2", "archived_reason", "TEXT");
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_memory_v2_lifecycle
+          ON memory_records_v2(lifecycle_status, approval_status, created_at DESC);
+        CREATE TABLE IF NOT EXISTS memory_lifecycle_events_v2 (
+          event_id        TEXT PRIMARY KEY,
+          memory_id       TEXT NOT NULL,
+          principal_json  TEXT NOT NULL,
+          action          TEXT NOT NULL CHECK(action IN ('archived','restored')),
+          reason          TEXT NOT NULL,
+          created_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_lifecycle_events_memory
+          ON memory_lifecycle_events_v2(memory_id, created_at DESC);
+      `);
+    },
+  },
+  {
+    version: 39,
+    name: "rebuild_manual_memory_conflict_keys",
+    up: (db) => {
+      type ManualMemoryRow = {
+        memory_id: string;
+        kind: "working" | "episodic" | "semantic" | "procedural" | "feedback";
+        scope_tenant_id: string | null;
+        scope_principal_id: string | null;
+        scope_case_id: string | null;
+        scope_role_id: string | null;
+        entity_refs_json: string;
+        period_start: string | null;
+        period_end: string | null;
+        content_json: string;
+        content_hash: string;
+        approval_status: string;
+        lifecycle_status: string;
+        conflicts_with_json: string;
+        created_at: string;
+      };
+      const allRows = db.prepare("SELECT * FROM memory_records_v2 ORDER BY memory_id").all() as unknown as ManualMemoryRow[];
+      const manualRows = allRows.flatMap((row) => {
+        try {
+          const content = JSON.parse(row.content_json) as { topic?: unknown };
+          if (typeof content.topic !== "string" || !content.topic.trim()) return [];
+          return [{ ...row, conflictKey: createManualMemoryConflictKey(row.kind, content.topic) }];
+        } catch {
+          return [];
+        }
+      });
+      if (manualRows.length === 0) return;
+
+      const manualIds = new Set(manualRows.map((row) => row.memory_id));
+      const updateKey = db.prepare("UPDATE memory_records_v2 SET conflict_key = ? WHERE memory_id = ?");
+      for (const row of manualRows) updateKey.run(row.conflictKey, row.memory_id);
+
+      db.exec("CREATE TEMP TABLE IF NOT EXISTS memory_conflict_rebuild_ids(memory_id TEXT PRIMARY KEY)");
+      db.exec("DELETE FROM memory_conflict_rebuild_ids");
+      const insertAffected = db.prepare("INSERT INTO memory_conflict_rebuild_ids(memory_id) VALUES (?)");
+      for (const id of manualIds) insertAffected.run(id);
+      db.exec(`
+        DELETE FROM memory_relations_v2
+        WHERE relation = 'conflicts_with'
+          AND (
+            from_memory_id IN (SELECT memory_id FROM memory_conflict_rebuild_ids)
+            OR to_memory_id IN (SELECT memory_id FROM memory_conflict_rebuild_ids)
+          );
+      `);
+
+      const updateConflicts = db.prepare(
+        "UPDATE memory_records_v2 SET conflicts_with_json = ?, revision = revision + 1 WHERE memory_id = ?",
+      );
+      for (const row of allRows) {
+        let current: string[] = [];
+        try {
+          const parsed = JSON.parse(row.conflicts_with_json || "[]") as unknown;
+          if (Array.isArray(parsed)) current = parsed.filter((item): item is string => typeof item === "string");
+        } catch {
+          current = [];
+        }
+        const next = current.filter((id) => !manualIds.has(id));
+        if (manualIds.has(row.memory_id) || next.length !== current.length) {
+          updateConflicts.run(JSON.stringify(next), row.memory_id);
+        }
+      }
+
+      const scopeOverlaps = (left: string | null, right: string | null) => left === null || right === null || left === right;
+      const entitiesOverlap = (leftJson: string, rightJson: string) => {
+        const left = JSON.parse(leftJson) as string[];
+        const right = JSON.parse(rightJson) as string[];
+        if (left.length === 0 && right.length === 0) return true;
+        if (left.length === 0 || right.length === 0) return false;
+        const rightSet = new Set(right);
+        return left.some((id) => rightSet.has(id));
+      };
+      const periodsOverlap = (left: ManualMemoryRow, right: ManualMemoryRow) => {
+        if (!left.period_start || !left.period_end || !right.period_start || !right.period_end) return true;
+        return left.period_start <= right.period_end && right.period_start <= left.period_end;
+      };
+      const active = manualRows.filter((row) => (
+        row.lifecycle_status === "active"
+        && (row.approval_status === "candidate" || row.approval_status === "approved")
+      ));
+      const conflicts = new Map<string, Set<string>>(manualRows.map((row) => [row.memory_id, new Set()]));
+      const insertRelation = db.prepare(`
+        INSERT OR IGNORE INTO memory_relations_v2(from_memory_id, to_memory_id, relation, created_at)
+        VALUES (?, ?, 'conflicts_with', ?)
+      `);
+      for (let leftIndex = 0; leftIndex < active.length; leftIndex += 1) {
+        const left = active[leftIndex];
+        for (let rightIndex = leftIndex + 1; rightIndex < active.length; rightIndex += 1) {
+          const right = active[rightIndex];
+          if (left.conflictKey !== right.conflictKey || left.content_hash === right.content_hash) continue;
+          if (!scopeOverlaps(left.scope_tenant_id, right.scope_tenant_id)) continue;
+          if (!scopeOverlaps(left.scope_principal_id, right.scope_principal_id)) continue;
+          if (!scopeOverlaps(left.scope_case_id, right.scope_case_id)) continue;
+          if (!scopeOverlaps(left.scope_role_id, right.scope_role_id)) continue;
+          if (!periodsOverlap(left, right) || !entitiesOverlap(left.entity_refs_json, right.entity_refs_json)) continue;
+          conflicts.get(left.memory_id)?.add(right.memory_id);
+          conflicts.get(right.memory_id)?.add(left.memory_id);
+          const createdAt = left.created_at >= right.created_at ? left.created_at : right.created_at;
+          insertRelation.run(left.memory_id, right.memory_id, createdAt);
+          insertRelation.run(right.memory_id, left.memory_id, createdAt);
+        }
+      }
+      for (const [memoryId, ids] of conflicts) {
+        updateConflicts.run(JSON.stringify([...ids].sort()), memoryId);
+      }
+      db.exec("DROP TABLE memory_conflict_rebuild_ids");
+    },
+  },
+  {
+    version: 40,
+    name: "persist_security_policy_decisions",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS security_policy_decisions (
+          decision_id         TEXT PRIMARY KEY,
+          principal_id       TEXT NOT NULL,
+          principal_type     TEXT NOT NULL CHECK(principal_type IN ('user','agent','service')),
+          tenant_id          TEXT NOT NULL,
+          case_id            TEXT,
+          capability_id      TEXT NOT NULL,
+          action             TEXT NOT NULL CHECK(action IN ('read','write','delete','execute','network','export','admin')),
+          artifact_version_id TEXT,
+          decision           TEXT NOT NULL CHECK(decision IN ('allow','deny','require_approval')),
+          request_json       TEXT NOT NULL,
+          decision_json      TEXT NOT NULL,
+          audit_event_id     TEXT NOT NULL REFERENCES security_audit_events(event_id),
+          created_at         TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_security_policy_decision_scope
+          ON security_policy_decisions(case_id, capability_id, artifact_version_id, decision, created_at);
+
+        INSERT OR IGNORE INTO security_acl_grants
+          (grant_id, principal_id, principal_type, tenant_id, case_id, artifact_version_id,
+           capability_id, actions_json, grant_json, expires_at, created_at)
+        VALUES
+          ('builtin-local-agent-turn-write', 'local-user', 'user', 'local', NULL, NULL,
+           'agent.turn', '["write"]',
+           '{"actions":["write"],"capabilityId":"agent.turn","createdAt":"2026-08-12T00:00:00.000Z","id":"builtin-local-agent-turn-write","principal":{"id":"local-user","tenantId":"local","type":"user"},"tenantId":"local"}',
+           NULL, '2026-08-12T00:00:00.000Z'),
+          ('builtin-local-memory-source-write', 'local-user', 'user', 'local', NULL, NULL,
+           'memory.capture-user-statement', '["write"]',
+           '{"actions":["write"],"capabilityId":"memory.capture-user-statement","createdAt":"2026-08-12T00:00:00.000Z","id":"builtin-local-memory-source-write","principal":{"id":"local-user","tenantId":"local","type":"user"},"tenantId":"local"}',
+           NULL, '2026-08-12T00:00:00.000Z'),
+          ('builtin-local-research-evidence-write', 'local-user', 'user', 'local', NULL, NULL,
+           'research.web', '["write"]',
+           '{"actions":["write"],"capabilityId":"research.web","createdAt":"2026-08-12T00:00:00.000Z","id":"builtin-local-research-evidence-write","principal":{"id":"local-user","tenantId":"local","type":"user"},"tenantId":"local"}',
+           NULL, '2026-08-12T00:00:00.000Z');
+      `);
+    },
+  },
+  {
+    version: 41,
+    name: "research_publication_gate",
+    up: (db) => {
+      addColumnIfMissing(db, "research_snapshots", "published_at", "TEXT");
+      addColumnIfMissing(db, "research_snapshots", "effective_from", "TEXT");
+      addColumnIfMissing(db, "research_snapshots", "effective_to", "TEXT");
+      addColumnIfMissing(db, "research_reports", "publication_gate_json", "TEXT NOT NULL DEFAULT '{}'");
+    },
+  },
+  {
+    version: 42,
+    name: "quarantine_file_safety_manifest",
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE quarantine_items RENAME TO quarantine_items_v41;
+        CREATE TABLE quarantine_items (
+          quarantine_id       TEXT PRIMARY KEY,
+          artifact_id         TEXT NOT NULL,
+          artifact_version_id TEXT NOT NULL,
+          source_path_hash    TEXT NOT NULL,
+          verdict             TEXT NOT NULL CHECK(verdict IN ('pending','clean','malicious','scan_failed','policy_blocked')),
+          scanner_id          TEXT,
+          reason_code         TEXT,
+          inspection_json     TEXT,
+          created_at          TEXT NOT NULL,
+          scanned_at          TEXT,
+          released_at         TEXT
+        );
+        INSERT INTO quarantine_items
+          (quarantine_id, artifact_id, artifact_version_id, source_path_hash, verdict,
+           scanner_id, reason_code, inspection_json, created_at, scanned_at, released_at)
+        SELECT quarantine_id, artifact_id, artifact_version_id, source_path_hash, verdict,
+               scanner_id, reason_code, NULL, created_at, scanned_at, released_at
+        FROM quarantine_items_v41;
+        DROP TABLE quarantine_items_v41;
+        CREATE INDEX idx_quarantine_verdict ON quarantine_items(verdict, created_at);
+      `);
     },
   },
 ];

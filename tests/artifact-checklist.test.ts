@@ -5,8 +5,8 @@ import * as React from "react";
 // tsx 直跑 .tsx 用 classic JSX 转换，需要 React 在全局作用域
 (globalThis as Record<string, unknown>).React = React;
 
-/** 辅助：建 in-memory db 并跑到 v10 */
-async function makeTestDb() {
+/** 辅助：建 in-memory db；可选择继续跑 v26 的 legacy artifacts 重命名。 */
+async function makeTestDb(opts: { migrateChecklistTable?: boolean } = {}) {
   const { MIGRATIONS } = await import("../lib/db/migrations.ts");
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
@@ -25,6 +25,11 @@ async function makeTestDb() {
   const v10 = MIGRATIONS.find((m) => m.version === 10);
   if (!v10) throw new Error("v10 migration not found");
   v10.up(db);
+  if (opts.migrateChecklistTable) {
+    const v26 = MIGRATIONS.find((m) => m.version === 26);
+    if (!v26) throw new Error("v26 migration not found");
+    v26.up(db);
+  }
   return db;
 }
 
@@ -83,7 +88,7 @@ export const artifactChecklistTestPromise = (async () => {
   );
 
   // ── A2: ON DELETE CASCADE 级联删除断言 ──────────────────────────────────────
-  const db2 = await makeTestDb();
+  const db2 = await makeTestDb({ migrateChecklistTable: true });
 
   // 插入一条会话
   db2.exec(`
@@ -93,7 +98,7 @@ export const artifactChecklistTestPromise = (async () => {
 
   // 插入一个工件（绑定到会话 1）
   db2.exec(`
-    INSERT INTO artifacts (id, kind, conversation_id, title, payload, state)
+    INSERT INTO checklist_artifacts (id, kind, conversation_id, title, payload, state)
     VALUES ('art-001', 'checklist', 1, '测试清单', '{"items":[]}', '{}')
   `);
 
@@ -101,23 +106,23 @@ export const artifactChecklistTestPromise = (async () => {
   db2.exec("DELETE FROM chat_conversations WHERE id = 1");
 
   const artifactAfterDelete = db2.prepare(
-    "SELECT id FROM artifacts WHERE id = 'art-001'"
+    "SELECT id FROM checklist_artifacts WHERE id = 'art-001'"
   ).get() as { id: string } | undefined;
   assert.equal(artifactAfterDelete, undefined, "A2 FAIL: 删除 conversation 后 artifact 应被级联删除");
 
   // 插入 conversation_id 为 NULL 的工件（不应被级联影响）
   db2.exec(`
-    INSERT INTO artifacts (id, kind, conversation_id, title, payload, state)
+    INSERT INTO checklist_artifacts (id, kind, conversation_id, title, payload, state)
     VALUES ('art-null', 'checklist', NULL, '孤儿清单', '{"items":[]}', '{}')
   `);
   const orphanArtifact = db2.prepare(
-    "SELECT id FROM artifacts WHERE id = 'art-null'"
+    "SELECT id FROM checklist_artifacts WHERE id = 'art-null'"
   ).get() as { id: string } | undefined;
   assert.ok(orphanArtifact, "A2 FAIL: conversation_id=NULL 的 artifact 不应被级联删除");
 
   // ── A3: artifact-store createArtifact / getArtifact / patchArtifactState ────
   const { createArtifact, getArtifact, patchArtifactState } = await import("../lib/db/artifact-store.ts");
-  const db3 = await makeTestDb();
+  const db3 = await makeTestDb({ migrateChecklistTable: true });
 
   // createArtifact
   const items = [
@@ -171,7 +176,7 @@ export const artifactChecklistTestPromise = (async () => {
     tool: (name: string, _desc: string, _schema: unknown, handler: MockTool["handler"]): MockTool => ({ name, handler })
   };
 
-  const emitDb = await makeTestDb();
+  const emitDb = await makeTestDb({ migrateChecklistTable: true });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const emitTool = createEmitChecklistTool(mockSdk as any, emitDb, undefined) as MockTool;
@@ -305,7 +310,7 @@ export const artifactChecklistTestPromise = (async () => {
   // patch item-1 → "done" 与 patch item-2 → "ignored" 同时执行后，两个状态均应保留。
   {
     const { createArtifact: ca, patchArtifactState: pa, getArtifact: ga } = await import("../lib/db/artifact-store.ts");
-    const dbConc = await makeTestDb();
+    const dbConc = await makeTestDb({ migrateChecklistTable: true });
     const concItems = [
       { id: "c-item-1", label: "并发项一" },
       { id: "c-item-2", label: "并发项二" },
