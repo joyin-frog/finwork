@@ -1,0 +1,9 @@
+[
+  {
+    "id": "synthetic-spreadsheetbench-1",
+    "instruction": "Create a summary sheet and preserve all source cells in this synthetic workbook.",
+    "input_file": "synthetic-input.xlsx",
+    "output_file": "synthetic-output.xlsx",
+    "assertions": ["source cells unchanged", "summary sheet exists"]
+  }
+]

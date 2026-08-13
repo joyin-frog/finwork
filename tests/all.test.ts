@@ -30,8 +30,89 @@ process.on("unhandledRejection", (err) => {
   const { runContractTestPromise } = await import("./run-contract.test.ts");
   await runContractTestPromise;
 
+  const { capabilityContractsTestPromise } = await import("./capability-contracts.test.ts");
+  await capabilityContractsTestPromise;
+
+  const { capabilityNoSilentDegradeTestPromise } = await import("./capability-no-silent-degrade.test.ts");
+  await capabilityNoSilentDegradeTestPromise;
+
+  const { capabilityFixturesTestPromise } = await import("./capability-fixtures.test.ts");
+  await capabilityFixturesTestPromise;
+
+  const { capabilityKernelTestPromise } = await import("./capability-kernel.test.ts");
+  await capabilityKernelTestPromise;
+
+  const { capabilityExecutionGateTestPromise } = await import("./capability-execution-gate.test.ts");
+  await capabilityExecutionGateTestPromise;
+
+  const { transientProviderRetryTestPromise } = await import("./transient-provider-retry.test.ts");
+  await transientProviderRetryTestPromise;
+
+  const { preproductionE2ETestPromise } = await import("./preproduction-e2e.test.ts");
+  await preproductionE2ETestPromise;
+
+  const { taskArtifactEvidenceKernelTestPromise } = await import("./task-artifact-evidence-kernel.test.ts");
+  await taskArtifactEvidenceKernelTestPromise;
+
+  const { memoryV2TestPromise } = await import("./memory-v2.test.ts");
+  await memoryV2TestPromise;
+
+  const { memoryCandidateToolsTestPromise } = await import("./memory-candidate-tools.test.ts");
+  await memoryCandidateToolsTestPromise;
+
+  const { memoryV2PromptMigrationTestPromise } = await import("./memory-v2-prompt-migration.test.ts");
+  await memoryV2PromptMigrationTestPromise;
+
+  const { roleConventionsTestPromise } = await import("./role-conventions.test.ts");
+  await roleConventionsTestPromise;
+
+  const { retrievalV2TestPromise } = await import("./retrieval-v2.test.ts");
+  await retrievalV2TestPromise;
+
+  const { retrievalEmbeddingPoolTestPromise } = await import("./retrieval-embedding-pool.test.ts");
+  await retrievalEmbeddingPoolTestPromise;
+
+  const { documentIrTestPromise } = await import("./document-ir.test.ts");
+  await documentIrTestPromise;
+
+  const { documentWorkerPoolTestPromise } = await import("./document-worker-pool.test.ts");
+  await documentWorkerPoolTestPromise;
+
+  const { documentGenerationTestPromise } = await import("./document-generation.test.ts");
+  await documentGenerationTestPromise;
+
+  const { workbookIrTestPromise } = await import("./workbook-ir.test.ts");
+  await workbookIrTestPromise;
+
+  const { createWorkbookTestPromise } = await import("./create-workbook.test.ts");
+  await createWorkbookTestPromise;
+
+  const { businessRulesTestPromise } = await import("./business-rules.test.ts");
+  await businessRulesTestPromise;
+
   const { deliverableQualityGateTestPromise } = await import("./deliverable-quality-gate.test.ts");
   await deliverableQualityGateTestPromise;
+
+  const { businessCaseManagementTestPromise } = await import("./business-case-management.test.ts");
+  await businessCaseManagementTestPromise;
+
+  const { researchFoundationTestPromise } = await import("./research-foundation.test.ts");
+  await researchFoundationTestPromise;
+
+  const { securityKernelTestPromise } = await import("./security-kernel.test.ts");
+  await securityKernelTestPromise;
+
+  const { fileLifecycleTestPromise } = await import("./file-lifecycle.test.ts");
+  await fileLifecycleTestPromise;
+
+  const { resourceGovernorTestPromise } = await import("./resource-governor.test.ts");
+  await resourceGovernorTestPromise;
+
+  const { resourceSoakTestPromise } = await import("./resource-soak.test.ts");
+  await resourceSoakTestPromise;
+
+  const { financeCapabilityRuntimeTestPromise } = await import("./finance-capability-runtime.test.ts");
+  await financeCapabilityRuntimeTestPromise;
 
   const { usageStoreTestPromise } = await import("./usage-store.test.ts");
   await usageStoreTestPromise;
@@ -715,9 +796,6 @@ process.on("unhandledRejection", (err) => {
   const { coerceJsonTestPromise } = await import("./coerce-json.test.ts");
   await coerceJsonTestPromise;
 
-  const { roleConventionsTestPromise } = await import("./role-conventions.test.ts");
-  await roleConventionsTestPromise;
-
   const { styleColorOrthogonalityTestPromise } = await import("./style-color-orthogonality.test.ts");
   await styleColorOrthogonalityTestPromise;
 
@@ -744,6 +822,24 @@ process.on("unhandledRejection", (err) => {
 
   const { as0HarnessTestPromise } = await import("./as0/harness.test.ts");
   await as0HarnessTestPromise;
+
+  const { evaluationFoundationTestPromise } = await import("./evaluation-foundation.test.ts");
+  await evaluationFoundationTestPromise;
+
+  const { benchmarkAdaptersTestPromise } = await import("./benchmark-adapters.test.ts");
+  await benchmarkAdaptersTestPromise;
+
+  const { capabilityFoundationRolloutTestPromise } = await import("./capability-foundation-rollout.test.ts");
+  await capabilityFoundationRolloutTestPromise;
+
+  const { capabilityFoundationGatewayTestPromise } = await import("./capability-foundation-gateway.test.ts");
+  await capabilityFoundationGatewayTestPromise;
+
+  const { foundationDiagnosticsTestPromise } = await import("./foundation-diagnostics.test.ts");
+  await foundationDiagnosticsTestPromise;
+
+  const { productionTaskRuntimeTestPromise } = await import("./production-task-runtime.test.ts");
+  await productionTaskRuntimeTestPromise;
 
 })().catch((err) => {
   console.error("[all.test] 测试链失败:", err);
