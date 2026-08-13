@@ -68,7 +68,8 @@ function fail(nodeModulesDir, { missing, drifted }, linked) {
   console.error("  本 worktree 与主检出的依赖不同(常见于改了 package.json 的分支)。");
   console.error("  修复：在本 worktree 里做一次独立安装——");
   console.error("    rm node_modules   # 只删软链，不动主检出那棵树");
-  console.error("    npm install");
+  console.error("    pnpm install       # 默认");
+  console.error("    npm install        # 兼容入口");
   process.exit(1);
 }
 

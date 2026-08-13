@@ -29,7 +29,7 @@ async function runCat(cat) {
   await fs.cp(BASE, dir, { recursive: true });
   const started = Date.now();
   return await new Promise((resolve) => {
-    const child = spawn("npx", ["tsx", "tests/golden/run.ts"], {
+    const child = spawn(process.execPath, ["node_modules/tsx/dist/cli.mjs", "tests/golden/run.ts"], {
       cwd: REPO,
       env: { ...process.env, FINANCE_AGENT_APP_DATA_DIR: dir, FINANCE_AGENT_PYTHON_RUNTIME_DIR: PYRT, GOLDEN_CATEGORY: cat },
     });

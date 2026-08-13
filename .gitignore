@@ -1,6 +1,7 @@
 .next/
 node_modules/
 node_modules
+.pnpm-store/
 dist/
 src-tauri/target/
 src-tauri/resources/

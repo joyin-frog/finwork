@@ -80,6 +80,7 @@ try {
   const sourceMatches = await forbiddenMatches([
     "package.json",
     "package-lock.json",
+    "pnpm-lock.yaml",
     "app",
     "lib",
     "scripts",

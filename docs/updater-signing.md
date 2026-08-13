@@ -16,7 +16,7 @@ Finwork 集成 [Tauri updater 插件](https://tauri.app/plugin/updater/),支持:
 ### 1. 生成签名密钥对
 
 ```bash
-npm run tauri signer generate -- -w ~/.tauri/finance-agent.key
+pnpm tauri signer generate -- -w ~/.tauri/finance-agent.key
 ```
 
 交互式输入密码短语(passphrase),记住它。命令输出两个文件:

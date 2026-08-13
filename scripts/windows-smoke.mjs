@@ -5,7 +5,7 @@
 // 在 mac 开发 / mock / Linux CI 默认 UTF-8 下都照不到 —— 只有「在目标平台跑真实组装产物」才暴露。
 // 详见项目记忆 windows-runtime-test-blindspot。本脚本平台无关(Windows CI 跑它逮真问题;本地也能跑验证逻辑)。
 //
-// 用法:node scripts/windows-smoke.mjs   (需先 npm run build && npm run tauri:prepare)
+// 用法:node scripts/windows-smoke.mjs   (需先 pnpm build && pnpm tauri:prepare；npm 也兼容)
 
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";

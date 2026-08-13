@@ -53,7 +53,7 @@ await injectUpdaterPubkey();
 
 // ──────────────────────────────────────────────────────────────────────────────
 // § B  Next.js 产物打包到 Tauri resources
-//   需要先跑 `npm run build` 生成 .next/standalone。
+//   需要先跑 `pnpm run build` 生成 .next/standalone（npm run build 也兼容）。
 //   若产物缺失则打印告警并提前退出(dev 或仅注入 pubkey 时不崩)。
 // ──────────────────────────────────────────────────────────────────────────────
 const nextDir = path.join(root, ".next");
@@ -69,7 +69,7 @@ const nodeBinaryName = process.platform === "win32" ? "node.exe" : "node";
 
 if (!existsSync(standaloneDir)) {
   console.warn(
-    "prepare-tauri: [WARN] .next/standalone が見つかりません。先に `npm run build` を実行してください。\n" +
+    "prepare-tauri: [WARN] .next/standalone が見つかりません。先に `pnpm run build` を実行してください。\n" +
       "  pubkey 注入のみ完了 — Tauri resources の配置はスキップします。"
   );
   process.exit(0);

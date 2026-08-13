@@ -22,20 +22,22 @@
 
 ## 从源码运行
 
-需要 Node.js 22+；开发桌面版还需要 Rust 及对应平台的 C 工具链。
+需要 Node.js 22+ 和 pnpm 11；开发桌面版还需要 Rust 及对应平台的 C 工具链。仓库默认使用 pnpm，并保留 npm 兼容锁文件。
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
+
+也可以使用 `npm install && npm run dev`；更新依赖时需同时提交 `pnpm-lock.yaml` 与 `package-lock.json`。
 
 浏览器打开 [http://localhost:3000](http://localhost:3000)。首次启动向导会安装所需的 Python 组件，并引导配置 API Key 和模型；未配置 API Key 时，界面仍可通过本地模拟模式运行。
 
 桌面开发与打包：
 
 ```bash
-npm run tauri:dev
-npm run tauri:build
+pnpm tauri:dev
+pnpm tauri:build
 ```
 
 ## 数据位置
