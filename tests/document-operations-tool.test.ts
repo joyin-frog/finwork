@@ -122,4 +122,3 @@ export const documentOperationsToolTestPromise = (async () => {
     await rm(outputDir, { recursive: true, force: true });
   }
 })();
-

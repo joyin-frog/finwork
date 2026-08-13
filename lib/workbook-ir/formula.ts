@@ -49,4 +49,3 @@ export function parseFormulaAst(formula: string, currentSheet: string): FormulaA
   if (/^".*"$/.test(source)) return { kind: "literal", value: source.slice(1, -1) };
   return { kind: "opaque", source };
 }
-

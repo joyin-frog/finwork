@@ -31,4 +31,3 @@ export const RuleAssertionSchema = z.object({
 export type RuleAssertion = z.infer<typeof RuleAssertionSchema>;
 
 export type RuleEvaluator = (facts: Record<string, unknown>, definition: RuleDefinition) => Omit<RuleAssertion, "assertionId" | "ruleId" | "ruleVersion" | "artifactSha256" | "evaluatedAt">;
-

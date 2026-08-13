@@ -15,4 +15,3 @@ export async function requireWorkbookRecalculation(filePath: string, provider: R
   if (candidateSha256 !== result.data.outputHash) return { status: "blocked", code: "recalc_evidence_hash_mismatch", detail: "Recalculated artifact hash does not match provider evidence" };
   return { status: "verified", evidence: { ...result.data, candidateSha256 } };
 }
-

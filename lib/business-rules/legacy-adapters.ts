@@ -14,4 +14,3 @@ export function evaluateDataQualityCapability(rows: DataRow[], options: { keyFie
 export function evaluateTableMergeCapability(sources: MergeSource[]) {
   return { capabilityId: "finance.tables.merge-labeled", ruleEngine: "business-rules@1", merged: mergeLabeledTables(sources) };
 }
-
