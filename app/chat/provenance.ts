@@ -87,7 +87,7 @@ export function buildReimbursementProvenance(timeline: TimelineLike[]): Reimburs
       }
       case "search_knowledge":
       case "query_knowledge": {
-        const q = str(input, "query") || str(input, "command");
+        const q = str(input, "query");
         if (q) sources.push(`知识库检索「${q.slice(0, 30)}」`);
         break;
       }

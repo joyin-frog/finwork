@@ -54,6 +54,14 @@ export function getConversationFilesDir(conversationId: number | string) {
     ?? path.join(getAppDataDir(), "files", String(conversationId));
 }
 
+/**
+ * 可丢弃资源工作区。它与用户文件目录严格分离，只允许资源治理层做两阶段回收。
+ */
+export function getResourceWorkspaceDir() {
+  return process.env.FINANCE_AGENT_RESOURCE_WORKSPACE_DIR
+    ?? path.join(getAppDataDir(), "resource-workspaces");
+}
+
 /** Pi 会话只允许落在 Finwork app-data；禁止回落到 ~/.pi 默认目录。 */
 export function getPiSessionDir() {
   return process.env.FINANCE_AGENT_PI_SESSION_DIR ?? path.join(getAppDataDir(), "pi-sessions");

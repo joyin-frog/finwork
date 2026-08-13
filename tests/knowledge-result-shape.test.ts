@@ -23,7 +23,7 @@ export const knowledgeResultShapeTestPromise = (async () => {
   // 三个工具的错误/空路径都必须返回 object(不依赖真实数据,不存在的文件/查询即可触发)
   assertShape(await handlers.get("read_file")!({ fileName: "__no_such_file_9999__" }), "read_file");
   assertShape(await handlers.get("search_knowledge")!({ query: "__no_such_kw_9999__" }), "search_knowledge");
-  assertShape(await handlers.get("query_knowledge")!({ command: "ls" }), "query_knowledge");
+  assertShape(await handlers.get("query_knowledge")!({ query: "__no_such_kw_9999__" }), "query_knowledge");
 
   console.log("knowledge-result-shape: 三个知识库工具均返回合法 {content} object ✓");
 })();

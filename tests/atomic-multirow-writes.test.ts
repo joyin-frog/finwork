@@ -15,11 +15,26 @@ export const atomicMultirowWritesTestPromise = (async () => {
   process.env.FINANCE_AGENT_DB_PATH = path.join(baseDir, "atomic.db");
   process.env.FINANCE_AGENT_MOCK_AGENT = "1";
   process.env.FINANCE_AGENT_MOCK_AGENT_DELAY = "0";
+  let restoreRetrievalService: (() => void) | undefined;
 
   try {
     const { createChatConversation, getDb } = await import("../lib/db/sqlite.ts");
     const { sessionStage } = await import("../lib/agent/query-stages.ts");
     const db = getDb();
+    const {
+      createProductionRetrievalService,
+      installProductionRetrievalService,
+    } = await import("../lib/retrieval/production.ts");
+    const retrieval = createProductionRetrievalService({
+      db,
+      casRoot: path.join(baseDir, "artifacts", "cas"),
+      embedder: async (texts: readonly string[]) => texts.map((text) => [
+        text.length || 1,
+        [...text].reduce((sum, char) => sum + char.charCodeAt(0), 0) || 1,
+        1,
+      ]),
+    });
+    restoreRetrievalService = installProductionRetrievalService(retrieval);
 
     // Site B: a failed attachment insert must roll back the user message written with it.
     const conversationId = createChatConversation("site-b atomicity");
@@ -85,6 +100,14 @@ export const atomicMultirowWritesTestPromise = (async () => {
       VALUES (?, ?, 'text/plain', 'other', 1, 0, ?, '', ?, 'confirmed', 0)
     `).run("site-c", "site-c.txt", "site-c-hash", JSON.stringify(metadata));
     const documentId = Number(insertedDoc.lastInsertRowid);
+    await retrieval.indexKnowledgeDocument({
+      knowledgeDocumentId: documentId,
+      title: "site-c",
+      fileName: "site-c.txt",
+      sourceContentHash: "site-c-hash",
+      parsedText: "Site C 归档与恢复原子性测试",
+      category: "other",
+    });
     const { deriveCashObligations, persistDerivedObligations } = await import("../lib/domain/cash-obligations.ts");
     persistDerivedObligations(documentId, deriveCashObligations([{
       id: documentId,
@@ -207,6 +230,7 @@ export const atomicMultirowWritesTestPromise = (async () => {
 
     console.log("atomic-multirow-writes: Site A rollback ✓");
   } finally {
+    restoreRetrievalService?.();
     if (previous.FINANCE_AGENT_APP_DATA_DIR === undefined) delete process.env.FINANCE_AGENT_APP_DATA_DIR;
     else process.env.FINANCE_AGENT_APP_DATA_DIR = previous.FINANCE_AGENT_APP_DATA_DIR;
     if (previous.FINANCE_AGENT_DB_PATH === undefined) delete process.env.FINANCE_AGENT_DB_PATH;

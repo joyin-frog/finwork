@@ -10,7 +10,7 @@
  * 覆盖：
  * - 迁移形状：knowledge_embeddings 表存在 + CASCADE 删除
  * - chunkText 边界：空文本 / 短文本 / 超长段落
- * - 降级：注入失败 runner，ingest 仍成功 + embeddings 零行
+ * - 显式失败：嵌入失败时不得产生可见知识文档或检索绑定
  * - 混合融合：RRF 公式 / 向量路空表 → 纯 rg 结果
  * - reindex 路由返回结构
  * - knowledge-reset.mjs 冒烟（无 sqlite-vec import 即不崩）
@@ -107,7 +107,7 @@ export const semanticSearchTestPromise = (async () => {
     console.log("semantic-search T2 PASS: chunkText 边界 ✓");
   }
 
-  // ─── T3: 降级断言——注入失败 runner，ingest 仍成功 + embeddings 零行 ────
+  // ─── T3: 无静默降级——嵌入失败必须原子回滚 ──────────────────────────────
   {
     const tmpDir = mkdtempSync(path.join(os.tmpdir(), "sem-search-t3-"));
     const dbPath = path.join(tmpDir, "test.db");
@@ -117,6 +117,7 @@ export const semanticSearchTestPromise = (async () => {
     const { openFinanceDatabase: openDb, initializeFinanceDatabase: initDb } = await import("../lib/db/sqlite.ts");
     const db2 = openDb(dbPath);
     initDb(db2, dbPath);
+    db2.close();
 
     // 写一个真实文本文件（pipeline 解析需要）
     const txtPath = path.join(tmpDir, "sample.txt");
@@ -129,26 +130,31 @@ export const semanticSearchTestPromise = (async () => {
 
     const { ingestDocument } = await import("../lib/knowledge/pipeline.ts");
 
-    // 调用 ingestDocument 时用失败 runner（通过 embedTexts 的 runner 参数注入）
-    const result = await ingestDocument({
-      filePath: txtPath,
-      title: "测试文档",
-      fileName: "sample.txt",
-      mimeType: "text/plain",
-      sizeBytes: 100,
-      embedRunner: failingRunner,
-    });
+    await assert.rejects(
+      () => ingestDocument({
+        filePath: txtPath,
+        title: "测试文档",
+        fileName: "sample.txt",
+        mimeType: "text/plain",
+        sizeBytes: 100,
+        embedRunner: failingRunner,
+      }),
+      /mock embed failure|embedding/i,
+      "T3 FAIL: 嵌入失败必须显式返回失败",
+    );
 
-    assert.ok(result.documentId > 0, "T3 FAIL: 降级时 ingestDocument 应仍成功返回 documentId");
-
-    // embeddings 行数应为 0（失败静默降级）
+    // 业务文档、生产绑定与可检索文档都不得半成功残留。
     const db3 = openDb(dbPath);
     initDb(db3, dbPath);
-    const embCount = (db3.prepare("SELECT COUNT(*) AS c FROM knowledge_embeddings").get() as { c: number }).c;
-    assert.equal(embCount, 0, `T3 FAIL: 失败 runner 下 embeddings 应为 0 行，实际 ${embCount}`);
+    const knowledgeCount = (db3.prepare("SELECT COUNT(*) AS c FROM knowledge_documents").get() as { c: number }).c;
+    const bindingCount = (db3.prepare("SELECT COUNT(*) AS c FROM knowledge_retrieval_bindings").get() as { c: number }).c;
+    const readyCount = (db3.prepare("SELECT COUNT(*) AS c FROM retrieval_documents WHERE index_status='ready'").get() as { c: number }).c;
+    assert.equal(knowledgeCount, 0, "T3 FAIL: 失败后不应留下可见知识文档");
+    assert.equal(bindingCount, 0, "T3 FAIL: 失败后不应留下生产检索绑定");
+    assert.equal(readyCount, 0, "T3 FAIL: 失败后不应留下 ready 检索文档");
     db3.close();
 
-    console.log("semantic-search T3 PASS: 降级 ingest 仍成功 + embeddings 零行 ✓");
+    console.log("semantic-search T3 PASS: 嵌入失败显式返回且原子回滚 ✓");
 
     // 清理
     delete process.env.FINANCE_AGENT_APP_DATA_DIR;

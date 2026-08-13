@@ -53,23 +53,15 @@ export const settingsRefactorTestPromise = (async () => {
   assert.ok(settingsUi.includes("SaveStatusText"), "F6-1 FAIL: settings-ui.tsx 应导出共享 SaveStatusText");
   assert.ok(src("app/config/skill-center.tsx").includes("SaveStatusText"), "F6-1 FAIL: skill-center 应继续使用共享 SaveStatusText");
 
-  // ── F6-2: 记忆页——去手动按钮、防抖自动存、超限暂停落盘且显式提示 ─────────
+  // ── F6-2: 记忆页——候选、审批、纠正与删除必须走受控接口 ─────────────────
   const memory = src("app/config/memory/memory-settings.tsx");
-  assert.ok(!memory.includes('from "@/components/ui/button"'), "F6-2 FAIL: 记忆页应已去掉手动保存按钮");
-  assert.ok(memory.includes("setTimeout") && memory.includes("600"), "F6-2 FAIL: 记忆页应为防抖自动保存");
-  assert.ok(
-    />\s*MAX_BYTES\)\s*\{\s*pendingRef\.current = null;[^]*?return;/.test(memory),
-    "F6-2 FAIL: 超过 64KB 时应暂停落盘(不发 PUT,也不留待卸载补发)",
-  );
-  assert.ok(memory.includes("自动保存已暂停"), "F6-2 FAIL: 超限时应显式告知已暂停保存(不可静默不存)");
-  assert.ok(memory.includes("MAX_BYTES * 0.8"), "F6-2 FAIL: 字节计数应仅在超过 80% 时显示");
-  assert.ok(memory.includes("keepalive: true"), "F6-2 FAIL: 卸载时应补发防抖窗口内未落盘的编辑(不可静默丢弃)");
-  assert.ok(!memory.includes("SaveStatusText"), "F6-2 FAIL: 记忆区不应再为保存状态预留独立行");
-  assert.ok(!memory.includes("上次更新"), "F6-2 FAIL: 记忆区不应显示上次更新时间状态行");
-  assert.ok(
-    memory.includes("border-0") && memory.includes("bg-transparent") && memory.includes("focus-visible:ring-0"),
-    "F6-2 FAIL: 记忆文本域应去掉内框，只保留 SettingsSection 外框",
-  );
+  assert.ok(memory.includes('from "@/components/ui/button"'), "F6-2 FAIL: 受控记忆应提供明确的候选与审批操作");
+  assert.ok(memory.includes("createCandidate") && memory.includes("生成候选"), "F6-2 FAIL: 新记忆必须先生成候选");
+  assert.ok(memory.includes('updateRecord(record, "approve")') && memory.includes('updateRecord(record, "reject")'), "F6-2 FAIL: 候选必须支持显式批准和拒绝");
+  assert.ok(memory.includes('action: "correct"') && memory.includes("生成纠正候选"), "F6-2 FAIL: 纠正不得原地覆盖已启用记忆");
+  assert.ok(memory.includes('method: "DELETE"') && memory.includes("删除凭证"), "F6-2 FAIL: 删除必须走受控删除并返回凭证");
+  assert.ok(memory.includes("sourceEvidenceRefs") && memory.includes("conflictsWith"), "F6-2 FAIL: 记忆页必须展示来源与冲突信息");
+  assert.ok(!memory.includes("keepalive: true"), "F6-2 FAIL: 记忆不得在卸载时绕过审批静默直写");
 
   // ── F6-3: 公司画像不再用一整行展示更新时间/保存状态 ─────────────────────
   assert.ok(!profile.includes("SaveStatusText"), "F6-3 FAIL: 公司画像不应再渲染保存状态行");

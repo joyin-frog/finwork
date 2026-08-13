@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { countKnowledgeDocumentsByStoragePath, getDb, getKnowledgeDocumentById, listConfirmedMetaDocRows, setKnowledgeArchived, setKnowledgeDocumentMeta } from "@/lib/db/sqlite";
 import { deleteDocument } from "@/lib/knowledge/pipeline";
-import { deleteStoredFile, hasActiveKnowledgePathLease } from "@/lib/knowledge/storage";
+import { deleteStoredFile, hasActiveKnowledgePathLease, readTextMirror } from "@/lib/knowledge/storage";
 import { deriveCashObligations, persistDerivedObligations } from "@/lib/domain/cash-obligations";
 import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
+import { ensureEmbedModel } from "@/lib/knowledge/embed-model";
+import { getProductionRetrievalService } from "@/lib/retrieval/production";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,7 +16,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const body = await req.json().catch(() => ({}));
 
-    if (!getKnowledgeDocumentById(docId)) {
+    const knowledgeDocument = getKnowledgeDocumentById(docId);
+    if (!knowledgeDocument) {
       return NextResponse.json({ ok: false, error: "文档不存在" }, { status: 404 });
     }
 
@@ -70,8 +73,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ ok: false, error: "缺少 archived 布尔字段或 metaStatus 字段" }, { status: 400 });
     }
     const db = getDb();
+    const retrieval = getProductionRetrievalService();
+
+    // 旧知识库数据可能尚未建立 Retrieval v2 绑定。恢复前必须先完成索引，
+    // 不能把“界面已取消归档、Agent 仍不可见”的半状态暴露出去。
+    if (!body.archived && !retrieval.hasKnowledgeBinding(docId)) {
+      const model = await ensureEmbedModel();
+      if (!model.ok) throw new Error(`检索模型不可用：${model.detail}`);
+      const parsedText = readTextMirror(knowledgeDocument.content_hash);
+      if (!parsedText) throw new Error("文档解析文本已丢失，请重新上传后再恢复");
+      await retrieval.indexKnowledgeDocument({
+        knowledgeDocumentId: docId,
+        title: knowledgeDocument.title,
+        fileName: knowledgeDocument.file_name,
+        sourceContentHash: knowledgeDocument.content_hash,
+        parsedText,
+        category: knowledgeDocument.category,
+        available: false,
+      });
+    }
+
     db.exec("BEGIN");
     try {
+      if (body.archived) {
+        retrieval.revokeKnowledgeDocument(docId, new Date().toISOString(), { inTransaction: true });
+      } else {
+        // 已有绑定时上面的恢复已经完成；再次调用是幂等的，并确保本事务内
+        // 与知识库状态同步刷新 ACL revision 和查询缓存。
+        retrieval.restoreKnowledgeDocument(docId, new Date().toISOString(), { inTransaction: true });
+      }
       setKnowledgeArchived(docId, body.archived, db);
 
       // WP1b 写钩子：归档 → 清行；取消归档 → 重派生落盘（若仍 confirmed）

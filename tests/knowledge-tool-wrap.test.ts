@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import path from "node:path";
+import { mkdirSync, rmSync } from "node:fs";
 import type { SdkLike } from "../lib/agent/mcp-tools/sdk-types.ts";
 
 // Mock SDK that captures the handler for direct invocation
@@ -104,8 +103,8 @@ export const knowledgeToolWrapTestPromise = (async () => {
   const queryHandler = handlers2["query_knowledge"];
   assert.ok(queryHandler, "T3 FAIL: query_knowledge handler 应已注册");
 
-  // Use a safe command on a real dir — ls /tmp should work
-  const queryResult = await queryHandler({ command: "ls" });
+  // v2 深度检索只接收自然语言查询，不再执行 shell。
+  const queryResult = await queryHandler({ query: "差旅标准", topK: 1 });
   if (typeof queryResult === "string") {
     if (queryResult.startsWith("<external_context>")) {
       // Success path: should be properly wrapped
@@ -113,7 +112,7 @@ export const knowledgeToolWrapTestPromise = (async () => {
     } else {
       // Error or empty path: should be plain
       assert.ok(
-        queryResult.startsWith("命令") || queryResult.startsWith("query_knowledge"),
+        queryResult.startsWith("知识库") || queryResult.startsWith("query_knowledge"),
         "T3 FAIL: 非成功路径应为普通错误消息"
       );
     }

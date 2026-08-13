@@ -386,10 +386,20 @@ export const obligationsLiveTestPromise = (async () => {
     // 通过 FINANCE_AGENT_DB_PATH 隔离，让 getDb() 单例指向测试库
     const prevDbPath = process.env.FINANCE_AGENT_DB_PATH;
     process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    let restoreRetrievalService: (() => void) | undefined;
 
     try {
       const { getDb } = await import("../lib/db/sqlite.ts");
       const db = getDb(); // 用单例：确保 deleteDocument 内部的 getDb() 与此同库
+      const {
+        createProductionRetrievalService,
+        installProductionRetrievalService,
+      } = await import("../lib/retrieval/production.ts");
+      restoreRetrievalService = installProductionRetrievalService(createProductionRetrievalService({
+        db,
+        casRoot: path.join(os.tmpdir(), `finance-agent-oblive-v6-cas-${pid}`),
+        embedder: async (texts: readonly string[]) => texts.map((text) => [text.length || 1, 1, 1]),
+      }));
 
       const docId = insertKnowledgeDoc(db);
       const srcDoc: ObligationSourceDoc = {
@@ -409,6 +419,7 @@ export const obligationsLiveTestPromise = (async () => {
       const after = (db.prepare("SELECT COUNT(*) AS c FROM fact_obligations WHERE source_document_id = ?").get(docId) as { c: number }).c;
       assert.equal(after, 0, `V6 FAIL: deleteDocument 后 fact_obligations 应清行，实际 ${after}`);
     } finally {
+      restoreRetrievalService?.();
       if (prevDbPath === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
       else process.env.FINANCE_AGENT_DB_PATH = prevDbPath;
     }
@@ -427,13 +438,38 @@ export const obligationsLiveTestPromise = (async () => {
     // 通过 FINANCE_AGENT_DB_PATH 隔离，让 getDb() 单例指向测试库
     const prevDbPath7 = process.env.FINANCE_AGENT_DB_PATH;
     process.env.FINANCE_AGENT_DB_PATH = dbPath;
+    let restoreRetrievalService: (() => void) | undefined;
 
     try {
       const { getDb } = await import("../lib/db/sqlite.ts");
       const { PATCH } = await import("../app/api/knowledge/documents/[id]/route.ts");
+      const {
+        createProductionRetrievalService,
+        installProductionRetrievalService,
+      } = await import("../lib/retrieval/production.ts");
       const db = getDb();
+      const retrieval = createProductionRetrievalService({
+        db,
+        casRoot: path.join(os.tmpdir(), `finance-agent-oblive-v7-cas-${pid}`),
+        embedder: async (texts: readonly string[]) => texts.map((text) => [
+          text.length || 1,
+          [...text].reduce((sum, char) => sum + char.charCodeAt(0), 0) || 1,
+          text.split(/\s+/u).filter(Boolean).length || 1,
+        ]),
+      });
+      restoreRetrievalService = installProductionRetrievalService(retrieval);
 
       const docId = insertKnowledgeDoc(db, { archived: 0 });
+      // v36 后归档状态与 Retrieval v2 ACL 是同一原子合同。
+      // 在行为测试中先建立真实绑定，避免用旧无索引数据绕过生产恢复门禁。
+      await retrieval.indexKnowledgeDocument({
+        knowledgeDocumentId: docId,
+        title: "archive-test",
+        fileName: "archive-test.pdf",
+        sourceContentHash: "obligations-live-v7",
+        parsedText: "归档与恢复义务测试文档",
+        category: "contract",
+      });
       const srcDoc: ObligationSourceDoc = {
         id: docId, fileName: "archive-test.pdf",
         metadata: { status: "待开票", counterparty: "归档测试", keyDates: [{ kind: "开票", date: "2026-08-20" }] } as DocMetadata,
@@ -470,6 +506,7 @@ export const obligationsLiveTestPromise = (async () => {
       const afterUnarchive = (db.prepare("SELECT COUNT(*) AS c FROM fact_obligations WHERE source_document_id = ?").get(docId) as { c: number }).c;
       assert.equal(afterUnarchive, 1, `V7 FAIL: 取消归档后应重派生 1 行，实际 ${afterUnarchive}`);
     } finally {
+      restoreRetrievalService?.();
       if (prevDbPath7 === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
       else process.env.FINANCE_AGENT_DB_PATH = prevDbPath7;
     }

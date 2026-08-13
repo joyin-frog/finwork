@@ -1,18 +1,19 @@
 /**
- * TDD tests for three fixes in lib/agent/mcp-tools/knowledge.ts:
+ * Retrieval v2 MCP contract tests for lib/agent/mcp-tools/knowledge.ts:
  *  1. topK clamp: topK > 5 should not throw, should clamp to 5
- *  2. search_knowledge description: must mention keyword/literal match and query_knowledge for exact match
- *  3. resolveDoc fallback: sanitized file name (e.g. "科目--新系统.txt") should resolve to matching doc
+ *  2. search_knowledge advertises governed hybrid retrieval and immutable citations
+ *  3. sanitized file names still resolve, but content comes from ArtifactStore rather than text mirrors
  */
 import assert from "node:assert/strict";
-import { rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { rmSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import {
   initializeFinanceDatabase,
   openFinanceDatabase,
   insertKnowledgeDocument,
 } from "../lib/db/sqlite.ts";
-import { writeTextMirror } from "../lib/knowledge/storage.ts";
+import { createHash } from "node:crypto";
+import { createProductionRetrievalService, type RetrievalEmbedder } from "../lib/retrieval/index.ts";
 import type { SdkLike } from "../lib/agent/mcp-tools/sdk-types.ts";
 
 // ── mock SDK that captures name, description, schema, handler ────────────────
@@ -44,14 +45,25 @@ export const knowledgeMcpFixesTestPromise = (async () => {
 
   const db = initializeFinanceDatabase(openFinanceDatabase(path.join(baseDir, "fixes.db")));
 
-  // ── Seed: 复现生产 bug——上传原名是 .xlsx，模型却用镜像名 .txt 请求 ──
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+  const deterministicEmbedder: RetrievalEmbedder = async (texts) => texts.map((text) => [
+    text.includes("科目") ? 1 : 0,
+    text.includes("差旅") ? 1 : 0,
+    text.includes("住宿") ? 1 : 0,
+    0.1,
+  ]);
+  const retrieval = createProductionRetrievalService({
+    db,
+    casRoot: path.join(baseDir, "artifacts", "cas"),
+    embedder: deterministicEmbedder,
+  });
+
+  // ── Seed immutable Retrieval v2 artifacts ───────────────────────────────
   // sanitizeDocFileName 只去扩展名/非法字符/控制字符，连字符保留。
-  // DB: file_name="科目--新系统.xlsx", title="科目--新系统"；镜像文件 = "科目--新系统.txt"。
-  // 生产 bug: read_file("科目--新系统.txt") 与 file_name/title 都不精确相等 → 未找到，
-  // 而 query_knowledge 的 rg 能读到镜像文件。fallback 按净化 title 匹配后应命中。
+  // DB: file_name="科目--新系统.xlsx", title="科目--新系统"；调用方仍可能请求 .txt 别名。
   const docTitle = "科目--新系统";
-  const docHash = "abc123fixture";
-  writeTextMirror(docHash, "科目编码体系说明内容");
+  const docText = "科目编码体系说明内容";
+  const docHash = sha256(docText);
   const docId = insertKnowledgeDocument(
     {
       title: docTitle,
@@ -64,11 +76,19 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     },
     db
   );
+  await retrieval.indexKnowledgeDocument({
+    knowledgeDocumentId: docId,
+    title: docTitle,
+    fileName: `${docTitle}.xlsx`,
+    sourceContentHash: docHash,
+    parsedText: docText,
+    category: "general",
+  });
 
   // Also add a plain doc that matches by exact title (regression guard)
   const exactTitle = "差旅报销制度";
-  const exactHash = "def456fixture";
-  writeTextMirror(exactHash, "差旅住宿标准 500 元/晚");
+  const exactText = "差旅住宿标准 500 元/晚";
+  const exactHash = sha256(exactText);
   const exactId = insertKnowledgeDocument(
     {
       title: exactTitle,
@@ -81,6 +101,14 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     },
     db
   );
+  await retrieval.indexKnowledgeDocument({
+    knowledgeDocumentId: exactId,
+    title: exactTitle,
+    fileName: `${exactTitle}.txt`,
+    sourceContentHash: exactHash,
+    parsedText: exactText,
+    category: "general",
+  });
 
   // ── Import tool creators (after env is set) ───────────────────────────────
   const { createSearchKnowledgeTool, createReadFileTool } = await import(
@@ -129,7 +157,7 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     console.log("knowledge-mcp-fixes Fix1b: default topK=3 still works ✓");
   }
 
-  // ── Fix 2: description mentions keyword/literal match ────────────────────
+  // ── Fix 2: description exposes governed hybrid retrieval ────────────────
   {
     const { sdk, tools } = makeMockSdk();
     createSearchKnowledgeTool(sdk);
@@ -138,25 +166,20 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     assert.ok(entry, "Fix2 FAIL: search_knowledge not found");
 
     const desc = entry.desc;
-    // Must mention keyword/literal match (关键词/字面匹配 or 关键词匹配)
-    const mentionsKeywordMatch =
-      desc.includes("关键词") && (desc.includes("字面") || desc.includes("精确") || desc.includes("literal"));
+    const mentionsHybrid = desc.includes("混合检索");
     assert.ok(
-      mentionsKeywordMatch,
-      `Fix2 FAIL: description should mention keyword/literal match. Got: "${desc}"`
+      mentionsHybrid,
+      `Fix2 FAIL: description should mention hybrid retrieval. Got: "${desc}"`
     );
 
-    // Must NOT present itself as semantic search
     assert.ok(
-      !desc.includes("语义"),
-      `Fix2 FAIL: description should NOT mention semantic search. Got: "${desc}"`
+      desc.includes("ACL"),
+      `Fix2 FAIL: description should mention ACL enforcement. Got: "${desc}"`
     );
 
-    // Must mention that numbers/proper nouns work better
-    const mentionsNumerics = desc.includes("数字") || desc.includes("专有名词") || desc.includes("科目");
     assert.ok(
-      mentionsNumerics,
-      `Fix2 FAIL: description should hint that numbers/proper nouns work best. Got: "${desc}"`
+      desc.includes("不可变来源版本") && desc.includes("定位") && desc.includes("内容哈希"),
+      `Fix2 FAIL: description should require immutable citation evidence. Got: "${desc}"`
     );
 
     // Must mention topK cap
@@ -169,22 +192,20 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     console.log("knowledge-mcp-fixes Fix2: description updated correctly ✓");
   }
 
-  // ── Fix 3: resolveDoc fallback for mirror name ───────────────────────────
-  // read_file("科目--新系统.txt") — rg 在 text-by-name/ 看到的镜像名，
-  // 与 DB 的 file_name("科目--新系统.xlsx")不相等 → 靠净化 title fallback 命中
+  // ── Fix 3: resolveDoc fallback for a sanitized alias ─────────────────────
   {
     const { sdk, tools } = makeMockSdk();
     createReadFileTool(sdk);
 
     const { handler } = tools.get("read_file")!;
 
-    // Call with the mirror file name (what rg sees in text-by-name/)
+    // .txt alias resolves by normalized title; returned bytes come from ArtifactStore.
     const result = await handler({ fileName: "科目--新系统.txt" }) as { content: Array<{ text: string }> };
     assert.ok(result && typeof result === "object", "Fix3 FAIL: result should be an object");
     const text = result.content?.[0]?.text ?? "";
     assert.ok(
       !text.startsWith("未找到"),
-      `Fix3 FAIL: mirror name '科目--新系统.txt' should resolve to doc. Got: "${text.slice(0, 80)}"`
+      `Fix3 FAIL: sanitized alias '科目--新系统.txt' should resolve to doc. Got: "${text.slice(0, 80)}"`
     );
     assert.ok(
       text.includes("科目编码体系说明内容") || text.includes("科目"),
@@ -236,6 +257,8 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   delete process.env.FINANCE_AGENT_APP_DATA_DIR;
   delete process.env.FINANCE_AGENT_DB_PATH;
   delete process.env.FINANCE_AGENT_KNOWLEDGE_DIR;
+
+  db.close();
 
   console.log("knowledge-mcp-fixes: all checks passed ✓");
 })();

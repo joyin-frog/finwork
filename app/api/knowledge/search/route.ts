@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchKnowledge } from "@/lib/knowledge/rg-search";
+import { RetrievalError } from "@/lib/retrieval/contracts";
+import { getProductionRetrievalService } from "@/lib/retrieval/production";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,12 +12,14 @@ export async function POST(req: NextRequest) {
 
     const topK = typeof body.topK === "number" && body.topK > 0 ? body.topK : 20;
 
-    const result = await searchKnowledge({ query, topK });
+    const result = await getProductionRetrievalService().searchForKnowledgeApi(query, topK);
     return NextResponse.json(result);
   } catch (err) {
+    const status = err instanceof RetrievalError &&
+      (err.code === "embedding_unavailable" || err.code === "embedding_failed") ? 503 : 500;
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
+      { status }
     );
   }
 }
