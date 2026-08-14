@@ -72,31 +72,80 @@ function tokenF1(predicted: string, expected: string): number {
   return precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
 }
 
-function extractNumbers(value: string): number[] {
-  return (value.match(/[-+]?\(?\d[\d,]*(?:\.\d+)?\)?%?/g) ?? []).flatMap((raw) => {
-    const negativeParentheses = raw.startsWith("(") && raw.endsWith(")");
-    const numeric = Number(raw.replace(/[(),%]/g, ""));
-    if (!Number.isFinite(numeric)) return [];
+function numberTokens(value: string): string[] {
+  return value
+    .replace(/[−–—]/g, "-")
+    .match(/[-+]?\s*[$€£¥]?\(?\d[\d,]*(?:\.\d+)?\)?%?/g) ?? [];
+}
+
+function parseNumberToken(raw: string): number | null {
+    const compact = raw.replace(/\s+/g, "");
+    const negativeParentheses = compact.includes("(") && compact.includes(")");
+    const numeric = Number(compact.replace(/[$€£¥(),%]/g, ""));
+    if (!Number.isFinite(numeric)) return null;
     const signed = negativeParentheses ? -numeric : numeric;
-    return [raw.includes("%") ? signed / 100 : signed];
+    return compact.includes("%") ? signed / 100 : signed;
+}
+
+function extractNumbers(value: string): number[] {
+  return numberTokens(value).flatMap((raw) => {
+    const parsed = parseNumberToken(raw);
+    return parsed === null ? [] : [parsed];
   });
 }
 
-function numbersEqual(left: number, right: number, absoluteTolerance = 1e-6, relativeTolerance = 1e-4): boolean {
-  return Math.abs(left - right) <= Math.max(absoluteTolerance, relativeTolerance * Math.max(1, Math.abs(right)));
+function expectedDecimalPlaces(target: number, answers: readonly string[]): number | null {
+  for (const answer of answers) {
+    for (const raw of numberTokens(answer)) {
+      const parsed = parseNumberToken(raw);
+      if (parsed === null || Math.abs(parsed - target) > 1e-9) continue;
+      const decimal = raw.match(/\.(\d+)/)?.[1]?.length ?? 0;
+      return raw.includes("%") ? decimal + 2 : decimal;
+    }
+  }
+  return null;
 }
 
-function numericAccuracy(predicted: number[], expected: number[]): number | null {
+function numbersEqual(
+  left: number,
+  right: number,
+  expectedPlaces: number | null = null,
+  absoluteTolerance = 1e-6,
+  relativeTolerance = 1e-4,
+): boolean {
+  const roundingTolerance = expectedPlaces === null ? 0 : 0.5 * 10 ** -expectedPlaces + 1e-12;
+  return Math.abs(left - right) <= Math.max(
+    absoluteTolerance,
+    relativeTolerance * Math.max(1, Math.abs(right)),
+    roundingTolerance,
+  );
+}
+
+function numericAccuracy(predicted: number[], expected: number[], expectedAnswers: readonly string[]): number | null {
   if (expected.length === 0) return null;
   const unused = [...predicted];
   let matched = 0;
   for (const target of expected) {
-    const index = unused.findIndex((candidate) => numbersEqual(candidate, target));
+    const places = expectedDecimalPlaces(target, expectedAnswers);
+    const index = unused.findIndex((candidate) => numbersEqual(candidate, target, places));
     if (index < 0) continue;
     matched += 1;
     unused.splice(index, 1);
   }
   return matched / expected.length;
+}
+
+function booleanAnswerMatches(answer: string, expectedAnswers: readonly string[]): boolean {
+  const expected = new Set(expectedAnswers.map((value) => normalizeText(value)));
+  if (!expected.has("yes") && !expected.has("no")) return false;
+  const plain = answer
+    .replace(/[*_`]/g, "")
+    .trim()
+    .toLocaleLowerCase("en-US");
+  const conclusions = [...plain.matchAll(/(?:^|[.!?]\s*|\bso,?\s+|\btherefore,?\s+)(yes|no)(?:\b|[—–-])/gu)]
+    .map((match) => match[1]);
+  if (conclusions.length === 0 || new Set(conclusions).size !== 1) return false;
+  return expected.has(conclusions[0]!);
 }
 
 function normalizeLocator(value: string | undefined): string | undefined {
@@ -167,7 +216,7 @@ export function scoreBenchmarkPrediction(
     ? null
     : Math.max(...expectedAnswers.map((expected) => tokenF1(answer, expected)));
   const expectedNumbers = oracle.expected.numericAnswers;
-  const numeric = numericAccuracy(extractNumbers(answer), expectedNumbers);
+  const numeric = numericAccuracy(extractNumbers(answer), expectedNumbers, expectedAnswers);
   const citationResult = citationScores(prediction.citations, oracle.expected.citations);
   // General Agent tasks are open-ended summaries, not short-answer QA. A
   // correct answer may include a safety explanation or evidence context around
@@ -201,6 +250,7 @@ export function scoreBenchmarkPrediction(
   const answerPassed = !hasExpectedAnswer
     || exactMatch === 1
     || numeric === 1
+    || booleanAnswerMatches(answer, expectedAnswers)
     || (benchmarkCase.datasetId !== "general_agent_pilot" && (f1 ?? 0) >= 0.8)
     || expectedFactContained;
   if (!answerPassed) failures.push("answer_mismatch");

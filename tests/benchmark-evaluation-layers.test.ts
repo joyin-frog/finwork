@@ -112,6 +112,28 @@ const scoredPrediction = scoreBenchmarkPrediction(executionCase, oracle, predict
 assert.equal((scoredPrediction.details as Record<string, unknown>).predictedAnswer, "42");
 assert.equal((scoredPrediction.details as Record<string, unknown>).requestedModel, "model-a");
 assert.equal((scoredPrediction.details as Record<string, unknown>).actualModel, "model-a-actual");
+
+function scoreDirectAnswer(id: string, answer: string, answers: string[], numericAnswers: number[]) {
+  const normalized = NormalizedBenchmarkCaseSchema.parse({
+    ...modelCase,
+    id: `finqa:v1:${id}`,
+    upstreamCaseId: id,
+    expected: { ...modelCase.expected, answers, numericAnswers, citations: [], assertions: [] },
+  });
+  const prepared = prepareCasesForEvaluationLayer([normalized], "model")[0]!;
+  const partitioned = partitionBenchmarkCase(prepared);
+  return scoreBenchmarkPrediction(partitioned.executionCase, partitioned.oracle, BenchmarkPredictionSchema.parse({
+    answer,
+    details: { evaluationLayer: "model", requestedModel: "model-a", actualModel: "model-a" },
+  }));
+}
+
+assert.equal(scoreDirectAnswer("boolean", "Yes. The comparison is greater.", ["yes"], []).status, "passed");
+assert.equal(scoreDirectAnswer("boolean-conclusion", "The values are 655 and 574. So, **yes—the first is greater**.", ["yes"], []).status, "passed");
+assert.equal(scoreDirectAnswer("rounded", "The change was $19.749 million.", ["19.7"], [19.7]).status, "passed");
+assert.equal(scoreDirectAnswer("signed-currency", "It decreased by $4.7M: $19.3M − $24.0M = −$4.7M.", ["-4.7"], [-4.7]).status, "passed");
+assert.equal(scoreDirectAnswer("wrong-boolean", "No. It was not greater.", ["yes"], []).status, "failed");
+assert.equal(scoreDirectAnswer("contradictory-boolean", "Yes at first glance. No, the first is not greater.", ["yes"], []).status, "failed");
 const dependencyExecutor = createDirectModelBenchmarkExecutor({
   model: "model-a",
   readSettings: async () => settings,

@@ -66,6 +66,7 @@
     "eval:benchmarks:preflight": "node --import tsx scripts/benchmark-preflight.mts",
     "eval:benchmarks:real": "node --import tsx scripts/benchmark-real.mts",
     "eval:benchmarks:model-matrix": "node --import tsx scripts/benchmark-model-matrix.mts",
+    "eval:benchmarks:model-rescore": "node --import tsx scripts/benchmark-model-rescore.mts",
     "benchmarks:gaps": "node --import tsx scripts/benchmark-gaps.mts",
     "test:capability-foundation": "node --import tsx tests/evaluation-foundation.test.ts && node --import tsx tests/benchmark-adapters.test.ts && node --import tsx tests/capability-foundation-rollout.test.ts && node --import tsx tests/capability-foundation-gateway.test.ts && node --import tsx tests/finance-capability-runtime.test.ts && node --import tsx tests/production-task-runtime.test.ts && node --import tsx tests/foundation-diagnostics.test.ts && node --import tsx tests/foundation-operations.test.ts && node scripts/run-package-script.mjs test:foundation-operations-api",
     "test:foundation-operations-api": "node --import tsx tests/foundation-operations-api.test.ts",
