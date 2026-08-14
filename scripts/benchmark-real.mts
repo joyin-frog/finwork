@@ -26,7 +26,7 @@ import {
   type BenchmarkProfile,
   type RealBenchmarkRunConfig,
 } from "../lib/evaluation/benchmarks/contracts.ts";
-import { selectCasesForEvaluationLayer } from "../lib/evaluation/benchmarks/evaluation-layers.ts";
+import { prepareCasesForEvaluationLayer } from "../lib/evaluation/benchmarks/evaluation-layers.ts";
 import { createDirectModelBenchmarkExecutor } from "../lib/evaluation/benchmarks/model-executor.ts";
 import { runBenchmarkPreflight, resolveMessagesEndpoint } from "../lib/evaluation/benchmarks/preflight.ts";
 import { serializeBenchmarkRunReport } from "../lib/evaluation/benchmarks/report.ts";
@@ -256,7 +256,7 @@ async function runMain(): Promise<void> {
     sampleSeed,
     maxCases,
   });
-  const layerCases = selectCasesForEvaluationLayer(profileCases, evaluationLayer);
+  const layerCases = prepareCasesForEvaluationLayer(profileCases, evaluationLayer);
   const requestedCaseIds = typeof args.get("case-ids") === "string"
     ? String(args.get("case-ids")).split(",")
     : undefined;

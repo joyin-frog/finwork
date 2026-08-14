@@ -8,6 +8,7 @@ import { partitionBenchmarkCase } from "../lib/evaluation/benchmarks/case-bounda
 import { createBenchmarkTaskContract } from "../lib/evaluation/benchmarks/task-contract.ts";
 import {
   createModelMatrixPlan,
+  prepareCasesForEvaluationLayer,
   selectCasesForEvaluationLayer,
 } from "../lib/evaluation/benchmarks/evaluation-layers.ts";
 import { createDirectModelBenchmarkExecutor } from "../lib/evaluation/benchmarks/model-executor.ts";
@@ -29,8 +30,8 @@ function benchmarkCase(id: string, kind: "model" | "agent"): NormalizedBenchmark
     context: { textBlocks: [{ id: "source", text: "Six times seven is 42." }], tables: [], conversation: [], files: [] },
     expected: {
       answers: ["42"], numericAnswers: [42], programs: [],
-      citations: kind === "agent" ? [{ sourceId: "source" }] : [],
-      assertions: [],
+      citations: [{ sourceId: "source" }],
+      assertions: kind === "model" ? ["agent-only-source-assertion"] : [],
     },
     capabilities: kind === "model" ? ["financial_qa"] : ["retrieval", "citation"],
     tags: ["test"],
@@ -49,6 +50,11 @@ const modelCase = benchmarkCase("model", "model");
 const agentCase = benchmarkCase("agent", "agent");
 assert.deepEqual(selectCasesForEvaluationLayer([modelCase, agentCase], "model").map((item) => item.id), [modelCase.id]);
 assert.deepEqual(selectCasesForEvaluationLayer([modelCase, agentCase], "agent").map((item) => item.id), [agentCase.id]);
+const [preparedModelCase] = prepareCasesForEvaluationLayer([modelCase, agentCase], "model");
+assert.ok(preparedModelCase);
+assert.deepEqual(preparedModelCase.expected.citations, [], "Layer 3 must not score imported provenance locators");
+assert.deepEqual(preparedModelCase.expected.assertions, [], "Layer 3 must not score Agent-only deterministic assertions");
+assert.equal(modelCase.expected.citations.length, 1, "Layer projection must not mutate the imported case");
 
 const plan = createModelMatrixPlan({
   candidates: ["model-a", "model-b"],
@@ -88,7 +94,7 @@ const executor = createDirectModelBenchmarkExecutor({
     }), { status: 200, headers: { "content-type": "application/json" } });
   },
 });
-const { executionCase } = partitionBenchmarkCase(modelCase);
+const { executionCase } = partitionBenchmarkCase(preparedModelCase);
 const task = createBenchmarkTaskContract(executionCase, { tokenLimit: 100, wallTimeMs: 1_000 });
 const prediction = BenchmarkPredictionSchema.parse(await executor(executionCase, {
   taskContract: task.contract,

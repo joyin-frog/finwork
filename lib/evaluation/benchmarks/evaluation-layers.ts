@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   BenchmarkEvaluationLayerSchema,
+  NormalizedBenchmarkCaseSchema,
   type BenchmarkEvaluationLayer,
   type NormalizedBenchmarkCase,
 } from "./contracts";
@@ -44,6 +45,29 @@ export function selectCasesForEvaluationLayer(
   layer: BenchmarkEvaluationLayer,
 ): NormalizedBenchmarkCase[] {
   return cases.filter((benchmarkCase) => caseBelongsToEvaluationLayer(benchmarkCase, layer));
+}
+
+/**
+ * Layer 3 evaluates answer reasoning only. Imported QA records may still carry
+ * source locators for Layer 2 provenance scoring; remove those Agent-only
+ * expectations from a copied case before building the direct-model contract
+ * and oracle. The normalized import remains immutable.
+ */
+export function prepareCasesForEvaluationLayer(
+  cases: readonly NormalizedBenchmarkCase[],
+  layer: BenchmarkEvaluationLayer,
+): NormalizedBenchmarkCase[] {
+  const parsed = BenchmarkEvaluationLayerSchema.parse(layer);
+  const selected = selectCasesForEvaluationLayer(cases, parsed);
+  if (parsed !== "model") return selected;
+  return selected.map((benchmarkCase) => NormalizedBenchmarkCaseSchema.parse({
+    ...benchmarkCase,
+    expected: {
+      ...benchmarkCase.expected,
+      citations: [],
+      assertions: [],
+    },
+  }));
 }
 
 export const ModelMatrixPlanSchema = z.object({
