@@ -136,6 +136,18 @@ function assertionCoverage(prediction: BenchmarkPrediction, oracle: BenchmarkEva
   return expected.filter((assertion) => predicted.has(assertion)).length / expected.length;
 }
 
+function directModelAuditDetails(prediction: BenchmarkPrediction, answer: string): Record<string, unknown> {
+  const details = prediction.details;
+  if (!details || typeof details !== "object" || Array.isArray(details)) return {};
+  const value = details as Record<string, unknown>;
+  if (value.evaluationLayer !== "model") return {};
+  return {
+    predictedAnswer: answer,
+    requestedModel: typeof value.requestedModel === "string" ? value.requestedModel : null,
+    actualModel: typeof value.actualModel === "string" ? value.actualModel : null,
+  };
+}
+
 export function scoreBenchmarkPrediction(
   benchmarkCase: BenchmarkExecutionCase,
   oracle: BenchmarkEvaluationOracle,
@@ -249,6 +261,7 @@ export function scoreBenchmarkPrediction(
     capabilities: benchmarkCase.capabilities,
     metrics: prediction.metrics,
     details: {
+      ...directModelAuditDetails(prediction, answer),
       assertionCoverage: assertions,
       predictedCitations: prediction.citations.map((citation) => ({
         sourceId: citation.sourceId,

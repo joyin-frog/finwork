@@ -6,6 +6,7 @@ import {
 } from "../lib/evaluation/benchmarks/contracts.ts";
 import { partitionBenchmarkCase } from "../lib/evaluation/benchmarks/case-boundary.ts";
 import { createBenchmarkTaskContract } from "../lib/evaluation/benchmarks/task-contract.ts";
+import { scoreBenchmarkPrediction } from "../lib/evaluation/benchmarks/scoring.ts";
 import {
   createModelMatrixPlan,
   prepareCasesForEvaluationLayer,
@@ -94,7 +95,7 @@ const executor = createDirectModelBenchmarkExecutor({
     }), { status: 200, headers: { "content-type": "application/json" } });
   },
 });
-const { executionCase } = partitionBenchmarkCase(preparedModelCase);
+const { executionCase, oracle } = partitionBenchmarkCase(preparedModelCase);
 const task = createBenchmarkTaskContract(executionCase, { tokenLimit: 100, wallTimeMs: 1_000 });
 const prediction = BenchmarkPredictionSchema.parse(await executor(executionCase, {
   taskContract: task.contract,
@@ -107,6 +108,10 @@ assert.equal(prediction.execution?.cacheReadInputTokens, 5);
 assert.equal(prediction.execution?.cacheCreationInputTokens, 2);
 assert.equal(prediction.metrics.tokens, 17);
 assert.equal(requestBody?.model, "model-a");
+const scoredPrediction = scoreBenchmarkPrediction(executionCase, oracle, prediction);
+assert.equal((scoredPrediction.details as Record<string, unknown>).predictedAnswer, "42");
+assert.equal((scoredPrediction.details as Record<string, unknown>).requestedModel, "model-a");
+assert.equal((scoredPrediction.details as Record<string, unknown>).actualModel, "model-a-actual");
 const dependencyExecutor = createDirectModelBenchmarkExecutor({
   model: "model-a",
   readSettings: async () => settings,
