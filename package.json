@@ -102,7 +102,7 @@
     "eval:ar14:live": "AR14_ALLOW_REAL=1 tsx scratchpad/spikes/ar14-pi-only/context-live.mts",
     "eval:ar14:packaged": "node scripts/ar14-packaged-pi-smoke.mjs",
     "eval:ar14:local": "node scripts/run-package-script.mjs typecheck test:pi eval:ar14:context build tauri:prepare eval:ar13:pi-only eval:ar14:packaged",
-    "test:pi": "tsx tests/as2-context-policy.test.ts && tsx tests/pi/structure.mts && tsx tests/pi/handlers.mts && tsx tests/pi/cancellation.mts && tsx tests/pi/main-service.mts && tsx tests/pi/extension.mts && tsx tests/pi/bash-sandbox.mts && tsx tests/pi/model-pricing.mts && tsx tests/pi/context-hooks.mts && tsx tests/pi/live-and-compaction.mts",
+    "test:pi": "tsx tests/as2-context-policy.test.ts && tsx tests/pi/structure.mts && tsx tests/pi/handlers.mts && tsx tests/pi/cancellation.mts && tsx tests/pi/main-service.mts && tsx tests/pi/ask-user.mts && tsx tests/pi/extension.mts && tsx tests/pi/bash-sandbox.mts && tsx tests/pi/model-pricing.mts && tsx tests/pi/context-hooks.mts && tsx tests/pi/live-and-compaction.mts",
     "worker:demo": "python3 workers/finance_worker.py demo"
   },
   "dependencies": {

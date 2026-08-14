@@ -4,9 +4,11 @@ import path from "node:path";
 import { isBashSandboxAvailable, wrapCommandWithSandbox } from "@/lib/agent/tools/bash-sandbox";
 import { resolveLibreOffice } from "@/lib/runtime/libreoffice-resolver";
 import { getPythonBinDir, getPythonVenvRoot } from "@/lib/runtime/paths";
+import type { AgentQuestion } from "@/lib/agent/contracts";
+import { createPiAskUserQuestionTool } from "@/lib/agent/pi/ask-user-tool";
 
 /**
- * Finwork 自行构造的 Pi 内置文件/shell 工具。
+ * Finwork 自行构造的 Pi 会话工具：受控文件/shell 工具，以及存在交互通道时的提问工具。
  *
  * 不用 Pi 的默认内置集（`noTools: "builtin"` 仍然保持开启）：默认集的 cwd 是项目根，
  * 对财务应用没有意义。这里按会话目录构造，让**缺省行为**落在会话内。
@@ -45,6 +47,10 @@ export const FINWORK_BUILTIN_TOOL_NAMES = [
 
 export type FinworkBuiltinToolName = (typeof FINWORK_BUILTIN_TOOL_NAMES)[number];
 
+export type FinworkBuiltinToolOptions = {
+  resolveUserQuestion?: (question: AgentQuestion) => Promise<string>;
+};
+
 export function isFinworkBuiltinTool(name: string): name is FinworkBuiltinToolName {
   return (FINWORK_BUILTIN_TOOL_NAMES as readonly string[]).includes(name);
 }
@@ -55,6 +61,7 @@ export function isFinworkBuiltinTool(name: string): name is FinworkBuiltinToolNa
  */
 export async function createFinworkBuiltinTools(
   roots: FinworkBuiltinRoots,
+  options: FinworkBuiltinToolOptions = {},
 ): Promise<ToolDefinition[]> {
   const {
     createReadToolDefinition,
@@ -74,6 +81,12 @@ export async function createFinworkBuiltinTools(
     createWriteToolDefinition(roots.writeRoot),
     createEditToolDefinition(roots.writeRoot),
   ] as ToolDefinition[];
+
+  // Pi 本身没有模型可调用的 AskUserQuestion 内置工具。只有实时交互通道或
+  // benchmark 的人工决策 resolver 存在时才注册，避免在无人接听的通道里伪装可用。
+  if (options.resolveUserQuestion) {
+    tools.push(createPiAskUserQuestionTool(options.resolveUserQuestion));
+  }
 
   // fail-closed：没有 OS 沙箱就不给 bash。read/write/edit 的约束是结构性的
   // （构造层钉死根 + tool_call 路径校验），bash 的约束只能来自沙箱——拿不到就不注册，

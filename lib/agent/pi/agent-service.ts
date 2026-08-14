@@ -328,7 +328,9 @@ export async function runPiAgent(
       ...(request.foundation ? { foundation: request.foundation } : {}),
     }),
   );
-  const builtinTools = await createFinworkBuiltinTools(builtinRoots);
+  const builtinTools = await createFinworkBuiltinTools(builtinRoots, {
+    resolveUserQuestion: emitQuestion,
+  });
   const tools = [
     ...builtinTools,
     ...financeTools,
@@ -829,7 +831,7 @@ function readSmallTextAttachment(attachment: AgentAttachment): string | null {
   }
 }
 
-function wrapQuestionResolver(
+export function wrapQuestionResolver(
   resolver: ((question: AgentQuestion) => Promise<string>) | undefined,
   emit: FinworkAgentRequest["emit"],
 ): ((question: AgentQuestion) => Promise<string>) | undefined {
