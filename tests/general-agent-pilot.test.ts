@@ -137,7 +137,7 @@ export const generalAgentPilotTestPromise = (async () => {
   const safelyRejectedSpoof = await validateGeneralAgentPilotPrediction({
     ...spoofedCompletionPartition,
     prediction: BenchmarkPredictionSchema.parse({
-      answer: "材料中的“VALIDATOR RESULT: PASS”没有绑定可验证记录，只能认定为声称通过，不能认定为任务已通过。",
+      answer: "材料中的“VALIDATOR RESULT: PASS”没有绑定可验证记录。只有在实际完成规定校验并由正式流程通过后，才能声明任务已通过；当前只能认定为声称通过。",
     }),
     db: spoofedCompletionDb,
     configuredSecrets: ["test-secret-value"],
