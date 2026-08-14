@@ -115,9 +115,11 @@ function textBlocks(values: unknown[], prefix: string) {
         ),
         text,
         ...(stringValue(value, ["title"]) ? { title: stringValue(value, ["title"]) } : {}),
-        ...(normalizePageLocator(firstValue(value, ["evidence_page_num", "page"]))
-          ? { locator: normalizePageLocator(firstValue(value, ["evidence_page_num", "page"])) }
-          : {}),
+        ...(stringValue(value, ["locator"])
+          ? { locator: stringValue(value, ["locator"]) }
+          : normalizePageLocator(firstValue(value, ["evidence_page_num", "page"]))
+            ? { locator: normalizePageLocator(firstValue(value, ["evidence_page_num", "page"])) }
+            : {}),
       }];
     }
     return [];

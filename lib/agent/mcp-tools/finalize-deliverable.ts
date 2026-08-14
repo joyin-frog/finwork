@@ -131,7 +131,7 @@ export function createFinalizeDeliverableTool(
             structuredContent: {
               code: result.code,
               error: result.error,
-              failures: result.failures,
+              ...(result.failures ? { failures: result.failures } : {}),
             },
           };
         }

@@ -11,7 +11,10 @@ import {
   type NormalizedBenchmarkCase,
 } from "../lib/evaluation/benchmarks/contracts.ts";
 import { partitionBenchmarkCase } from "../lib/evaluation/benchmarks/case-boundary.ts";
-import { createBenchmarkTaskContract } from "../lib/evaluation/benchmarks/task-contract.ts";
+import {
+  createBenchmarkTaskContract,
+  createLegacyBenchmarkTaskContract,
+} from "../lib/evaluation/benchmarks/task-contract.ts";
 import {
   createProductionBenchmarkExecutor,
   formatBenchmarkAgentPrompt,
@@ -197,6 +200,49 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     assert.match(retrievalSourcePrompt, /公开来源标识："invoice"/);
     assert.match(retrievalSourcePrompt, /首轮为空时必须[\s\S]*再检索一次/);
     assert.match(retrievalSourcePrompt, /不要要求用户重复上传同一材料/);
+
+    const artifacts = new ArtifactStore(getDb(), path.join(dataRoot, "artifacts", "cas"));
+    const inputOnlyArtifact = artifacts.put({
+      kind: "benchmark_source_context",
+      logicalName: "input-only.csv",
+      classification: "public",
+      retention: { policyId: "benchmark-ephemeral" },
+      mediaType: "text/csv",
+      producer: { component: "benchmark-test", version: "1" },
+      metadata: { sourceId: "input-only.csv" },
+      content: new TextEncoder().encode("amount\n42\n"),
+      state: "candidate",
+    });
+    const inputOnlyBase = benchmarkCase("spreadsheet-input-text-output");
+    const inputOnlyCase = NormalizedBenchmarkCaseSchema.parse({
+      ...inputOnlyBase,
+      prompt: "读取 input-only.csv，只回答金额；不要生成文件。",
+      taskKind: "agent",
+      context: {
+        textBlocks: [], tables: [], conversation: [],
+        files: [{ logicalName: "input-only.csv", mediaType: "text/csv", upstreamUri: "input-only.csv" }],
+      },
+    });
+    let observedInputOnlyContract: FinworkAgentRequest["taskContract"];
+    let observedInputOnlyAttachments = 0;
+    const inputOnly = await executeCase(
+      inputOnlyCase,
+      successfulProvider("42", (request) => {
+        observedInputOnlyContract = request.taskContract;
+        observedInputOnlyAttachments = request.attachments?.length ?? 0;
+      }),
+      undefined,
+      [inputOnlyArtifact],
+    );
+    assert.equal(observedInputOnlyAttachments, 1, "public CSV input must reach the Agent as an attachment");
+    assert.deepEqual(
+      observedInputOnlyContract?.requiredDeliverables,
+      [],
+      "input spreadsheet must not create a deliverable when V3 expectedOutputs is empty",
+    );
+    assert.equal(inputOnly.prediction.failure, undefined);
+    assert.equal(inputOnly.prediction.artifact, undefined);
+    assert.equal(inputOnly.prediction.execution?.validation.delivery.required, false);
 
     let observedBudget: FinworkAgentRequest["foundation"];
     const success = await executeCase(
@@ -452,7 +498,6 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
         textBlocks: [{ id: "annual-report:p1", text: "Six times seven is 42." }],
       },
     });
-    const artifacts = new ArtifactStore(getDb(), path.join(dataRoot, "artifacts", "cas"));
     const evidenceArtifact = artifacts.put({
       kind: "benchmark_source_context",
       logicalName: "annual-report-p1.md",
@@ -567,7 +612,19 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
       /Reported.*预测期.*留空/,
       "Spreadsheet Agent contracts must preserve historical-only Reported rows",
     );
+    const artifactTask = createBenchmarkTaskContract(publicArtifactCase);
+    assert.deepEqual(
+      createLegacyBenchmarkTaskContract(artifactTask.contract).requiredDeliverables,
+      [{
+        id: "benchmark-output",
+        mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        count: 1,
+        qualityProfile: "generic",
+      }],
+      "Pi and finalize_deliverable must receive the exact V3 output id",
+    );
     const missingArtifact = await executeCase(artifactCase, async (request, options) => {
+      assert.equal(request.taskContract?.requiredDeliverables[0]?.id, "benchmark-output");
       request.emit?.({ type: "tool_started", toolName: "patch_workbook", toolCallId: "patch-artifact" });
       request.emit?.({ type: "tool_completed", toolCallId: "patch-artifact", isError: false });
       request.emit?.({ type: "tool_started", toolName: "finalize_deliverable", toolCallId: "finalize-artifact" });

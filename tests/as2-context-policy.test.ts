@@ -14,6 +14,7 @@ const payroll = resolveAgentContextPolicy({
 });
 assert.deepEqual(new Set(payroll.skillNames), new Set(["payroll-calc", "xlsx"]));
 assert.ok(payroll.toolIds?.includes("calculate_payroll_batch"));
+assert.ok(payroll.toolIds?.includes("create_workbook"), "新建 XLSX 任务必须保留 create_workbook");
 assert.ok(!payroll.toolIds?.includes("export_kingdee_draft"));
 
 const rag = resolveAgentContextPolicy({
@@ -47,6 +48,7 @@ const multiDeliverable = resolveAgentContextPolicy({
 });
 assert.ok(multiDeliverable.skillNames?.includes("xlsx"));
 assert.ok(multiDeliverable.skillNames?.includes("docx"));
+assert.ok(multiDeliverable.toolIds?.includes("create_workbook"));
 
 const delegatedDepartments = resolveAgentContextPolicy({
   messages: message("请并行派专员分别分析三个部门的预算执行，再汇总共性风险"),

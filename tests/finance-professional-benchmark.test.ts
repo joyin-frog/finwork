@@ -39,6 +39,11 @@ export const financeProfessionalBenchmarkTestPromise = (async () => {
   assert.ok(cases.every((item) => item.expected.assertions.length > 0));
   assert.ok(cases.every((item) => item.expected.artifact));
   assert.ok(cases.every((item) => (item.expected.deterministicChecks?.length ?? 0) > 0));
+  const boardDate = cases.find((item) => item.upstreamCaseId === "doc-01-board-date");
+  assert.equal(boardDate?.context.textBlocks[0]?.locator, "page:2");
+  assert.equal(boardDate?.expected.citations[0]?.locator, "page:2");
+  const supplierStatus = cases.find((item) => item.upstreamCaseId === "doc-03-supplier-status");
+  assert.equal(supplierStatus?.context.textBlocks[0]?.locator, "table:supplier-1");
   assert.equal(imported.manifest.descriptor.redistribution, "bundled");
   assert.equal(imported.manifest.descriptor.license.status, "verified");
   assert.equal(getBenchmarkDatasetDescriptor("finance_agent_professional").artifactRequired, true);

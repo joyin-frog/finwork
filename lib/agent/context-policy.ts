@@ -20,6 +20,8 @@ const FILE_TOOLS = [
   finance("read_document"),
   finance("read_file"),
   finance("analyze_tabular"),
+  // 新建工作簿的唯一受治理入口；Pi prompt 已明确禁止脚本直接生成 XLSX。
+  finance("create_workbook"),
   // 改用户已有的工作簿必须走它;不放进白名单模型就只能退回 openpyxl 重写,
   // 而那会清空整册公式缓存(实测 1164 → 0)。
   finance("patch_workbook"),

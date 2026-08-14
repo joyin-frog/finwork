@@ -84,6 +84,11 @@ export const mcpToolHandlersTestPromise = (async () => {
       });
       assert.ok(r2.isError);
       assert.equal(r2.structuredContent?.code, "unknown_deliverable_id");
+      assert.ok(
+        !("failures" in (r2.structuredContent ?? {})),
+        "没有逐文件失败明细时不得把 undefined 写入 structuredContent",
+      );
+      assert.match(r2.content.map((item) => item.text).join(""), /不存在的 contractDeliverableId: nope/);
 
       // 3) 继续声明 payroll
       const r3 = await finalize({

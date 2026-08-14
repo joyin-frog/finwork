@@ -15,8 +15,6 @@ import {
   markRunRunning,
   persistRuntimeEnvelope,
 } from "@/lib/agent/run-event-persistence";
-import { deriveTaskContractForTurn } from "@/lib/agent/run-contract";
-import { decideSettleFromCompletionGate } from "@/lib/agent/completion-gate-settle";
 import { runRouter } from "@/lib/agent/router";
 import { resolveRunExecutionModel } from "@/lib/agent/resolve-run-model";
 import {
@@ -56,6 +54,7 @@ import {
   type BenchmarkExecutor,
   type BenchmarkPrediction,
 } from "./contracts";
+import { createLegacyBenchmarkTaskContract } from "./task-contract";
 
 type RouterResult = Awaited<ReturnType<typeof runRouter>>;
 export interface ProductionBenchmarkExecutorOptions {
@@ -154,10 +153,7 @@ export async function executeProductionBenchmarkCase(
         routerPath: effectiveRouterResult.path,
         routerFailureHint: effectiveRouterResult.path === "fallback" ? effectiveRouterResult.decision.reasoning : null,
       });
-  const legacyContract = deriveTaskContractForTurn({
-    intent: executionCase.taskKind === "spreadsheet" ? "complex_workflow" : effectiveRouterResult.decision.intent,
-    attachments,
-  });
+  const legacyContract = createLegacyBenchmarkTaskContract(context.taskContract);
   const outputDir = path.join(getConversationFilesDir(conversationId), "generate");
   fs.mkdirSync(outputDir, { recursive: true });
   const beforeGenerate = snapshotConversationFiles(conversationId);
@@ -289,19 +285,19 @@ export async function executeProductionBenchmarkCase(
       foundation: productionRun.foundation,
     });
     productionRun.markValidating();
-    const gate = decideSettleFromCompletionGate(traceId, legacyContract);
     let settlement: ProductionTaskSettlement;
     try {
       settlement = productionRun.settle({
-        outcome: gate.outcome,
-        message: gate.gateMessage,
+        // The supplied V3 benchmark contract is the authoritative completion
+        // boundary. The v1 contract exists only for Pi/finalize compatibility.
+        outcome: "completed",
         assistantMessageId: persisted.messageId,
       });
     } catch (error) {
       settlement = productionRun.getSettlement() ?? productionRun.settle({ outcome: "error", message: "settlement failed" });
       throw attachSettlement(error, settlement);
     }
-    persistTerminalLifecycle(lifecycleEmitter, runPersist, gate.outcome, gate.gateMessage);
+    persistTerminalLifecycle(lifecycleEmitter, runPersist, "completed");
     return assemblePersistedPrediction({
       db,
       traceId,

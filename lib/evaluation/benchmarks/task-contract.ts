@@ -1,5 +1,54 @@
 import { TaskContractV3Schema, type TaskContractV3 } from "@/lib/task/contracts";
+import type { TaskContract } from "@/lib/agent/run-contract";
 import type { BenchmarkCapability, BenchmarkExecutionCase } from "./contracts";
+
+const SPREADSHEET_OUTPUT_MEDIA_TYPES = new Set([
+  "application/vnd.ms-excel",
+  "application/vnd.ms-excel.sheet.macroenabled.12",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv",
+  "text/tab-separated-values",
+]);
+
+function isSpreadsheetOutput(mediaType: string, logicalName: string): boolean {
+  return SPREADSHEET_OUTPUT_MEDIA_TYPES.has(mediaType.toLowerCase())
+    || /\.(?:csv|tsv|xls|xlsx|xlsm)$/i.test(logicalName);
+}
+
+/**
+ * Pi and finalize_deliverable still consume TaskContract v1. Benchmark
+ * execution derives that compatibility view from the explicit V3 output
+ * contract, never from input attachments: an input workbook does not imply
+ * that the user requested a workbook deliverable.
+ */
+export function createLegacyBenchmarkTaskContract(contract: TaskContractV3): TaskContract {
+  const spreadsheetOutput = contract.expectedOutputs.some((output) =>
+    isSpreadsheetOutput(output.mediaType, output.logicalName)
+  );
+  return {
+    version: 1,
+    taskKind: spreadsheetOutput ? "spreadsheet" : "text",
+    ...(spreadsheetOutput ? {
+      spreadsheetRequirement: {
+        needsLegacyXlsRead: false,
+        needsWrite: true,
+        needsRecalc: false,
+        needsRender: false,
+        needsMacroPreservation: contract.expectedOutputs.some((output) =>
+          /\.xlsm$/i.test(output.logicalName)
+          || output.mediaType.toLowerCase() === "application/vnd.ms-excel.sheet.macroenabled.12"
+        ),
+      },
+    } : {}),
+    requiredDeliverables: contract.expectedOutputs.map((output) => ({
+      id: output.id,
+      mime: output.mediaType,
+      count: output.count,
+      qualityProfile: "generic" as const,
+    })),
+    expectationSnapshot: {},
+  };
+}
 
 /**
  * Map benchmark taxonomy to capabilities that the production execution ledger
