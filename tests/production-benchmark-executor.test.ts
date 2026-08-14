@@ -166,6 +166,11 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
       /已经明确作出的决定就是当前任务输入[\s\S]*不要重复询问/,
       "confirmed conversation decisions must be reused without reopening the decision",
     );
+    assert.match(
+      formatBenchmarkAgentPrompt(partitionBenchmarkCase(conversationCase).executionCase),
+      /当前消息若明确声明相对历史的范围变化[\s\S]*不得把旧决定解释成永久禁止变更/,
+      "an explicit current scope change must supersede the old decision through confirmation",
+    );
     const inlineSourceCase = NormalizedBenchmarkCaseSchema.parse({
       ...benchmarkCase("inline-source"),
       prompt: "读取附件内容并提取日期。",

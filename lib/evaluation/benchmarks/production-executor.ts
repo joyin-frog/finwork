@@ -389,7 +389,7 @@ export function formatBenchmarkAgentPrompt(executionCase: BenchmarkExecutionCase
       "<benchmark-conversation-history>",
       ...executionCase.context.conversation.map((turn) => `${turn.role}: ${turn.text}`),
       "</benchmark-conversation-history>",
-      "以上是同一任务已确认的对话历史；延续其中约束。历史中用户已经明确作出的决定就是当前任务输入，不要重复询问或调用工具重新推翻，除非用户明确要求重新核验。",
+      "以上是同一任务已确认的对话历史；延续其中约束。历史中用户已经明确作出的决定就是当前任务输入，不要重复询问或调用工具重新推翻，除非用户明确要求重新核验。当前消息若明确声明相对历史的范围变化，则以该变化请求为当前输入：先说明变化，并在高风险写入前请求明确确认，不得把旧决定解释成永久禁止变更。",
     ].join("\n"));
   }
   if (executionCase.requirements.artifactOutput) {

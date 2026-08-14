@@ -179,6 +179,11 @@ assert.equal(
   "范围变化后的普通文本确认必须修复为结构化提问",
 );
 assert.equal(
+  needsStructuredQuestionRepair("发现 600 元与 800 元规则冲突，无法据此判断。请确认哪一份作为权威版本。"),
+  true,
+  "冲突选择不能被证据不足终局规则吞掉，必须进入结构化提问",
+);
+assert.equal(
   needsStructuredQuestionRepair("本轮只读，不会修改。如需解除只读约束，请明确说明。"),
   true,
 );

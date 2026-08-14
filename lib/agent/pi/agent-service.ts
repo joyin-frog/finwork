@@ -895,6 +895,8 @@ export function wrapQuestionResolver(
 export function needsStructuredQuestionRepair(text: string): boolean {
   const normalized = text.trim();
   if (!normalized) return false;
+  const requiredDecision = /(?:冲突|权威版本|范围变化|写入前)[\s\S]{0,500}(?:请确认|请选择)|(?:请确认|请选择)[\s\S]{0,160}(?:权威版本|采用哪份|修改原始)/;
+  if (requiredDecision.test(normalized)) return true;
   const terminalAnswer = /拒绝|不会执行|不予执行|不得执行|不能(?:输出|披露|发送|删除|标记|导出)|无法(?:据此|宣布|判断)|证据不足|没有足够证据|不可信/.test(normalized);
   if (terminalAnswer) return false;
   if (/请明确确认|在[^。！？!?\n]{0,24}前[^。！？!?\n]{0,12}请确认/.test(normalized)) {
