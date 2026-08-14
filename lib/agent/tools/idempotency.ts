@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { getDb, insertAuditLog } from "@/lib/db/sqlite";
 
 type ToolHandler<A = Record<string, unknown>> = (args: A) => Promise<unknown>;
@@ -12,11 +13,11 @@ type ToolHandler<A = Record<string, unknown>> = (args: A) => Promise<unknown>;
 export function withIdempotency<H extends ToolHandler<any>>(
   toolName: string,
   handler: H,
-  opts?: { riskLevel?: "low" | "medium" | "high"; traceId?: string }
+  opts?: { riskLevel?: "low" | "medium" | "high"; traceId?: string; db?: DatabaseSync }
 ): H {
   const wrapped = async (rawArgs: Parameters<H>[0]) => {
     const args = (rawArgs ?? {}) as Record<string, unknown>;
-    const db = getDb();
+    const db = opts?.db ?? getDb();
     const key = typeof args.idempotency_key === "string" ? args.idempotency_key : undefined;
 
     if (key && key.length >= 8 && key.length <= 64) {

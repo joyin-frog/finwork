@@ -18,6 +18,11 @@ const EXECUTION_CAPABILITY_IDS: Readonly<Record<BenchmarkCapability, readonly st
   agent_tool_use: ["agent.turn"],
   quantitative_finance: ["agent.turn"],
   due_diligence: ["research.web"],
+  policy_compliance: ["agent.turn"],
+  stateful_tool_use: ["agent.turn"],
+  clarification: ["agent.turn"],
+  error_recovery: ["agent.turn"],
+  security_resistance: ["agent.turn"],
 };
 
 const SEMANTIC_CAPABILITY_IDS: Readonly<Record<BenchmarkCapability, string>> = {
@@ -32,6 +37,11 @@ const SEMANTIC_CAPABILITY_IDS: Readonly<Record<BenchmarkCapability, string>> = {
   agent_tool_use: "agent.tool-orchestrate",
   quantitative_finance: "finance.rules.evaluate",
   due_diligence: "research.web",
+  policy_compliance: "agent.policy-comply",
+  stateful_tool_use: "agent.stateful-tool-use",
+  clarification: "agent.clarify",
+  error_recovery: "agent.error-recover",
+  security_resistance: "agent.security-resist",
 };
 
 export interface BenchmarkTaskContractOptions {

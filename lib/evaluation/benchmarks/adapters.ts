@@ -263,6 +263,7 @@ export const FinQaAdapter: BenchmarkAdapter = {
         programs: stringArray(firstValue(qa, ["program"]) ?? firstValue(record, ["program"])),
         citations: finQaCitations(firstValue(qa, ["gold_inds", "goldInds"]), pre.length),
         assertions: [],
+        deterministicChecks: [],
       },
       tags: ["public", "financial-reasoning", "table"],
     })];
@@ -293,6 +294,7 @@ export const TatQaAdapter: BenchmarkAdapter = {
           programs: stringArray(firstValue(q, ["derivation", "program"])),
           citations: tatQaCitations(q, paragraphs, tableId),
           assertions: [],
+          deterministicChecks: [],
         },
         tags: ["public", "financial-reasoning", stringValue(q, ["answer_type"], "qa")],
       });
@@ -334,6 +336,7 @@ export const ConvFinQaAdapter: BenchmarkAdapter = {
           programs: programs[index] ? [programs[index]] : [],
           citations: [],
           assertions: [],
+          deterministicChecks: [],
         },
         tags: ["public", "multi-turn", "financial-reasoning"],
       });
@@ -366,7 +369,7 @@ function ragCase(record: unknown, context: BenchmarkAdapterContext): NormalizedB
     taskKind: context.descriptor.taskKind,
     prompt: stringValue(record, ["question", "prompt", "query"]),
     context: { textBlocks: evidence, tables: tableFrom(firstValue(record, ["table"])), conversation: [], files: [] },
-    expected: { answers, numericAnswers: numericAnswers(answers), programs: [], citations, assertions: [] },
+    expected: { answers, numericAnswers: numericAnswers(answers), programs: [], citations, assertions: [], deterministicChecks: [] },
     tags: ["public", "retrieval", "citation"],
   });
 }
@@ -401,7 +404,7 @@ export const GenericQaAdapter: BenchmarkAdapter = {
       taskKind: context.descriptor.taskKind,
       prompt: optionText ? `${basePrompt}\n${optionText}` : basePrompt,
       context: { textBlocks: evidenceBlocks(record), tables: tableFrom(firstValue(record, ["table"])), conversation: [], files: [] },
-      expected: { answers, numericAnswers: numericAnswers(answers), programs: [], citations: citationsFrom(firstValue(record, ["citations"])), assertions: [] },
+      expected: { answers, numericAnswers: numericAnswers(answers), programs: [], citations: citationsFrom(firstValue(record, ["citations"])), assertions: [], deterministicChecks: [] },
       tags: ["public", "financial-knowledge", ...(optionText ? ["multiple-choice"] : [])],
     })];
   },
@@ -449,6 +452,7 @@ export const SpreadsheetBenchAdapter: BenchmarkAdapter = {
         programs: [],
         citations: [],
         assertions: assertions.length > 0 ? assertions : ["output workbook passes the dataset validator"],
+        deterministicChecks: [],
         artifact: {
           mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           logicalName,
@@ -486,8 +490,70 @@ export const AgentBenchAdapter: BenchmarkAdapter = {
         programs: stringArray(firstValue(record, ["program", "programs"])),
         citations: citationsFrom(firstValue(record, ["citations"])),
         assertions: assertions.length > 0 ? assertions : ["agent satisfies the task contract"],
+        deterministicChecks: [],
       },
       tags: ["public", "financial-agent", "tool-use"],
+    })];
+  },
+};
+
+export const GeneralAgentPilotAdapter: BenchmarkAdapter = {
+  format: "general_agent_pilot",
+  adapt(record, context) {
+    const caseId = upstreamId(record, context);
+    const checkIds = stringArray(firstValue(record, ["deterministic_checks"]));
+    const faultDomain = stringValue(record, ["fault_domain"], "capability");
+    const capabilities = stringArray(firstValue(record, ["capabilities"]));
+    const tags = stringArray(firstValue(record, ["tags"]));
+    const documents = textBlocks(
+      Array.isArray(firstValue(record, ["documents"])) ? firstValue(record, ["documents"]) as unknown[] : [],
+      "document",
+    );
+    const conversation = Array.isArray(firstValue(record, ["conversation"]))
+      ? (firstValue(record, ["conversation"]) as unknown[]).flatMap((turn) => {
+          if (!isRecord(turn)) return [];
+          const role = stringValue(turn, ["role"]);
+          const text = stringValue(turn, ["text", "content"]);
+          return (role === "user" || role === "assistant") && text
+            ? [{ role: role as "user" | "assistant", text }]
+            : [];
+        })
+      : [];
+    const expectedAnswers = stringArray(firstValue(record, ["expected_answers", "expected_answer"]));
+    const expectsCitations = capabilities.includes("citation");
+    return [buildCase(context, {
+      id: normalizedId(context, caseId),
+      upstreamCaseId: caseId,
+      taskKind: "agent",
+      prompt: stringValue(record, ["prompt", "task", "instruction"]),
+      context: {
+        textBlocks: documents,
+        tables: [],
+        conversation,
+        files: [],
+      },
+      expected: {
+        answers: expectedAnswers,
+        numericAnswers: numericAnswers(expectedAnswers),
+        programs: [],
+        citations: expectsCitations
+          ? documents.map((document) => ({
+              sourceId: document.id,
+              locator: document.locator ?? `node:${document.id}`,
+            }))
+          : [],
+        assertions: [],
+        deterministicChecks: checkIds.map((id) => ({
+          id: identifier(id, "pilot-check"),
+          faultDomain: ["model", "capability", "dependency", "validator", "policy", "resource", "evaluator"].includes(faultDomain)
+            ? faultDomain as "model" | "capability" | "dependency" | "validator" | "policy" | "resource" | "evaluator"
+            : "capability",
+        })),
+      },
+      capabilities: capabilities.length > 0
+        ? capabilities as NormalizedBenchmarkCase["capabilities"]
+        : context.descriptor.capabilities,
+      tags: ["bundled", "general-agent-pilot", ...tags],
     })];
   },
 };
@@ -501,4 +567,5 @@ export const BUILT_IN_BENCHMARK_ADAPTERS: readonly BenchmarkAdapter[] = Object.f
   GenericQaAdapter,
   SpreadsheetBenchAdapter,
   AgentBenchAdapter,
+  GeneralAgentPilotAdapter,
 ]);

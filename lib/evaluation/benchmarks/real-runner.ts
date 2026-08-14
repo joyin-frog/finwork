@@ -23,6 +23,8 @@ import { readNormalizedBenchmarkCases } from "./importer";
 import { deterministicallySampleBenchmarkCases } from "./report";
 import { runBenchmarkSuite } from "./runner";
 import { validateSpreadsheetBenchmarkPrediction } from "./spreadsheet-oracle";
+import { assertProductionBenchmarkValidatorCoverage } from "./validator-coverage";
+import { validateGeneralAgentPilotPrediction } from "./general-agent-oracle";
 
 export type RealBenchmarkDatasetBundlePaths = {
   importManifestPath: string;
@@ -54,6 +56,7 @@ type RealBenchmarkUsageTotals = {
 const PROFILE_QUOTAS: Readonly<Partial<Record<BenchmarkProfile, Partial<Record<BenchmarkDatasetId, number>>>>> = {
   "benchmark-smoke": { finqa: 2, tatqa: 2, financebench: 2, spreadsheetbench_v2: 1 },
   pilot: { finqa: 25, tatqa: 25, financebench: 20, spreadsheetbench_v2: 5 },
+  "general-agent-pilot": { general_agent_pilot: 30 },
 };
 
 export async function loadRealBenchmarkInputs(
@@ -99,7 +102,7 @@ export function selectRealBenchmarkCases(input: {
     throw new Error(`${profile} requires --max-cases ${expectedTotal}`);
   }
   const selected: NormalizedBenchmarkCase[] = [];
-  for (const datasetId of ["finqa", "tatqa", "financebench", "spreadsheetbench_v2"] as const) {
+  for (const datasetId of Object.keys(quota).sort() as BenchmarkDatasetId[]) {
     const count = quota[datasetId] ?? 0;
     const candidates = input.cases.filter((benchmarkCase) => benchmarkCase.datasetId === datasetId);
     if (candidates.length < count) {
@@ -200,6 +203,7 @@ export async function runRealBenchmarkSuite(input: {
   onCaseStart?: Parameters<typeof runBenchmarkSuite>[0]["onCaseStart"];
   onCaseResult?: Parameters<typeof runBenchmarkSuite>[0]["onCaseResult"];
 }): Promise<BenchmarkRunReportV2> {
+  assertProductionBenchmarkValidatorCoverage(input.selectedCases);
   const configuration = RealBenchmarkRunConfigSchema.parse(input.configuration);
   const clock = () => (input.now?.() ?? new Date()).getTime();
   const startedAtMs = input.startedAtMs ?? clock();
@@ -222,7 +226,9 @@ export async function runRealBenchmarkSuite(input: {
     publishable: input.selectedCases.every((benchmarkCase) => benchmarkCase.provenance.licenseStatus === "verified"),
     inputArtifactsByCaseId: input.inputArtifactsByCaseId,
     oracleArtifactsByCaseId: input.oracleArtifactsByCaseId,
-    validatePrediction: ({ oracle, prediction }) => validateSpreadsheetBenchmarkPrediction({ oracle, prediction }),
+    validatePrediction: ({ executionCase, oracle, prediction }) => executionCase.datasetId === "general_agent_pilot"
+      ? validateGeneralAgentPilotPrediction({ executionCase, oracle, prediction })
+      : validateSpreadsheetBenchmarkPrediction({ oracle, prediction }),
     configuration,
     resumeResults: input.resumeResults,
     now: input.now,

@@ -140,7 +140,7 @@ export function persistIncompleteTurn(
 
   const fullContent = assembleAssistantContent(collector.collectedEvents, collector.collectedChunks);
   const hasWork = fullContent.trim().length > 0
-    || collector.collectedEvents.some((event) => event.type === "tool_use");
+    || collector.collectedEvents.some((event) => event.type === "tool_use" || event.type === "ask_user");
   let messageId: number | undefined;
   if (conversationId && hasWork) {
     collector.collectedEvents.push({ type: "system", subtype: "turn_incomplete", message: errorMessage });

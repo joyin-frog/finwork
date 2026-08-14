@@ -39,6 +39,12 @@ export function createFixtureOracle(): BenchmarkFixtureOracle {
         : {}),
     citations: oracle.expected.citations,
     assertions: oracle.expected.assertions,
+    deterministicChecks: (oracle.expected.deterministicChecks ?? []).map(({ id }) => ({
+      id,
+      passed: true,
+      blocking: true,
+      details: { fixtureOracle: true },
+    })),
     ...(oracle.expected.artifact
       ? {
           artifact: {

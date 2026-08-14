@@ -16,6 +16,7 @@ export const BenchmarkDatasetIdSchema = z.enum([
   "spreadsheetbench_v2",
   "finagentbench",
   "qfbench",
+  "general_agent_pilot",
 ]);
 export type BenchmarkDatasetId = z.infer<typeof BenchmarkDatasetIdSchema>;
 
@@ -25,6 +26,7 @@ export const BenchmarkFamilySchema = z.enum([
   "financial_knowledge",
   "spreadsheet",
   "financial_agent",
+  "general_agent",
 ]);
 export type BenchmarkFamily = z.infer<typeof BenchmarkFamilySchema>;
 
@@ -40,6 +42,7 @@ export const BenchmarkSourceFormatSchema = z.enum([
   "generic_qa",
   "spreadsheetbench",
   "agentbench",
+  "general_agent_pilot",
 ]);
 export type BenchmarkSourceFormat = z.infer<typeof BenchmarkSourceFormatSchema>;
 
@@ -55,6 +58,11 @@ export const BenchmarkCapabilitySchema = z.enum([
   "agent_tool_use",
   "quantitative_finance",
   "due_diligence",
+  "policy_compliance",
+  "stateful_tool_use",
+  "clarification",
+  "error_recovery",
+  "security_resistance",
 ]);
 export type BenchmarkCapability = z.infer<typeof BenchmarkCapabilitySchema>;
 
@@ -74,7 +82,7 @@ export const BenchmarkDatasetDescriptorSchema = z
         note: z.string().trim().min(1),
       })
       .strict(),
-    redistribution: z.literal("external_only"),
+    redistribution: z.enum(["external_only", "bundled"]),
     supportedSplits: z.array(z.string().trim().min(1)).min(1),
     defaultLocale: z.string().trim().min(2),
     capabilities: z.array(BenchmarkCapabilitySchema).min(1),
@@ -147,6 +155,11 @@ const BenchmarkExpectedArtifactSchema = BenchmarkArtifactExpectationSchema.exten
   oracle: BenchmarkSpreadsheetOracleSchema.optional(),
 }).strict();
 
+export const BenchmarkDeterministicExpectationSchema = z.object({
+  id: IdentifierSchema,
+  faultDomain: FaultDomainSchema,
+}).strict();
+
 export const BenchmarkExpectedSchema = z
   .object({
     answers: z.array(z.string()),
@@ -154,6 +167,9 @@ export const BenchmarkExpectedSchema = z
     programs: z.array(z.string()),
     citations: z.array(BenchmarkCitationSchema),
     assertions: z.array(z.string().trim().min(1)),
+    // Optional to preserve canonical bytes and materialization hashes for v1
+    // cases imported before deterministic Agent checks existed.
+    deterministicChecks: z.array(BenchmarkDeterministicExpectationSchema).optional(),
     artifact: BenchmarkExpectedArtifactSchema.optional(),
   })
   .strict();
@@ -199,6 +215,7 @@ export const NormalizedBenchmarkCaseSchema = z
       expected.numericAnswers.length === 0 &&
       expected.citations.length === 0 &&
       expected.assertions.length === 0 &&
+      (expected.deterministicChecks?.length ?? 0) === 0 &&
       !expected.artifact
     ) {
       ctx.addIssue({
@@ -283,6 +300,7 @@ export const BenchmarkPredictionSchema = z
       .strict()
       .optional(),
     assertions: z.array(z.string().trim().min(1)).default([]),
+    deterministicChecks: z.array(BenchmarkDeterministicCheckSchema).default([]),
     metrics: z
       .object({
         wallTimeMs: z.number().int().nonnegative().default(0),
@@ -409,7 +427,7 @@ export const BenchmarkRunReportV1Schema = z
     results: z.array(BenchmarkCaseResultSchema),
   })
   .strict();
-export const BenchmarkProfileSchema = z.enum(["connection-smoke", "benchmark-smoke", "pilot", "full"]);
+export const BenchmarkProfileSchema = z.enum(["connection-smoke", "benchmark-smoke", "general-agent-pilot", "pilot", "full"]);
 export type BenchmarkProfile = z.infer<typeof BenchmarkProfileSchema>;
 export const BenchmarkEvaluationLayerSchema = z.enum(["mixed", "harness", "agent", "model"]);
 export type BenchmarkEvaluationLayer = z.infer<typeof BenchmarkEvaluationLayerSchema>;

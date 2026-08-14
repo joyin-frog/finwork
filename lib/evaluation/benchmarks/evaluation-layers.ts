@@ -12,6 +12,11 @@ const AGENT_CAPABILITIES = new Set([
   "spreadsheet_editing",
   "agent_tool_use",
   "due_diligence",
+  "policy_compliance",
+  "stateful_tool_use",
+  "clarification",
+  "error_recovery",
+  "security_resistance",
 ]);
 
 /**
@@ -25,7 +30,9 @@ export function caseBelongsToEvaluationLayer(
 ): boolean {
   const parsed = BenchmarkEvaluationLayerSchema.parse(layer);
   if (parsed === "mixed") return true;
-  if (parsed === "harness") return false;
+  const harnessOnly = benchmarkCase.tags.includes("layer:harness");
+  if (parsed === "harness") return harnessOnly;
+  if (harnessOnly) return false;
   const agentic = benchmarkCase.taskKind !== "qa"
     || Boolean(benchmarkCase.expected.artifact)
     || benchmarkCase.capabilities.some((capability) => AGENT_CAPABILITIES.has(capability));

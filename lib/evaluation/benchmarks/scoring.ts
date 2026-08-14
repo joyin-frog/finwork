@@ -155,6 +155,16 @@ export function scoreBenchmarkPrediction(
   if (citationResult.precision !== null && citationResult.precision < 1) failures.push("citation_precision_failed");
   const assertions = assertionCoverage(prediction, oracle);
   if (assertions !== null && assertions < 1) failures.push("assertion_coverage_failed");
+  const expectedDeterministicChecks = oracle.expected.deterministicChecks ?? [];
+  const deterministicChecksById = new Map(prediction.deterministicChecks.map((check) => [check.id, check]));
+  const missingDeterministicChecks = expectedDeterministicChecks
+    .filter(({ id }) => !deterministicChecksById.has(id));
+  const failedDeterministicChecks = expectedDeterministicChecks.flatMap(({ id }) => {
+    const check = deterministicChecksById.get(id);
+    return check && check.blocking && !check.passed ? [check] : [];
+  });
+  failures.push(...missingDeterministicChecks.map(({ id }) => `deterministic_check_missing:${id}`));
+  failures.push(...failedDeterministicChecks.map(({ id }) => `deterministic_check_failed:${id}`));
   if (prediction.failure) failures.unshift(`execution_failure:${prediction.failure.code}`);
 
   const contract = prediction.failure || failures.length > 0 ? 0 : 1;
@@ -172,6 +182,9 @@ export function scoreBenchmarkPrediction(
     faultDomain = "capability";
   } else if (failures.some((failure) => failure.startsWith("artifact_"))) {
     faultDomain = "validator";
+  } else if (missingDeterministicChecks.length > 0 || failedDeterministicChecks.length > 0) {
+    const failedId = missingDeterministicChecks[0]?.id ?? failedDeterministicChecks[0]?.id;
+    faultDomain = expectedDeterministicChecks.find(({ id }) => id === failedId)?.faultDomain ?? "validator";
   } else if (failures.length > 0) {
     faultDomain = "model";
   }
@@ -208,6 +221,16 @@ export function scoreBenchmarkPrediction(
           blocking: check.blocking,
           details: check.details,
         })) ?? [],
+      deterministicChecks: expectedDeterministicChecks.map(({ id, faultDomain }) => {
+        const check = deterministicChecksById.get(id);
+        return {
+          id,
+          passed: check?.passed ?? false,
+          blocking: check?.blocking ?? true,
+          faultDomain,
+          details: check?.details ?? { missing: true },
+        };
+      }),
     },
   });
 }

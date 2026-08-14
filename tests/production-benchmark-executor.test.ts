@@ -149,6 +149,18 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     const sentinelCase = benchmarkCase("oracle-boundary", "PRIVATE_ORACLE_SENTINEL");
     const { executionCase: publicCase } = partitionBenchmarkCase(sentinelCase);
     assert.doesNotMatch(formatBenchmarkAgentPrompt(publicCase), /PRIVATE_ORACLE_SENTINEL/);
+    const conversationCase = NormalizedBenchmarkCaseSchema.parse({
+      ...benchmarkCase("conversation-history"),
+      context: {
+        textBlocks: [], tables: [], files: [],
+        conversation: [{ role: "user", text: "币种人民币，期间 2026Q2" }],
+      },
+    });
+    assert.match(
+      formatBenchmarkAgentPrompt(partitionBenchmarkCase(conversationCase).executionCase),
+      /benchmark-conversation-history[\s\S]*人民币[\s\S]*2026Q2/,
+      "production benchmark prompt must carry normalized multi-turn history",
+    );
 
     let observedBudget: FinworkAgentRequest["foundation"];
     const success = await executeCase(
@@ -351,6 +363,22 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     assert.equal(timedOut.prediction.failure?.code, "benchmark_wall_time_exceeded");
     assert.equal(timedOut.prediction.failure?.source, "resource");
     assert.equal(timedOut.prediction.execution?.termination.timedOut, true);
+
+    const humanDecision = await executeCase(benchmarkCase("human-decision"), async (request) => {
+      request.emit?.({
+        type: "ask_user",
+        questionId: "pilot-question",
+        question: { question: "请提供分析期间" },
+      });
+      await request.resolveUserQuestion?.({ question: "请提供分析期间" });
+      throw new Error("unreachable");
+    });
+    assert.equal(humanDecision.prediction.failure?.code, "benchmark_human_decision_required");
+    const persistedAsk = getDb().prepare(`
+      SELECT COUNT(*) AS count FROM chat_agent_events
+      WHERE trace_id = ? AND event_type = 'ask_user'
+    `).get(humanDecision.prediction.execution?.traceId) as { count: number };
+    assert.equal(persistedAsk.count, 1, "headless human-decision evidence must survive incomplete-turn persistence");
 
     const evidenceBase = benchmarkCase("missing-evidence");
     const evidenceCase = NormalizedBenchmarkCaseSchema.parse({

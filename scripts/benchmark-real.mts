@@ -30,6 +30,7 @@ import { createDirectModelBenchmarkExecutor } from "../lib/evaluation/benchmarks
 import { runBenchmarkPreflight, resolveMessagesEndpoint } from "../lib/evaluation/benchmarks/preflight.ts";
 import { serializeBenchmarkRunReport } from "../lib/evaluation/benchmarks/report.ts";
 import { closeProductionBenchmarkRuntime } from "../lib/evaluation/benchmarks/runtime-cleanup.ts";
+import { assertProductionBenchmarkValidatorCoverage } from "../lib/evaluation/benchmarks/validator-coverage.ts";
 import { readAgentSettings } from "../lib/settings/agent-settings.ts";
 
 const goalRoot = path.join(
@@ -255,6 +256,7 @@ async function runMain(): Promise<void> {
   });
   const selectedCases = selectCasesForEvaluationLayer(profileCases, evaluationLayer);
   if (selectedCases.length === 0) throw new Error(`benchmark_layer_has_no_cases:${evaluationLayer}`);
+  assertProductionBenchmarkValidatorCoverage(selectedCases);
   const materializationManifestPaths = bundlePaths.map((bundle) => path.resolve(bundle.materializationManifestPath));
   const preflight = await runBenchmarkPreflight({
     target: profile,

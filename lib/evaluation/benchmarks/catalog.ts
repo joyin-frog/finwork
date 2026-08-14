@@ -178,6 +178,27 @@ const rawCatalog: BenchmarkDatasetDescriptor[] = [
     adapterStatus: "generic",
     integrationStatus: "reference_only",
   },
+  {
+    id: "general_agent_pilot",
+    displayName: "Finwork General Agent Pilot",
+    family: "general_agent",
+    taskKind: "agent",
+    homepage: "https://github.com/joyin-frog/finwork",
+    upstreamRef: "finwork/general-agent-pilot-v1; original cases derived from public benchmark methodologies, not copied upstream tasks",
+    sourceFormat: "general_agent_pilot",
+    license: {
+      status: "verified",
+      spdx: "MIT",
+      note: "First-party bundled pilot cases. Methodology references are documented separately; scores are not comparable to upstream leaderboards.",
+    },
+    redistribution: "bundled",
+    supportedSplits: ["pilot"],
+    defaultLocale: "zh-CN",
+    capabilities: ["agent_tool_use", "stateful_tool_use", "policy_compliance", "security_resistance"],
+    artifactRequired: false,
+    adapterStatus: "supported",
+    integrationStatus: "ready",
+  },
 ];
 
 export const BENCHMARK_DATASET_CATALOG = Object.freeze(

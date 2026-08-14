@@ -1,0 +1,187 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { getBenchmarkDatasetDescriptor } from "../lib/evaluation/benchmarks/catalog.ts";
+import { importExternalBenchmarkSource } from "../lib/evaluation/benchmarks/importer.ts";
+import { partitionBenchmarkCase } from "../lib/evaluation/benchmarks/case-boundary.ts";
+import { runBenchmarkFixtureSuite, runBenchmarkSuite } from "../lib/evaluation/benchmarks/runner.ts";
+import { selectRealBenchmarkCases, type LoadedRealBenchmarkBundle } from "../lib/evaluation/benchmarks/real-runner.ts";
+import {
+  assertProductionBenchmarkValidatorCoverage,
+  findMissingProductionBenchmarkValidators,
+} from "../lib/evaluation/benchmarks/validator-coverage.ts";
+import { validateGeneralAgentPilotPrediction } from "../lib/evaluation/benchmarks/general-agent-oracle.ts";
+import { selectCasesForEvaluationLayer } from "../lib/evaluation/benchmarks/evaluation-layers.ts";
+import { BenchmarkPredictionSchema } from "../lib/evaluation/benchmarks/contracts.ts";
+import { executeGeneralAgentHarnessCase } from "../lib/evaluation/benchmarks/general-agent-harness.ts";
+
+const sourcePath = path.join(process.cwd(), "benchmarks", "general-agent-pilot", "v1", "cases.jsonl");
+
+export const generalAgentPilotTestPromise = (async () => {
+  const imported = await importExternalBenchmarkSource({
+    datasetId: "general_agent_pilot",
+    datasetVersion: "v1",
+    split: "pilot",
+    sourcePath,
+    acknowledgeLicenseReview: false,
+    importedAt: "2026-08-14T00:00:00.000Z",
+  });
+  const cases = imported.cases;
+  assert.equal(cases.length, 30);
+  assert.equal(cases.filter((item) => item.tags.includes("tau3-style")).length, 12);
+  assert.equal(cases.filter((item) => item.tags.includes("toolsandbox-style")).length, 10);
+  assert.equal(cases.filter((item) => item.tags.includes("agentdojo-style")).length, 8);
+  const harnessCases = selectCasesForEvaluationLayer(cases, "harness");
+  const agentCases = selectCasesForEvaluationLayer(cases, "agent");
+  assert.equal(harnessCases.length, 10);
+  assert.equal(agentCases.length, 20);
+  const harnessReport = await runBenchmarkSuite({
+    suiteName: "general-agent-pilot Layer 1 Harness",
+    cases: harnessCases,
+    executor: executeGeneralAgentHarnessCase,
+    runId: "general-agent-pilot-layer-1",
+    configuration: { kind: "harness", sampleSeed: "pilot-v1", maxCases: 10 },
+  });
+  assert.deepEqual(harnessReport.totals, { cases: 10, passed: 10, failed: 0, errors: 0 });
+  assert.ok(cases.every((item) => (item.expected.deterministicChecks?.length ?? 0) > 0));
+  assert.equal(imported.manifest.descriptor.redistribution, "bundled");
+  assert.equal(imported.manifest.descriptor.license.status, "verified");
+
+  for (const benchmarkCase of cases) {
+    const { executionCase } = partitionBenchmarkCase(benchmarkCase);
+    const serialized = JSON.stringify(executionCase);
+    for (const check of benchmarkCase.expected.deterministicChecks ?? []) {
+      assert.doesNotMatch(serialized, new RegExp(check.id), `${benchmarkCase.id}: private oracle leaked`);
+    }
+  }
+
+  const selfReport = await runBenchmarkSuite({
+    suiteName: "general-agent-pilot anti-self-report gate",
+    cases,
+    runId: "general-agent-pilot-self-report",
+    executor: async (executionCase) => ({
+      answer: "All requested checks passed.",
+      assertions: executionCase.tags,
+      metrics: { toolCalls: 1 },
+      details: {},
+    }),
+    configuration: { kind: "harness", sampleSeed: "ordered-v1", maxCases: 30 },
+  });
+  assert.deepEqual(selfReport.totals, { cases: 30, passed: 0, failed: 30, errors: 0 });
+  assert.ok(selfReport.results.every((result) =>
+    result.failures.some((failure) => failure.startsWith("deterministic_check_missing:"))
+  ));
+
+  const verified = await runBenchmarkSuite({
+    suiteName: "general-agent-pilot deterministic-validator gate",
+    cases,
+    runId: "general-agent-pilot-verified",
+    executor: async () => ({
+      answer: "Execution completed; evaluator must verify state.",
+      metrics: { toolCalls: 1 },
+      details: {},
+    }),
+    validatePrediction: async ({ oracle, prediction }) => ({
+      ...prediction,
+      ...(oracle.expected.answers[0] ? { answer: oracle.expected.answers[0] } : {}),
+      citations: oracle.expected.citations,
+      deterministicChecks: (oracle.expected.deterministicChecks ?? []).map(({ id }) => ({
+        id,
+        passed: true,
+        blocking: true,
+        details: { validator: "test-double" },
+      })),
+    }),
+    configuration: { kind: "harness", sampleSeed: "ordered-v1", maxCases: 30 },
+  });
+  assert.deepEqual(verified.totals, { cases: 30, passed: 30, failed: 0, errors: 0 });
+
+  const fixture = await runBenchmarkFixtureSuite({
+    suiteName: "general-agent-pilot fixture wiring",
+    cases,
+    runId: "general-agent-pilot-fixture",
+  });
+  assert.deepEqual(fixture.totals, { cases: 30, passed: 30, failed: 0, errors: 0 });
+
+  const descriptor = getBenchmarkDatasetDescriptor("general_agent_pilot");
+  const bundle: LoadedRealBenchmarkBundle = {
+    importManifest: imported.manifest,
+    materializationManifest: {
+      schemaVersion: 1,
+      datasetId: "general_agent_pilot",
+      datasetVersion: "v1",
+      split: "pilot",
+      importManifestSha256: "b".repeat(64),
+      sourceSha256: imported.manifest.sourceSha256,
+      licenseStatus: "verified",
+      licenseAcknowledged: true,
+      createdAt: "2026-08-14T00:00:00.000Z",
+      cases: cases.map((item) => ({
+        caseId: item.id,
+        normalizedCaseSha256: "c".repeat(64),
+        inputArtifacts: [],
+        sources: [],
+      })),
+    },
+    cases,
+  };
+  assert.equal(descriptor.id, bundle.importManifest.datasetId);
+  const selected = selectRealBenchmarkCases({
+    profile: "general-agent-pilot",
+    cases,
+    bundles: [bundle],
+    sampleSeed: "pilot-v1",
+    maxCases: 30,
+  });
+  assert.equal(selected.length, 30);
+  assert.deepEqual(new Set(selected.map((item) => item.id)), new Set(cases.map((item) => item.id)));
+  assert.throws(() => selectRealBenchmarkCases({
+    profile: "general-agent-pilot",
+    cases,
+    bundles: [bundle],
+    sampleSeed: "pilot-v1",
+    maxCases: 29,
+  }), /requires --max-cases 30/);
+  const missingProductionValidators = findMissingProductionBenchmarkValidators(cases);
+  assert.equal(findMissingProductionBenchmarkValidators(agentCases).length, 0);
+  assert.equal(missingProductionValidators.length, 20);
+  assert.doesNotThrow(() => assertProductionBenchmarkValidatorCoverage(agentCases));
+  assert.throws(
+    () => assertProductionBenchmarkValidatorCoverage(cases),
+    /benchmark_production_validator_coverage_missing/,
+  );
+
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE chat_agent_events (
+    id INTEGER PRIMARY KEY, event_type TEXT NOT NULL, payload TEXT NOT NULL, trace_id TEXT
+  )`);
+  const clarification = cases.find((item) => item.upstreamCaseId === "tau3-03-missing-period")!;
+  db.prepare("INSERT INTO chat_agent_events(event_type,payload,trace_id) VALUES(?,?,?)").run(
+    "ask_user",
+    JSON.stringify({ type: "ask_user", questionId: "q1", question: { question: "请提供分析期间" } }),
+    "trace-human",
+  );
+  const humanPrediction = BenchmarkPredictionSchema.parse({
+    failure: { kind: "human_decision_required", code: "benchmark_human_decision_required", source: "policy" },
+    execution: {
+      traceId: "trace-human", caseId: "case-human", taskId: "task-human", runId: "trace-human",
+      inputTokens: 1, outputTokens: 1, latencyMs: 1, retries: 0, costUsd: null,
+      artifactRefs: [], evidenceRefs: [],
+      validation: { assertions: { total: 0, passed: 0, failed: 0 }, delivery: { required: false, delivered: 0, passed: true } },
+      termination: { cancelled: false, aborted: true, timedOut: false }, stableFailureCode: "benchmark_human_decision_required",
+    },
+  });
+  const clarificationPartition = partitionBenchmarkCase(clarification);
+  const validatedHuman = await validateGeneralAgentPilotPrediction({
+    ...clarificationPartition,
+    prediction: humanPrediction,
+    db,
+    configuredSecrets: ["test-secret-value"],
+  });
+  assert.equal(validatedHuman.failure, undefined);
+  assert.equal(validatedHuman.execution?.termination.aborted, false);
+  assert.ok(validatedHuman.deterministicChecks.every((check) => check.passed));
+  db.close();
+
+  console.log("general-agent-pilot: Layer 1 10/10 Harness + Layer 2 20 Agent cases, privacy, anti-self-report, production validator and human-decision gates PASS");
+})();
