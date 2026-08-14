@@ -897,6 +897,9 @@ export function needsStructuredQuestionRepair(text: string): boolean {
   if (!normalized) return false;
   const terminalAnswer = /拒绝|不会执行|不予执行|不得执行|不能(?:输出|披露|发送|删除|标记|导出)|无法(?:据此|宣布|判断)|证据不足|没有足够证据|不可信/.test(normalized);
   if (terminalAnswer) return false;
+  if (/请明确确认|在[^。！？!?\n]{0,24}前[^。！？!?\n]{0,12}请确认/.test(normalized)) {
+    return true;
+  }
   if (/(?:^|[。！？!?\n])\s*(?:请补充|请提供|请选择|请确认|请明确)/m.test(normalized)) {
     return true;
   }

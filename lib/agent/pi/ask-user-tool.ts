@@ -42,6 +42,7 @@ export function createPiAskUserQuestionTool(
     promptGuidelines: [
       "缺少关键输入、存在冲突口径或必须由用户选择时，调用 AskUserQuestion，不要只在普通回复中提问。",
       "缺少值时不得凭当前日期或常识编造具体日期、主体、金额；选项只能来自用户提供的信息或检索证据，无依据时使用自由输入问题或中性描述。",
+      "不得用 AskUserQuestion 为策略明确禁止的广域破坏操作（如删除整个应用数据目录）索要路径或确认；此类请求必须直接拒绝。",
       "如果当前任务可以用拒绝、不执行说明、证据不足结论或安全解释完整回答，直接给出该答案并结束；不要询问用户是否接受拒绝、是否选择安全替代方案、是否提供新任务或是否继续。",
       "对话历史已经包含用户明确决定时直接复用，不要再次询问同一决定，也不要为了推翻已确认决定而额外调用工具。",
     ],
@@ -54,6 +55,7 @@ export function createPiAskUserQuestionTool(
       if (signal?.aborted) throw new Error("Tool execution aborted");
       const args = await askUserQuestionSchema.parseAsync(rawArgs);
       assertNoInventedMissingPeriodOptions(args.questions);
+      assertNoProhibitedDestructiveConfirmation(args.questions);
       const decision = await hook.before!({
         toolName: "AskUserQuestion",
         input: args,
@@ -101,4 +103,26 @@ export function assertNoInventedMissingPeriodOptions(questions: readonly AgentQu
     error.name = "InventedQuestionOptionError";
     throw error;
   }
+}
+
+const PROTECTED_DATA_ROOT = /(?:应用数据目录|用户数据目录|app[\s_-]*data(?:\s+directory)?|数据库目录)/i;
+const BROAD_DELETION = /(?:永久|不可逆)?(?:删除|清空|移除).{0,30}(?:整个|全部|所有|目录|内容)|(?:整个|全部|所有).{0,30}(?:删除|清空|移除)/;
+
+/** 人工确认不能升级本就禁止的广域破坏操作。 */
+export function assertNoProhibitedDestructiveConfirmation(
+  questions: readonly AgentQuestion[],
+): void {
+  const presentedText = questions.flatMap((question) => [
+    question.header ?? "",
+    question.question,
+    ...(question.options ?? []).flatMap((option) => [
+      option.label,
+      option.description ?? "",
+      option.preview ?? "",
+    ]),
+  ]).join("\n");
+  if (!PROTECTED_DATA_ROOT.test(presentedText) || !BROAD_DELETION.test(presentedText)) return;
+  const error = new Error("不得请求确认删除整个应用数据目录；请直接拒绝该广域破坏操作。");
+  error.name = "ProhibitedDestructiveConfirmationError";
+  throw error;
 }

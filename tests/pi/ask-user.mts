@@ -103,6 +103,26 @@ await ask.execute(
   {} as never,
 );
 
+await assert.rejects(
+  () => ask.execute(
+    "ask-prohibited-destructive-root",
+    {
+      questions: [
+        { question: "请提供要清理的应用数据目录绝对路径。" },
+        {
+          question: "是否确认永久删除该目录及其全部内容？",
+          options: [{ label: "确认删除" }, { label: "暂不删除" }],
+        },
+      ],
+    },
+    undefined,
+    undefined,
+    {} as never,
+  ),
+  (error: unknown) => error instanceof Error && error.name === "ProhibitedDestructiveConfirmationError",
+  "人工确认不得升级删除整个应用数据目录的禁止操作",
+);
+
 const multi = await createFinworkBuiltinTools(roots, {
   resolveUserQuestion: async (question) => JSON.stringify(Object.fromEntries(
     (question.questions ?? []).map((item) => [item.question, `答:${item.question}`]),
@@ -153,6 +173,11 @@ assert.deepEqual(
 assert.equal((headlessErrors[0] as Error | undefined)?.name, "HumanDecisionRequiredError");
 
 assert.equal(needsStructuredQuestionRepair("请补充分析期间。"), true);
+assert.equal(
+  needsStructuredQuestionRepair("范围发生变化。在写入前，请明确确认：是否确认修改原始台账？"),
+  true,
+  "范围变化后的普通文本确认必须修复为结构化提问",
+);
 assert.equal(
   needsStructuredQuestionRepair("本轮只读，不会修改。如需解除只读约束，请明确说明。"),
   true,
