@@ -84,10 +84,15 @@ export function assertNoInventedMissingPeriodOptions(questions: readonly AgentQu
     if (!MISSING_VALUE_QUESTION.test(question.question) || !PERIOD_FIELD.test(question.question)) {
       continue;
     }
-    const optionText = (question.options ?? [])
-      .flatMap((option) => [option.label, option.description ?? "", option.preview ?? ""])
-      .join("\n");
-    if (!CONCRETE_PERIOD.test(optionText)) continue;
+    const presentedText = [
+      question.question,
+      ...(question.options ?? []).flatMap((option) => [
+        option.label,
+        option.description ?? "",
+        option.preview ?? "",
+      ]),
+    ].join("\n");
+    if (!CONCRETE_PERIOD.test(presentedText)) continue;
     const error = new Error(
       "缺失期间不得编造具体日期候选项；请移除日期示例，改用自由输入问题或有证据支持的中性选项。",
     );

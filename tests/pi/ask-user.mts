@@ -72,6 +72,23 @@ await assert.rejects(
 );
 assert.equal(emitted.length, emittedBeforeInventedPeriod, "非法候选项必须在等待用户前被拒绝");
 
+await assert.rejects(
+  () => ask.execute(
+    "ask-invented-period-in-question",
+    {
+      questions: [{
+        question: "请提供缺少的分析期间，例如 2026年7月或2026年1—7月",
+      }],
+    },
+    undefined,
+    undefined,
+    {} as never,
+  ),
+  (error: unknown) => error instanceof Error && error.name === "InventedQuestionOptionError",
+  "问题正文也不得夹带模型编造的具体日期示例",
+);
+assert.equal(emitted.length, emittedBeforeInventedPeriod, "非法问题正文必须在等待用户前被拒绝");
+
 await ask.execute(
   "ask-neutral-period",
   {
