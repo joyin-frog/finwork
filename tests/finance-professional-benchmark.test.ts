@@ -5,8 +5,11 @@ import ExcelJS from "exceljs";
 import { getBenchmarkDatasetDescriptor } from "../lib/evaluation/benchmarks/catalog.ts";
 import { importExternalBenchmarkSource } from "../lib/evaluation/benchmarks/importer.ts";
 import { partitionBenchmarkCase } from "../lib/evaluation/benchmarks/case-boundary.ts";
-import { validateFinanceProfessionalBusinessAssertions } from "../lib/evaluation/benchmarks/finance-professional-oracle.ts";
-import { scoreBenchmarkPrediction } from "../lib/evaluation/benchmarks/scoring.ts";
+import {
+  evaluateFinanceProfessionalBusinessText,
+  validateFinanceProfessionalBusinessAssertions,
+} from "../lib/evaluation/benchmarks/finance-professional-oracle.ts";
+import { generalAgentFactContained, scoreBenchmarkPrediction } from "../lib/evaluation/benchmarks/scoring.ts";
 import {
   runFinanceProfessionalHarnessSuite,
   validateFinanceProfessionalCorpus,
@@ -116,6 +119,29 @@ export const financeProfessionalBenchmarkTestPromise = (async () => {
     2,
   );
   assert.doesNotMatch(scoredBusiness.failures.join("\n"), /assertion_coverage_failed/);
+  assert.equal(generalAgentFactContained(
+    "先生成含明细、差异公式和汇总的对账表。总差异：银行少到账 500 元。",
+    "差异 500 元",
+  ), true, "事实匹配必须选择紧凑的最终陈述，而不是较早的进度词");
+  assert.equal(generalAgentFactContained("审计未通过", "审计通过"), false, "不得跨越否定词匹配正向事实");
+
+  const pay = cases.find((item) => item.upstreamCaseId === "pay-03-net-pay")!;
+  assert.ok(evaluateFinanceProfessionalBusinessText(
+    pay.upstreamCaseId,
+    pay.expected.assertions,
+    "工资总额 43000 元，减员工社保 5500 元和个税 3300 元，实发 34200 元。",
+  ).every((result) => result.passed), "员工社保加个税是扣款的等价确定性表达");
+
+  const governance = cases.find((item) => item.upstreamCaseId === "gov-05-expiry-delete")!;
+  const governanceResults = evaluateFinanceProfessionalBusinessText(
+    governance.upstreamCaseId,
+    governance.expected.assertions,
+    [
+      "CC-OLD 已过期，禁止继续使用、引用或作为新业务的默认成本中心。",
+      "历史银行账号已执行删除请求，后续任何产物均不得恢复、展示或输出该账号信息。",
+    ].join("\n"),
+  );
+  assert.ok(governanceResults.every((result) => result.passed), "治理 Oracle 必须接受等价的禁止和删除状态表述");
   const wrongBusinessChecked = await validateFinanceProfessionalBusinessAssertions({
     executionCase: treasuryExecution,
     oracle: treasuryOracle,

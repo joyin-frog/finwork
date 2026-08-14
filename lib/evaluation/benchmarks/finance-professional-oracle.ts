@@ -13,6 +13,8 @@ import {
 type Rule = {
   /** Every group must contribute at least one matching alternative. */
   allOf: readonly (readonly string[])[];
+  /** At least one alternative must have every one of its groups satisfied. */
+  alternatives?: readonly (readonly (readonly string[])[])[];
   /** A forbidden term may appear only when an explicit exclusion is present. */
   forbidden?: readonly { terms: readonly string[]; unlessAny: readonly string[] }[];
 };
@@ -51,7 +53,13 @@ const RULES: Readonly<Record<string, readonly Rule[]>> = {
   ],
   "pay-03-net-pay": [
     { allOf: [["实发", "net pay"], ["34200"]] },
-    { allOf: [["工资总额", "gross"], ["扣款", "deduction"], ["实发", "net pay"]] },
+    {
+      allOf: [["工资总额", "gross"], ["实发", "net pay"]],
+      alternatives: [
+        [["扣款", "deduction"]],
+        [["员工社保", "employee social"], ["个税", "tax"]],
+      ],
+    },
   ],
   "pay-04-employer-cost": [
     { allOf: [["公司社保", "employer social"], ["7600"]] },
@@ -142,8 +150,8 @@ const RULES: Readonly<Record<string, readonly Rule[]>> = {
     { allOf: [["2026q2", "2026 q2"]] },
   ],
   "gov-05-expiry-delete": [
-    { allOf: [["cc-old"], ["过期", "expired"], ["不使用", "排除", "exclude"]] },
-    { allOf: [["银行账号", "bank account"], ["不恢复", "不输出", "保持删除", "remain deleted"]] },
+    { allOf: [["cc-old"], ["过期", "expired"], ["不使用", "不得继续使用", "禁止继续使用", "不再作为有效", "排除", "exclude"]] },
+    { allOf: [["银行账号", "bank account"], ["不恢复", "不得恢复", "不输出", "不得输出", "保持删除", "维持删除", "remain deleted"]] },
   ],
 };
 
@@ -153,6 +161,41 @@ export type FinanceProfessionalBusinessAssertionResult = {
   missingGroups: string[][];
   forbiddenTerms: string[];
 };
+
+export function evaluateFinanceProfessionalBusinessText(
+  upstreamCaseId: string,
+  expectedAssertions: readonly string[],
+  text: string,
+): FinanceProfessionalBusinessAssertionResult[] {
+  validateFinanceProfessionalOracleCoverage(upstreamCaseId, expectedAssertions);
+  const normalizedText = normalize(text);
+  return RULES[upstreamCaseId]!.map((rule, index): FinanceProfessionalBusinessAssertionResult => {
+    const missingRequired = missingGroupsFor(rule.allOf, normalizedText);
+    const alternativeMissing = (rule.alternatives ?? []).map((alternative) =>
+      missingGroupsFor(alternative, normalizedText)
+    );
+    const bestAlternativeMissing = alternativeMissing.length === 0
+      ? []
+      : alternativeMissing.reduce((best, current) => current.length < best.length ? current : best);
+    const missingGroups = [
+      ...missingRequired,
+      ...(alternativeMissing.length > 0 && !alternativeMissing.some((missing) => missing.length === 0)
+        ? bestAlternativeMissing
+        : []),
+    ];
+    const forbiddenTerms = (rule.forbidden ?? []).flatMap((item) => {
+      const present = item.terms.some((term) => normalizedText.includes(normalize(term)));
+      const explicitlyExcluded = item.unlessAny.some((term) => normalizedText.includes(normalize(term)));
+      return present && !explicitlyExcluded ? [...item.terms] : [];
+    });
+    return {
+      assertion: expectedAssertions[index]!,
+      passed: missingGroups.length === 0 && forbiddenTerms.length === 0,
+      missingGroups,
+      forbiddenTerms,
+    };
+  });
+}
 
 export function validateFinanceProfessionalOracleCoverage(
   upstreamCaseId: string,
@@ -195,24 +238,11 @@ export async function validateFinanceProfessionalBusinessAssertions(input: {
       extractionError = error instanceof Error ? error.message : String(error);
     }
   }
-  const normalizedText = normalize(text);
-  const rules = RULES[input.executionCase.upstreamCaseId]!;
-  const results = rules.map((rule, index): FinanceProfessionalBusinessAssertionResult => {
-    const missingGroups = rule.allOf
-      .filter((group) => !group.some((term) => normalizedText.includes(normalize(term))))
-      .map((group) => [...group]);
-    const forbiddenTerms = (rule.forbidden ?? []).flatMap((item) => {
-      const present = item.terms.some((term) => normalizedText.includes(normalize(term)));
-      const explicitlyExcluded = item.unlessAny.some((term) => normalizedText.includes(normalize(term)));
-      return present && !explicitlyExcluded ? [...item.terms] : [];
-    });
-    return {
-      assertion: expected[index]!,
-      passed: extractionError === null && missingGroups.length === 0 && forbiddenTerms.length === 0,
-      missingGroups,
-      forbiddenTerms,
-    };
-  });
+  const results = evaluateFinanceProfessionalBusinessText(
+    input.executionCase.upstreamCaseId,
+    expected,
+    text,
+  ).map((result) => extractionError === null ? result : { ...result, passed: false });
   const expectedNormalized = new Set(expected.map(normalize));
   const nonBusinessAssertions = input.prediction.assertions.filter((value) => !expectedNormalized.has(normalize(value)));
   return BenchmarkPredictionSchema.parse({
@@ -258,6 +288,12 @@ function normalize(value: string): string {
     .replace(/(?<=\d),(?=\d)/g, "")
     .replace(/[\s，,:：;；'"`()[\]{}]+/g, "")
     .trim();
+}
+
+function missingGroupsFor(groups: readonly (readonly string[])[], normalizedText: string): string[][] {
+  return groups
+    .filter((group) => !group.some((term) => normalizedText.includes(normalize(term))))
+    .map((group) => [...group]);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
