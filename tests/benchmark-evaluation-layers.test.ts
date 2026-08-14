@@ -107,6 +107,21 @@ assert.equal(prediction.execution?.cacheReadInputTokens, 5);
 assert.equal(prediction.execution?.cacheCreationInputTokens, 2);
 assert.equal(prediction.metrics.tokens, 17);
 assert.equal(requestBody?.model, "model-a");
+const dependencyExecutor = createDirectModelBenchmarkExecutor({
+  model: "model-a",
+  readSettings: async () => settings,
+  fetchImpl: async () => new Response("upstream unavailable", { status: 503 }),
+});
+const dependencyPrediction = BenchmarkPredictionSchema.parse(await dependencyExecutor(executionCase, {
+  taskContract: task.contract,
+  missingExternalInputs: [],
+}));
+assert.deepEqual(dependencyPrediction.failure, {
+  kind: "transient_external_failure",
+  code: "provider_response_failed",
+  source: "dependency",
+  details: {},
+});
 assert.throws(() => createDirectModelBenchmarkExecutor({ model: " " }));
 await assert.rejects(() => executor(partitionBenchmarkCase(agentCase).executionCase, {
   taskContract: createBenchmarkTaskContract(partitionBenchmarkCase(agentCase).executionCase).contract,

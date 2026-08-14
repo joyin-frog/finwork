@@ -63,6 +63,7 @@ export function createDirectModelBenchmarkExecutor(
       });
     } catch (error) {
       const code = errorCode(error);
+      const kind = failureKind(code);
       return BenchmarkPredictionSchema.parse({
         metrics: {
           wallTimeMs: Math.max(0, (options.now ?? Date.now)() - startedAt),
@@ -70,7 +71,11 @@ export function createDirectModelBenchmarkExecutor(
           retries: 0,
           toolCalls: 0,
         },
-        failure: { code, source: code.startsWith("provider_") ? "dependency" : "evaluator" },
+        failure: {
+          kind,
+          code,
+          source: code.startsWith("provider_") ? "dependency" : "evaluator",
+        },
         execution: executionSummary({
           traceId,
           usage: { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
@@ -193,4 +198,13 @@ function errorCode(error: unknown): string {
   }
   if (error instanceof DOMException && error.name === "AbortError") return "benchmark_aborted";
   return "model_executor_failed";
+}
+
+function failureKind(code: string): string {
+  if (code === "provider_auth_failed" || code === "provider_model_or_endpoint_invalid") {
+    return "dependency_unavailable";
+  }
+  if (code.startsWith("provider_")) return "transient_external_failure";
+  if (code === "benchmark_aborted") return "canceled";
+  return "internal_error";
 }
