@@ -10,6 +10,7 @@ import {
   type BenchmarkRunReportV2,
   type NormalizedBenchmarkCase,
 } from "./contracts";
+import { validateFinanceProfessionalOracleCoverage } from "./finance-professional-oracle";
 
 const OUTPUT_VALIDATORS = new Set(["xlsx_generic", "docx_generic", "generic_file"]);
 
@@ -38,6 +39,10 @@ export async function validateFinanceProfessionalCorpus(
     if (benchmarkCase.expected.assertions.length === 0) {
       throw new Error(`finance_professional_business_assertion_missing:${benchmarkCase.id}`);
     }
+    validateFinanceProfessionalOracleCoverage(
+      benchmarkCase.upstreamCaseId,
+      benchmarkCase.expected.assertions,
+    );
     if ((benchmarkCase.expected.deterministicChecks?.length ?? 0) === 0) {
       throw new Error(`finance_professional_oracle_missing:${benchmarkCase.id}`);
     }

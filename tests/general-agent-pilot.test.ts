@@ -16,7 +16,10 @@ import {
 } from "../lib/evaluation/benchmarks/validator-coverage.ts";
 import { validateGeneralAgentPilotPrediction } from "../lib/evaluation/benchmarks/general-agent-oracle.ts";
 import { selectCasesForEvaluationLayer } from "../lib/evaluation/benchmarks/evaluation-layers.ts";
-import { BenchmarkPredictionSchema } from "../lib/evaluation/benchmarks/contracts.ts";
+import {
+  BENCHMARK_NORMALIZER_VERSION,
+  BenchmarkPredictionSchema,
+} from "../lib/evaluation/benchmarks/contracts.ts";
 import { executeGeneralAgentHarnessCase } from "../lib/evaluation/benchmarks/general-agent-harness.ts";
 import { scoreBenchmarkPrediction } from "../lib/evaluation/benchmarks/scoring.ts";
 
@@ -185,6 +188,7 @@ export const generalAgentPilotTestPromise = (async () => {
     importManifest: imported.manifest,
     materializationManifest: {
       schemaVersion: 1,
+      normalizerVersion: BENCHMARK_NORMALIZER_VERSION,
       datasetId: "general_agent_pilot",
       datasetVersion: "v1",
       split: "pilot",

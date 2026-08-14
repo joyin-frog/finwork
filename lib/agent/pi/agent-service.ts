@@ -407,6 +407,7 @@ export async function runPiAgent(
               operationAbort.signal,
             );
             await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+            throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
 
             // 模型偶尔会把需要用户决策的问题写进普通回复，导致 UI/Harness 无法
             // 区分“已完成”和“等待输入”。仅做一次协议修复，要求它改用结构化工具。
@@ -425,6 +426,7 @@ export async function runPiAgent(
                 operationAbort.signal,
               );
               await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+              throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
             }
 
             // 先确保最小可交付文件存在，再允许系统验证失败驱动 repair。
@@ -441,6 +443,7 @@ export async function runPiAgent(
                 operationAbort.signal,
               );
               await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+              throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
               const afterMinimumCheck = minimumDeliverableCheck!();
               if (!afterMinimumCheck.ok) {
                 const error = new Error(
@@ -534,6 +537,7 @@ export async function runPiAgent(
                 operationAbort.signal,
               );
               await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+              throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
             }
 
             const finalGate = completionRequired
@@ -596,17 +600,7 @@ export async function runPiAgent(
         accounting.modelUsage;
       throw error;
     }
-    const assistantError = lastAssistantError(currentRunMessages);
-    if (assistantError) {
-      const error = new Error(assistantError);
-      const providerError = error as Error & {
-        code?: string;
-        __modelUsage?: Record<string, AgentModelUsage>;
-      };
-      providerError.code = "PROVIDER_RESPONSE_ERROR";
-      providerError.__modelUsage = accounting.modelUsage;
-      throw error;
-    }
+    throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
     return {
       mode: "agent",
       runtimeSessionId: session.sessionFile
@@ -794,6 +788,7 @@ export function buildPiPrompt(
         `这是 Word/DOCX 任务。请先用 read 加载 docx Skill：${docxSkillPath}，并遵循其中的读取、编辑、验证和渲染流程。`,
         "只修改本次会话输出目录中的副本，不要覆盖用户上传的原始文档。",
         "产品 Python Runtime 已预装 python-docx；优先用它生成 DOCX。不要运行 npm install/pip install，也不要因为全局 docx-js 不存在而停止。",
+        "当前 Bash 沙箱只允许写本次输出目录，/tmp 不可写。不要在 Bash 中运行 validate.py、soffice 或自建渲染临时目录；DOCX 的可打开性、正文和正式交付验证由 finalize_deliverable 在受控运行时完成。文件生成后直接调用该工具，并以它的返回结果为准。",
         "正文或生成脚本较长时，先用 write 创建短骨架，再用多次 edit 分段补充，避免单个超长工具调用因模型输出上限被截断。",
       ].join("\n"),
     );
@@ -987,6 +982,28 @@ export function lastAssistantError(events: AgentSessionEvent[]): string | undefi
       : undefined;
   }
   return undefined;
+}
+
+/**
+ * Provider failures are terminal for the current turn. They must be surfaced
+ * before completion/minimum-deliverable repair, otherwise a zero-token auth or
+ * endpoint failure is misreported as a model capability/validation failure and
+ * the benchmark keeps spending cases against an unavailable dependency.
+ */
+export function throwIfLastAssistantProviderError(
+  events: AgentSessionEvent[],
+  modelId: string,
+  pricingKnown: boolean,
+): void {
+  const assistantError = lastAssistantError(events);
+  if (!assistantError) return;
+  const error = new Error(assistantError) as Error & {
+    code?: string;
+    __modelUsage?: Record<string, AgentModelUsage>;
+  };
+  error.code = "PROVIDER_RESPONSE_ERROR";
+  error.__modelUsage = collectPiAccounting(events, modelId, pricingKnown).modelUsage;
+  throw error;
 }
 
 function isQueryOwnedLifecycleEvent(type: string): boolean {

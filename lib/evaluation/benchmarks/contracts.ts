@@ -5,6 +5,9 @@ import { EvidenceRefSchema } from "@/lib/evidence/contracts";
 import { FaultDomainSchema } from "@/lib/evaluation/contracts";
 import type { TaskContractV3 } from "@/lib/task/contracts";
 
+/** Bump whenever normalized case semantics change, even if upstream bytes do not. */
+export const BENCHMARK_NORMALIZER_VERSION = "benchmark-normalizer-v2" as const;
+
 export const BenchmarkDatasetIdSchema = z.enum([
   "finqa",
   "tatqa",
@@ -541,6 +544,7 @@ export type BenchmarkRunReport = z.infer<typeof BenchmarkRunReportSchema>;
 export const BenchmarkImportManifestSchema = z
   .object({
     schemaVersion: z.literal(1),
+    normalizerVersion: z.literal(BENCHMARK_NORMALIZER_VERSION),
     datasetId: BenchmarkDatasetIdSchema,
     datasetVersion: IdentifierSchema,
     split: IdentifierSchema,
@@ -573,6 +577,7 @@ export type BenchmarkCaseMaterialization = z.infer<typeof BenchmarkCaseMateriali
 
 export const BenchmarkMaterializationManifestSchema = z.object({
   schemaVersion: z.literal(1),
+  normalizerVersion: z.literal(BENCHMARK_NORMALIZER_VERSION),
   datasetId: BenchmarkDatasetIdSchema,
   datasetVersion: IdentifierSchema,
   split: IdentifierSchema,

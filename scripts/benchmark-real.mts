@@ -43,7 +43,7 @@ const goalRoot = path.join(
 );
 
 type GoalState = {
-  importedManifests?: RealBenchmarkDatasetBundlePaths[];
+  importedManifests?: Array<RealBenchmarkDatasetBundlePaths & { datasetId?: string }>;
   activeRunIds?: string[];
   finishedRunIds?: string[];
   completedPhases?: number[];
@@ -247,7 +247,16 @@ async function runMain(): Promise<void> {
   const maxCostUsd = optionalNumber(args, "max-cost-usd");
   const sampleSeed = typeof args.get("sample-seed") === "string" ? String(args.get("sample-seed")) : "real-benchmark-v1";
   const state = await readGoalState();
-  const bundlePaths = state.importedManifests ?? [];
+  const profileDatasetIds = profile === "finance-agent-professional"
+    ? new Set(["finance_agent_professional"])
+    : profile === "general-agent-pilot"
+      ? new Set(["general_agent_pilot"])
+      : profile === "benchmark-smoke"
+        ? new Set(["finqa", "tatqa", "financebench", "spreadsheetbench_v2"])
+        : null;
+  const bundlePaths = (state.importedManifests ?? []).filter((bundle) =>
+    !profileDatasetIds || (bundle.datasetId && profileDatasetIds.has(bundle.datasetId))
+  );
   const loaded = await loadRealBenchmarkInputs(bundlePaths);
   const profileCases = selectRealBenchmarkCases({
     profile,

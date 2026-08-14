@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   BenchmarkDatasetIdSchema,
   BenchmarkImportManifestSchema,
+  BENCHMARK_NORMALIZER_VERSION,
   NormalizedBenchmarkCaseSchema,
   type BenchmarkDatasetId,
   type BenchmarkImportManifest,
@@ -117,6 +118,7 @@ export async function importExternalBenchmarkSource(
 
   const manifest = BenchmarkImportManifestSchema.parse({
     schemaVersion: 1,
+    normalizerVersion: BENCHMARK_NORMALIZER_VERSION,
     datasetId: descriptor.id,
     datasetVersion: options.datasetVersion,
     split: options.split,

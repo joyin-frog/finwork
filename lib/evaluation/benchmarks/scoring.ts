@@ -179,7 +179,7 @@ function citationScores(
 
 function assertionCoverage(prediction: BenchmarkPrediction, oracle: BenchmarkEvaluationOracle): number | null {
   if (oracle.expected.assertions.length === 0) return null;
-  if (oracle.expected.artifact) return null;
+  if (oracle.expected.artifact && oracle.datasetId !== "finance_agent_professional") return null;
   const predicted = new Set(prediction.assertions.map(normalizeText));
   const expected = oracle.expected.assertions.map(normalizeText);
   return expected.filter((assertion) => predicted.has(assertion)).length / expected.length;
@@ -195,6 +195,13 @@ function directModelAuditDetails(prediction: BenchmarkPrediction, answer: string
     requestedModel: typeof value.requestedModel === "string" ? value.requestedModel : null,
     actualModel: typeof value.actualModel === "string" ? value.actualModel : null,
   };
+}
+
+function financeProfessionalAuditDetails(prediction: BenchmarkPrediction): Record<string, unknown> {
+  const details = prediction.details;
+  if (!details || typeof details !== "object" || Array.isArray(details)) return {};
+  const value = (details as Record<string, unknown>).financeProfessionalBusinessAssertions;
+  return value === undefined ? {} : { financeProfessionalBusinessAssertions: value };
 }
 
 export function scoreBenchmarkPrediction(
@@ -285,7 +292,8 @@ export function scoreBenchmarkPrediction(
     faultDomain = "evaluator";
   } else if (failures.includes("artifact_missing")) {
     faultDomain = "capability";
-  } else if (failures.some((failure) => failure.startsWith("artifact_"))) {
+  } else if (failures.some((failure) => failure.startsWith("artifact_"))
+    || (failures.includes("assertion_coverage_failed") && oracle.expected.artifact)) {
     faultDomain = "validator";
   } else if (missingDeterministicChecks.length > 0 || failedDeterministicChecks.length > 0) {
     const failedId = missingDeterministicChecks[0]?.id ?? failedDeterministicChecks[0]?.id;
@@ -314,6 +322,7 @@ export function scoreBenchmarkPrediction(
     metrics: prediction.metrics,
     details: {
       ...directModelAuditDetails(prediction, answer),
+      ...financeProfessionalAuditDetails(prediction),
       assertionCoverage: assertions,
       predictedCitations: prediction.citations.map((citation) => ({
         sourceId: citation.sourceId,

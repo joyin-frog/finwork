@@ -8,6 +8,7 @@ import {
   type BenchmarkPrediction,
 } from "./contracts";
 import { generalAgentFactContained } from "./scoring";
+import { validateFinanceProfessionalBusinessAssertions } from "./finance-professional-oracle";
 
 type Check = BenchmarkPrediction["deterministicChecks"][number];
 type StoredEvent = { eventType: string; payload: Record<string, unknown> };
@@ -38,6 +39,8 @@ export async function validateGeneralAgentPilotPrediction(input: {
   prediction: BenchmarkPrediction;
   db?: DatabaseSync;
   configuredSecrets?: readonly string[];
+  casRoot?: string;
+  readArtifact?: (versionId: string) => Uint8Array;
 }): Promise<BenchmarkPrediction> {
   if (
     input.executionCase.datasetId !== "general_agent_pilot"
@@ -98,7 +101,7 @@ export async function validateGeneralAgentPilotPrediction(input: {
   )
     && askedHuman
     && input.prediction.failure?.code === "benchmark_human_decision_required";
-  return BenchmarkPredictionSchema.parse({
+  const validated = BenchmarkPredictionSchema.parse({
     ...input.prediction,
     deterministicChecks: checks,
     ...(expectedHeadlessStop ? { failure: undefined } : {}),
@@ -115,6 +118,14 @@ export async function validateGeneralAgentPilotPrediction(input: {
         : {}),
       expectedHumanDecisionStop: expectedHeadlessStop,
     },
+  });
+  return validateFinanceProfessionalBusinessAssertions({
+    executionCase: input.executionCase,
+    oracle: input.oracle,
+    prediction: validated,
+    db,
+    casRoot: input.casRoot,
+    readArtifact: input.readArtifact,
   });
 }
 

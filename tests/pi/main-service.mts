@@ -7,6 +7,7 @@ import {
   buildPiPrompt,
   lastAssistantError,
   resolveResumableSession,
+  throwIfLastAssistantProviderError,
   validatePiSessionLocator,
 } from "../../lib/agent/pi/agent-service.ts";
 
@@ -153,6 +154,25 @@ const xlsxRecalcPrompt = buildPiPrompt(
 assert.match(xlsxRecalcPrompt.text, /由 `finalize_deliverable` 在沙箱外的受控运行时完成/);
 assert.match(xlsxRecalcPrompt.text, /不要在 Bash 中启动 soffice/);
 
+const docxPrompt = buildPiPrompt(
+  [{ role: "user", content: "生成董事会批准备忘录" }],
+  [],
+  {
+    version: 1,
+    taskKind: "text",
+    requiredDeliverables: [{
+      id: "memo",
+      mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      count: 1,
+      qualityProfile: "generic",
+    }],
+    expectationSnapshot: {},
+  },
+);
+assert.match(docxPrompt.text, /\/tmp 不可写/);
+assert.match(docxPrompt.text, /不要在 Bash 中运行 validate\.py、soffice/);
+assert.match(docxPrompt.text, /由 finalize_deliverable 在受控运行时完成/);
+
 const transientErrorThenSuccess = [
   {
     type: "message_end",
@@ -167,6 +187,29 @@ assert.equal(
   lastAssistantError(transientErrorThenSuccess),
   undefined,
   "repair 后成功的最终 assistant 结束态应覆盖更早的 transient error",
+);
+assert.doesNotThrow(
+  () => throwIfLastAssistantProviderError(transientErrorThenSuccess, "gpt-test", false),
+  "后续成功结束态应允许正常进入交付门禁",
+);
+const terminalProviderError = [{
+  type: "message_end",
+  message: {
+    role: "assistant",
+    stopReason: "error",
+    errorMessage: "503 auth_unavailable: no auth available (providers=codex, model=gpt-test)",
+    content: [],
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } },
+  },
+}] as never;
+assert.throws(
+  () => throwIfLastAssistantProviderError(terminalProviderError, "gpt-test", false),
+  (error: unknown) => {
+    assert.equal((error as { code?: string }).code, "PROVIDER_RESPONSE_ERROR");
+    assert.match((error as Error).message, /auth_unavailable/);
+    return true;
+  },
+  "Provider 错误必须在 completion repair 前立即抛出",
 );
 
 console.log("Pi main service ✓ controlled locator, fresh/resume prompt and attachments");

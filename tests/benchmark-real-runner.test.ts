@@ -6,6 +6,7 @@ import path from "node:path";
 import { canonicalJson } from "../lib/capability/hash.ts";
 import { getBenchmarkDatasetDescriptor } from "../lib/evaluation/benchmarks/catalog.ts";
 import {
+  BENCHMARK_NORMALIZER_VERSION,
   BenchmarkCaseResultV2Schema,
   NormalizedBenchmarkCaseSchema,
   RealBenchmarkRunConfigSchema,
@@ -69,6 +70,7 @@ function fakeBundle(datasetId: BenchmarkDatasetId, cases: NormalizedBenchmarkCas
   return {
     importManifest: {
       schemaVersion: 1,
+      normalizerVersion: BENCHMARK_NORMALIZER_VERSION,
       datasetId,
       datasetVersion: "v1",
       split: "test",
@@ -84,6 +86,7 @@ function fakeBundle(datasetId: BenchmarkDatasetId, cases: NormalizedBenchmarkCas
     },
     materializationManifest: {
       schemaVersion: 1,
+      normalizerVersion: BENCHMARK_NORMALIZER_VERSION,
       datasetId,
       datasetVersion: "v1",
       split: "test",
@@ -449,6 +452,14 @@ export const benchmarkRealRunnerTestPromise = (async () => {
     }, null, 2)}\n`);
     const loaded = await loadRealBenchmarkInputs([{ importManifestPath, casesPath, materializationManifestPath }]);
     assert.deepEqual(loaded.cases.map((item) => item.id), [sourceCase.id]);
+    const { normalizerVersion: _staleVersion, ...staleImportManifest } = sourceBundle.importManifest;
+    writeFileSync(importManifestPath, `${JSON.stringify(staleImportManifest, null, 2)}\n`);
+    await assert.rejects(
+      () => loadRealBenchmarkInputs([{ importManifestPath, casesPath, materializationManifestPath }]),
+      /normalizerVersion/,
+      "adapter 逻辑升级后必须拒绝无版本的旧 import/materialization",
+    );
+    writeFileSync(importManifestPath, importBytes);
     writeFileSync(casesPath, `${JSON.stringify({ ...sourceCase, prompt: "tampered after materialization" })}\n`);
     await assert.rejects(
       () => loadRealBenchmarkInputs([{ importManifestPath, casesPath, materializationManifestPath }]),

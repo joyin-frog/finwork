@@ -10,6 +10,7 @@ import type { RetrievalIndexer } from "@/lib/retrieval/indexer";
 import {
   BenchmarkImportManifestSchema,
   BenchmarkMaterializationManifestSchema,
+  BENCHMARK_NORMALIZER_VERSION,
   type BenchmarkCaseMaterialization,
   type BenchmarkImportManifest,
   type BenchmarkMaterializationManifest,
@@ -159,6 +160,7 @@ export async function materializeBenchmarkImport(
 
   const manifest = BenchmarkMaterializationManifestSchema.parse({
     schemaVersion: 1,
+    normalizerVersion: BENCHMARK_NORMALIZER_VERSION,
     datasetId: importManifest.datasetId,
     datasetVersion: importManifest.datasetVersion,
     split: importManifest.split,
