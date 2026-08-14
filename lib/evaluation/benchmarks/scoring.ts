@@ -22,7 +22,7 @@ function normalizeSemanticText(value: string): string {
     /(?<!\d)(\d{4})(?:[-/.年])(\d{1,2})(?:[-/.月])(\d{1,2})(?:日)?(?!\d)/g,
     (_match, year: string, month: string, day: string) =>
       `${year}${month.padStart(2, "0")}${day.padStart(2, "0")}`,
-  ));
+  )).replace(/(?:已经|已)(?=通过|完成|确认|批准|审核|审计)/g, "");
 }
 
 function answerTokens(value: string): string[] {
