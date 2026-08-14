@@ -135,6 +135,34 @@ export class RetrievalSearchService {
         LIMIT ?
       `).all(...authArgs, request.embeddingModel, JSON.stringify(terms), ...filters.args, request.candidateLimit) as CandidateRow[];
       for (const row of rows) lexicalScores.set(row.chunk_id, Number(row.lexical_score ?? 0));
+
+      // Stable source ids and user-facing document names live in the title.
+      // They must be able to seed candidates even when those identifiers do
+      // not appear verbatim in the document body.
+      const titleRows = this.db.prepare(`
+        SELECT c.chunk_id, COUNT(DISTINCT query_term.value) * 2 AS lexical_score
+        FROM retrieval_documents d
+        JOIN retrieval_chunks c ON c.document_id=d.document_id AND c.active=1
+        ${authorizationJoin()}
+        JOIN json_each(?) query_term
+          ON instr(lower(d.title), lower(CAST(query_term.value AS TEXT))) > 0
+        WHERE d.index_status='ready' AND d.embedding_model=? ${filters.sql}
+        GROUP BY c.chunk_id
+        ORDER BY lexical_score DESC, c.chunk_id
+        LIMIT ?
+      `).all(
+        ...authArgs,
+        JSON.stringify(terms),
+        request.embeddingModel,
+        ...filters.args,
+        request.candidateLimit,
+      ) as CandidateRow[];
+      for (const row of titleRows) {
+        lexicalScores.set(
+          row.chunk_id,
+          Math.max(lexicalScores.get(row.chunk_id) ?? 0, Number(row.lexical_score ?? 0)),
+        );
+      }
     }
 
     const annCandidates = new Set<string>();
@@ -216,7 +244,7 @@ export class RetrievalSearchService {
       const vectorScore = request.mode === "hybrid" && request.queryVector && row.embedding
         ? cosineSimilarity(request.queryVector, bufferToVector(row.embedding))
         : undefined;
-      const overlap = lexicalOverlapScore(terms, `${row.heading ?? ""} ${row.text}`);
+      const overlap = lexicalOverlapScore(terms, `${row.title} ${row.heading ?? ""} ${row.text}`);
       const rerankScore = request.mode === "hybrid"
         ? (lexicalScore / maxLexical) * 0.45 + ((vectorScore ?? -1) + 1) * 0.225 + overlap * 0.1
         : (lexicalScore / maxLexical) * 0.85 + overlap * 0.15;

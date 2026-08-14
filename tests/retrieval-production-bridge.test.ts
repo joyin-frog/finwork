@@ -201,6 +201,23 @@ export const retrievalProductionBridgeTestPromise = (async () => {
       "case-scoped retrieval must never return another case's source",
     );
 
+    const sourceIdText = "供应商交付延迟 3 天。";
+    const sourceIdDocument = insertDoc(db, "vendor-note", "supplier-status.txt", sourceIdText);
+    const sourceIdIndex = await service.indexKnowledgeDocument({
+      knowledgeDocumentId: sourceIdDocument,
+      title: "vendor-note",
+      fileName: "supplier-status.txt",
+      sourceContentHash: sha256(sourceIdText),
+      parsedText: sourceIdText,
+      category: "benchmark-source",
+      now: "2026-08-09T08:09:10.000Z",
+    });
+    const sourceIdSearch = await service.search("sourceId:vendor-note", 5, "2026-08-09T08:09:20.000Z");
+    assert.ok(
+      sourceIdSearch.hits.some((hit) => hit.citation.artifactVersionId === sourceIdIndex.artifactVersionId),
+      "document title and stable source id must participate in lexical retrieval",
+    );
+
     assert.deepEqual(LOCAL_RETRIEVAL_PRINCIPAL, { id: "local-user", type: "user", tenantId: "local" });
     console.log("retrieval-production-bridge: staged activation, immutable citations, ACL, archive restore and atomic version switching passed ✓");
   } finally {
