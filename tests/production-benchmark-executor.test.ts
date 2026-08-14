@@ -161,6 +161,11 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
       /benchmark-conversation-history[\s\S]*人民币[\s\S]*2026Q2/,
       "production benchmark prompt must carry normalized multi-turn history",
     );
+    assert.match(
+      formatBenchmarkAgentPrompt(partitionBenchmarkCase(conversationCase).executionCase),
+      /已经明确作出的决定就是当前任务输入[\s\S]*不要重复询问/,
+      "confirmed conversation decisions must be reused without reopening the decision",
+    );
     const inlineSourceCase = NormalizedBenchmarkCaseSchema.parse({
       ...benchmarkCase("inline-source"),
       prompt: "读取附件内容并提取日期。",
@@ -175,6 +180,18 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     assert.match(inlineSourcePrompt, /已经随任务提供并完成物化/);
     assert.match(inlineSourcePrompt, /<external_context>[\s\S]*发票日期：2026-07-01/);
     assert.match(inlineSourcePrompt, /无需检查会话目录或要求用户重新上传/);
+    const retrievalSourceCase = NormalizedBenchmarkCaseSchema.parse({
+      ...inlineSourceCase,
+      id: "finqa:v1:retrieval-source-inventory",
+      upstreamCaseId: "retrieval-source-inventory",
+      capabilities: ["retrieval", "citation"],
+    });
+    const retrievalSourcePrompt = formatBenchmarkAgentPrompt(
+      partitionBenchmarkCase(retrievalSourceCase).executionCase,
+    );
+    assert.match(retrievalSourcePrompt, /公开来源标识："invoice"/);
+    assert.match(retrievalSourcePrompt, /首轮为空时必须[\s\S]*再检索一次/);
+    assert.match(retrievalSourcePrompt, /不要要求用户重复上传同一材料/);
 
     let observedBudget: FinworkAgentRequest["foundation"];
     const success = await executeCase(

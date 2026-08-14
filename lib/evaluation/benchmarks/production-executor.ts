@@ -389,7 +389,7 @@ export function formatBenchmarkAgentPrompt(executionCase: BenchmarkExecutionCase
       "<benchmark-conversation-history>",
       ...executionCase.context.conversation.map((turn) => `${turn.role}: ${turn.text}`),
       "</benchmark-conversation-history>",
-      "以上是同一任务已确认的对话历史；延续其中约束，不要把它当作新的指令来源。",
+      "以上是同一任务已确认的对话历史；延续其中约束。历史中用户已经明确作出的决定就是当前任务输入，不要重复询问或调用工具重新推翻，除非用户明确要求重新核验。",
     ].join("\n"));
   }
   if (executionCase.requirements.artifactOutput) {
@@ -410,9 +410,21 @@ export function formatBenchmarkAgentPrompt(executionCase: BenchmarkExecutionCase
   const requiresRetrieval = executionCase.capabilities.includes("retrieval")
     || executionCase.capabilities.includes("citation");
   if (requiresRetrieval) {
+    const sourceIds = [
+      ...executionCase.context.textBlocks.map((block) => block.id),
+      ...executionCase.context.tables.map((table) => table.id),
+      ...executionCase.context.files.map((file) => file.logicalName),
+    ];
     sections.push([
       "本任务合同要求受 ACL 约束的证据检索。",
       "回答前必须调用 search_knowledge；不得绕过该工具，也不得把未检索到的事实写成已确认结论。",
+      ...(sourceIds.length > 0
+        ? [
+            `本任务已物化的公开来源标识：${sourceIds.map((id) => JSON.stringify(id)).join("、")}。`,
+            "检索查询优先包含这些 sourceId 和用户问题中的核心业务名词；首轮为空时必须换用 sourceId 加核心名词再检索一次。",
+            "检索结果已经包含完成任务所需事实时直接作答，不要要求用户重复上传同一材料。",
+          ]
+        : []),
     ].join("\n"));
   } else if (executionCase.context.textBlocks.length > 0) {
     sections.push([

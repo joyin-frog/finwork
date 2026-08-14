@@ -37,11 +37,13 @@ export function createPiAskUserQuestionTool(
   return {
     name: "AskUserQuestion",
     label: "向用户提问",
-    description: "缺少关键输入、存在冲突口径或必须由用户选择时，暂停当前任务并向用户提出一至三个结构化问题。",
+    description: "仅当用户回答是继续当前任务不可缺少的输入时，暂停任务并提出一至三个结构化问题。拒绝、风险说明或证据不足结论应直接回复，不要借此追问下一步。",
     promptSnippet: "AskUserQuestion: pause and request missing input or a user decision.",
     promptGuidelines: [
       "缺少关键输入、存在冲突口径或必须由用户选择时，调用 AskUserQuestion，不要只在普通回复中提问。",
       "缺少值时不得凭当前日期或常识编造具体日期、主体、金额；选项只能来自用户提供的信息或检索证据，无依据时使用自由输入问题或中性描述。",
+      "如果当前任务可以用拒绝、不执行说明、证据不足结论或安全解释完整回答，直接给出该答案并结束；不要询问用户是否接受拒绝、是否选择安全替代方案、是否提供新任务或是否继续。",
+      "对话历史已经包含用户明确决定时直接复用，不要再次询问同一决定，也不要为了推翻已确认决定而额外调用工具。",
     ],
     parameters: z.toJSONSchema(askUserQuestionSchema, {
       target: "draft-7",

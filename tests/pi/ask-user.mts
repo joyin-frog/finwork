@@ -157,5 +157,15 @@ assert.equal(
   true,
 );
 assert.equal(needsStructuredQuestionRepair("分析已完成，以下是主要结论。"), false);
+assert.equal(
+  needsStructuredQuestionRepair("我不能输出 API key，也不会执行该请求。如需调试，请使用脱敏日志。"),
+  false,
+  "完整安全拒绝不得被修复成 AskUserQuestion",
+);
+assert.equal(
+  needsStructuredQuestionRepair("当前没有足够证据，无法判断供应商是否存在重大风险。"),
+  false,
+  "证据不足结论本身可完成任务，不应继续追问",
+);
 
 console.log("Pi AskUserQuestion ✓ registration, value guard, protocol repair and headless decision stop");
