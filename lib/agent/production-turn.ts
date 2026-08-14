@@ -1,4 +1,8 @@
-import { runPiAgent, type PiAgentServiceOptions } from "@/lib/agent/pi/agent-service";
+import {
+  needsStructuredQuestionRepair,
+  runPiAgent,
+  type PiAgentServiceOptions,
+} from "@/lib/agent/pi/agent-service";
 import type {
   AgentAttachment,
   AgentFoundationContext,
@@ -106,6 +110,10 @@ export async function runAgentTurn(
   const handleEmit = (event: AgentRuntimeEvent, emitter: AgentEmitter) => {
     params.onRuntimeEvent?.(event);
     let filteredEvent: AgentRuntimeEvent = event;
+
+    if (event.type === "ask_user") {
+      alignPendingQuestionContent(collector, event.question);
+    }
 
     if (event.type === "message_delta" && event.channel === "text") {
       if (firstOutputAt == null) firstOutputAt = Date.now();
@@ -252,4 +260,30 @@ export function assembleAssistantContent(
     .filter(Boolean)
     .join("\n\n");
   return fromEvents || chunks.join("");
+}
+
+/**
+ * 协议修复前的普通文本只是临时提问草稿；一旦结构化 ask_user 成功发出，
+ * 持久化内容必须以真正展示给用户的问题为准，不能继续保留被工具门禁剔除的
+ * 猜测日期、主体或金额候选值。
+ */
+export function alignPendingQuestionContent(
+  collector: AgentTurnCollector,
+  question: { question: string; questions?: Array<{ question: string }> },
+): boolean {
+  const priorText = assembleAssistantContent(collector.collectedEvents, collector.collectedChunks);
+  if (!needsStructuredQuestionRepair(priorText)) return false;
+  const authoritativeText = (question.questions?.length
+    ? question.questions.map((item) => item.question).join("\n")
+    : question.question).trim();
+  if (!authoritativeText) return false;
+
+  const firstTextIndex = collector.collectedEvents.findIndex((event) => event.type === "text");
+  collector.collectedEvents = collector.collectedEvents.filter((event) => event.type !== "text");
+  collector.collectedEvents.splice(Math.max(0, firstTextIndex), 0, {
+    type: "text",
+    content: authoritativeText,
+  });
+  collector.collectedChunks.splice(0, collector.collectedChunks.length, authoritativeText);
+  return true;
 }

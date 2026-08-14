@@ -7,6 +7,7 @@ import {
   needsStructuredQuestionRepair,
   wrapQuestionResolver,
 } from "../../lib/agent/pi/agent-service.ts";
+import { alignPendingQuestionContent } from "../../lib/agent/production-turn.ts";
 import type { AgentQuestion } from "../../lib/agent/contracts.ts";
 import type { AgentRuntimeEvent } from "../../lib/agent/runtime-events.ts";
 
@@ -166,6 +167,28 @@ assert.equal(
   needsStructuredQuestionRepair("当前没有足够证据，无法判断供应商是否存在重大风险。"),
   false,
   "证据不足结论本身可完成任务，不应继续追问",
+);
+
+const repairedCollector = {
+  collectedChunks: ["请补充费用分析期间，例如：2026年7月或2026年1—7月。"],
+  collectedEvents: [
+    { type: "text", content: "请补充费用分析期间，例如：2026年7月或2026年1—7月。" },
+    { type: "tool_use", name: "AskUserQuestion" },
+  ],
+};
+assert.equal(
+  alignPendingQuestionContent(repairedCollector, { question: "请提供本期费用分析的期间。" }),
+  true,
+  "结构化提问应覆盖协议修复前的普通文本草稿",
+);
+assert.equal(repairedCollector.collectedChunks.join(""), "请提供本期费用分析的期间。");
+assert.deepEqual(
+  repairedCollector.collectedEvents,
+  [
+    { type: "text", content: "请提供本期费用分析的期间。" },
+    { type: "tool_use", name: "AskUserQuestion" },
+  ],
+  "持久化时间线应保留工具事实，但不得保留被门禁剔除的猜测日期",
 );
 
 console.log("Pi AskUserQuestion ✓ registration, value guard, protocol repair and headless decision stop");

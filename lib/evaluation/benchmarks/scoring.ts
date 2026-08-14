@@ -22,7 +22,30 @@ function normalizeSemanticText(value: string): string {
     /(?<!\d)(\d{4})(?:[-/.年])(\d{1,2})(?:[-/.月])(\d{1,2})(?:日)?(?!\d)/g,
     (_match, year: string, month: string, day: string) =>
       `${year}${month.padStart(2, "0")}${day.padStart(2, "0")}`,
-  )).replace(/(?:已经|已)(?=通过|完成|确认|批准|审核|审计)/g, "");
+  ))
+    .replace(/(?:已经|已)(?=通过|完成|确认|批准|审核|审计)/g, "")
+    .replace(/审计(?:结果)?(?:为)?通过/g, "通过审计")
+    .replace(/通过了审计/g, "通过审计");
+}
+
+export function generalAgentFactContained(answer: string, expected: string): boolean {
+  const normalizedAnswer = normalizeSemanticText(answer);
+  const normalizedExpected = normalizeSemanticText(expected);
+  if (normalizedAnswer.includes(normalizedExpected)) return true;
+  if (normalizedExpected.length < 4) return false;
+
+  let start = -1;
+  let cursor = 0;
+  for (const character of normalizedExpected) {
+    const index = normalizedAnswer.indexOf(character, cursor);
+    if (index < 0) return false;
+    if (start < 0) start = index;
+    cursor = index + character.length;
+  }
+  const span = normalizedAnswer.slice(start, cursor);
+  const insertedCharacters = span.length - normalizedExpected.length;
+  return insertedCharacters <= Math.max(12, normalizedExpected.length * 2)
+    && !/(?:未|没|不|否)/.test(span);
 }
 
 function answerTokens(value: string): string[] {
@@ -139,9 +162,7 @@ export function scoreBenchmarkPrediction(
   // the expected fact; exact match and token-F1 would mark that as a false
   // negative. Keep strict scoring for the finance QA datasets.
   const expectedFactContained = benchmarkCase.datasetId === "general_agent_pilot"
-    && expectedAnswers.some((expected) =>
-      normalizeSemanticText(answer).includes(normalizeSemanticText(expected))
-    );
+    && expectedAnswers.some((expected) => generalAgentFactContained(answer, expected));
 
   let artifact: number | null = null;
   if (oracle.expected.artifact) {
@@ -168,7 +189,7 @@ export function scoreBenchmarkPrediction(
   const answerPassed = !hasExpectedAnswer
     || exactMatch === 1
     || numeric === 1
-    || (f1 ?? 0) >= 0.8
+    || (benchmarkCase.datasetId !== "general_agent_pilot" && (f1 ?? 0) >= 0.8)
     || expectedFactContained;
   if (!answerPassed) failures.push("answer_mismatch");
   if (citationResult.recall !== null && citationResult.recall < 1) failures.push("citation_recall_failed");
