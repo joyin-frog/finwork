@@ -42,6 +42,7 @@ import {
 } from "@/lib/db/sqlite";
 import { readAgentSettings, type AgentSettings } from "@/lib/settings/agent-settings";
 import { getAppDataDir, getConversationFilesDir } from "@/lib/runtime/paths";
+import { wrapExternalContext } from "@/lib/agent/external-context";
 import { beginProductionTaskRun, type ProductionTaskSettlement } from "@/lib/task/production-runtime";
 import {
   classifyTransientProviderError,
@@ -415,21 +416,25 @@ export function formatBenchmarkAgentPrompt(executionCase: BenchmarkExecutionCase
     ].join("\n"));
   } else if (executionCase.context.textBlocks.length > 0) {
     sections.push([
-      "<benchmark-source-context type=\"text\">",
-      ...executionCase.context.textBlocks.map((block) =>
-        [`[sourceId=${block.id} locator=${block.locator ?? `node:${block.id}`}]${block.title ? ` ${block.title}` : ""}`, block.text].join("\n")
-      ),
-      "</benchmark-source-context>",
+      "以下是已经随任务提供并完成物化的参考数据（包括从附件提取的文本）；可直接读取，无需检查会话目录或要求用户重新上传。",
+      wrapExternalContext(executionCase.context.textBlocks.map((block) =>
+        [
+          `[sourceId=${block.id} locator=${block.locator ?? `node:${block.id}`}]${block.title ? ` ${block.title}` : ""}`,
+          block.text,
+        ].join("\n")
+      ).join("\n\n")),
     ].join("\n"));
   }
   for (const table of requiresRetrieval ? [] : executionCase.context.tables) {
     sections.push([
-      `<benchmark-source-context type="table" sourceId="${table.id}">`,
-      table.columns.join("\t"),
-      ...table.rows.map((row, index) =>
-        `[locator=node:${table.id}-row-${index + 1}]\t${row.join("\t")}`
-      ),
-      "</benchmark-source-context>",
+      "以下表格已随任务提供并完成物化；可直接读取，无需查找或重新上传附件。",
+      wrapExternalContext([
+        `[sourceId=${table.id} type=table]`,
+        table.columns.join("\t"),
+        ...table.rows.map((row, index) =>
+          `[locator=node:${table.id}-row-${index + 1}]\t${row.join("\t")}`
+        ),
+      ].join("\n")),
     ].join("\n"));
   }
   if (executionCase.requirements.requiresCitations) {

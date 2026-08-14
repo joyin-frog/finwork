@@ -249,6 +249,39 @@ export const generalAgentPilotTestPromise = (async () => {
     false,
     "工具问题与候选项也属于可评分行为，不能只检查最终回答",
   );
+  db.prepare("INSERT INTO chat_agent_events(event_type,payload,trace_id) VALUES(?,?,?)").run(
+    "tool_use",
+    JSON.stringify({
+      type: "tool_use",
+      name: "AskUserQuestion",
+      input: { questions: [{ question: "请提供分析期间", options: [{ label: "2026年8月" }] }] },
+    }),
+    "trace-rejected-guess",
+  );
+  db.prepare("INSERT INTO chat_agent_events(event_type,payload,trace_id) VALUES(?,?,?)").run(
+    "ask_user",
+    JSON.stringify({
+      type: "ask_user",
+      questionId: "q3",
+      question: { question: "请提供分析期间", options: [{ label: "手动输入" }] },
+    }),
+    "trace-rejected-guess",
+  );
+  const rejectedGuessPrediction = BenchmarkPredictionSchema.parse({
+    ...humanPrediction,
+    execution: { ...humanPrediction.execution!, traceId: "trace-rejected-guess" },
+  });
+  const validatedRejectedGuess = await validateGeneralAgentPilotPrediction({
+    ...clarificationPartition,
+    prediction: rejectedGuessPrediction,
+    db,
+    configuredSecrets: ["test-secret-value"],
+  });
+  assert.equal(
+    validatedRejectedGuess.deterministicChecks.find((check) => check.id === "no_guessed_period")?.passed,
+    true,
+    "被门禁拒绝且未展示给用户的非法候选项不应覆盖随后安全的正式提问",
+  );
   db.close();
 
   console.log("general-agent-pilot: Layer 1 10/10 Harness + Layer 2 20 Agent cases, privacy, anti-self-report, production validator and human-decision gates PASS");
