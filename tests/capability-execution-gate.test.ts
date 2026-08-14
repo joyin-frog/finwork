@@ -87,6 +87,10 @@ export const capabilityExecutionGateTestPromise = (async () => {
       "spreadsheet.validate",
     ],
   );
+  assert.ok(
+    capabilityIdsForTool("search_knowledge").includes("retrieval.search"),
+    "governed knowledge tools must prove the retrieval.search task capability",
+  );
 
   console.log("capability-execution-gate: successful completion facts and semantic requirements passed ✓");
 })();

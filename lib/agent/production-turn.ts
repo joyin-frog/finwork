@@ -1,4 +1,4 @@
-import { runPiAgent } from "@/lib/agent/pi/agent-service";
+import { runPiAgent, type PiAgentServiceOptions } from "@/lib/agent/pi/agent-service";
 import type {
   AgentAttachment,
   AgentFoundationContext,
@@ -48,10 +48,20 @@ export type AgentTurnParams = {
   executionTier?: import("@/lib/settings/model-config").ExecutionTier | null;
   foundation?: AgentFoundationContext;
   onRuntimeEvent?: (event: AgentRuntimeEvent) => void;
+  /** Caller-owned hard limits; benchmark execution uses the V3 contract budget. */
+  agentServiceOptions?: PiAgentServiceOptions;
+  /** Provider/service seam for integration tests; production uses runPiAgent. */
+  agentRunner?: typeof runPiAgent;
 };
 
 export type AgentTurnResult =
-  | { mode: "cheap"; content: string; runtimeSessionId: string | null; direct: true }
+  | {
+      mode: "cheap";
+      content: string;
+      runtimeSessionId: string | null;
+      modelUsage?: Record<string, AgentModelUsage>;
+      direct: true;
+    }
   | {
       mode: string;
       content: string;
@@ -73,7 +83,16 @@ export async function runAgentTurn(
     const answer = filterIdentity(routerResult.decision.directAnswer);
     collector.collectedChunks.push(answer);
     coalesceTextIntoEvents(collector.collectedEvents, answer);
-    return { result: { mode: "cheap", content: answer, runtimeSessionId, direct: true }, collector };
+    return {
+      result: {
+        mode: "cheap",
+        content: answer,
+        runtimeSessionId,
+        modelUsage: routerUsage(routerResult),
+        direct: true,
+      },
+      collector,
+    };
   }
 
   const idFilter = createStreamingIdentityFilter();
@@ -115,7 +134,7 @@ export async function runAgentTurn(
     params.emitEnvelope?.(envelope);
   };
 
-  const data = await runPiAgent({
+  const data = await (params.agentRunner ?? runPiAgent)({
     messages: agentMessages,
     runtimeSessionId,
     resumeSession: Boolean(existingRuntimeSessionId),
@@ -140,12 +159,14 @@ export async function runAgentTurn(
       const subEmitter = createEmitter(traceId, params.conversationId ?? null, instanceId, runCounter);
       handleEmit(event, subEmitter);
     },
-  }).catch((error: unknown) => {
+  }, params.agentServiceOptions).catch((error: unknown) => {
     if (thinkingSeen) {
       const thinkingMs = Math.max(0, (firstOutputAt ?? Date.now()) - runStart);
       collector.collectedEvents.push({ type: "system", subtype: "thinking_duration", message: String(thinkingMs) });
     }
     (error as { __collector?: AgentTurnCollector }).__collector = collector;
+    const accountingError = error as { __modelUsage?: Record<string, AgentModelUsage> };
+    accountingError.__modelUsage = mergeModelUsage(routerUsage(routerResult), accountingError.__modelUsage);
     throw error;
   });
 
@@ -162,7 +183,51 @@ export async function runAgentTurn(
 
   const filteredContent = assembleAssistantContent(collector.collectedEvents, collector.collectedChunks)
     || filterIdentity(data.content ?? "");
-  return { result: { ...data, content: filteredContent, direct: false }, collector };
+  return {
+    result: {
+      ...data,
+      content: filteredContent,
+      modelUsage: mergeModelUsage(routerUsage(routerResult), data.modelUsage),
+      direct: false,
+    },
+    collector,
+  };
+}
+
+function routerUsage(routerResult: AgentTurnParams["routerResult"]): Record<string, AgentModelUsage> | undefined {
+  const usage = routerResult.usage;
+  if (!usage) return undefined;
+  return {
+    [usage.modelId]: {
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      cacheReadInputTokens: usage.cacheReadInputTokens,
+      cacheCreationInputTokens: usage.cacheCreationInputTokens,
+    },
+  };
+}
+
+export function mergeModelUsage(
+  ...sources: Array<Record<string, AgentModelUsage> | undefined>
+): Record<string, AgentModelUsage> | undefined {
+  const merged: Record<string, AgentModelUsage> = {};
+  for (const source of sources) {
+    for (const [modelId, usage] of Object.entries(source ?? {})) {
+      const current = merged[modelId] ?? {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+      };
+      merged[modelId] = {
+        inputTokens: current.inputTokens + usage.inputTokens,
+        outputTokens: current.outputTokens + usage.outputTokens,
+        cacheReadInputTokens: current.cacheReadInputTokens + usage.cacheReadInputTokens,
+        cacheCreationInputTokens: current.cacheCreationInputTokens + usage.cacheCreationInputTokens,
+      };
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 export function coalesceTextIntoEvents(

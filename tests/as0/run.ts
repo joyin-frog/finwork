@@ -114,7 +114,7 @@ function summarize(attempts: AttemptEvidence[]) {
 async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string> {
   const settings = await readAgentSettings();
   if (!settings.apiKey.trim()) throw new Error("当前 Agent API key 未配置");
-  if (!settings.mainModel.trim()) throw new Error("当前 mainModel 未配置");
+  if (!settings.reasoningModel.trim()) throw new Error("当前推理模型未配置");
 
   const dirtyFiles = git("status", "--short").split("\n").filter(Boolean);
   if (dirtyFiles.length > 0 && !options.allowDirty) {
@@ -141,9 +141,8 @@ async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string
     runtime: "pi",
     providerProtocol: "anthropic-messages",
     gatewayOrigin: safeOrigin(settings.apiUrl),
-    mainModel: settings.mainModel,
-    routerModel: settings.routerModel,
-    subagentModel: settings.subagentModel,
+    fastModel: settings.fastModel,
+    reasoningModel: settings.reasoningModel,
     os: process.platform,
     arch: process.arch,
     runStartedAt: new Date().toISOString(),
@@ -166,7 +165,7 @@ async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string
         taskId: item.taskId,
         attempt,
         attemptDir,
-        model: settings.mainModel,
+        model: settings.reasoningModel,
       };
       const payloadPath = path.join(attemptDir, "worker-payload.json");
       writeFileSync(payloadPath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
@@ -204,7 +203,7 @@ async function runLive(options: CliOptions, tasks: GoldenTask[]): Promise<string
               attempt,
               runtime: "pi",
               providerProtocol: "anthropic-messages",
-              model: settings.mainModel,
+              model: settings.reasoningModel,
               invalidRunReason: `worker_exit_${worker.status}`,
             }, null, 2)}\n`,
           );

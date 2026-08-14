@@ -1,5 +1,5 @@
 /**
- * CR-R1：run store / migration / replay / settled 唯一 / delta 不落库 / complex→mainModel
+ * Run store / migration / replay / settled / explicit two-tier model selection.
  */
 
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS, getUserVersion, runMigrations, LATEST_VERSION } from "../lib/db/migrations.ts";
 import { createEmitter } from "../lib/agent/runtime-events.ts";
 import { resolveRunExecutionModel, inferRouterFallbackReason } from "../lib/agent/resolve-run-model.ts";
-import { resolveExecutionModel, type ModelConfigV2 } from "../lib/settings/model-config.ts";
+import { resolveExecutionModel, type ModelConfigV3 } from "../lib/settings/model-config.ts";
 
 export const runEventsPersistenceTestPromise = (async () => {
   const pid = process.pid;
@@ -67,7 +67,7 @@ export const runEventsPersistenceTestPromise = (async () => {
         traceId: runId,
         conversationId: 1,
         modelUsed: "main-model",
-        modelRole: "main",
+        modelRole: "agent",
         executionTier: "reasoning",
       });
       const emitter = createEmitter(runId, 1);
@@ -159,36 +159,33 @@ export const runEventsPersistenceTestPromise = (async () => {
       console.log("T4 PASS: replay pagination ✓");
     }
 
-    // ── T5: complex_workflow → mainModel（resolveRunExecutionModel）────────
+    // ── T5: main Agent defaults fast; only explicit selection upgrades ─────
     {
-      const FULL: ModelConfigV2 = {
-        version: 2,
-        mainModel: "reasoning-model",
-        routerModel: "fast-model",
-        subagentModel: "fast-model",
+      const FULL: ModelConfigV3 = {
+        version: 3,
+        fastModel: "fast-model",
+        reasoningModel: "reasoning-model",
       };
       // 直接对照纯 resolver 矩阵
       assert.equal(
         resolveExecutionModel({
           config: FULL,
           purpose: "task",
-          intent: "complex_workflow",
           tier: "fast",
         }).modelId,
-        "reasoning-model",
+        "fast-model",
       );
 
-      // Query 接线辅助：在 ROUTER_ENABLED 默认 true 时 path=main + complex → main
+      // Router intent cannot silently upgrade the user's default-fast choice.
       const resolved = resolveRunExecutionModel({
         settings: FULL,
         modelTier: "fast",
         routerPath: "main",
-        routerIntent: "complex_workflow",
       });
       assert.ok(resolved);
-      assert.equal(resolved!.modelId, "reasoning-model", "T5: complex → mainModel");
-      assert.equal(resolved!.modelRole, "main");
-      assert.equal(resolved!.executionTier, "reasoning");
+      assert.equal(resolved!.modelId, "fast-model");
+      assert.equal(resolved!.executionRole, "agent");
+      assert.equal(resolved!.executionTier, "fast");
 
       // fallback 三分支
       assert.equal(inferRouterFallbackReason("AbortError: timeout"), "router_timeout");
@@ -200,15 +197,15 @@ export const runEventsPersistenceTestPromise = (async () => {
         routerPath: "fallback",
         routerFailureHint: "timeout of 15000ms",
       });
-      assert.equal(fb!.modelId, "reasoning-model");
+      assert.equal(fb!.modelId, "fast-model");
       assert.equal(fb!.fallbackReason, "router_timeout");
-      console.log("T5 PASS: complex→mainModel + fallback reasons ✓");
+      console.log("T5 PASS: default fast + explicit tier + fallback metadata ✓");
     }
 
     // ── T6: API handlers（动态 import route）──────────────────────────────
     {
       const runId = `run-api-${pid}`;
-      createAgentRun({ runId, traceId: runId, conversationId: 3, modelUsed: "m1", modelRole: "main", executionTier: "reasoning" });
+      createAgentRun({ runId, traceId: runId, conversationId: 3, modelUsed: "m1", modelRole: "agent", executionTier: "reasoning" });
       const emitter = createEmitter(runId, 3);
       appendDurableRunEvent(emitter.wrap({ type: "run_started", conversationId: 3 }));
       appendDurableRunEvent(emitter.wrap({ type: "run_settled", outcome: "completed" }));

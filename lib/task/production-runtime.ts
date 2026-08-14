@@ -6,7 +6,7 @@ import type { AgentAttachment, AgentFoundationContext } from "@/lib/agent/contra
 import type { TaskContract as LegacyTaskContract } from "@/lib/agent/run-contract";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 import { ArtifactStore } from "@/lib/artifacts/store";
-import type { ArtifactRef } from "@/lib/artifacts/contracts";
+import { DocumentLocatorSchema, type ArtifactRef } from "@/lib/artifacts/contracts";
 import type { PrincipalRef } from "@/lib/capability/common";
 import {
   CapabilityExecutionLedger,
@@ -191,8 +191,39 @@ export function beginProductionTaskRun(input: {
   };
   bindRun("running");
   const taskInputArtifacts = contract.inputs;
+  const sourceEvidenceRefs: EvidenceRef[] = [];
+  const sourceEvidenceByArtifactVersion = new Map<string, EvidenceRef>();
   for (const artifact of taskInputArtifacts) {
     artifacts.addRef(artifact.versionId, "case_input", caseId);
+    const createdAt = new Date().toISOString();
+    const policyDecisionId = authorizeEvidenceWrite({
+      authorizer,
+      principal,
+      tenantId,
+      caseId,
+      capabilityId: "agent.turn",
+      artifactVersionId: artifact.versionId,
+      classification: contract.security.classification,
+      now: createdAt,
+    });
+    const source = evidence.addEvidence(caseId, {
+      id: randomUUID(),
+      type: "source",
+      artifact,
+      locator: { kind: "node", nodeId: artifact.versionId },
+      producer: {
+        capabilityId: "agent.turn",
+        version: "production-input-v1",
+        attemptId: `${input.traceId}-source-${sourceEvidenceRefs.length}`,
+      },
+      inputs: [],
+      outputHash: artifact.sha256,
+      policyDecisionId,
+      createdAt,
+    });
+    const sourceRef = { evidenceId: source.id, outputHash: source.outputHash };
+    sourceEvidenceRefs.push(sourceRef);
+    sourceEvidenceByArtifactVersion.set(artifact.versionId, sourceRef);
   }
   taskStore.transitionCase(caseId, "preflight");
   taskStore.savePlan({
@@ -299,6 +330,18 @@ export function beginProductionTaskRun(input: {
     recordRuntimeEvent(event) {
       if (settled) return;
       executionLedger.record(event);
+      captureGovernedRetrievalEvidence({
+        event,
+        db: input.db,
+        evidence,
+        caseId,
+        traceId: input.traceId,
+        principal,
+        tenantId,
+        authorizer,
+        classification: contract.security.classification,
+        sourceEvidenceByArtifactVersion,
+      });
     },
     markValidating() {
       if (settled || validating) return;
@@ -364,6 +407,18 @@ export function beginProductionTaskRun(input: {
           principal,
           tenantId,
           authorizer,
+        });
+        bridgeLegacyCompletionEvidence({
+          db: input.db,
+          evidence,
+          caseId,
+          runId,
+          outputArtifacts,
+          inputEvidenceRefs: sourceEvidenceRefs,
+          principal,
+          tenantId,
+          authorizer,
+          classification: contract.security.classification,
         });
         const contractGate = suppliedContract
           ? evaluateSuppliedContractGate({
@@ -461,6 +516,196 @@ export function beginProductionTaskRun(input: {
       return settlement;
     },
   };
+}
+
+function captureGovernedRetrievalEvidence(input: {
+  event: AgentRuntimeEvent;
+  db: DatabaseSync;
+  evidence: EvidenceLedger;
+  caseId: string;
+  traceId: string;
+  principal: PrincipalRef;
+  tenantId: string;
+  authorizer: SecurityAuthorizer;
+  classification: TaskContractV3["security"]["classification"];
+  sourceEvidenceByArtifactVersion: ReadonlyMap<string, EvidenceRef>;
+}): void {
+  const event = input.event;
+  if (event.type !== "tool_completed" || event.isError || !event.content) return;
+  if (event.toolName !== "search_knowledge" && event.toolName !== "query_knowledge") return;
+  const pattern = /【引用[^】]*】\n([\s\S]*?)\n来源版本：([^\n]+)\n定位：([^\n]+)\n内容哈希：([a-f0-9]{64})/gi;
+  let match: RegExpExecArray | null;
+  let index = 0;
+  while ((match = pattern.exec(event.content)) !== null) {
+    const quotedText = match[1]?.trim();
+    const artifactVersionId = match[2]?.trim();
+    const locatorText = match[3]?.trim();
+    const declaredArtifactHash = match[4]?.toLowerCase();
+    if (!quotedText || !artifactVersionId || !locatorText || !declaredArtifactHash) continue;
+    const row = input.db.prepare(`
+      SELECT a.artifact_id, a.logical_name, a.lifecycle_state,
+             v.version_id, v.sha256, v.media_type
+      FROM artifact_versions v JOIN artifacts a ON a.artifact_id = v.artifact_id
+      WHERE v.version_id = ?
+    `).get(artifactVersionId) as {
+      artifact_id: string;
+      logical_name: string;
+      lifecycle_state: ArtifactRef["state"];
+      version_id: string;
+      sha256: string;
+      media_type: string;
+    } | undefined;
+    if (!row || row.sha256.toLowerCase() !== declaredArtifactHash) continue;
+    let locator;
+    try {
+      locator = DocumentLocatorSchema.parse(JSON.parse(locatorText));
+    } catch {
+      continue;
+    }
+    const artifact: ArtifactRef = {
+      artifactId: row.artifact_id,
+      versionId: row.version_id,
+      sha256: row.sha256,
+      mediaType: row.media_type,
+      logicalName: row.logical_name,
+      state: row.lifecycle_state,
+    };
+    const sourceRef = input.sourceEvidenceByArtifactVersion.get(artifact.versionId);
+    if (!sourceRef) continue;
+    const createdAt = new Date().toISOString();
+    const policyDecisionId = authorizeEvidenceWrite({
+      authorizer: input.authorizer,
+      principal: input.principal,
+      tenantId: input.tenantId,
+      caseId: input.caseId,
+      capabilityId: "agent.turn",
+      artifactVersionId: artifact.versionId,
+      classification: input.classification,
+      now: createdAt,
+    });
+    const extraction = input.evidence.addEvidence(input.caseId, {
+      id: randomUUID(),
+      type: "extraction",
+      artifact,
+      locator,
+      producer: {
+        capabilityId: "agent.turn",
+        version: "governed-retrieval-bridge-v1",
+        attemptId: `${input.traceId}-retrieval-${index}`.slice(0, 200),
+      },
+      inputs: [sourceRef],
+      outputHash: sha256Json(quotedText),
+      policyDecisionId,
+      createdAt,
+    });
+    const claimId = randomUUID();
+    input.evidence.addClaim({
+      id: claimId,
+      caseId: input.caseId,
+      statement: quotedText,
+      evidenceRefs: [extraction.id],
+      status: "verified",
+    });
+    input.evidence.addCitation({
+      id: randomUUID(),
+      claimId,
+      artifactVersionId: artifact.versionId,
+      locator,
+      quoteHash: sha256Json(quotedText),
+      createdAt,
+    });
+    index += 1;
+  }
+}
+
+/**
+ * The legacy finalize_deliverable gate is still the production XLSX validator
+ * and immutable-copy authority. Mirror its persisted CompletionEvidence into
+ * the V3 EvidenceLedger so a supplied task contract can prove the same
+ * validator, transform and assertion facts without running a second validator.
+ */
+function bridgeLegacyCompletionEvidence(input: {
+  db: DatabaseSync;
+  evidence: EvidenceLedger;
+  caseId: string;
+  runId: string;
+  outputArtifacts: ArtifactRef[];
+  inputEvidenceRefs: EvidenceRef[];
+  principal: PrincipalRef;
+  tenantId: string;
+  authorizer: SecurityAuthorizer;
+  classification: TaskContractV3["security"]["classification"];
+}): void {
+  const rows = input.db.prepare(`
+    SELECT delivered_sha256, validator_id, validation_status, report_id, validated_at
+    FROM completion_evidence
+    WHERE run_id = ? AND validation_status = 'passed'
+    ORDER BY created_at, id
+  `).all(input.runId) as Array<{
+    delivered_sha256: string;
+    validator_id: string;
+    validation_status: string;
+    report_id: string;
+    validated_at: string;
+  }>;
+  for (const row of rows) {
+    const artifact = input.outputArtifacts.find((candidate) => candidate.sha256 === row.delivered_sha256);
+    if (!artifact) continue;
+    const createdAt = row.validated_at || new Date().toISOString();
+    const authorize = () => authorizeEvidenceWrite({
+      authorizer: input.authorizer,
+      principal: input.principal,
+      tenantId: input.tenantId,
+      caseId: input.caseId,
+      capabilityId: "agent.turn",
+      artifactVersionId: artifact.versionId,
+      classification: input.classification,
+      now: createdAt,
+    });
+    const transform = input.evidence.addEvidence(input.caseId, {
+      id: randomUUID(),
+      type: "transform",
+      artifact,
+      locator: { kind: "node", nodeId: artifact.versionId },
+      producer: {
+        capabilityId: "agent.turn",
+        version: "finalize-bridge-v1",
+        attemptId: `${input.runId}-transform-${row.report_id}`.slice(0, 200),
+      },
+      inputs: input.inputEvidenceRefs,
+      outputHash: artifact.sha256,
+      policyDecisionId: authorize(),
+      createdAt,
+    });
+    const assertion = input.evidence.addEvidence(input.caseId, {
+      id: randomUUID(),
+      type: "assertion",
+      artifact,
+      locator: { kind: "node", nodeId: artifact.versionId },
+      producer: {
+        capabilityId: "agent.turn",
+        version: "finalize-bridge-v1",
+        attemptId: `${input.runId}-assertion-${row.report_id}`.slice(0, 200),
+      },
+      inputs: [{ evidenceId: transform.id, outputHash: transform.outputHash }],
+      outputHash: artifact.sha256,
+      policyDecisionId: authorize(),
+      createdAt,
+    });
+    input.evidence.recordAssertion({
+      caseId: input.caseId,
+      assertionId: `validator:${row.validator_id}`.slice(0, 200),
+      validatorId: row.validator_id,
+      status: "passed",
+      blocking: true,
+      evidenceId: assertion.id,
+      details: {
+        completionEvidenceReportId: row.report_id,
+        artifactVersionId: artifact.versionId,
+        artifactSha256: artifact.sha256,
+      },
+    });
+  }
 }
 
 type SuppliedContractGateResult = {

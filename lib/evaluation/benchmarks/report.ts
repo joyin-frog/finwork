@@ -58,6 +58,8 @@ export function createEmptyExecutionSummary(input: {
     runId: input.runId,
     inputTokens: 0,
     outputTokens: 0,
+    cacheReadInputTokens: 0,
+    cacheCreationInputTokens: 0,
     latencyMs: 0,
     retries: 0,
     costUsd: null,

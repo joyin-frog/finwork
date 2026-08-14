@@ -1,6 +1,18 @@
 import { createHash } from "node:crypto";
 import { BenchmarkGapProposalSchema, type BenchmarkCaseResult, type BenchmarkGapProposal } from "./contracts";
 
+export function parseBenchmarkGapCliArgs(argv: readonly string[]): {
+  reportArgument: string;
+  outputArgument?: string;
+} {
+  const positional = argv[0] === "--" ? argv.slice(1) : argv;
+  const [reportArgument, outputArgument, ...unexpected] = positional;
+  if (!reportArgument || unexpected.length > 0) {
+    throw new Error("Usage: pnpm benchmarks:gaps -- <benchmark-report.json> [gap-proposals.json]");
+  }
+  return { reportArgument, ...(outputArgument ? { outputArgument } : {}) };
+}
+
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }

@@ -301,9 +301,8 @@ export const quotaStage: Stage<QuotaInput, QuotaOutput> = async (ctx) => {
     const usage = getUsageStatus({
       now: Date.now(),
       roles: {
-        routerModel: "routerModel" in settings ? settings.routerModel : "",
-        mainModel: "mainModel" in settings ? settings.mainModel : "",
-        subagentModel: settings.subagentModel ?? "",
+        fastModel: settings.fastModel ?? "",
+        reasoningModel: settings.reasoningModel ?? "",
       },
       // 放行即把(过期则重锚的)窗口起点写回,使紧随其后的本回合 trace 落在窗口内。
       // 命中拦截时窗口必为活动态,重锚为 no-op,落库无副作用。
@@ -363,7 +362,7 @@ export const routerStage: Stage<RouterInput, RouterOutput> = async (ctx) => {
   if (ctx.sessionRoleId) {
     const routerResult = {
       path: "main" as const,
-      decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: `specialist session (${ctx.sessionRoleId})` },
+      decision: { needsRag: false, directAnswer: undefined as string | undefined, intent: "complex_workflow" as const, reasoning: `specialist session (${ctx.sessionRoleId})` },
       latencyMs: 0,
     };
     log.info("router skipped (specialist session)", { traceId, roleId: ctx.sessionRoleId });
@@ -377,7 +376,7 @@ export const routerStage: Stage<RouterInput, RouterOutput> = async (ctx) => {
     ? await runRouter(lastUserContent, messages, traceId, { runtimeSessionId: existingRuntimeSessionId, conversationId })
     : localTrivial
       ? { path: "cheap" as const, decision: localTrivial, latencyMs: 0 }
-      : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
+      : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
   log.info("router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
 
   const { writeSpan } = await import("@/lib/observability/spans");

@@ -1,12 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { BenchmarkRunReportSchema } from "../lib/evaluation/benchmarks/contracts.ts";
-import { mineBenchmarkGapProposals } from "../lib/evaluation/benchmarks/gap-miner.ts";
+import { mineBenchmarkGapProposals, parseBenchmarkGapCliArgs } from "../lib/evaluation/benchmarks/gap-miner.ts";
 
-const [reportArgument, outputArgument] = process.argv.slice(2);
-if (!reportArgument) {
-  throw new Error("Usage: pnpm benchmarks:gaps -- <benchmark-report.json> [gap-proposals.json]");
-}
+const { reportArgument, outputArgument } = parseBenchmarkGapCliArgs(process.argv.slice(2));
 const reportPath = path.resolve(reportArgument);
 const outputPath = path.resolve(outputArgument ?? path.join(".finwork-test", "benchmarks", "reports", "gap-proposals.json"));
 const report = BenchmarkRunReportSchema.parse(JSON.parse(await readFile(reportPath, "utf8")));

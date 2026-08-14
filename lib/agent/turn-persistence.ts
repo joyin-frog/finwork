@@ -180,7 +180,7 @@ export function persistIncompleteTurn(
 }
 
 export function modelLabel(routerResult?: Awaited<ReturnType<typeof runRouter>>): string {
-  return routerResult?.decision?.mainModelTier ?? "main";
+  return routerResult?.path === "cheap" ? "router" : "agent";
 }
 
 /** Preserve actual provider model ids when the production SDK reports usage. */

@@ -144,7 +144,7 @@ async function judgeCase(
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: settings.routerModel || settings.mainModel,
+        model: settings.fastModel || settings.reasoningModel,
         max_tokens: 400,
         messages: [{ role: "user", content: prompt }],
       }),

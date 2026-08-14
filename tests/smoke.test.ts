@@ -175,17 +175,16 @@ wb.save("${xlsxPath}")
   const publicSettings = toPublicAgentSettings({
     apiUrl: "https://api.anthropic.com",
     apiKey: "sk-ant-test-1234567890",
-    model: "claude-sonnet-4-5",
     companyName: "",
     agentName: "小财",
-    routerModel: "",
-    subagentModel: "",
-    mainModel: "",
+    fastModel: "gpt-mini",
+    reasoningModel: "gpt-reasoning",
     roleMode: "tech",
   });
   assert.equal(publicSettings.apiKeyConfigured, true);
   assert.equal(publicSettings.apiKeyPreview, "sk-a...7890");
-  assert.equal(publicSettings.model, "claude-sonnet-4-5");
+  assert.equal(publicSettings.fastModel, "gpt-mini");
+  assert.equal(publicSettings.reasoningModel, "gpt-reasoning");
 
   const agentResult = await runPiAgent({ messages: [{ role: "user", content: "测试未配置时回退" }] });
   assert.equal(agentResult.mode, "mock");

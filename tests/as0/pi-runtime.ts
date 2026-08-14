@@ -55,7 +55,7 @@ export class PiPhaseBRuntime implements PhaseBRuntime {
       "@earendil-works/pi-coding-agent"
     );
     const settings = await readAgentSettings();
-    const modelId = (request.model || settings.mainModel || "").trim();
+    const modelId = (request.model || settings.reasoningModel || "").trim();
     const { modelRuntime, model } = await createFinworkModelRuntime(settings, modelId);
     const cwd = getProjectRoot();
     const sessionRoot = path.resolve(getPiSessionDir());

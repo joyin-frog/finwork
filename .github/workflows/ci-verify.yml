@@ -71,7 +71,8 @@ jobs:
           python -m venv workers/.venv
           workers/.venv/bin/python -m pip install --upgrade pip
           workers/.venv/bin/python -m pip install -r requirements.txt
-      # pnpm test 现在串起 test:pi(Pi 边界层)+ all.test.ts,两者仍是独立进程,见 package.json。
+      # pnpm test 串起 test:pi、all.test.ts 与 production benchmark gates；
+      # 需要独立进程的 DB/env 测试不塞进 all.test.ts，见 package.json。
       - run: bash scripts/ci-cancel-aware.sh pnpm test
       - run: bash scripts/ci-cancel-aware.sh pnpm run eval:golden:ci
 

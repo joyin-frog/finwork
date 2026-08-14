@@ -6,7 +6,7 @@ import { redact } from "@/lib/safety/pii";
 import {
   modelConfigFromSettings,
   resolveExecutionModel,
-  type LegacyModelFields,
+  type ModelFields,
 } from "@/lib/settings/model-config";
 
 export type RouterDecision = {
@@ -14,14 +14,22 @@ export type RouterDecision = {
   directAnswer?: string;
   needsRag: boolean;
   ragQueries?: string[];
-  mainModelTier: "main" | "subagent";
   reasoning: string;
 };
 
-type RouterResult = {
+export type RouterUsage = {
+  modelId: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+};
+
+export type RouterResult = {
   decision: RouterDecision;
   path: "cheap" | "main" | "fallback";
   latencyMs: number;
+  usage?: RouterUsage;
 };
 
 // 网关分类调用恒带 thinking 块、实测 3–8s 且有 >8s 离群(thinking 无法被网关关闭)。
@@ -92,7 +100,6 @@ export function matchTrivialMessage(message: string): RouterDecision | null {
         intent: "greeting",
         directAnswer: TRIVIAL_CANNED[category],
         needsRag: false,
-        mainModelTier: "main",
         reasoning: `local prefilter: ${category}`,
       };
     }
@@ -148,7 +155,6 @@ export async function runRouter(
         const decision: RouterDecision = {
           intent: prevIntent,
           needsRag: prevNeedsRag,
-          mainModelTier: "main",
           reasoning: "router skipped (continuation)",
         };
         const latencyMs = Date.now() - startedAt;
@@ -162,7 +168,6 @@ export async function runRouter(
   const fallbackDecision: RouterDecision = {
     intent: "complex_workflow",
     needsRag: true,
-    mainModelTier: "main",
     reasoning: "router fallback (error or timeout)",
   };
 
@@ -193,7 +198,7 @@ export async function runRouter(
       "- 表达长期遵守的规矩/偏好(如「以后报销超2000提醒我」「发薪日是10号」「报表都要带环比」)必须归 tool_task,不要当 trivial_qa/greeting——否则会被直接回答、记不进记忆",
       "- 追问/省略主语的消息按上文语境归类,不要当 greeting",
       "- rag_qa 设置 needs_rag=true 并提供 rag_queries(0-3条改写后的检索词)",
-      "- 难度边界:能一两步搞定的归 tool_task;要多步/多工具来回、或先读懂再大改的归 complex_workflow(系统会自动为它升用更强的推理模型)",
+      "- 难度边界:能一两步搞定的归 tool_task;要多步/多工具来回、或先读懂再大改的归 complex_workflow。这里只分类任务,不决定主 Agent 使用哪个模型",
       "",
       '只输出一个 JSON 对象,不要任何解释、前后缀或 markdown 代码块。字段:',
       '{"intent":"greeting|trivial_qa|rag_qa|tool_task|complex_workflow",',
@@ -207,7 +212,7 @@ export async function runRouter(
       logRouterDecision(message, fallbackDecision, "fallback", latencyMs, traceId, "model config incomplete", context?.conversationId);
       return { decision: fallbackDecision, path: "fallback", latencyMs };
     }
-    const routerModel = resolveExecutionModel({ config, purpose: "router" }).modelId;
+    const fastModel = resolveExecutionModel({ config, purpose: "router" }).modelId;
     const response = await fetch(buildMessagesUrl(settings.apiUrl), {
       method: "POST",
       headers: {
@@ -216,7 +221,7 @@ export async function runRouter(
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: routerModel,
+        model: fastModel,
         max_tokens: 600,
         system: systemPrompt,
         messages: buildRouterMessages(history, message),
@@ -228,7 +233,8 @@ export async function runRouter(
       throw new Error(`router HTTP ${response.status}`);
     }
 
-    const decision = parseRouterResponse(await response.json());
+    const payload: unknown = await response.json();
+    const decision = parseRouterResponse(payload);
     if (!decision) {
       throw new Error("router response missing or invalid JSON decision");
     }
@@ -236,7 +242,7 @@ export async function runRouter(
     const latencyMs = Date.now() - startedAt;
     const path = decision.intent === "greeting" || decision.intent === "trivial_qa" ? "cheap" : "main";
     logRouterDecision(message, decision, path, latencyMs, traceId, undefined, context?.conversationId);
-    return { decision, path, latencyMs };
+    return { decision, path, latencyMs, usage: parseRouterUsage(payload, fastModel) };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.warn("[router] failed, falling back to main path", { error: errorMessage });
@@ -334,36 +340,39 @@ export function parseRouterResponse(payload: unknown): RouterDecision | null {
     ragQueries: Array.isArray(input.rag_queries)
       ? input.rag_queries.filter((q): q is string => typeof q === "string")
       : undefined,
-    mainModelTier: input.main_model_tier === "subagent" ? "subagent" : "main",
     reasoning: input.reasoning ?? "no reasoning provided",
   };
 }
 
-/** 按任务难度(router 的 intent)选模型,对齐配置页「快速/推理」:
- * - complex_workflow → mainModel(推理档)
- * - 其余 → 不 override(由 resolveModelByTier / 调用方决定)
- * - 配置未就绪 → undefined */
-export function pickAgentModel(
-  decision: { intent?: string },
-  settings: LegacyModelFields
-): string | undefined {
-  const config = modelConfigFromSettings(settings);
-  if (!config) return undefined;
-  if (decision?.intent !== "complex_workflow") return undefined;
-  return resolveExecutionModel({
-    config,
-    purpose: "task",
-    intent: "complex_workflow",
-    tier: "fast",
-  }).modelId;
+/** Preserve paid router accounting so cheap direct answers and Agent turns share one usage ledger. */
+export function parseRouterUsage(payload: unknown, requestedModel: string): RouterUsage {
+  const body = payload && typeof payload === "object"
+    ? payload as { model?: unknown; usage?: unknown }
+    : {};
+  const usage = body.usage && typeof body.usage === "object"
+    ? body.usage as Record<string, unknown>
+    : {};
+  const token = (name: string) => {
+    const value = usage[name];
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? Math.floor(value)
+      : 0;
+  };
+  return {
+    modelId: typeof body.model === "string" && body.model.trim() ? body.model : requestedModel,
+    inputTokens: token("input_tokens"),
+    outputTokens: token("output_tokens"),
+    cacheReadInputTokens: token("cache_read_input_tokens"),
+    cacheCreationInputTokens: token("cache_creation_input_tokens"),
+  };
 }
 
 /** 用户在输入框显式选的推理强度档位 → 模型 id。
- * - fast → routerModel；reasoning → mainModel。
+ * - fast → fastModel；reasoning → reasoningModel。
  * - 配置未就绪返回 undefined。 */
 export function resolveModelByTier(
   tier: "fast" | "reasoning",
-  settings: LegacyModelFields
+  settings: ModelFields
 ): string | undefined {
   const config = modelConfigFromSettings(settings);
   if (!config) return undefined;
@@ -371,7 +380,6 @@ export function resolveModelByTier(
     config,
     purpose: "task",
     tier,
-    intent: "tool_task",
   }).modelId;
 }
 

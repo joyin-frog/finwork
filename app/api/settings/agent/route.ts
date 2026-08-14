@@ -17,13 +17,9 @@ export const PUT = withApiError(async function PUT(request: Request) {
   const body = (await request.json()) as {
     apiUrl?: string;
     apiKey?: string;
-    model?: string;
     clearApiKey?: boolean;
     fastModel?: string;
     reasoningModel?: string;
-    routerModel?: string;
-    subagentModel?: string;
-    mainModel?: string;
     companyName?: string;
     agentName?: string;
     userName?: string;
@@ -44,9 +40,8 @@ export const PUT = withApiError(async function PUT(request: Request) {
   const modelPatch =
     parsedModels.kind === "ok"
       ? {
-          mainModel: parsedModels.config.mainModel,
-          routerModel: parsedModels.config.routerModel,
-          subagentModel: parsedModels.config.subagentModel,
+          fastModel: parsedModels.config.fastModel,
+          reasoningModel: parsedModels.config.reasoningModel,
         }
       : {};
 
@@ -55,7 +50,6 @@ export const PUT = withApiError(async function PUT(request: Request) {
     data: await writeAgentSettings({
       apiUrl: body.apiUrl,
       apiKey: body.clearApiKey ? "" : body.apiKey,
-      model: body.model,
       ...modelPatch,
       companyName: body.companyName,
       agentName: body.agentName,
@@ -68,4 +62,3 @@ export const PUT = withApiError(async function PUT(request: Request) {
     }),
   });
 }, "/api/settings/agent");
-

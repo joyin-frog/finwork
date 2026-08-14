@@ -1,7 +1,7 @@
 # Spec：模型配置与路由语义 v2
 
 > ID：CR-M1  
-> 状态：已ship（Batch 0）· 见 `audit-model-routing-v2.md`  
+> 状态：已被 [`spec-model-routing-v3.md`](./spec-model-routing-v3.md) 取代；仅保留历史
 > 日期：2026-07-21  
 > 前置依赖：无  
 > 下游：CR-R0、CR-R1  
@@ -206,4 +206,3 @@ Query Pipeline 接线和真实 trace 验收由 CR-R1 负责。
 ## Further Notes
 
 CR-R1 必须把本包的 `ResolvedModel` 原样传给 SDK options、环境变量、Run 和 trace，不能重新计算模型角色。
-

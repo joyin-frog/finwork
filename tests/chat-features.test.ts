@@ -171,13 +171,14 @@ function main() {
   console.log("✓ PASS: chat page delegates panel + preview sidebar");
 
   // ---- Test 10: chat artifacts persist and render correctly ----
-  // WP10a 后拼接范围扩为 [route.ts, query-stages.ts]，断言字符串不变
+  // Agent turn 已抽为 route/benchmark 共用内核；持久化与 thinking 清洗哨兵必须覆盖该文件。
   const agentRouteContent = [
     fs.readFileSync(path.join(import.meta.dirname, "../app/api/agent/query/route.ts"), "utf-8"),
     fs.readFileSync(path.join(import.meta.dirname, "../lib/agent/query-stages.ts"), "utf-8"),
+    fs.readFileSync(path.join(import.meta.dirname, "../lib/agent/production-turn.ts"), "utf-8"),
   ].join("\n");
   assert.ok(
-    agentRouteContent.includes("insertChatAgentEvent(messageId, event.type, event, traceId)"),
+    agentRouteContent.includes("persistRuntimeEnvelope(envelope, params.runPersist)"),
     "agent route should persist agent events"
   );
   assert.ok(

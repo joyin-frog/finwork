@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import { initializeFinanceDatabase, openFinanceDatabase } from "../lib/db/sqlite";
 import { getUsageStatus, loadRecentUsageTraces } from "../lib/usage/store";
-import { buildBlockedNotice, FIVE_HOUR_LIMIT, FIVE_HOUR_MS, WEEK_MS, type RoleModels } from "../lib/usage/quota";
+import { buildBlockedNotice, FIVE_HOUR_LIMIT, FIVE_HOUR_MS, WEEK_MS, type TierModels } from "../lib/usage/quota";
 
 const { equal, ok } = assert;
 
-const roles: RoleModels = {
-  routerModel: "claude-haiku-4-5",
-  mainModel: "claude-opus-4-8",
-  subagentModel: "claude-sonnet-4-6",
+const roles: TierModels = {
+  fastModel: "claude-haiku-4-5",
+  reasoningModel: "claude-opus-4-8",
 };
 
 function insertTrace(db: ReturnType<typeof openFinanceDatabase>, traceId: string, startedAtMs: number, usage: Record<string, unknown>) {

@@ -40,7 +40,7 @@ export const as0HarnessTestPromise = (async () => {
   const sanitized = sanitizeSettingsJson({
     agent: {
       apiKey: "secret",
-      mainModel: "model-a",
+      reasoningModel: "model-a",
       companyName: "真实公司",
       userName: "真实用户",
       userAvatar: "data:image/png;base64,secret",
@@ -56,7 +56,7 @@ export const as0HarnessTestPromise = (async () => {
   assert.equal(sanitized.agent.companyName, "AS0 测试公司");
   assert.equal(sanitized.agent.userName, "AS0 测试用户");
   assert.equal(sanitized.agent.telemetryEnabled, false);
-  assert.equal(sanitized.agent.mainModel, "model-a");
+  assert.equal(sanitized.agent.reasoningModel, "model-a");
 
   const deliveryTask = manifest.tasks.find((task) => task.id === "AS0-17")!;
   const contract = buildTaskContract(deliveryTask);

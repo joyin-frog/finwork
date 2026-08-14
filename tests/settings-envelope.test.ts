@@ -3,7 +3,7 @@
  *
  * 真实事故(2026-08-05):磁盘上的 local-settings.json 是双层的
  * `{claude:{agent:{...}}}`,而读取器只解一层,source 停在中间层 ——
- * apiUrl / mainModel / companyName 全读成 undefined 并静默回落默认值。
+ * apiUrl / fastModel / companyName 全读成 undefined 并静默回落默认值。
  * 用户在设置页填过的东西凭空消失,界面上却没有任何报错,只会显示成"没配过"。
  *
  * 只测可观察行为(读回值 + 磁盘形态),不碰私有解包函数。
@@ -62,9 +62,8 @@ function readEnvelope(file: string): Record<string, unknown> {
 export const settingsEnvelopeTestPromise = (async () => {
   const agentFields = {
     apiUrl: "https://gateway.example.com",
-    mainModel: "model-main",
-    routerModel: "model-router",
-    subagentModel: "model-sub",
+    fastModel: "model-fast",
+    reasoningModel: "model-reasoning",
     companyName: "都森电子",
     agentName: "小财",
     telemetryInstallId: "fixed-install-id",
@@ -76,8 +75,8 @@ export const settingsEnvelopeTestPromise = (async () => {
     async (mod, file) => {
       const s = await mod.readAgentSettings();
       equal(s.apiUrl, "https://gateway.example.com", "双层信封 FAIL: apiUrl 应读出而不是回落默认值");
-      equal(s.mainModel, "model-main", "双层信封 FAIL: mainModel 应读出");
-      equal(s.routerModel, "model-router", "双层信封 FAIL: routerModel 应读出");
+      equal(s.reasoningModel, "model-reasoning", "双层信封 FAIL: 推理模型应读出");
+      equal(s.fastModel, "model-fast", "双层信封 FAIL: 快速模型应读出");
       equal(s.companyName, "都森电子", "双层信封 FAIL: companyName 应读出");
 
       // 读到非规范形态后应幂等写回单层 {agent:{...}}。
@@ -85,12 +84,13 @@ export const settingsEnvelopeTestPromise = (async () => {
       ok(!("claude" in disk), "规范化 FAIL: 磁盘上不应再有 claude 层");
       const inner = disk.agent as Record<string, unknown> | undefined;
       ok(inner && !("agent" in inner), "规范化 FAIL: agent 下不应再嵌套 agent");
-      equal(inner?.mainModel, "model-main", "规范化 FAIL: 写回后字段应保留");
+      equal(inner?.reasoningModel, "model-reasoning", "规范化 FAIL: 应保留推理模型");
+      equal(inner?.fastModel, "model-fast", "规范化 FAIL: 应保留快速模型");
 
       // 再读一次:规范化后的文件仍读出同样的值(幂等)。
       const again = await mod.readAgentSettings();
       equal(again.apiUrl, "https://gateway.example.com", "幂等 FAIL: 规范化后 apiUrl 变了");
-      equal(again.mainModel, "model-main", "幂等 FAIL: 规范化后 mainModel 变了");
+      equal(again.reasoningModel, "model-reasoning", "幂等 FAIL: 规范化后推理模型变了");
     },
   );
 
@@ -98,20 +98,19 @@ export const settingsEnvelopeTestPromise = (async () => {
   await withSettingsFile({ claude: agentFields }, async (mod, file) => {
     const s = await mod.readAgentSettings();
     equal(s.apiUrl, "https://gateway.example.com", "旧信封 FAIL: apiUrl 应读出");
-    equal(s.mainModel, "model-main", "旧信封 FAIL: mainModel 应读出");
+    equal(s.reasoningModel, "model-reasoning", "旧信封 FAIL: 推理模型应读出");
     ok(!("claude" in readEnvelope(file)), "旧信封 FAIL: 应被规范化为 agent 层");
   });
 
-  // 3. 当前写入格式 {agent:{...}} —— 必须原样可读,且信封逻辑不得引起多余重写。
-  //    fixture 里 subagentModel 与 routerModel 取同值:CR-M1 迁移(model-config.ts:93)
-  //    的 subagent 优先取 routerModel,取不同值会触发它自己的写回,盖住本条要测的东西。
+  // 3. 当前 v3 写入格式必须原样可读，且不得引起多余重写。
+  const currentAgentFields = { ...agentFields };
   await withSettingsFile(
-    { agent: { ...agentFields, subagentModel: "model-router" } },
+    { agent: currentAgentFields },
     async (mod, file) => {
       const before = readFileSync(file, "utf-8");
       const s = await mod.readAgentSettings();
       equal(s.apiUrl, "https://gateway.example.com", "规范形态 FAIL: apiUrl 应读出");
-      equal(s.mainModel, "model-main", "规范形态 FAIL: mainModel 应读出");
+      equal(s.reasoningModel, "model-reasoning", "规范形态 FAIL: reasoningModel 应读出");
       equal(readFileSync(file, "utf-8"), before, "规范形态 FAIL: 已规范的文件不应被重写");
     },
   );
@@ -130,7 +129,7 @@ export const settingsEnvelopeTestPromise = (async () => {
 
   // 5. 读不动的文件绝不被写回 —— 2026-08-05 真实事故:并发读写让一次读解析失败,
   //    随后 installId 补写把整份设置覆盖成只剩一个键。读失败就必须什么都不写。
-  await withSettingsFile({ agent: agentFields }, async (mod, file) => {
+  await withSettingsFile({ agent: currentAgentFields }, async (mod, file) => {
     writeFileSync(file, '{"agent": {"apiUrl": "https://kept.example', "utf-8"); // 半写的 JSON
     const before = readFileSync(file, "utf-8");
     const s = await mod.readAgentSettings();

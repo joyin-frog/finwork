@@ -1,6 +1,6 @@
 # 财务 Agent 外部评测接入
 
-状态：已实现第一阶段评测接入骨架。目标是“先接入，再吸取精华扩展本地专业用例”，不是用公开题目替代 Finwork 自己的交付物验证。
+状态：已实现 Adapter、隔离物化、Production Benchmark Executor、零网络 preview、真实连接探针、断点 checkpoint、私有 Spreadsheet Oracle 与长期 soak 门禁。目标是“先接入，再吸取精华扩展本地专业用例”，不是用公开题目替代 Finwork 自己的交付物验证。真实运行操作以 [`benchmark-real-api-runbook.md`](../benchmark-real-api-runbook.md) 为准。
 
 ## 1. 底层闭环
 
@@ -63,8 +63,13 @@ pnpm eval:benchmarks:fixtures
 # 从真实运行报告生成待人工审查的能力缺口提案
 pnpm benchmarks:gaps -- /absolute/path/to/report.json
 
-# 回归测试
-pnpm test:benchmark-adapters
+# 回归测试（含 production executor、物化、preflight、真实 runner、gap proposal 与 100-case soak）
+pnpm test:benchmarks:production
+
+# 三层口径：Harness 零模型；Agent 固定模型；Model 矩阵只生成零网络计划
+pnpm eval:benchmarks:harness
+pnpm eval:benchmarks:real -- --layer agent --fixed-model <id> <其余 preview/预算参数>
+pnpm eval:benchmarks:model-matrix -- --models <a,b> --repetitions 2 --profile benchmark-smoke --max-cases 7
 ```
 
 默认输出位于 `.finwork-test/benchmarks/`，该目录被 Git 忽略。导入器不联网，也不会自动接受许可证。
@@ -81,15 +86,17 @@ pnpm test:benchmark-adapters
 
 这类报告固定 `fixtureOracle: true`、`publishable: false`。它不是模型成绩，也不能用来宣称 Finwork 已具备对应能力。
 
-## 6. 下一阶段：接真实 Agent，不复制另一套运行时
+## 6. Production Executor：复用真实 Agent，不复制另一套运行时
 
-真实执行只实现一个 `BenchmarkExecutor` 桥：把已经物化的 `TaskContractV3` 交给现有 production capability runtime，并从持久化运行记录中组装 `BenchmarkPrediction`。桥必须：
+真实执行已经通过唯一的 `BenchmarkExecutor` 桥，把物化后的 `TaskContractV3` 交给现有 production capability runtime，并从持久化运行记录组装 `BenchmarkPrediction`。该桥：
 
 - 复用现有权限、确认、取消、预算、证据和交付门禁；
 - 从真实 Artifact/Evidence/Assertion 记录取结果，不从最终自然语言回复猜成功；
 - 保留 provider、tool、validator、policy、resource 和 evaluator 的结构化失败；
 - 对 RAG 返回稳定 sourceId 和 locator，对 XLSX/DOCX/PDF 执行文件级确定性检查；
 - 将原始运行报告与导入 manifest 的 SHA 绑定，保证复现。
+
+真实付费请求还必须同时通过环境变量、CLI consent、显式 token/time（以及价格已知时的 USD）预算和已持久化 preview receipt。CI 只运行零模型回归，不会发送真实请求。
 
 ## 7. 从测试中扩展本地专业集
 

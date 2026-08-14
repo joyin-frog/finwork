@@ -8,7 +8,7 @@ import {
   nextWindowStart,
   FIVE_HOUR_MS,
   WEEK_MS,
-  type RoleModels,
+  type TierModels,
   type UsageResult,
   type UsageTrace,
 } from "./quota";
@@ -74,7 +74,7 @@ function writeStoredStart(db: DatabaseSync, key: string, value: number): void {
  */
 export function getUsageStatus(args: {
   now: number;
-  roles: RoleModels;
+  roles: TierModels;
   persist: boolean;
   db?: DatabaseSync;
 }): UsageResult {

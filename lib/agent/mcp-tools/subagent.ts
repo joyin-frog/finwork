@@ -20,6 +20,7 @@ export function createSpawnSubagentTool(
   subagentExecutor?: SubagentExecutor,
   memoryContext?: Partial<MemoryRuntimeContext> | null,
   foundation?: AgentFoundationContext,
+  modelOverride?: string,
 ) {
   // 从 ROLE_REGISTRY 按 available 过滤，再经 listDispatchableRoleIds 排除用户停用的角色
   const dispatchableIds = listDispatchableRoleIds();
@@ -74,6 +75,10 @@ ${ROLE_CHEATSHEET}
         .string()
         .nullish()
         .describe("任务期间，格式 YYYY-MM；task_template 指定时必填"),
+      complexity: z
+        .enum(["standard", "complex"])
+        .default("standard")
+        .describe("成本档：单次检索/读取/结构化检查用 standard；跨文件综合、公式恢复或复杂交付物用 complex"),
     },
     async (args: {
       role: string;
@@ -82,6 +87,7 @@ ${ROLE_CHEATSHEET}
       label: string;
       task_template?: string | null;
       period?: string | null;
+      complexity: "standard" | "complex";
     }, execution?: FinanceToolExecutionContext) => {
       if (!subagentExecutor) {
         return {
@@ -135,6 +141,7 @@ ${ROLE_CHEATSHEET}
             taskTemplateId: args.task_template,
             businessObject: template.objectLabel,
             period: args.period,
+            executionTier: template.executionTier ?? "fast",
           },
           {
             parentOutputDir: outputDir,
@@ -144,6 +151,7 @@ ${ROLE_CHEATSHEET}
             signal: execution?.signal,
             memoryContext,
             foundation,
+            modelOverride,
           }
         );
         const text = [
@@ -163,6 +171,7 @@ ${ROLE_CHEATSHEET}
           instructions: args.instructions,
           files: args.files ?? undefined,
           label: args.label,
+          executionTier: args.complexity === "complex" ? "reasoning" : "fast",
         },
         {
           parentOutputDir: outputDir,
@@ -172,6 +181,7 @@ ${ROLE_CHEATSHEET}
           signal: execution?.signal,
           memoryContext,
           foundation,
+          modelOverride,
         }
       );
       const text = [

@@ -10,34 +10,32 @@ import {
   FIVE_HOUR_LIMIT,
   WEEK_LIMIT,
   FAST_WEIGHT,
-  type RoleModels,
+  type TierModels,
   type UsageTrace,
 } from "../lib/usage/quota";
 
 const { equal, ok } = assert;
 
 export const usageQuotaTestPromise = (async () => {
-  const roles: RoleModels = {
-    routerModel: "claude-haiku-4-5",
-    mainModel: "claude-opus-4-8",
-    subagentModel: "claude-sonnet-4-6",
+  const roles: TierModels = {
+    fastModel: "claude-haiku-4-5",
+    reasoningModel: "claude-opus-4-8",
   };
 
   // ── T1: 档位判定 ────────────────────────────────────────────────
   {
-    equal(classifyTier("claude-haiku-4-5", roles), "fast", "T1 FAIL: router 槽模型应为快档");
-    equal(classifyTier("claude-opus-4-8", roles), "reasoning", "T1 FAIL: 主模型应为推理档");
-    equal(classifyTier("claude-sonnet-4-6", roles), "fast", "T1 FAIL: v2 subagent 应为快档");
+    equal(classifyTier("claude-haiku-4-5", roles), "fast", "T1 FAIL: 快速模型应为快档");
+    equal(classifyTier("claude-opus-4-8", roles), "reasoning", "T1 FAIL: 推理模型应为推理档");
     equal(classifyTier("some-unknown-gateway-model", roles), "reasoning", "T1 FAIL: 未知模型应落推理(贵)档");
     // router 槽为空时绝不误判为快档(偏保守)
-    equal(classifyTier("anything", { routerModel: "", mainModel: "x" }), "reasoning", "T1 FAIL: 空 router 槽不应命中快档");
+    equal(classifyTier("anything", { fastModel: "", reasoningModel: "x" }), "reasoning", "T1 FAIL: 空快速模型不应命中快档");
     // 推理槽优先(无 executionTier):同一模型既填 router 又填主槽 → 推理档
-    equal(classifyTier("claude-opus-4-8", { routerModel: "claude-opus-4-8", mainModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 多槽共享模型无 tier 时应推理档");
+    equal(classifyTier("claude-opus-4-8", { fastModel: "claude-opus-4-8", reasoningModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 两档共享模型无 tier 时应保守按推理档");
     // executionTier 优先于槽位匹配：同 ID 按调用角色归档
-    equal(classifyTier("shared", { routerModel: "shared", mainModel: "shared" }, "fast"), "fast", "T1 FAIL: executionTier=fast 应覆盖槽位");
-    equal(classifyTier("shared", { routerModel: "shared", mainModel: "shared" }, "reasoning"), "reasoning", "T1 FAIL: executionTier=reasoning 应覆盖槽位");
+    equal(classifyTier("shared", { fastModel: "shared", reasoningModel: "shared" }, "fast"), "fast", "T1 FAIL: executionTier=fast 应覆盖槽位");
+    equal(classifyTier("shared", { fastModel: "shared", reasoningModel: "shared" }, "reasoning"), "reasoning", "T1 FAIL: executionTier=reasoning 应覆盖槽位");
     // 推理槽优先于 router 子串误命中
-    equal(classifyTier("claude-opus-4-8", { routerModel: "claude", mainModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 推理槽应优先于 router 子串命中");
+    equal(classifyTier("claude-opus-4-8", { fastModel: "claude", reasoningModel: "claude-opus-4-8" }), "reasoning", "T1 FAIL: 推理档应优先于快速模型子串命中");
   }
 
   // ── T2: 成本加权(token 类型比例 + 推理档基准 1.0) ──────────────
@@ -59,12 +57,12 @@ export const usageQuotaTestPromise = (async () => {
     // raw = 1000 + 5*1000 = 6000;快档 ×FAST_WEIGHT
     equal(billableTokensForTrace(trace, roles), 6000 * FAST_WEIGHT, "T3 FAIL: 快档应乘 FAST_WEIGHT");
 
-    // subagent 槽模型在 v2 也是快档
+    // Nested role is accounted by its explicit tier, not a third model slot.
     const subTrace: UsageTrace = {
       startedAt: 1_000_000_000_000,
-      models: [{ model: "claude-sonnet-4-6", inputTokens: 1000 }],
+      models: [{ model: "claude-opus-4-8", executionTier: "fast", inputTokens: 1000 }],
     };
-    equal(billableTokensForTrace(subTrace, roles), 1000 * FAST_WEIGHT, "T3 FAIL: subagent 槽应为快档");
+    equal(billableTokensForTrace(subTrace, roles), 1000 * FAST_WEIGHT, "T3 FAIL: 子任务显式快档应按快速模型计费");
 
     // 显式 executionTier 覆盖同 ID
     const shared: UsageTrace = {

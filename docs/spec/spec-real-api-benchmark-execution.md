@@ -1,6 +1,6 @@
 # Finwork 真实 API Benchmark 执行 Spec
 
-状态：**Goal 可执行 / 待实施**
+状态：**Goal 实施契约**（基线缺口快照；实时进度见 Goal checkpoint）
 
 版本：`1.0`
 
@@ -10,7 +10,7 @@
 
 数据能力背景：[design-xlsx-capabilities.md](./design-xlsx-capabilities.md)
 
-> 本文是实施契约，不是当前完成情况说明。当前仓库已经具备数据集目录、Adapter、导入器、TaskContract、Scorer、Fixture Oracle 与 Gap Miner；尚未具备可付费运行的 production `BenchmarkExecutor`、真实 API 预检、私有 Oracle 隔离和真实运行报告 v2。Goal 必须按本文阶段顺序补齐后，才能把真实 API 结果当作产品评测结果。
+> 本文是实施契约，不是当前完成情况说明。第 3 节冻结的是 Goal 启动时、基线 `2295d76` 的缺口快照；不得据此覆盖 `.finwork-test/benchmarks/goal/spec-real-api-benchmark-execution-v1/` 中的阶段 checkpoint。Goal 必须按本文阶段顺序补齐后，才能把真实 API 结果当作产品评测结果。
 
 ## 1. Goal 目标
 
@@ -48,7 +48,7 @@
 
 真实请求必须同时满足：
 
-1. 设置中的 Key、URL、三槽模型配置就绪；
+1. 设置中的 Key、URL、快速/推理两模型配置就绪；
 2. 命令行带 `--confirm-real-api`；
 3. 当前进程设置 `FINWORK_ALLOW_REAL_API_BENCHMARKS=1`；
 4. 明确给出 `--max-cases`、token、wall-time 上限；
@@ -130,8 +130,8 @@ http://localhost:3000/config?tab=model
 | --- | --- | --- |
 | LLM URL | 官方填 `https://api.anthropic.com`；代理可填根地址或以 `/v1` 结尾的地址 | 自动拼成 `/v1/messages` |
 | API Key | Provider 分配的真实 Key | 仅存系统密钥库 |
-| 快速模型 | Provider 接受的**精确模型 ID** | `routerModel` + `subagentModel` |
-| 推理模型 | Provider 接受的**精确模型 ID** | `mainModel` |
+| 快速模型 | Provider 接受的**精确模型 ID** | `fastModel` |
+| 推理模型 | Provider 接受的**精确模型 ID** | `reasoningModel` |
 
 URL 示例：
 
@@ -160,10 +160,10 @@ URL 示例：
 
 ```bash
 curl -s http://localhost:3000/api/settings/agent \
-  | jq '.data | {apiUrl,apiKeyConfigured,apiKeyPersisted,routerModel,subagentModel,mainModel}'
+  | jq '.data | {apiUrl,apiKeyConfigured,apiKeyPersisted,fastModel,reasoningModel}'
 
 curl -s http://localhost:3000/api/settings/doctor \
-  | jq '.data | {apiKeyConfigured,modelConfigReady,missingModelRoles,python,spreadsheet}'
+  | jq '.data | {apiKeyConfigured,modelConfigReady,missingModelTiers,python,spreadsheet}'
 ```
 
 必须满足：
@@ -171,8 +171,8 @@ curl -s http://localhost:3000/api/settings/doctor \
 - `apiKeyConfigured == true`
 - `apiKeyPersisted == true`
 - `modelConfigReady == true`
-- `missingModelRoles == []`
-- `routerModel`、`subagentModel`、`mainModel` 均非空
+- `missingModelTiers == []`
+- `fastModel`、`reasoningModel` 均非空
 
 `/api/health?deep=1` 只检查服务和 URL 可达性，不验证 Key 权限、模型 ID 或真实推理成功，不能替代 Phase 4 的付费探针。
 
@@ -311,7 +311,7 @@ pnpm eval:benchmarks:real -- \
 --max-cost-usd <明确金额>
 ```
 
-如果价格未知，报告必须写 `pricingKnown: false` 和 `costUsd: null`，但 token、case、wall-time 上限仍必须生效。
+如果价格未知，报告必须写 `pricingKnown: false` 和 `costUsd: null`，但 token、case、wall-time 上限仍必须生效。输入 token 门禁必须计入普通 input、cache-read input 和 cache-creation input，并在报告中分字段保留。
 
 ## 8. 实施阶段
 
@@ -356,7 +356,7 @@ Phase 0 未通过：**禁止继续**。
 - max input/output tokens、wall time、可选 USD 上限
 - real API consent 状态
 - provider host（只记录 host，不记录 Key）
-- fast/reasoning/main/router/subagent 模型 ID
+- fast/reasoning 模型 ID 与各次调用的 executionRole
 - commit SHA、runner version、Node/pnpm/app 版本
 - dataset manifest SHA、source SHA、license status
 
@@ -456,15 +456,15 @@ Phase 0 未通过：**禁止继续**。
 - `/api/settings/agent` 与 `/api/settings/doctor` 等价的底层设置状态
 - Key 存在但不读取/打印明文
 - URL 解析后目标 host 合法
-- 三槽模型完整
+- 快速/推理两模型完整
 - 数据 manifest、ArtifactStore、DB、Python/XLSX worker、磁盘空间
 - real API consent、case/token/time/cost budgets
 - mock agent 未开启
 
 #### 付费 connection smoke
 
-- fast/router 模型一次最小请求。
-- reasoning/main 模型一次最小请求。
+- fast 模型一次最小请求。
+- reasoning 模型一次最小请求。
 - 每次使用唯一 nonce，确认不是缓存静态响应。
 - 验证 HTTP、Messages 响应结构、usage、model ID。
 - 401/403、400/404、模型不存在立即停止，不重试。
@@ -496,10 +496,22 @@ Phase 0 未通过：**禁止继续**。
 ### Phase 6：Pilot 与模型矩阵
 
 1. 先跑产品 pilot。
-2. 再用 FinBen/FinEval 做模型选择矩阵。
-3. 模型矩阵只改变模型槽位，不改变 prompt、工具、数据、预算和 scorer。
+2. 再用 FinQA/TAT-QA（扩展阶段可加入 FinBen/FinEval）做 answer-only 模型选择矩阵。
+3. 模型矩阵固定 prompt、公开上下文、数据、预算和 scorer，但不经过 Router、Pi、工具、Memory、repair 或交付 Harness；Agent 能力矩阵则固定一个模型并保留完整 production 链，两类结果禁止合并。
 4. 每个候选至少重复两次；报告同时展示正确率、验证通过率、p50/p95 latency、tokens、费用和基础设施失败率。
 5. 不以平均总分掩盖 XLSX 交付或引用的硬失败。
+
+### Phase 6A：三层评测口径门禁
+
+| 层 | 回答的问题 | 网络/模型 | 主要通过信号 |
+| --- | --- | --- | --- |
+| Harness | 合同、状态机、预算、证据、验证、交付和记账是否正确 | 零 Provider 请求 | 确定性回归与 soak |
+| Agent | 固定模型下 Finwork Agent 能否正确使用工具并形成证据/工件闭环 | 单一显式模型，跳过付费 Router；主/子 Agent 同模型 | TaskContract + Evidence + Artifact + blocking validators |
+| Model | 候选模型的答案推理能力如何 | 每 case 一次直连 completion，无工具 | answer/numeric/token F1；每候选至少两次 |
+
+真实运行配置必须记录 `evaluationLayer`；Agent/Model 层必须记录 `fixedModel`。Router 的真实
+Provider usage 必须合入 production trace；citation/retrieval 合同不得被 `cheap directAnswer`
+短路。工具调用次数与回复关键词只能用于诊断，不能替代证据、产物和确定性断言。
 
 ### Phase 7：能力修复与本地专业集
 

@@ -53,7 +53,7 @@ export const atomicMultirowWritesTestPromise = (async () => {
       () => sessionStage({
         traceId: "site-b-trace",
         startedAt: Date.now(),
-        settings: { roleMode: "tech", subagentModel: undefined },
+        settings: { roleMode: "tech", fastModel: "", reasoningModel: "" },
         roleMode: "tech",
         request: new Request("http://local/api/agent/query?stream=false"),
         requestSignal: undefined,

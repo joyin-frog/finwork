@@ -106,12 +106,18 @@ function textBlocks(values: unknown[], prefix: string) {
       return [{ id: identifier(`${prefix}_${index}`, `${prefix}-${index}`), text: value }];
     }
     if (isRecord(value)) {
-      const text = stringValue(value, ["text", "content", "paragraph"]);
+      const text = stringValue(value, ["text", "content", "paragraph", "evidence_text", "evidence_text_full_page"]);
       if (!text) return [];
       return [{
-        id: identifier(stringValue(value, ["uid", "id"], `${prefix}_${index}`), `${prefix}-${index}`),
+        id: identifier(
+          stringValue(value, ["uid", "id", "source_id", "evidence_doc_name", "doc_name"], `${prefix}_${index}`),
+          `${prefix}-${index}`,
+        ),
         text,
         ...(stringValue(value, ["title"]) ? { title: stringValue(value, ["title"]) } : {}),
+        ...(normalizePageLocator(firstValue(value, ["evidence_page_num", "page"]))
+          ? { locator: normalizePageLocator(firstValue(value, ["evidence_page_num", "page"])) }
+          : {}),
       }];
     }
     return [];
@@ -129,13 +135,81 @@ function citationsFrom(value: unknown): BenchmarkCitation[] {
   return value.flatMap((item, index) => {
     if (typeof item === "string") return [{ sourceId: identifier(item, `source-${index}`) }];
     if (!isRecord(item)) return [];
-    const sourceId = stringValue(item, ["source_id", "sourceId", "uid", "id", "doc_name"], `source-${index}`);
+    const sourceId = stringValue(item, ["source_id", "sourceId", "uid", "id", "evidence_doc_name", "doc_name"], `source-${index}`);
+    const explicitLocator = stringValue(item, ["locator", "section"]);
+    const pageLocator = normalizePageLocator(firstValue(item, ["page", "evidence_page_num"]));
     return [{
       sourceId: identifier(sourceId, `source-${index}`),
-      ...(stringValue(item, ["locator", "page", "section"]) ? { locator: stringValue(item, ["locator", "page", "section"]) } : {}),
-      ...(stringValue(item, ["quote", "text", "evidence"]) ? { quote: stringValue(item, ["quote", "text", "evidence"]) } : {}),
+      ...(explicitLocator || pageLocator ? { locator: explicitLocator || pageLocator } : {}),
+      ...(stringValue(item, ["quote", "text", "evidence", "evidence_text"]) ? { quote: stringValue(item, ["quote", "text", "evidence", "evidence_text"]) } : {}),
     }];
   });
+}
+
+function normalizePageLocator(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  const page = Number(value);
+  if (!Number.isInteger(page) || page < 0) return "";
+  return page > 0 ? `page:${page}` : "node:page-0";
+}
+
+function finQaCitations(value: unknown, preTextCount: number): BenchmarkCitation[] {
+  if (!isRecord(value)) return citationsFrom(value);
+  return Object.entries(value).flatMap(([key, quote]) => {
+    const table = /^table_(\d+)$/i.exec(key);
+    if (table) {
+      return [{
+        sourceId: "table",
+        locator: `node:table-row-${table[1]}`,
+        ...(typeof quote === "string" ? { quote } : {}),
+      }];
+    }
+    const text = /^text_(\d+)$/i.exec(key);
+    if (text) {
+      const ordinal = Number(text[1]);
+      const sourceId = ordinal < preTextCount
+        ? `pre_text_${ordinal}`
+        : `post_text_${ordinal - preTextCount}`;
+      return [{
+        sourceId,
+        locator: `node:${sourceId}`,
+        ...(typeof quote === "string" ? { quote } : {}),
+      }];
+    }
+    return citationsFrom({ [key]: quote });
+  });
+}
+
+function tatQaCitations(
+  question: Record<string, unknown>,
+  paragraphs: unknown[],
+  tableId: string,
+): BenchmarkCitation[] {
+  const citations: BenchmarkCitation[] = [];
+  const mappings = firstValue(question, ["mappings"]);
+  if (Array.isArray(mappings)) {
+    for (const mapping of mappings) {
+      if (!isRecord(mapping)) continue;
+      const table = mapping.table;
+      if (Array.isArray(table) && Number.isInteger(Number(table[0]))) {
+        citations.push({ sourceId: tableId, locator: `node:${tableId}-row-${Number(table[0])}` });
+      }
+    }
+  }
+  const paragraphByOrder = new Map(paragraphs.flatMap((paragraph) => {
+    if (!isRecord(paragraph)) return [];
+    const order = String(paragraph.order ?? "").trim();
+    const uid = stringValue(paragraph, ["uid", "id"]);
+    return order && uid ? [[order, uid] as const] : [];
+  }));
+  for (const order of stringArray(firstValue(question, ["rel_paragraphs"]))) {
+    const sourceId = paragraphByOrder.get(order);
+    if (sourceId) citations.push({ sourceId, locator: `node:${sourceId}` });
+  }
+  return [...new Map(citations.map((citation) => [
+    `${citation.sourceId}\u0000${citation.locator ?? ""}`,
+    citation,
+  ])).values()];
 }
 
 function buildCase(
@@ -187,7 +261,7 @@ export const FinQaAdapter: BenchmarkAdapter = {
         answers,
         numericAnswers: numericAnswers(answers),
         programs: stringArray(firstValue(qa, ["program"]) ?? firstValue(record, ["program"])),
-        citations: citationsFrom(firstValue(qa, ["gold_inds", "goldInds"])),
+        citations: finQaCitations(firstValue(qa, ["gold_inds", "goldInds"]), pre.length),
         assertions: [],
       },
       tags: ["public", "financial-reasoning", "table"],
@@ -201,7 +275,8 @@ export const TatQaAdapter: BenchmarkAdapter = {
     const questions = firstValue(record, ["questions"]);
     const questionList = Array.isArray(questions) ? questions : [asRecord(record)];
     const paragraphs = Array.isArray(firstValue(record, ["paragraphs"])) ? (firstValue(record, ["paragraphs"]) as unknown[]) : [];
-    const tables = tableFrom(firstValue(record, ["table"]), stringValue(record, ["table.uid"], "table"));
+    const tableId = stringValue(asRecord(firstValue(record, ["table"])), ["uid", "id"], "table");
+    const tables = tableFrom(firstValue(record, ["table"]), tableId);
     return questionList.map((question, index) => {
       const q = asRecord(question);
       const caseId = upstreamId(record, context, stringValue(q, ["uid", "id"], String(index)));
@@ -216,7 +291,7 @@ export const TatQaAdapter: BenchmarkAdapter = {
           answers,
           numericAnswers: numericAnswers(answers),
           programs: stringArray(firstValue(q, ["derivation", "program"])),
-          citations: citationsFrom(firstValue(q, ["rel_paragraphs", "evidence", "citations"])),
+          citations: tatQaCitations(q, paragraphs, tableId),
           assertions: [],
         },
         tags: ["public", "financial-reasoning", stringValue(q, ["answer_type"], "qa")],
@@ -276,11 +351,15 @@ function evidenceBlocks(record: unknown) {
 function ragCase(record: unknown, context: BenchmarkAdapterContext): NormalizedBenchmarkCase {
   const caseId = upstreamId(record, context);
   const answers = stringArray(firstValue(record, ["answer", "answers", "gold_answer", "expected_answer"]));
+  const rawEvidence = firstValue(record, ["evidence", "contexts", "documents", "passages"]);
   const evidence = evidenceBlocks(record);
   const explicitCitations = citationsFrom(firstValue(record, ["citations", "gold_citations", "evidence_ids"]));
+  const evidenceCitations = citationsFrom(rawEvidence);
   const citations = explicitCitations.length > 0
     ? explicitCitations
-    : evidence.map((item) => ({ sourceId: item.id, quote: item.text }));
+    : evidenceCitations.length > 0
+      ? evidenceCitations
+      : evidence.map((item) => ({ sourceId: item.id, quote: item.text }));
   return buildCase(context, {
     id: normalizedId(context, caseId),
     upstreamCaseId: caseId,
@@ -332,9 +411,27 @@ export const SpreadsheetBenchAdapter: BenchmarkAdapter = {
   format: "spreadsheetbench",
   adapt(record, context) {
     const caseId = upstreamId(record, context);
-    const inputNames = stringArray(firstValue(record, ["input_files", "input_file", "files", "workbook"]));
-    const logicalName = stringValue(record, ["output_file", "output_name", "expected_file"], `${caseId}-output.xlsx`);
+    const inputNames = stringArray(firstValue(record, [
+      "input_files",
+      "input_file",
+      "files",
+      "workbook",
+      "spreadsheet_path",
+    ]));
+    const explicitOutputPath = stringValue(record, [
+      "output_file",
+      "output_name",
+      "expected_file",
+    ]);
+    // The golden workbook path is private Oracle material, not the requested
+    // deliverable name. SpreadsheetBench v2 tasks conventionally produce a
+    // completed copy of the input workbook.
+    const logicalName = explicitOutputPath
+      ? explicitOutputPath.split(/[\\/]/).at(-1) || `${caseId}_completed.xlsx`
+      : `${caseId}_completed.xlsx`;
     const assertions = stringArray(firstValue(record, ["assertions", "checks", "expected", "validation"]));
+    const goldenUpstreamUri = stringValue(record, ["golden_response_path"]);
+    const answerRange = stringValue(record, ["answer_position"]);
     return [buildCase(context, {
       id: normalizedId(context, caseId),
       upstreamCaseId: caseId,
@@ -355,7 +452,15 @@ export const SpreadsheetBenchAdapter: BenchmarkAdapter = {
         artifact: {
           mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           logicalName,
-          validatorIds: ["benchmark.spreadsheet.deterministic"],
+          // This is the production deliverable validator that opens, recalculates,
+          // scans formula errors and re-hashes the immutable XLSX candidate.
+          validatorIds: [
+            "xlsx_generic",
+            ...(goldenUpstreamUri && answerRange ? ["spreadsheetbench_v2_cells"] : []),
+          ],
+          ...(goldenUpstreamUri && answerRange ? {
+            oracle: { goldenUpstreamUri, answerRange },
+          } : {}),
         },
       },
       tags: ["public", "spreadsheet", "artifact-required"],

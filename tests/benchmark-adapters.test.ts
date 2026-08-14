@@ -105,6 +105,52 @@ export const benchmarkAdaptersTestPromise = (async () => {
       }),
       /source contains no records/,
     );
+
+    const officialFinanceBenchPath = path.join(temporaryRoot, "financebench-official.jsonl");
+    await writeFile(officialFinanceBenchPath, `${JSON.stringify({
+      financebench_id: "financebench_id_03029",
+      question: "What was capital expenditure?",
+      answer: "$1577.00",
+      evidence: [{
+        evidence_text: "Purchases of property, plant and equipment were $1,577 million.",
+        evidence_doc_name: "3M_2018_10K",
+        evidence_page_num: 59,
+      }],
+    })}\n`, "utf8");
+    const officialFinanceBench = await importExternalBenchmarkSource({
+      datasetId: "financebench",
+      datasetVersion: "official-schema-test",
+      split: "test",
+      sourcePath: officialFinanceBenchPath,
+      acknowledgeLicenseReview: true,
+    });
+    assert.equal(officialFinanceBench.cases[0]?.context.textBlocks[0]?.text, "Purchases of property, plant and equipment were $1,577 million.");
+    assert.equal(officialFinanceBench.cases[0]?.context.textBlocks[0]?.locator, "page:59");
+    assert.equal(officialFinanceBench.cases[0]?.expected.citations[0]?.locator, "page:59");
+    assert.equal(officialFinanceBench.cases[0]?.expected.citations[0]?.quote, "Purchases of property, plant and equipment were $1,577 million.");
+
+    const officialSpreadsheetBenchPath = path.join(temporaryRoot, "spreadsheetbench-v2-official.json");
+    await writeFile(officialSpreadsheetBenchPath, `${JSON.stringify([{
+      id: "financial-model-001",
+      instruction: "Complete the financial model.",
+      spreadsheet_path: "Financial_Model/spreadsheet/input.xlsx",
+      golden_response_path: "Financial_Model/golden_response/answer.xlsx",
+      answer_position: "'Model'!B2:C3",
+    }])}\n`, "utf8");
+    const officialSpreadsheetBench = await importExternalBenchmarkSource({
+      datasetId: "spreadsheetbench_v2",
+      datasetVersion: "official-schema-test",
+      split: "test",
+      sourcePath: officialSpreadsheetBenchPath,
+      acknowledgeLicenseReview: true,
+    });
+    assert.deepEqual(officialSpreadsheetBench.cases[0]?.context.files.map((file) => file.upstreamUri), [
+      "Financial_Model/spreadsheet/input.xlsx",
+    ]);
+    assert.equal(officialSpreadsheetBench.cases[0]?.expected.artifact?.logicalName, "financial-model-001_completed.xlsx");
+    assert.deepEqual(officialSpreadsheetBench.cases[0]?.expected.artifact?.validatorIds, ["xlsx_generic", "spreadsheetbench_v2_cells"]);
+    assert.equal(officialSpreadsheetBench.cases[0]?.expected.artifact?.oracle?.goldenUpstreamUri, "Financial_Model/golden_response/answer.xlsx");
+    assert.equal(officialSpreadsheetBench.cases[0]?.expected.artifact?.oracle?.answerRange, "'Model'!B2:C3");
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -126,7 +172,7 @@ export const benchmarkAdaptersTestPromise = (async () => {
   const materializedSpreadsheet = createBenchmarkTaskContract(materializedSpreadsheetPartition.executionCase);
   assert.equal(materializedSpreadsheet.missingExternalInputs.length, 0);
   assert.equal(materializedSpreadsheet.contract.expectedOutputs[0]?.immutableDelivery, true);
-  assert.deepEqual(materializedSpreadsheet.contract.expectedOutputs[0]?.validatorIds, ["benchmark.spreadsheet.deterministic"]);
+  assert.deepEqual(materializedSpreadsheet.contract.expectedOutputs[0]?.validatorIds, ["xlsx_generic"]);
 
   const report = await runBenchmarkFixtureSuite({
     suiteName: "synthetic adapter wiring",
@@ -156,7 +202,13 @@ export const benchmarkAdaptersTestPromise = (async () => {
     sources: report.sources.map(({ manifestSha256: _manifestSha256, ...source }) => source),
     results: report.results.map(({ execution: _execution, ...result }) => result),
   };
-  const { realApi: _realApi, configuration: _configuration, ...v1Fields } = v1Report;
+  const {
+    realApi: _realApi,
+    configuration: _configuration,
+    runStatus: _runStatus,
+    stopReason: _stopReason,
+    ...v1Fields
+  } = v1Report;
   const migratedReport = parseBenchmarkRunReport(v1Fields);
   assert.equal(migratedReport.schemaVersion, 2);
   assert.equal(migratedReport.configuration.kind, "legacy-v1");

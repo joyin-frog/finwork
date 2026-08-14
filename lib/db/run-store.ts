@@ -17,7 +17,7 @@ import {
   type SettledOutcome,
   type TerminationReason,
 } from "@/lib/agent/run-contract";
-import type { ExecutionTier, ModelRole } from "@/lib/settings/model-config";
+import type { ExecutionRole, ExecutionTier } from "@/lib/settings/model-config";
 
 export const RUN_REPLAY_SCHEMA_VERSION = 1 as const;
 
@@ -41,7 +41,7 @@ export type AgentRunRow = {
   qualityStatus: QualityStatus;
   sessionId: string | null;
   modelUsed: string | null;
-  modelRole: ModelRole | null;
+  modelRole: ExecutionRole | null;
   executionTier: ExecutionTier | null;
   modelFallbackReason: string | null;
   startedAt: string;
@@ -63,7 +63,7 @@ export type CreateAgentRunInput = {
   conversationId?: number | null;
   sessionId?: string | null;
   modelUsed?: string | null;
-  modelRole?: ModelRole | null;
+  modelRole?: ExecutionRole | null;
   executionTier?: ExecutionTier | null;
   modelFallbackReason?: string | null;
   /** 默认 queued（spec Trace Semantics） */
@@ -115,7 +115,7 @@ function mapRunRow(r: DbRunRow): AgentRunRow {
     qualityStatus: (r.quality_status as QualityStatus) || "not_applicable",
     sessionId: r.session_id,
     modelUsed: r.model_used,
-    modelRole: (r.model_role as ModelRole | null) ?? null,
+    modelRole: (r.model_role as ExecutionRole | null) ?? null,
     executionTier: (r.execution_tier as ExecutionTier | null) ?? null,
     modelFallbackReason: r.model_fallback_reason,
     startedAt: r.started_at,
@@ -186,7 +186,7 @@ export function updateAgentRunModel(
   runId: string,
   model: {
     modelUsed?: string | null;
-    modelRole?: ModelRole | null;
+    modelRole?: ExecutionRole | null;
     executionTier?: ExecutionTier | null;
     modelFallbackReason?: string | null;
   },

@@ -38,6 +38,7 @@ export type FilingPrecheckBatchDeps = {
   /** Runtime-authoritative memory scope inherited by every batch child. */
   memoryContext?: Partial<MemoryRuntimeContext> | null;
   foundation?: AgentFoundationContext;
+  modelOverride?: string;
 };
 
 const TEMPLATE_IDS = ["vat-filing-precheck", "iit-filing-precheck"] as const;
@@ -113,6 +114,7 @@ export function createRunFilingPrecheckBatchTool(
         conversationId,
         memoryContext: deps?.memoryContext,
         foundation: deps?.foundation,
+        modelOverride: deps?.modelOverride,
         onEvent: onSubagentEvent,
         signal: execution?.signal,
       });

@@ -20,9 +20,13 @@ import {
   type BenchmarkScores,
   type NormalizedBenchmarkCase,
 } from "./contracts";
+import type { FaultDomain } from "@/lib/evaluation/contracts";
 import { partitionBenchmarkCase } from "./case-boundary";
 import { createFixtureOracle, type BenchmarkFixtureOracle } from "./fixture-oracle";
-import { createBenchmarkTaskContract } from "./task-contract";
+import {
+  createBenchmarkTaskContract,
+  type BenchmarkTaskContractOptions,
+} from "./task-contract";
 import { scoreBenchmarkPrediction } from "./scoring";
 import {
   createEmptyExecutionSummary,
@@ -39,7 +43,29 @@ export interface RunBenchmarkSuiteOptions {
   now?: () => Date;
   publishable?: boolean;
   inputArtifactsByCaseId?: Readonly<Record<string, ArtifactRef[]>>;
+  oracleArtifactsByCaseId?: Readonly<Record<string, ArtifactRef[]>>;
+  validatePrediction?: (input: {
+    executionCase: BenchmarkExecutionCase;
+    oracle: BenchmarkEvaluationOracle;
+    prediction: BenchmarkPrediction;
+  }) => Promise<BenchmarkPrediction>;
   configuration?: BenchmarkRunConfigSnapshot;
+  taskContractOptions?: BenchmarkTaskContractOptions;
+  taskContractOptionsForCase?: (input: {
+    benchmarkCase: NormalizedBenchmarkCase;
+    results: readonly BenchmarkCaseResultV2[];
+  }) => BenchmarkTaskContractOptions;
+  resumeResults?: readonly BenchmarkCaseResultV2[];
+  onCaseStart?: (input: { benchmarkCase: NormalizedBenchmarkCase; ordinal: number; runId: string }) => void | Promise<void>;
+  onCaseResult?: (input: { result: BenchmarkCaseResultV2; ordinal: number; runId: string }) => void | Promise<void>;
+  stopAfterCase?: (input: {
+    result: BenchmarkCaseResultV2;
+    results: readonly BenchmarkCaseResultV2[];
+  }) => { code: string; faultDomain?: FaultDomain } | null;
+  stopBeforeCase?: (input: {
+    benchmarkCase: NormalizedBenchmarkCase;
+    results: readonly BenchmarkCaseResultV2[];
+  }) => { code: string; faultDomain?: FaultDomain } | null;
 }
 
 export interface RunBenchmarkFixtureSuiteOptions {
@@ -50,6 +76,8 @@ export interface RunBenchmarkFixtureSuiteOptions {
   now?: () => Date;
   publishable?: false;
   inputArtifactsByCaseId?: Readonly<Record<string, ArtifactRef[]>>;
+  oracleArtifactsByCaseId?: Readonly<Record<string, ArtifactRef[]>>;
+  validatePrediction?: RunBenchmarkSuiteOptions["validatePrediction"];
   oracle?: BenchmarkFixtureOracle;
   configuration?: BenchmarkRunConfigSnapshot;
 }
@@ -101,7 +129,16 @@ interface RunBenchmarkSuiteInternalOptions {
   fixtureOracle: boolean;
   publishable: boolean;
   inputArtifactsByCaseId?: Readonly<Record<string, ArtifactRef[]>>;
+  oracleArtifactsByCaseId?: Readonly<Record<string, ArtifactRef[]>>;
+  validatePrediction?: RunBenchmarkSuiteOptions["validatePrediction"];
   configuration?: BenchmarkRunConfigSnapshot;
+  taskContractOptions?: BenchmarkTaskContractOptions;
+  taskContractOptionsForCase?: RunBenchmarkSuiteOptions["taskContractOptionsForCase"];
+  resumeResults?: readonly BenchmarkCaseResultV2[];
+  onCaseStart?: RunBenchmarkSuiteOptions["onCaseStart"];
+  onCaseResult?: RunBenchmarkSuiteOptions["onCaseResult"];
+  stopAfterCase?: RunBenchmarkSuiteOptions["stopAfterCase"];
+  stopBeforeCase?: RunBenchmarkSuiteOptions["stopBeforeCase"];
 }
 
 function buildCaseResult(input: {
@@ -152,17 +189,32 @@ async function runBenchmarkSuiteInternal(options: RunBenchmarkSuiteInternalOptio
     throw new Error(`benchmark case count ${options.cases.length} exceeds configured maxCases ${configuration.maxCases}`);
   }
   const startedAt = now().toISOString();
-  const results: BenchmarkCaseResultV2[] = [];
+  const caseIds = new Set(options.cases.map((benchmarkCase) => benchmarkCase.id));
+  const results = (options.resumeResults ?? []).map((result) => BenchmarkCaseResultV2Schema.parse(result));
+  if (new Set(results.map((result) => result.caseId)).size !== results.length) {
+    throw new Error("benchmark resume results contain duplicate case IDs");
+  }
+  if (results.some((result) => !caseIds.has(result.caseId))) {
+    throw new Error("benchmark resume result does not belong to the selected suite");
+  }
+  let stopReason: { code: string; faultDomain?: FaultDomain } | null = null;
 
-  for (const benchmarkCase of options.cases) {
+  for (const [ordinal, benchmarkCase] of options.cases.entries()) {
+    if (results.some((result) => result.caseId === benchmarkCase.id)) continue;
+    stopReason = options.stopBeforeCase?.({ benchmarkCase, results }) ?? null;
+    if (stopReason) break;
     if (options.signal?.aborted) {
       throw options.signal.reason instanceof Error ? options.signal.reason : new Error("benchmark run aborted");
     }
+    await options.onCaseStart?.({ benchmarkCase, ordinal, runId });
     const { executionCase, oracle } = partitionBenchmarkCase(
       benchmarkCase,
       options.inputArtifactsByCaseId?.[benchmarkCase.id],
+      options.oracleArtifactsByCaseId?.[benchmarkCase.id],
     );
-    const materialization = createBenchmarkTaskContract(executionCase);
+    const taskContractOptions = options.taskContractOptionsForCase?.({ benchmarkCase, results })
+      ?? options.taskContractOptions;
+    const materialization = createBenchmarkTaskContract(executionCase, taskContractOptions);
     if (materialization.missingExternalInputs.length > 0) {
       const result = scoreFailureResult({
         caseId: benchmarkCase.id,
@@ -184,21 +236,29 @@ async function runBenchmarkSuiteInternal(options: RunBenchmarkSuiteInternalOptio
         metrics: { wallTimeMs: 0, tokens: 0, retries: 0, toolCalls: 0 },
         details: { missingExternalInputs: materialization.missingExternalInputs },
       });
-      results.push(buildCaseResult({ result, benchmarkCase, runId, failureCode: "benchmark_input_not_materialized" }));
+      const built = buildCaseResult({ result, benchmarkCase, runId, failureCode: "benchmark_input_not_materialized" });
+      results.push(built);
+      await options.onCaseResult?.({ result: built, ordinal, runId });
+      stopReason = options.stopAfterCase?.({ result: built, results }) ?? null;
+      if (stopReason) break;
       continue;
     }
+    let built: BenchmarkCaseResultV2;
     try {
-      const prediction = await options.predictionProvider(executionCase, oracle, {
+      const rawPrediction = await options.predictionProvider(executionCase, oracle, {
         signal: options.signal,
         taskContract: materialization.contract,
         missingExternalInputs: materialization.missingExternalInputs,
       });
-      results.push(buildCaseResult({
+      const prediction = options.validatePrediction
+        ? await options.validatePrediction({ executionCase, oracle, prediction: rawPrediction })
+        : rawPrediction;
+      built = buildCaseResult({
         result: scoreBenchmarkPrediction(executionCase, oracle, prediction),
         benchmarkCase,
         runId,
         prediction,
-      }));
+      });
     } catch (error) {
       const result = scoreFailureResult({
         caseId: benchmarkCase.id,
@@ -220,8 +280,12 @@ async function runBenchmarkSuiteInternal(options: RunBenchmarkSuiteInternalOptio
         metrics: { wallTimeMs: 0, tokens: 0, retries: 0, toolCalls: 0 },
         details: { message: error instanceof Error ? error.message : String(error) },
       });
-      results.push(buildCaseResult({ result, benchmarkCase, runId, failureCode: "evaluator_error" }));
+      built = buildCaseResult({ result, benchmarkCase, runId, failureCode: "evaluator_error" });
     }
+    results.push(built);
+    await options.onCaseResult?.({ result: built, ordinal, runId });
+    stopReason = options.stopAfterCase?.({ result: built, results }) ?? null;
+    if (stopReason) break;
   }
 
   const byDataset: Partial<Record<BenchmarkDatasetId, { cases: number; passed: number }>> = {};
@@ -287,6 +351,8 @@ async function runBenchmarkSuiteInternal(options: RunBenchmarkSuiteInternalOptio
     byCapability,
     byFaultDomain,
     results,
+    runStatus: stopReason ? "stopped" : "completed",
+    ...(stopReason ? { stopReason } : {}),
   });
 }
 

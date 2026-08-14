@@ -42,6 +42,8 @@ const TOOL_CAPABILITY_MAP: Readonly<Record<string, readonly string[]>> = {
   check_workbook_ties: ["spreadsheet.read", "spreadsheet.validate"],
   finalize_deliverable: ["spreadsheet.validate", "artifact.deliver"],
   search: ["retrieval.search"],
+  search_knowledge: ["retrieval.search"],
+  query_knowledge: ["retrieval.search"],
   research_web: ["research.web"],
   web_search: ["research.web-search"],
   fetch_url: ["research.fetch"],

@@ -54,7 +54,7 @@ async function main() {
   const hasApiKey = settings.apiKey.trim().length > 0;
   const modelReady = getModelConfigReadiness(settings).modelConfigReady;
   if (!SKIP_LLM && (!hasApiKey || !modelReady)) {
-    const missing = getModelConfigReadiness(settings).missingModelRoles.join(", ");
+    const missing = getModelConfigReadiness(settings).missingModelTiers.join(", ");
     throw new Error(
       `真实 Golden 评测需要 API key 和完整模型配置；当前缺少${hasApiKey ? "模型槽位" : "API key"}${missing ? ` (${missing})` : ""}。` +
       "如需只跑静态评分，请显式设置 SKIP_LLM=true。",
@@ -267,7 +267,7 @@ async function runJudge(gc: GoldenCase, response: string, toolCalls: string[]): 
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: settings.routerModel || settings.model,
+        model: settings.fastModel,
         max_tokens: 500,
         messages: [{ role: "user", content: judgePrompt }],
       }),

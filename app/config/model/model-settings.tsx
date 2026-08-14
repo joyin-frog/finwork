@@ -48,7 +48,7 @@ export function ModelSettings({
             id="fast-model"
             value={fastModel}
             onChange={(e) => onFastModelChange(e.target.value)}
-            placeholder="用于路由、标题与子代理"
+            placeholder="用于路由和默认对话"
           />
         </SettingsRow>
         <SettingsRow label="推理模型" htmlFor="reasoning-model" wide>
@@ -56,7 +56,7 @@ export function ModelSettings({
             id="reasoning-model"
             value={reasoningModel}
             onChange={(e) => onReasoningModelChange(e.target.value)}
-            placeholder="用于复杂任务与显式推理"
+            placeholder="用于深度思考与复杂子任务"
           />
         </SettingsRow>
         {sameModel ? (

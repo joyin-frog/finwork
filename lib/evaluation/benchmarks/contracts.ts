@@ -90,6 +90,7 @@ const BenchmarkTextBlockSchema = z
     id: IdentifierSchema,
     text: z.string(),
     title: z.string().trim().min(1).optional(),
+    locator: z.string().trim().min(1).optional(),
   })
   .strict();
 
@@ -136,6 +137,16 @@ export const BenchmarkArtifactExpectationSchema = z
   .strict();
 export type BenchmarkArtifactExpectation = z.infer<typeof BenchmarkArtifactExpectationSchema>;
 
+const BenchmarkSpreadsheetOracleSchema = z.object({
+  goldenUpstreamUri: z.string().trim().min(1),
+  answerRange: z.string().trim().min(1),
+  goldenArtifactRef: ArtifactRefSchema.optional(),
+}).strict();
+
+const BenchmarkExpectedArtifactSchema = BenchmarkArtifactExpectationSchema.extend({
+  oracle: BenchmarkSpreadsheetOracleSchema.optional(),
+}).strict();
+
 export const BenchmarkExpectedSchema = z
   .object({
     answers: z.array(z.string()),
@@ -143,7 +154,7 @@ export const BenchmarkExpectedSchema = z
     programs: z.array(z.string()),
     citations: z.array(BenchmarkCitationSchema),
     assertions: z.array(z.string().trim().min(1)),
-    artifact: BenchmarkArtifactExpectationSchema.optional(),
+    artifact: BenchmarkExpectedArtifactSchema.optional(),
   })
   .strict();
 export type BenchmarkExpected = z.infer<typeof BenchmarkExpectedSchema>;
@@ -299,6 +310,8 @@ export const BenchmarkPredictionSchema = z
         conversationId: z.number().int().positive().optional(),
         inputTokens: z.number().int().nonnegative(),
         outputTokens: z.number().int().nonnegative(),
+        cacheReadInputTokens: z.number().int().nonnegative().default(0),
+        cacheCreationInputTokens: z.number().int().nonnegative().default(0),
         latencyMs: z.number().int().nonnegative(),
         retries: z.number().int().nonnegative(),
         costUsd: z.number().nonnegative().nullable(),
@@ -398,11 +411,15 @@ export const BenchmarkRunReportV1Schema = z
   .strict();
 export const BenchmarkProfileSchema = z.enum(["connection-smoke", "benchmark-smoke", "pilot", "full"]);
 export type BenchmarkProfile = z.infer<typeof BenchmarkProfileSchema>;
+export const BenchmarkEvaluationLayerSchema = z.enum(["mixed", "harness", "agent", "model"]);
+export type BenchmarkEvaluationLayer = z.infer<typeof BenchmarkEvaluationLayerSchema>;
 
 export const RealBenchmarkRunConfigSchema = z
   .object({
     kind: z.literal("real"),
     profile: BenchmarkProfileSchema,
+    evaluationLayer: BenchmarkEvaluationLayerSchema.optional(),
+    fixedModel: z.string().trim().min(1).optional(),
     datasets: z.array(z.object({
       datasetId: BenchmarkDatasetIdSchema,
       split: IdentifierSchema,
@@ -422,10 +439,8 @@ export const RealBenchmarkRunConfigSchema = z
     models: z.object({
       fast: z.string().trim().min(1),
       reasoning: z.string().trim().min(1),
-      main: z.string().trim().min(1),
-      router: z.string().trim().min(1),
-      subagent: z.string().trim().min(1),
     }).strict(),
+    modelTierSeparated: z.boolean(),
     commitSha: z.string().trim().min(1),
     runnerVersion: z.string().trim().min(1),
     nodeVersion: z.string().trim().min(1),
@@ -436,6 +451,9 @@ export const RealBenchmarkRunConfigSchema = z
   .superRefine((value, ctx) => {
     if (value.pricingKnown && value.maxCostUsd === undefined) {
       ctx.addIssue({ code: "custom", path: ["maxCostUsd"], message: "known pricing requires an explicit USD budget" });
+    }
+    if ((value.evaluationLayer === "agent" || value.evaluationLayer === "model") && !value.fixedModel) {
+      ctx.addIssue({ code: "custom", path: ["fixedModel"], message: `${value.evaluationLayer} evaluation requires one explicit fixed model` });
     }
   });
 export type RealBenchmarkRunConfig = z.infer<typeof RealBenchmarkRunConfigSchema>;
@@ -479,6 +497,11 @@ export const BenchmarkRunReportV2Schema = BenchmarkRunReportV1Schema.omit({
   configuration: BenchmarkRunConfigSnapshotSchema,
   sources: z.array(BenchmarkRunSourceV2Schema).min(1),
   results: z.array(BenchmarkCaseResultV2Schema),
+  runStatus: z.enum(["completed", "stopped"]).optional(),
+  stopReason: z.object({
+    code: z.string().trim().min(1),
+    faultDomain: FaultDomainSchema.optional(),
+  }).strict().optional(),
 }).strict();
 export type BenchmarkRunReportV1 = z.infer<typeof BenchmarkRunReportV1Schema>;
 export type BenchmarkRunReportV2 = z.infer<typeof BenchmarkRunReportV2Schema>;
@@ -504,6 +527,37 @@ export const BenchmarkImportManifestSchema = z
   })
   .strict();
 export type BenchmarkImportManifest = z.infer<typeof BenchmarkImportManifestSchema>;
+
+export const BenchmarkMaterializedSourceSchema = z.object({
+  sourceId: IdentifierSchema,
+  artifactRef: ArtifactRefSchema,
+  locator: z.string().trim().min(1),
+  retrievalDocumentId: IdentifierSchema.optional(),
+}).strict();
+export type BenchmarkMaterializedSource = z.infer<typeof BenchmarkMaterializedSourceSchema>;
+
+export const BenchmarkCaseMaterializationSchema = z.object({
+  caseId: IdentifierSchema,
+  normalizedCaseSha256: Sha256Schema,
+  inputArtifacts: z.array(ArtifactRefSchema),
+  oracleArtifacts: z.array(ArtifactRefSchema).optional(),
+  sources: z.array(BenchmarkMaterializedSourceSchema),
+}).strict();
+export type BenchmarkCaseMaterialization = z.infer<typeof BenchmarkCaseMaterializationSchema>;
+
+export const BenchmarkMaterializationManifestSchema = z.object({
+  schemaVersion: z.literal(1),
+  datasetId: BenchmarkDatasetIdSchema,
+  datasetVersion: IdentifierSchema,
+  split: IdentifierSchema,
+  importManifestSha256: Sha256Schema,
+  sourceSha256: Sha256Schema,
+  licenseStatus: z.enum(["verified", "review_required"]),
+  licenseAcknowledged: z.literal(true),
+  createdAt: IsoDateTimeSchema,
+  cases: z.array(BenchmarkCaseMaterializationSchema).min(1),
+}).strict();
+export type BenchmarkMaterializationManifest = z.infer<typeof BenchmarkMaterializationManifestSchema>;
 
 export const BenchmarkGapProposalSchema = z
   .object({

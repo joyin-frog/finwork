@@ -19,7 +19,7 @@ export const queryStagesTestPromise = (async () => {
   // 构造最小 ctx (parseStage 产出的上游字段)
   const makeCtx = (overrides: Record<string, unknown> = {}) => ({
     traceId: "test-trace-id",
-    settings: { roleMode: "tech" as const, subagentModel: undefined as string | undefined },
+    settings: { roleMode: "tech" as const, fastModel: "", reasoningModel: "" },
     roleMode: "tech" as string,
     messages: [{ role: "user" as const, content: "你好" }],
     attachments: [],

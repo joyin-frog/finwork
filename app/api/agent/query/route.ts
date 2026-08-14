@@ -60,7 +60,7 @@ const log = createLogger("agent-query");
 export async function POST(request: Request) {
   const traceId = randomUUID();
   const startedAt = Date.now();
-  const settings = await readAgentSettings().catch(() => ({ roleMode: "tech" as const, subagentModel: undefined as string | undefined })) as Awaited<ReturnType<typeof readAgentSettings>>;
+  const settings = await readAgentSettings().catch(() => ({ roleMode: "tech" as const, fastModel: "", reasoningModel: "" })) as Awaited<ReturnType<typeof readAgentSettings>>;
   const roleMode = settings.roleMode as string;
   log.info("request start", { traceId });
 
@@ -92,8 +92,6 @@ export async function POST(request: Request) {
     settings,
     modelTier,
     routerPath: routerResult.path,
-    routerIntent: routerResult.decision.intent,
-    sessionRoleId,
     routerFailureHint: routerResult.path === "fallback" ? routerResult.decision.reasoning : null,
   });
   const modelOverride = resolvedModel?.modelId ?? tierModelOverride;
@@ -104,7 +102,7 @@ export async function POST(request: Request) {
     log.info("agent start", {
       traceId, conversationId, runtimeSessionId, streaming: useStreaming,
       model: modelOverride ?? null,
-      modelRole: resolvedModel?.modelRole ?? null,
+      modelRole: resolvedModel?.executionRole ?? null,
       executionTier: resolvedModel?.executionTier ?? null,
       fallbackReason: resolvedModel?.fallbackReason ?? null,
     });
@@ -115,7 +113,7 @@ export async function POST(request: Request) {
       conversationId: conversationId ?? null,
       sessionId: runtimeSessionId,
       modelUsed: resolvedModel?.modelId ?? modelOverride ?? null,
-      modelRole: resolvedModel?.modelRole ?? null,
+      modelRole: resolvedModel?.executionRole ?? null,
       executionTier: resolvedModel?.executionTier ?? null,
       modelFallbackReason: resolvedModel?.fallbackReason ?? null,
       status: "queued",

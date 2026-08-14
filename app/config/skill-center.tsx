@@ -29,8 +29,8 @@ export default function SkillCenter({
   const [agentSettings, setAgentSettings] = useState(initialAgentSettings);
   const [apiUrl, setApiUrl] = useState(initialAgentSettings.apiUrl);
   const [apiKey, setApiKey] = useState("");
-  const [fastModel, setFastModel] = useState(initialAgentSettings.routerModel);
-  const [reasoningModel, setReasoningModel] = useState(initialAgentSettings.mainModel);
+  const [fastModel, setFastModel] = useState(initialAgentSettings.fastModel);
+  const [reasoningModel, setReasoningModel] = useState(initialAgentSettings.reasoningModel);
   const [companyName, setCompanyName] = useState(initialAgentSettings.companyName);
   const [agentName, setAgentName] = useState(initialAgentSettings.agentName);
   const [userName, setUserName] = useState(initialAgentSettings.userName);
@@ -83,8 +83,8 @@ export default function SkillCenter({
       }
       setAgentSettings(payload.data);
       setApiUrl(payload.data.apiUrl);
-      setFastModel(payload.data.routerModel);
-      setReasoningModel(payload.data.mainModel);
+      setFastModel(payload.data.fastModel);
+      setReasoningModel(payload.data.reasoningModel);
       setCompanyName(payload.data.companyName);
       setAgentName(payload.data.agentName);
       setUserName(payload.data.userName);

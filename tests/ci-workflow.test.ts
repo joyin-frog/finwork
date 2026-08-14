@@ -9,7 +9,13 @@ export const ciWorkflowTestPromise = (async () => {
   //  typecheck/test/golden 步骤在 ci-verify.yml 的并行 job 里。)
   const ci = readFileSync(".github/workflows/ci.yml", "utf-8");
   const verify = readFileSync(".github/workflows/ci-verify.yml", "utf-8");
-  for (const step of ["npm ci", "npm run lint", "npm run typecheck", "npm test", "npm run eval:golden:ci"]) {
+  for (const step of [
+    "pnpm install --frozen-lockfile",
+    "pnpm run lint",
+    "pnpm run typecheck",
+    "pnpm test",
+    "pnpm run eval:golden:ci",
+  ]) {
     assert.ok(verify.includes(step), `AC6.1 FAIL: ci-verify.yml 缺少步骤 ${step}`);
   }
   assert.ok(/on:\s/.test(ci) && ci.includes("pull_request"), "AC6.1 FAIL: ci.yml 应在 PR 上触发");
@@ -21,7 +27,7 @@ export const ciWorkflowTestPromise = (async () => {
 
   // 实跑 tsc(排除 tests 的主代码配置),退出非 0 会抛 → 测试失败
   try {
-    execFileSync("npx", ["tsc", "-p", "tsconfig.typecheck.json"], { stdio: "pipe", timeout: 120_000 });
+    execFileSync("pnpm", ["exec", "tsc", "-p", "tsconfig.typecheck.json"], { stdio: "pipe", timeout: 120_000 });
   } catch (error) {
     const out = (error as { stdout?: Buffer; stderr?: Buffer });
     const detail = `${out.stdout?.toString() ?? ""}${out.stderr?.toString() ?? ""}`.slice(0, 2000);

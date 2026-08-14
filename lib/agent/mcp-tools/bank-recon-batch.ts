@@ -38,6 +38,7 @@ export type BankReconBatchDeps = {
   /** Runtime-authoritative memory scope inherited by every batch child. */
   memoryContext?: Partial<MemoryRuntimeContext> | null;
   foundation?: AgentFoundationContext;
+  modelOverride?: string;
 };
 
 export function createRunBankReconBatchTool(
@@ -168,6 +169,7 @@ export function createRunBankReconBatchTool(
         conversationId,
         memoryContext: deps?.memoryContext,
         foundation: deps?.foundation,
+        modelOverride: deps?.modelOverride,
         onEvent: onSubagentEvent,
         signal: execution?.signal,
       });

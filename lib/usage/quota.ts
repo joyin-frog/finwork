@@ -17,10 +17,9 @@ const CACHE_READ_WEIGHT = 0.1;
 /** 快档(router 类轻模型)相对推理档基准 1.0 的成本系数。Haiku≈Opus/Sonnet 的 1/3~1/12,取保守中值。 */
 export const FAST_WEIGHT = 0.3;
 
-export type RoleModels = {
-  routerModel?: string;
-  mainModel?: string;
-  subagentModel?: string;
+export type TierModels = {
+  fastModel?: string;
+  reasoningModel?: string;
 };
 
 export type ModelTokens = {
@@ -55,12 +54,12 @@ export type WindowUsage = {
  */
 export function classifyTier(
   model: string,
-  roles: RoleModels,
+  models: TierModels,
   executionTier?: "fast" | "reasoning",
 ): "fast" | "reasoning" {
   if (executionTier === "fast" || executionTier === "reasoning") return executionTier;
-  if (matchesSlot(model, roles.mainModel)) return "reasoning";
-  if (matchesSlot(model, roles.routerModel) || matchesSlot(model, roles.subagentModel)) return "fast";
+  if (matchesSlot(model, models.reasoningModel)) return "reasoning";
+  if (matchesSlot(model, models.fastModel)) return "fast";
   return "reasoning";
 }
 
@@ -72,12 +71,12 @@ function matchesSlot(model: string, slot: string | undefined): boolean {
   return m === s || m.includes(s) || s.includes(m);
 }
 
-function tierWeight(entry: ModelTokens, roles: RoleModels): number {
-  return classifyTier(entry.model, roles, entry.executionTier) === "fast" ? FAST_WEIGHT : 1.0;
+function tierWeight(entry: ModelTokens, models: TierModels): number {
+  return classifyTier(entry.model, models, entry.executionTier) === "fast" ? FAST_WEIGHT : 1.0;
 }
 
 /** 单条 trace 的成本加权计费 token:逐模型分档,token 类型按成本比折算后求和。 */
-export function billableTokensForTrace(trace: UsageTrace, roles: RoleModels): number {
+export function billableTokensForTrace(trace: UsageTrace, models: TierModels): number {
   let total = 0;
   for (const m of trace.models) {
     const raw =
@@ -85,7 +84,7 @@ export function billableTokensForTrace(trace: UsageTrace, roles: RoleModels): nu
       OUTPUT_WEIGHT * (m.outputTokens ?? 0) +
       CACHE_WRITE_WEIGHT * (m.cacheCreationTokens ?? 0) +
       CACHE_READ_WEIGHT * (m.cacheReadTokens ?? 0);
-    total += tierWeight(m, roles) * raw;
+    total += tierWeight(m, models) * raw;
   }
   return total;
 }
@@ -102,11 +101,11 @@ function computeWindow(
   windowStart: number,
   durationMs: number,
   limit: number,
-  roles: RoleModels,
+  models: TierModels,
 ): WindowUsage {
   let used = 0;
   for (const t of traces) {
-    if (t.startedAt >= windowStart) used += billableTokensForTrace(t, roles);
+    if (t.startedAt >= windowStart) used += billableTokensForTrace(t, models);
   }
   const pct = Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
   return { used, pct, resetAt: windowStart + durationMs };
@@ -156,7 +155,7 @@ export function computeUsage(args: {
   now: number;
   storedStart5h: number | null;
   storedStartWeek: number | null;
-  roles: RoleModels;
+  roles: TierModels;
 }): UsageResult {
   const { traces, now, storedStart5h, storedStartWeek, roles } = args;
   const start5h = nextWindowStart(storedStart5h, now, FIVE_HOUR_MS);

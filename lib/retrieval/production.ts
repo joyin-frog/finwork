@@ -475,6 +475,15 @@ export function getProductionRetrievalService(): ProductionRetrievalService {
   return singletonService;
 }
 
+/** Release the process-owned embedding workers used by CLI/one-shot hosts. */
+export async function closeProductionRetrievalService(): Promise<void> {
+  const pool = singletonPool;
+  singletonService = undefined;
+  singletonDb = undefined;
+  singletonPool = undefined;
+  await pool?.close();
+}
+
 export function createProductionRetrievalService(options: {
   db?: DatabaseSync;
   embedder: RetrievalEmbedder;

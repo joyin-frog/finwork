@@ -97,6 +97,8 @@ export type PiAgentServiceOptions = {
    * 不接受模型文字、tool_started 或失败调用代替真实执行。
    */
   executionRequirements?: ExecutionRequirement[];
+  /** Force every nested Pi worker onto the same model as the parent (used by isolated Agent evaluation). */
+  nestedModelOverride?: string;
 };
 
 function mergeExecutionRequirements(
@@ -133,7 +135,7 @@ export async function runPiAgent(
   if (isMockAgentEnabled()) {
     return runMockAgent(request.messages, request);
   }
-  const modelId = (request.modelOverride || settings.mainModel || "").trim();
+  const modelId = (request.modelOverride || settings.fastModel || "").trim();
   if (!settings.apiKey.trim() || !modelId) {
     return {
       mode: "mock",
@@ -297,6 +299,7 @@ export async function runPiAgent(
       readDocumentAllowedRoots: builtinRoots.readRoots,
       memoryContext,
       foundation: request.foundation,
+      modelOverride: serviceOptions.nestedModelOverride,
       ...(taskContract
         ? { finalize: { taskContract, runId: request.requestId ?? request.traceId ?? "unknown" } }
         : {}),
@@ -527,7 +530,17 @@ export async function runPiAgent(
           } catch (error) {
             // Pi 版本可能让 abort() 使 prompt reject，也可能正常 resolve。
             // 两种形态都统一在下方转成 Finwork AbortError/TimeoutError。
-            if (!timedOut && !externallyAborted) throw error;
+            if (!timedOut && !externallyAborted) {
+              // Validation/minimum-deliverable failures happen after one or more
+              // paid provider turns. Preserve that accounting on the thrown
+              // error so the persistence layer and benchmark budget cannot
+              // mistake a charged failure for a zero-token run.
+              if (error && typeof error === "object") {
+                (error as { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage =
+                  collectPiAccounting(currentRunMessages, modelId, pricingKnown).modelUsage;
+              }
+              throw error;
+            }
           }
         }
     } finally {
@@ -546,8 +559,12 @@ export async function runPiAgent(
     const assistantError = lastAssistantError(currentRunMessages);
     if (assistantError) {
       const error = new Error(assistantError);
-      (error as { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage =
-        accounting.modelUsage;
+      const providerError = error as Error & {
+        code?: string;
+        __modelUsage?: Record<string, AgentModelUsage>;
+      };
+      providerError.code = "PROVIDER_RESPONSE_ERROR";
+      providerError.__modelUsage = accounting.modelUsage;
       throw error;
     }
     return {

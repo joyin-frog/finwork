@@ -20,6 +20,7 @@ export interface PartitionedBenchmarkCase {
 export function partitionBenchmarkCase(
   benchmarkCase: NormalizedBenchmarkCase,
   materializedInputs?: readonly ArtifactRef[],
+  materializedOracleArtifacts?: readonly ArtifactRef[],
 ): PartitionedBenchmarkCase {
   const executionCase = BenchmarkExecutionCaseSchema.parse({
     schemaVersion: benchmarkCase.schemaVersion,
@@ -44,14 +45,29 @@ export function partitionBenchmarkCase(
       ),
       requiresCitations: benchmarkCase.expected.citations.length > 0,
       ...(benchmarkCase.expected.artifact
-        ? { artifactOutput: benchmarkCase.expected.artifact }
+        ? { artifactOutput: {
+            mediaType: benchmarkCase.expected.artifact.mediaType,
+            logicalName: benchmarkCase.expected.artifact.logicalName,
+            validatorIds: benchmarkCase.expected.artifact.validatorIds.filter((id) => id !== "spreadsheetbench_v2_cells"),
+          } }
         : {}),
     },
   });
   const oracle = BenchmarkEvaluationOracleSchema.parse({
     caseId: benchmarkCase.id,
     datasetId: benchmarkCase.datasetId,
-    expected: benchmarkCase.expected,
+    expected: benchmarkCase.expected.artifact?.oracle && materializedOracleArtifacts?.[0]
+      ? {
+          ...benchmarkCase.expected,
+          artifact: {
+            ...benchmarkCase.expected.artifact,
+            oracle: {
+              ...benchmarkCase.expected.artifact.oracle,
+              goldenArtifactRef: materializedOracleArtifacts[0],
+            },
+          },
+        }
+      : benchmarkCase.expected,
   });
   return { executionCase, oracle };
 }

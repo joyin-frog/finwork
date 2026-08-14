@@ -19,6 +19,8 @@ export type TaskTemplate = {
   needsFiles?: boolean; // 派活话术提示附文件
   objectLabel?: string; // 默认业务对象（写入 business_object）
   promptTemplate?: string; // mode=subagent 必填，含 {{period}} 占位符
+  /** Nested execution defaults; this is task metadata, not another model slot. */
+  executionTier?: "fast" | "reasoning";
 };
 
 /**
@@ -37,6 +39,7 @@ export const TASK_TEMPLATES: TaskTemplate[] = [
     name: "结账前检查",
     description: "核查本期凭证完整性、发票台账一致性与应计提项提醒",
     mode: "subagent",
+    executionTier: "reasoning",
     objectLabel: "结账清单",
     promptTemplate: `请对 {{period}} 期间做结账前检查：
 1. 核对本期凭证完整性（含凭证序号断档、借贷不平衡、凭证无附件等异常）；
@@ -50,6 +53,7 @@ export const TASK_TEMPLATES: TaskTemplate[] = [
     name: "薪资试算复核",
     description: "与上月已确认期间对比，逐人列差异项与原因",
     mode: "subagent",
+    executionTier: "fast",
     objectLabel: "薪资期间",
     promptTemplate: `请对 {{period}} 薪资期间做试算复核：
 用 diff_payroll_period 工具与上月（或上年同期）已确认期间对比，逐人列出差异项与原因猜测，排在结果最前；
@@ -76,6 +80,7 @@ export const TASK_TEMPLATES: TaskTemplate[] = [
     name: "增值税及附加复核",
     description: "申报前核对本期增值税进项/销项台账，识别未认证/方向未知发票等阻塞项",
     mode: "subagent",
+    executionTier: "fast",
     objectLabel: "增值税及附加",
     promptTemplate: `请对 {{period}} 期间做增值税及附加申报前复核：
 
@@ -107,6 +112,7 @@ query_invoice_ledger 返回的 uncertifiedCount（未认证进项张数）与 di
     name: "个税申报一致性复核",
     description: "核对已确认薪资期间与扣缴端申报表（人数、税额），识别期间未确认等阻塞项",
     mode: "subagent",
+    executionTier: "fast",
     objectLabel: "个税",
     promptTemplate: `请对 {{period}} 期间做个税申报一致性复核：
 
@@ -136,6 +142,7 @@ query_invoice_ledger 返回的 uncertifiedCount（未认证进项张数）与 di
     name: "银行对账",
     description: "对照银行流水文件与账面核对，逐笔列出差异",
     mode: "subagent",
+    executionTier: "reasoning",
     needsFiles: true,
     objectLabel: "银行账户",
     promptTemplate: `请对 {{period}} 期间做银行对账。
@@ -171,6 +178,7 @@ query_invoice_ledger 返回的 uncertifiedCount（未认证进项张数）与 di
     name: "催款清单",
     description: "按账龄分级生成催款清单草稿，账龄口径显式声明",
     mode: "subagent",
+    executionTier: "fast",
     objectLabel: "应收台账",
     promptTemplate: `请基于 {{period}} 期末应收台账生成催款清单草稿：
 按账龄分级（30天以内 / 30-60天 / 60-90天 / 90天以上）列出各债务人名称、金额及最近联系情况（若有记录）；

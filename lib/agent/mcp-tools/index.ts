@@ -58,6 +58,8 @@ export type FinanceMcpServerOptions = {
   readDocumentAllowedRoots?: string[];
   /** Production-owned task/case/run identity inherited by nested execution. */
   foundation?: AgentFoundationContext;
+  /** Parent-owned model override inherited by all nested workers. */
+  modelOverride?: string;
 };
 
 function createFinanceWorkerTools(
@@ -88,6 +90,7 @@ function createFinanceWorkerTools(
         serverOptions?.subagentExecutor,
         serverOptions?.memoryContext,
         serverOptions?.foundation,
+        serverOptions?.modelOverride,
       ),
       createSearchKnowledgeTool(sdk),
       createQueryKnowledgeTool(sdk),
@@ -143,6 +146,7 @@ function createFinanceWorkerTools(
               run: serverOptions.subagentParallelExecutor,
               memoryContext: serverOptions.memoryContext,
               foundation: serverOptions.foundation,
+              modelOverride: serverOptions.modelOverride,
             }
           : undefined,
       ),
@@ -158,6 +162,7 @@ function createFinanceWorkerTools(
               run: serverOptions.subagentParallelExecutor,
               memoryContext: serverOptions.memoryContext,
               foundation: serverOptions.foundation,
+              modelOverride: serverOptions.modelOverride,
             }
           : undefined,
       ),

@@ -4,6 +4,7 @@ import path from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { modelConfigFromSettings, resolveExecutionModel } from "@/lib/settings/model-config";
+import { getTaskTemplate } from "@/lib/agent/roles/task-templates";
 import { getProjectRoot } from "@/lib/runtime/paths";
 import * as dispatchStore from "@/lib/db/dispatch-store";
 import { getDisabledRoleIds } from "@/lib/agent/roles/availability";
@@ -109,7 +110,15 @@ export async function runPiSubagent(
     }
     const config = modelConfigFromSettings(settings);
     if (!config) throw new Error("模型配置不完整");
-    const modelId = resolveExecutionModel({ config, purpose: "subagent" }).modelId;
+    const executionTier = task.executionTier
+      ?? (task.taskTemplateId ? getTaskTemplate(task.taskTemplateId)?.executionTier : undefined)
+      ?? "fast";
+    const modelId = options.modelOverride
+      ?? resolveExecutionModel({
+        config,
+        purpose: "subagent",
+        tier: executionTier,
+      }).modelId;
     const { modelRuntime, model } = await createFinworkModelRuntime(settings, modelId);
     const {
       createAgentSession,
@@ -148,6 +157,7 @@ export async function runPiSubagent(
       subagentParallelExecutor: runPiSubagentsParallel,
       memoryContext,
       foundation,
+      modelOverride: options.modelOverride,
     };
     const allowed = new Set(resolveRoleAllowedTools(task.roleId));
     const definitions = buildFinanceToolDefinitions(
