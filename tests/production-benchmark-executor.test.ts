@@ -16,6 +16,7 @@ import {
   createProductionBenchmarkExecutor,
   formatBenchmarkAgentPrompt,
 } from "../lib/evaluation/benchmarks/production-executor.ts";
+import { closeProductionBenchmarkRuntime } from "../lib/evaluation/benchmarks/runtime-cleanup.ts";
 import { getDb } from "../lib/db/sqlite.ts";
 import { ArtifactStore } from "../lib/artifacts/store.ts";
 import type { ArtifactRef } from "../lib/artifacts/contracts.ts";
@@ -469,6 +470,11 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
       /输出文件名必须精确为："result\.xlsx"/,
       "artifact contracts must tell the headless Agent the exact required logical name",
     );
+    assert.match(
+      formatBenchmarkAgentPrompt(publicArtifactCase),
+      /Reported.*预测期.*留空/,
+      "Spreadsheet Agent contracts must preserve historical-only Reported rows",
+    );
     const missingArtifact = await executeCase(artifactCase, async (request, options) => {
       request.emit?.({ type: "tool_started", toolName: "patch_workbook", toolCallId: "patch-artifact" });
       request.emit?.({ type: "tool_completed", toolCallId: "patch-artifact", isError: false });
@@ -511,6 +517,26 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     assert.equal(cancellation.prediction.failure?.code, "benchmark_aborted");
     assert.equal(cancellation.prediction.execution?.termination.cancelled, true);
     assert.equal(backgroundRequests, 1, "abort must not start another provider attempt");
+
+    const cleanupCalls: string[] = [];
+    await closeProductionBenchmarkRuntime({
+      closeRetrieval: async () => { cleanupCalls.push("retrieval"); },
+      closeDocuments: async () => { cleanupCalls.push("documents"); },
+    });
+    assert.deepEqual(cleanupCalls.sort(), ["documents", "retrieval"]);
+    const failingCleanupCalls: string[] = [];
+    await assert.rejects(() => closeProductionBenchmarkRuntime({
+      closeRetrieval: async () => {
+        failingCleanupCalls.push("retrieval");
+        throw new Error("retrieval cleanup failed");
+      },
+      closeDocuments: async () => { failingCleanupCalls.push("documents"); },
+    }), AggregateError);
+    assert.deepEqual(
+      failingCleanupCalls.sort(),
+      ["documents", "retrieval"],
+      "one cleanup failure must not skip the other process-owned pool",
+    );
 
     console.log("production-benchmark-executor: production runtime, retry, auth and cancellation gates passed ✓");
   } finally {

@@ -297,6 +297,36 @@ export const benchmarkAdaptersTestPromise = (async () => {
   assert.equal(invalidArtifact.faultDomain, "evaluator");
   assert.ok(invalidArtifact.failures.includes("artifact_validation_missing"));
 
+  const mismatchedArtifact = scoreBenchmarkPrediction(spreadsheetPartition.executionCase, spreadsheetPartition.oracle, {
+    citations: [],
+    assertions: spreadsheetCase.expected.assertions,
+    artifact: {
+      mediaType: spreadsheetCase.expected.artifact!.mediaType,
+      sha256: "d".repeat(64),
+      checks: [
+        { id: "xlsx_generic", passed: true, blocking: true, details: { formulaErrors: 0 } },
+        {
+          id: "spreadsheetbench_v2_cells",
+          passed: false,
+          blocking: true,
+          details: { code: "spreadsheet_oracle_mismatch", mismatchCount: 2, mismatchLocations: ["F8", "G8"] },
+        },
+      ],
+    },
+    metrics: { wallTimeMs: 1, tokens: 0, retries: 0, toolCalls: 0 },
+    details: {},
+  });
+  assert.deepEqual(
+    (mismatchedArtifact.details as { artifactChecks?: unknown }).artifactChecks,
+    [{
+      id: "spreadsheetbench_v2_cells",
+      passed: false,
+      blocking: true,
+      details: { code: "spreadsheet_oracle_mismatch", mismatchCount: 2, mismatchLocations: ["F8", "G8"] },
+    }],
+    "reports must retain sanitized blocking mismatch diagnostics without exposing golden values",
+  );
+
   const wrongAnswer = scoreBenchmarkPrediction(answerPartition.executionCase, answerPartition.oracle, {
     answer: "not the expected answer",
     citations: [],

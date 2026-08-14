@@ -87,6 +87,8 @@ export type ProductionRetrievalServiceOptions = {
   artifacts: ArtifactStore;
   embedder: RetrievalEmbedder;
   principal?: PrincipalRef;
+  /** Optional hard scope for one benchmark/task. Undefined keeps normal ACL-only production search. */
+  allowedArtifactVersionIds?: readonly string[];
 };
 
 function bindingFor(db: DatabaseSync, knowledgeDocumentId: number): KnowledgeBindingRow | undefined {
@@ -124,6 +126,7 @@ export class ProductionRetrievalService {
   readonly artifacts: ArtifactStore;
   readonly embedder: RetrievalEmbedder;
   readonly principal: PrincipalRef;
+  readonly allowedArtifactVersionIds: readonly string[] | undefined;
   readonly indexer: RetrievalIndexer;
   readonly searchService: RetrievalSearchService;
 
@@ -132,6 +135,9 @@ export class ProductionRetrievalService {
     this.artifacts = options.artifacts;
     this.embedder = options.embedder;
     this.principal = options.principal ?? LOCAL_RETRIEVAL_PRINCIPAL;
+    this.allowedArtifactVersionIds = options.allowedArtifactVersionIds === undefined
+      ? undefined
+      : [...new Set(options.allowedArtifactVersionIds.map((value) => value.trim()).filter(Boolean))];
     this.indexer = new RetrievalIndexer(this.db, this.artifacts, defaultTextRetrievalParser, this.embedder);
     this.searchService = new RetrievalSearchService(this.db);
   }
@@ -354,7 +360,15 @@ export class ProductionRetrievalService {
       mode: "hybrid",
       queryVector: [...queryVector],
       embeddingModel: EMBED_MODEL,
-      filters: { entityRefs: [], documentTypes: [], artifactVersionIds: [] },
+      filters: {
+        entityRefs: [],
+        documentTypes: [],
+        artifactVersionIds: this.allowedArtifactVersionIds === undefined
+          ? []
+          : this.allowedArtifactVersionIds.length > 0
+            ? [...this.allowedArtifactVersionIds]
+            : ["__finwork_empty_retrieval_scope__"],
+      },
       topK,
       candidateLimit: Math.max(100, topK * 20),
       cacheTtlSeconds: 300,
@@ -489,6 +503,7 @@ export function createProductionRetrievalService(options: {
   embedder: RetrievalEmbedder;
   casRoot?: string;
   principal?: PrincipalRef;
+  allowedArtifactVersionIds?: readonly string[];
 }): ProductionRetrievalService {
   const db = options.db ?? getDb();
   return new ProductionRetrievalService({
@@ -496,5 +511,6 @@ export function createProductionRetrievalService(options: {
     artifacts: new ArtifactStore(db, options.casRoot ?? path.join(getAppDataDir(), "artifacts", "cas")),
     embedder: options.embedder,
     principal: options.principal,
+    allowedArtifactVersionIds: options.allowedArtifactVersionIds,
   });
 }

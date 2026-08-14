@@ -200,6 +200,14 @@ export function scoreBenchmarkPrediction(
         sourceId: citation.sourceId,
         ...(citation.locator ? { locator: citation.locator } : {}),
       })),
+      artifactChecks: prediction.artifact?.checks
+        .filter((check) => check.blocking && !check.passed)
+        .map((check) => ({
+          id: check.id,
+          passed: check.passed,
+          blocking: check.blocking,
+          details: check.details,
+        })) ?? [],
     },
   });
 }

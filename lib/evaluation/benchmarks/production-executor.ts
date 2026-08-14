@@ -214,6 +214,7 @@ export async function executeProductionBenchmarkCase(
         artifacts: new ArtifactStore(db, casRoot),
         embedder: getProductionRetrievalService().embedder,
         principal: { id: "benchmark-runner", type: "service", tenantId: "benchmark" },
+        allowedArtifactVersionIds: executionCase.inputs.map((artifact) => artifact.versionId),
       }))
     : () => undefined;
 
@@ -386,6 +387,13 @@ export function formatBenchmarkAgentPrompt(executionCase: BenchmarkExecutionCase
       `输出文件名必须精确为：${JSON.stringify(executionCase.requirements.artifactOutput.logicalName)}`,
       `输出媒体类型必须为：${JSON.stringify(executionCase.requirements.artifactOutput.mediaType)}`,
       "调用交付工具时必须提交这个精确文件名；其他文件名不满足任务合同。",
+    ].join("\n"));
+  }
+  if (executionCase.taskKind === "spreadsheet") {
+    sections.push([
+      "严格保留原工作簿的业务语义、布局与留空约定，只修改完成任务所必需的单元格。",
+      "标签含 Reported 的行表示历史已报告数据：如果模板中的预测期单元格原本为空，预测期必须继续留空；不要把 Normalized、Adjusted 或 Projected 行的公式复制到 Reported 行。",
+      "预测只填写模板明确用于 Normalized、Adjusted、Derived、Margin、Growth 或 Projected 的行。",
     ].join("\n"));
   }
   const requiresRetrieval = executionCase.capabilities.includes("retrieval")

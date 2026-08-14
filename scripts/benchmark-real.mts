@@ -29,6 +29,7 @@ import { selectCasesForEvaluationLayer } from "../lib/evaluation/benchmarks/eval
 import { createDirectModelBenchmarkExecutor } from "../lib/evaluation/benchmarks/model-executor.ts";
 import { runBenchmarkPreflight, resolveMessagesEndpoint } from "../lib/evaluation/benchmarks/preflight.ts";
 import { serializeBenchmarkRunReport } from "../lib/evaluation/benchmarks/report.ts";
+import { closeProductionBenchmarkRuntime } from "../lib/evaluation/benchmarks/runtime-cleanup.ts";
 import { readAgentSettings } from "../lib/settings/agent-settings.ts";
 
 const goalRoot = path.join(
@@ -208,7 +209,7 @@ async function updateGoalState(input: {
   }, null, 2)}\n`);
 }
 
-async function main(): Promise<void> {
+async function runMain(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.has("help")) {
     console.log([
@@ -403,6 +404,14 @@ async function main(): Promise<void> {
   } finally {
     process.removeListener("SIGINT", abort);
     process.removeListener("SIGTERM", abort);
+  }
+}
+
+async function main(): Promise<void> {
+  try {
+    await runMain();
+  } finally {
+    await closeProductionBenchmarkRuntime();
   }
 }
 

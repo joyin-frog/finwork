@@ -175,6 +175,32 @@ export const retrievalProductionBridgeTestPromise = (async () => {
     service.restoreKnowledgeDocument(hiddenId, "2026-08-09T08:07:00.000Z");
     assert.equal(service.readKnowledgeDocument(hiddenId), hiddenText);
 
+    const rivalText = "# 其他公司的差旅制度\n\n差旅住宿标准同样包含住宿与审批关键词。";
+    const rivalId = insertDoc(db, "其他公司的差旅制度", "rival-travel-policy.txt", rivalText);
+    const rival = await service.indexKnowledgeDocument({
+      knowledgeDocumentId: rivalId,
+      title: "其他公司的差旅制度",
+      fileName: "rival-travel-policy.txt",
+      sourceContentHash: sha256(rivalText),
+      parsedText: rivalText,
+      category: "finance_policy",
+      now: "2026-08-09T08:08:00.000Z",
+    });
+    const unscoped = await service.search("差旅住宿标准", 10, "2026-08-09T08:08:30.000Z");
+    assert.ok(unscoped.hits.some((hit) => hit.citation.artifactVersionId === rival.artifactVersionId));
+    const caseScoped = createProductionRetrievalService({
+      db,
+      casRoot: path.join(root, "cas"),
+      embedder: deterministicEmbedder,
+      allowedArtifactVersionIds: [second.artifactVersionId],
+    });
+    const scoped = await caseScoped.search("差旅住宿标准", 10, "2026-08-09T08:09:00.000Z");
+    assert.ok(scoped.hits.length > 0, "case-scoped retrieval must retain the current case source");
+    assert.ok(
+      scoped.hits.every((hit) => hit.citation.artifactVersionId === second.artifactVersionId),
+      "case-scoped retrieval must never return another case's source",
+    );
+
     assert.deepEqual(LOCAL_RETRIEVAL_PRINCIPAL, { id: "local-user", type: "user", tenantId: "local" });
     console.log("retrieval-production-bridge: staged activation, immutable citations, ACL, archive restore and atomic version switching passed ✓");
   } finally {
