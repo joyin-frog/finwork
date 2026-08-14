@@ -118,6 +118,27 @@ export function selectRealBenchmarkCases(input: {
   return selected;
 }
 
+/** Apply an exact case allow-list after profile and layer selection. */
+export function filterRealBenchmarkCasesById(
+  cases: readonly NormalizedBenchmarkCase[],
+  requestedIds: readonly string[],
+): NormalizedBenchmarkCase[] {
+  const normalizedIds = requestedIds.map((id) => id.trim());
+  if (normalizedIds.length === 0 || normalizedIds.some((id) => id.length === 0)) {
+    throw new Error("benchmark_case_ids_empty");
+  }
+  const requested = new Set<string>();
+  for (const id of normalizedIds) {
+    if (requested.has(id)) throw new Error(`benchmark_case_id_duplicate:${id}`);
+    requested.add(id);
+  }
+  const available = new Set(cases.map((benchmarkCase) => benchmarkCase.id));
+  for (const id of requested) {
+    if (!available.has(id)) throw new Error(`benchmark_case_id_not_selected:${id}`);
+  }
+  return cases.filter((benchmarkCase) => requested.has(benchmarkCase.id));
+}
+
 export function createRealBenchmarkStopPolicy(input: {
   config: RealBenchmarkRunConfig;
   startedAtMs: number;

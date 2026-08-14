@@ -22,6 +22,7 @@ import {
   type RealBenchmarkCheckpointEvent,
 } from "../lib/evaluation/benchmarks/real-checkpoint.ts";
 import {
+  filterRealBenchmarkCasesById,
   runRealBenchmarkSuite,
   loadRealBenchmarkInputs,
   selectRealBenchmarkCases,
@@ -207,6 +208,17 @@ export const benchmarkRealRunnerTestPromise = (async () => {
     }).map((item) => item.id),
     "manifest + seed must select a stable order",
   );
+  const exact = filterRealBenchmarkCasesById(selected, [selected[3]!.id, selected[0]!.id]);
+  assert.deepEqual(exact.map((item) => item.id), [selected[0]!.id, selected[3]!.id]);
+  assert.throws(
+    () => filterRealBenchmarkCasesById(selected, [selected[0]!.id, selected[0]!.id]),
+    new RegExp(`benchmark_case_id_duplicate:${selected[0]!.id}`),
+  );
+  assert.throws(
+    () => filterRealBenchmarkCasesById(selected, ["general_agent_pilot:v1:unknown"]),
+    /benchmark_case_id_not_selected:general_agent_pilot:v1:unknown/,
+  );
+  assert.throws(() => filterRealBenchmarkCasesById(selected, [""]), /benchmark_case_ids_empty/);
 
   const started: string[] = [];
   const finished: string[] = [];

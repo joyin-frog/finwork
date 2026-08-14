@@ -282,12 +282,27 @@ export async function runPiAgent(
   let liveHandle: LiveSessionHandle | null = null;
   let timedOut = false;
   let externallyAborted = request.signal?.aborted === true;
+  let humanDecisionError: Error | null = null;
   let repairRounds = 0;
   let repairStopReason: FinworkAgentResult["repairStopReason"] =
     completionRequired ? "max_rounds" : "not_required";
   const mapper = new PiEventMapper();
   const currentRunMessages: AgentSessionEvent[] = [];
-  const emitQuestion = wrapQuestionResolver(request.resolveUserQuestion, request.emit);
+  const operationAbort = new AbortController();
+  let askUserQuestionCount = 0;
+  const emitQuestion = wrapQuestionResolver(
+    request.resolveUserQuestion,
+    (event) => {
+      if (event.type === "ask_user") askUserQuestionCount += 1;
+      request.emit?.(event);
+    },
+    (error) => {
+      if (!(error instanceof Error) || error.name !== "HumanDecisionRequiredError") return;
+      humanDecisionError = error;
+      operationAbort.abort(error);
+      void abortSessionWithDeadline(session, serviceOptions.abortTimeoutMs ?? 2_000);
+    },
+  );
   const definitions = buildFinanceToolDefinitions(
     outputDir,
     request.traceId ?? request.requestId,
@@ -366,7 +381,6 @@ export async function runPiAgent(
       }
     });
 
-    const operationAbort = new AbortController();
     const abortSession = () => {
       externallyAborted = true;
       operationAbort.abort();
@@ -393,6 +407,25 @@ export async function runPiAgent(
               operationAbort.signal,
             );
             await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+
+            // 模型偶尔会把需要用户决策的问题写进普通回复，导致 UI/Harness 无法
+            // 区分“已完成”和“等待输入”。仅做一次协议修复，要求它改用结构化工具。
+            if (
+              emitQuestion
+              && askUserQuestionCount === 0
+              && needsStructuredQuestionRepair(lastAssistantText(currentRunMessages))
+            ) {
+              await awaitAbortable(
+                session.prompt([
+                  "系统交互协议修复：你刚才在普通回复中请求用户补充信息或作出决定。",
+                  "必须立即调用 AskUserQuestion 表达这个阻塞点，不要再次只用普通文字提问。",
+                  "问题选项只能来自用户已提供的信息或已检索证据；缺失值不得编造具体日期、主体、金额或其它候选值。",
+                  "没有有依据的候选项时，使用自由输入问题或中性选项。",
+                ].join("\n")),
+                operationAbort.signal,
+              );
+              await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+            }
 
             // 先确保最小可交付文件存在，再允许系统验证失败驱动 repair。
             // 没有文件时继续读资料/调用工具只会放大超时，且没有可评分证据。
@@ -532,6 +565,11 @@ export async function runPiAgent(
           } catch (error) {
             // Pi 版本可能让 abort() 使 prompt reject，也可能正常 resolve。
             // 两种形态都统一在下方转成 Finwork AbortError/TimeoutError。
+            if (humanDecisionError) {
+              (humanDecisionError as Error & { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage =
+                collectPiAccounting(currentRunMessages, modelId, pricingKnown).modelUsage;
+              throw humanDecisionError;
+            }
             if (!timedOut && !externallyAborted) {
               // Validation/minimum-deliverable failures happen after one or more
               // paid provider turns. Preserve that accounting on the thrown
@@ -834,15 +872,35 @@ function readSmallTextAttachment(attachment: AgentAttachment): string | null {
 export function wrapQuestionResolver(
   resolver: ((question: AgentQuestion) => Promise<string>) | undefined,
   emit: FinworkAgentRequest["emit"],
+  onResolverError?: (error: unknown) => void,
 ): ((question: AgentQuestion) => Promise<string>) | undefined {
   if (!resolver) return undefined;
   return async (question) => {
     const questionId = randomUUID();
     emit?.({ type: "ask_user", questionId, question });
-    const answer = await resolver(question);
-    emit?.({ type: "ask_user_answered", questionId, answer });
-    return answer;
+    try {
+      const answer = await resolver(question);
+      emit?.({ type: "ask_user_answered", questionId, answer });
+      return answer;
+    } catch (error) {
+      onResolverError?.(error);
+      throw error;
+    }
   };
+}
+
+/**
+ * 只捕获明显处于“等待用户输入/决策”状态的普通文本，避免把一般性的建议误改成提问。
+ */
+export function needsStructuredQuestionRepair(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  if (/(?:^|[。！？!?\n])\s*(?:请补充|请提供|请选择|请确认|请明确)/m.test(normalized)) {
+    return true;
+  }
+  const blocked = /不会|无法|不能|暂不|待[^。！？!?\n]{0,20}确认|如需|若要/.test(normalized);
+  const decision = /确认|选择|提供|补充|明确|解除[^。！？!?\n]{0,8}(?:约束|限制)/.test(normalized);
+  return blocked && decision;
 }
 
 function collectPiAccounting(

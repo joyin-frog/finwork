@@ -3,7 +3,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createFinworkBuiltinTools } from "../../lib/agent/pi/builtin-tools.ts";
-import { wrapQuestionResolver } from "../../lib/agent/pi/agent-service.ts";
+import {
+  needsStructuredQuestionRepair,
+  wrapQuestionResolver,
+} from "../../lib/agent/pi/agent-service.ts";
 import type { AgentQuestion } from "../../lib/agent/contracts.ts";
 import type { AgentRuntimeEvent } from "../../lib/agent/runtime-events.ts";
 
@@ -50,6 +53,38 @@ assert.deepEqual(
   "实时提问必须按顺序发出 ask_user 与 ask_user_answered",
 );
 
+const emittedBeforeInventedPeriod = emitted.length;
+await assert.rejects(
+  () => ask.execute(
+    "ask-invented-period",
+    {
+      questions: [{
+        question: "请提供缺少的分析期间",
+        options: [{ label: "2026年8月" }, { label: "2026年7月" }],
+      }],
+    },
+    undefined,
+    undefined,
+    {} as never,
+  ),
+  (error: unknown) => error instanceof Error && error.name === "InventedQuestionOptionError",
+  "缺失期间不得用运行时日期编造候选项",
+);
+assert.equal(emitted.length, emittedBeforeInventedPeriod, "非法候选项必须在等待用户前被拒绝");
+
+await ask.execute(
+  "ask-neutral-period",
+  {
+    questions: [{
+      question: "请提供缺少的分析期间",
+      options: [{ label: "手动输入", description: "填写需要分析的期间" }],
+    }],
+  },
+  undefined,
+  undefined,
+  {} as never,
+);
+
 const multi = await createFinworkBuiltinTools(roots, {
   resolveUserQuestion: async (question) => JSON.stringify(Object.fromEntries(
     (question.questions ?? []).map((item) => [item.question, `答:${item.question}`]),
@@ -72,11 +107,12 @@ assert.deepEqual(
 
 // 无头 benchmark：先持久化 ask_user，再用稳定错误停在人工决策点；不得伪造 answered。
 const headlessEvents: AgentRuntimeEvent[] = [];
+const headlessErrors: unknown[] = [];
 const headless = wrapQuestionResolver(async () => {
   const error = new Error("headless benchmark requires a human decision");
   error.name = "HumanDecisionRequiredError";
   throw error;
-}, (event) => headlessEvents.push(event));
+}, (event) => headlessEvents.push(event), (error) => headlessErrors.push(error));
 assert.ok(headless);
 const headlessTools = await createFinworkBuiltinTools(roots, { resolveUserQuestion: headless });
 const headlessAsk = headlessTools.find((tool) => tool.name === "AskUserQuestion");
@@ -96,5 +132,13 @@ assert.deepEqual(
   ["ask_user"],
   "无头运行必须留下待决策事件且不能伪造用户回答",
 );
+assert.equal((headlessErrors[0] as Error | undefined)?.name, "HumanDecisionRequiredError");
 
-console.log("Pi AskUserQuestion ✓ registration, live answer events and headless decision stop");
+assert.equal(needsStructuredQuestionRepair("请补充分析期间。"), true);
+assert.equal(
+  needsStructuredQuestionRepair("本轮只读，不会修改。如需解除只读约束，请明确说明。"),
+  true,
+);
+assert.equal(needsStructuredQuestionRepair("分析已完成，以下是主要结论。"), false);
+
+console.log("Pi AskUserQuestion ✓ registration, value guard, protocol repair and headless decision stop");

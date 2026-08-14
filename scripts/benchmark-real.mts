@@ -13,6 +13,7 @@ import {
 } from "../lib/evaluation/benchmarks/real-checkpoint.ts";
 import {
   loadRealBenchmarkInputs,
+  filterRealBenchmarkCasesById,
   runRealBenchmarkSuite,
   selectRealBenchmarkCases,
   type RealBenchmarkDatasetBundlePaths,
@@ -219,6 +220,7 @@ async function runMain(): Promise<void> {
       "  Add --preview for a zero-network full data/config gate.",
       "  Layer 2: add --layer agent --fixed-model <id>; routing is deterministic and all nested agents use that model.",
       "  Layer 3 single cell: add --layer model --fixed-model <id>; it calls the model directly with no tools.",
+      "  Target exact cases after profile/layer selection with --case-ids <id,id,...>.",
       "  Use eval:benchmarks:model-matrix to preview the required repeated cells.",
       "  Resume with --resume-run <id>; an interrupted paid case additionally requires --confirm-unknown-case-reviewed.",
       "Dataset bundle paths are read from Goal state importedManifests.",
@@ -254,7 +256,13 @@ async function runMain(): Promise<void> {
     sampleSeed,
     maxCases,
   });
-  const selectedCases = selectCasesForEvaluationLayer(profileCases, evaluationLayer);
+  const layerCases = selectCasesForEvaluationLayer(profileCases, evaluationLayer);
+  const requestedCaseIds = typeof args.get("case-ids") === "string"
+    ? String(args.get("case-ids")).split(",")
+    : undefined;
+  const selectedCases = requestedCaseIds
+    ? filterRealBenchmarkCasesById(layerCases, requestedCaseIds)
+    : layerCases;
   if (selectedCases.length === 0) throw new Error(`benchmark_layer_has_no_cases:${evaluationLayer}`);
   assertProductionBenchmarkValidatorCoverage(selectedCases);
   const materializationManifestPaths = bundlePaths.map((bundle) => path.resolve(bundle.materializationManifestPath));

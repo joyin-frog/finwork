@@ -17,6 +17,14 @@ function normalizeText(value: string): string {
     .trim();
 }
 
+function normalizeSemanticText(value: string): string {
+  return normalizeText(value.replace(
+    /(?<!\d)(\d{4})(?:[-/.年])(\d{1,2})(?:[-/.月])(\d{1,2})(?:日)?(?!\d)/g,
+    (_match, year: string, month: string, day: string) =>
+      `${year}${month.padStart(2, "0")}${day.padStart(2, "0")}`,
+  ));
+}
+
 function answerTokens(value: string): string[] {
   const normalized = value.normalize("NFKC").toLocaleLowerCase("en-US");
   return normalized.match(/[\p{Script=Han}]|[\p{L}\p{N}]+(?:[._%/-][\p{L}\p{N}]+)*/gu) ?? [];
@@ -131,7 +139,9 @@ export function scoreBenchmarkPrediction(
   // the expected fact; exact match and token-F1 would mark that as a false
   // negative. Keep strict scoring for the finance QA datasets.
   const expectedFactContained = benchmarkCase.datasetId === "general_agent_pilot"
-    && expectedAnswers.some((expected) => normalizeText(answer).includes(normalizeText(expected)));
+    && expectedAnswers.some((expected) =>
+      normalizeSemanticText(answer).includes(normalizeSemanticText(expected))
+    );
 
   let artifact: number | null = null;
   if (oracle.expected.artifact) {

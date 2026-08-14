@@ -41,6 +41,7 @@ export function createPiAskUserQuestionTool(
     promptSnippet: "AskUserQuestion: pause and request missing input or a user decision.",
     promptGuidelines: [
       "缺少关键输入、存在冲突口径或必须由用户选择时，调用 AskUserQuestion，不要只在普通回复中提问。",
+      "缺少值时不得凭当前日期或常识编造具体日期、主体、金额；选项只能来自用户提供的信息或检索证据，无依据时使用自由输入问题或中性描述。",
     ],
     parameters: z.toJSONSchema(askUserQuestionSchema, {
       target: "draft-7",
@@ -50,6 +51,7 @@ export function createPiAskUserQuestionTool(
     async execute(_toolCallId, rawArgs, signal) {
       if (signal?.aborted) throw new Error("Tool execution aborted");
       const args = await askUserQuestionSchema.parseAsync(rawArgs);
+      assertNoInventedMissingPeriodOptions(args.questions);
       const decision = await hook.before!({
         toolName: "AskUserQuestion",
         input: args,
@@ -70,4 +72,26 @@ export function createPiAskUserQuestionTool(
       };
     },
   };
+}
+
+const MISSING_VALUE_QUESTION = /缺少|缺失|未提供|没有提供|请补充|请提供|需要补充|需要提供/;
+const PERIOD_FIELD = /期间|日期|时间范围|月份|月度|季度|年度|年份/;
+const CONCRETE_PERIOD = /(?:^|\D)20\d{2}(?:\s*Q[1-4]|\s*(?:[-/.年]\s*\d{1,2})(?:\s*(?:[-/.月]\s*\d{1,2})?\s*日?)?)/i;
+
+/** 缺失期间只能向用户开放输入，不能用运行时日期替用户生成看似合理的候选值。 */
+export function assertNoInventedMissingPeriodOptions(questions: readonly AgentQuestion[]): void {
+  for (const question of questions) {
+    if (!MISSING_VALUE_QUESTION.test(question.question) || !PERIOD_FIELD.test(question.question)) {
+      continue;
+    }
+    const optionText = (question.options ?? [])
+      .flatMap((option) => [option.label, option.description ?? "", option.preview ?? ""])
+      .join("\n");
+    if (!CONCRETE_PERIOD.test(optionText)) continue;
+    const error = new Error(
+      "缺失期间不得编造具体日期候选项；请移除日期示例，改用自由输入问题或有证据支持的中性选项。",
+    );
+    error.name = "InventedQuestionOptionError";
+    throw error;
+  }
 }
