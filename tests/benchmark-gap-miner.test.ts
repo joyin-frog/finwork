@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   mineBenchmarkGapProposals,
   parseBenchmarkGapCliArgs,
+  parseBenchmarkGapReportResults,
 } from "../lib/evaluation/benchmarks/gap-miner.ts";
 import { BenchmarkCaseResultV2Schema } from "../lib/evaluation/benchmarks/contracts.ts";
 
@@ -60,4 +61,17 @@ assert.equal(proposals[0]?.status, "proposal");
 assert.equal(proposals[0]?.faultDomain, "validator");
 assert.match(proposals[0]?.recommendedFixture ?? "", /deterministic artifact assertion/);
 
-console.log("benchmark-gap-miner: v2 results and pnpm positional CLI parsing passed ✓");
+const historicalReport = {
+  schemaVersion: 2,
+  configuration: {
+    models: { main: "legacy-main", router: "legacy-router", subagent: "legacy-subagent" },
+  },
+  results: [failed],
+};
+assert.deepEqual(
+  parseBenchmarkGapReportResults(historicalReport).map((item) => item.caseId),
+  [failed.caseId],
+  "gap mining must preserve valid historical results when unrelated report metadata has evolved",
+);
+
+console.log("benchmark-gap-miner: current and historical v2 results plus pnpm positional CLI parsing passed ✓");

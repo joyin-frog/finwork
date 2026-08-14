@@ -57,6 +57,7 @@ const PROFILE_QUOTAS: Readonly<Partial<Record<BenchmarkProfile, Partial<Record<B
   "benchmark-smoke": { finqa: 2, tatqa: 2, financebench: 2, spreadsheetbench_v2: 1 },
   pilot: { finqa: 25, tatqa: 25, financebench: 20, spreadsheetbench_v2: 5 },
   "general-agent-pilot": { general_agent_pilot: 30 },
+  "finance-agent-professional": { finance_agent_professional: 30 },
 };
 
 export async function loadRealBenchmarkInputs(
@@ -248,7 +249,10 @@ export async function runRealBenchmarkSuite(input: {
     publishable: input.selectedCases.every((benchmarkCase) => benchmarkCase.provenance.licenseStatus === "verified"),
     inputArtifactsByCaseId: input.inputArtifactsByCaseId,
     oracleArtifactsByCaseId: input.oracleArtifactsByCaseId,
-    validatePrediction: ({ executionCase, oracle, prediction }) => executionCase.datasetId === "general_agent_pilot"
+    validatePrediction: ({ executionCase, oracle, prediction }) => (
+      executionCase.datasetId === "general_agent_pilot"
+      || executionCase.datasetId === "finance_agent_professional"
+    )
       ? validateGeneralAgentPilotPrediction({ executionCase, oracle, prediction })
       : validateSpreadsheetBenchmarkPrediction({ oracle, prediction }),
     configuration,

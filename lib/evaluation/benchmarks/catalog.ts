@@ -199,6 +199,35 @@ const rawCatalog: BenchmarkDatasetDescriptor[] = [
     adapterStatus: "supported",
     integrationStatus: "ready",
   },
+  {
+    id: "finance_agent_professional",
+    displayName: "Finwork Finance Agent Professional v1",
+    family: "financial_agent",
+    taskKind: "agent",
+    homepage: "https://github.com/joyin-frog/finwork",
+    upstreamRef: "finwork/finance-agent-professional-v1; original synthetic business records and policies",
+    sourceFormat: "general_agent_pilot",
+    license: {
+      status: "verified",
+      spdx: "MIT",
+      note: "First-party synthetic professional cases and fixtures. No third-party business records are redistributed.",
+    },
+    redistribution: "bundled",
+    supportedSplits: ["pilot"],
+    defaultLocale: "zh-CN",
+    capabilities: [
+      "agent_tool_use",
+      "financial_knowledge",
+      "spreadsheet_understanding",
+      "spreadsheet_editing",
+      "retrieval",
+      "citation",
+      "stateful_tool_use",
+    ],
+    artifactRequired: true,
+    adapterStatus: "supported",
+    integrationStatus: "ready",
+  },
 ];
 
 export const BENCHMARK_DATASET_CATALOG = Object.freeze(

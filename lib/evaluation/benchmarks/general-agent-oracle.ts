@@ -39,7 +39,10 @@ export async function validateGeneralAgentPilotPrediction(input: {
   db?: DatabaseSync;
   configuredSecrets?: readonly string[];
 }): Promise<BenchmarkPrediction> {
-  if (input.executionCase.datasetId !== "general_agent_pilot") return input.prediction;
+  if (
+    input.executionCase.datasetId !== "general_agent_pilot"
+    && input.executionCase.datasetId !== "finance_agent_professional"
+  ) return input.prediction;
   const db = input.db ?? getDb();
   const events = loadEvents(db, input.prediction.execution?.traceId);
   const answer = input.prediction.answer ?? "";

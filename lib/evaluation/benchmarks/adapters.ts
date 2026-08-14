@@ -520,6 +520,28 @@ export const GeneralAgentPilotAdapter: BenchmarkAdapter = {
         })
       : [];
     const expectedAnswers = stringArray(firstValue(record, ["expected_answers", "expected_answer"]));
+    const assertions = stringArray(firstValue(record, ["business_assertions", "assertions"]));
+    const fileRecords = Array.isArray(firstValue(record, ["files"]))
+      ? firstValue(record, ["files"]) as unknown[]
+      : [];
+    const files = fileRecords.flatMap((file) => {
+      if (!isRecord(file)) return [];
+      const logicalName = stringValue(file, ["logical_name", "logicalName"]);
+      const mediaType = stringValue(file, ["media_type", "mediaType"]);
+      const upstreamUri = stringValue(file, ["upstream_uri", "upstreamUri"]);
+      return logicalName && mediaType && upstreamUri ? [{ logicalName, mediaType, upstreamUri }] : [];
+    });
+    const artifactRecord = firstValue(record, ["artifact"]);
+    const artifact = isRecord(artifactRecord)
+      ? {
+          mediaType: stringValue(artifactRecord, ["media_type", "mediaType"]),
+          logicalName: stringValue(artifactRecord, ["logical_name", "logicalName"]),
+          validatorIds: stringArray(firstValue(artifactRecord, ["validator_ids", "validatorIds"])),
+        }
+      : undefined;
+    const expectedArtifact = artifact?.mediaType && artifact.logicalName && artifact.validatorIds.length > 0
+      ? artifact
+      : undefined;
     const expectsCitations = capabilities.includes("citation");
     return [buildCase(context, {
       id: normalizedId(context, caseId),
@@ -530,7 +552,7 @@ export const GeneralAgentPilotAdapter: BenchmarkAdapter = {
         textBlocks: documents,
         tables: [],
         conversation,
-        files: [],
+        files,
       },
       expected: {
         answers: expectedAnswers,
@@ -542,18 +564,23 @@ export const GeneralAgentPilotAdapter: BenchmarkAdapter = {
               locator: document.locator ?? `node:${document.id}`,
             }))
           : [],
-        assertions: [],
+        assertions,
         deterministicChecks: checkIds.map((id) => ({
           id: identifier(id, "pilot-check"),
           faultDomain: ["model", "capability", "dependency", "validator", "policy", "resource", "evaluator"].includes(faultDomain)
             ? faultDomain as "model" | "capability" | "dependency" | "validator" | "policy" | "resource" | "evaluator"
             : "capability",
         })),
+        ...(expectedArtifact ? { artifact: expectedArtifact } : {}),
       },
       capabilities: capabilities.length > 0
         ? capabilities as NormalizedBenchmarkCase["capabilities"]
         : context.descriptor.capabilities,
-      tags: ["bundled", "general-agent-pilot", ...tags],
+      tags: [
+        "bundled",
+        context.descriptor.id === "general_agent_pilot" ? "general-agent-pilot" : "finance-agent-professional",
+        ...tags,
+      ],
     })];
   },
 };

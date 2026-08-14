@@ -1,5 +1,29 @@
 import { createHash } from "node:crypto";
-import { BenchmarkGapProposalSchema, type BenchmarkCaseResult, type BenchmarkGapProposal } from "./contracts";
+import {
+  BenchmarkCaseResultSchema,
+  BenchmarkCaseResultV2Schema,
+  BenchmarkGapProposalSchema,
+  BenchmarkRunReportSchema,
+  type BenchmarkCaseResult,
+  type BenchmarkGapProposal,
+} from "./contracts";
+
+export function parseBenchmarkGapReportResults(value: unknown): BenchmarkCaseResult[] {
+  const current = BenchmarkRunReportSchema.safeParse(value);
+  if (current.success) return current.data.results;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("benchmark_gap_report_invalid");
+  }
+  const results = (value as { results?: unknown }).results;
+  if (!Array.isArray(results)) throw new Error("benchmark_gap_report_results_missing");
+  return results.map((result, index) => {
+    const v2 = BenchmarkCaseResultV2Schema.safeParse(result);
+    if (v2.success) return v2.data;
+    const legacy = BenchmarkCaseResultSchema.safeParse(result);
+    if (legacy.success) return legacy.data;
+    throw new Error(`benchmark_gap_report_result_invalid:${index}`);
+  });
+}
 
 export function parseBenchmarkGapCliArgs(argv: readonly string[]): {
   reportArgument: string;

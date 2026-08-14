@@ -1,0 +1,5 @@
+invoice_id,counterparty,invoice_amount,paid_amount,due_date,bank_received
+AR-001,Customer-A,50000,30000,2026-08-01,30000
+AR-002,Customer-B,20000,20000,2026-08-10,20000
+AR-003,Customer-C,45000,0,2026-07-31,0
+AR-004,Customer-D,10000,5000,2026-09-01,4500

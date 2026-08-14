@@ -17,6 +17,7 @@ export const BenchmarkDatasetIdSchema = z.enum([
   "finagentbench",
   "qfbench",
   "general_agent_pilot",
+  "finance_agent_professional",
 ]);
 export type BenchmarkDatasetId = z.infer<typeof BenchmarkDatasetIdSchema>;
 
@@ -427,7 +428,14 @@ export const BenchmarkRunReportV1Schema = z
     results: z.array(BenchmarkCaseResultSchema),
   })
   .strict();
-export const BenchmarkProfileSchema = z.enum(["connection-smoke", "benchmark-smoke", "general-agent-pilot", "pilot", "full"]);
+export const BenchmarkProfileSchema = z.enum([
+  "connection-smoke",
+  "benchmark-smoke",
+  "general-agent-pilot",
+  "finance-agent-professional",
+  "pilot",
+  "full",
+]);
 export type BenchmarkProfile = z.infer<typeof BenchmarkProfileSchema>;
 export const BenchmarkEvaluationLayerSchema = z.enum(["mixed", "harness", "agent", "model"]);
 export type BenchmarkEvaluationLayer = z.infer<typeof BenchmarkEvaluationLayerSchema>;

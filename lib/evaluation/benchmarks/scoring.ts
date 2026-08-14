@@ -222,7 +222,9 @@ export function scoreBenchmarkPrediction(
   // correct answer may include a safety explanation or evidence context around
   // the expected fact; exact match and token-F1 would mark that as a false
   // negative. Keep strict scoring for the finance QA datasets.
-  const expectedFactContained = benchmarkCase.datasetId === "general_agent_pilot"
+  const openEndedAgentCase = benchmarkCase.datasetId === "general_agent_pilot"
+    || benchmarkCase.datasetId === "finance_agent_professional";
+  const expectedFactContained = openEndedAgentCase
     && expectedAnswers.some((expected) => generalAgentFactContained(answer, expected));
 
   let artifact: number | null = null;
@@ -251,7 +253,7 @@ export function scoreBenchmarkPrediction(
     || exactMatch === 1
     || numeric === 1
     || booleanAnswerMatches(answer, expectedAnswers)
-    || (benchmarkCase.datasetId !== "general_agent_pilot" && (f1 ?? 0) >= 0.8)
+    || (!openEndedAgentCase && (f1 ?? 0) >= 0.8)
     || expectedFactContained;
   if (!answerPassed) failures.push("answer_mismatch");
   if (citationResult.recall !== null && citationResult.recall < 1) failures.push("citation_recall_failed");

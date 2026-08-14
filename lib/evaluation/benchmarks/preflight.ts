@@ -31,7 +31,7 @@ export type RealApiBudgets = {
   maxCostUsd?: number;
 };
 
-export type BenchmarkPreflightTarget = "static" | "connection-smoke" | "benchmark-smoke" | "general-agent-pilot" | "pilot" | "full";
+export type BenchmarkPreflightTarget = "static" | "connection-smoke" | "benchmark-smoke" | "general-agent-pilot" | "finance-agent-professional" | "pilot" | "full";
 
 export interface BenchmarkPreflightOptions {
   target: BenchmarkPreflightTarget;
