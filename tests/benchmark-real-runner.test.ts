@@ -261,6 +261,43 @@ export const benchmarkRealRunnerTestPromise = (async () => {
   assert.equal(report.realApi, true);
   assert.equal(report.fixtureOracle, false);
 
+  let authUnavailableCalls = 0;
+  const authUnavailableReport = await runRealBenchmarkSuite({
+    suiteName: "real runner auth pool stop test",
+    runId: "real-runner-auth-unavailable",
+    selectedCases: selected,
+    inputArtifactsByCaseId: {},
+    configuration: config,
+    executor: async (executionCase) => {
+      authUnavailableCalls += 1;
+      return {
+        failure: { kind: "dependency_unavailable", code: "provider_auth_unavailable", source: "dependency" },
+        execution: {
+          traceId: `trace-auth-${executionCase.id}`,
+          caseId: `production-auth-${executionCase.id}`,
+          taskId: `task-auth-${executionCase.id}`,
+          runId: `execution-auth-${executionCase.id}`,
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs: 1,
+          retries: 1,
+          costUsd: null,
+          artifactRefs: [],
+          evidenceRefs: [],
+          validation: {
+            assertions: { total: 0, passed: 0, failed: 1 },
+            delivery: { required: false, delivered: 0, passed: true },
+          },
+          termination: { cancelled: false, aborted: false, timedOut: false },
+          stableFailureCode: "provider_auth_unavailable",
+        },
+      };
+    },
+  });
+  assert.equal(authUnavailableCalls, 1, "auth pool exhaustion must stop paid execution immediately");
+  assert.equal(authUnavailableReport.runStatus, "stopped");
+  assert.equal(authUnavailableReport.stopReason?.code, "provider_auth_unavailable");
+
   const checkpointRoot = mkdtempSync(path.join(os.tmpdir(), "finwork-real-checkpoint-"));
   try {
     const eventsPath = path.join(checkpointRoot, "events.jsonl");

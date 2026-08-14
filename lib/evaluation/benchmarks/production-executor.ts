@@ -314,6 +314,7 @@ export async function executeProductionBenchmarkCase(
     });
   } catch (error) {
     const aborted = context.signal?.aborted || isAbortError(error);
+    const diagnostic = safeBenchmarkDiagnostic(error, [settings.apiKey]);
     let settlement: ProductionTaskSettlement | undefined =
       (error as { __benchmarkSettlement?: ProductionTaskSettlement }).__benchmarkSettlement
       ?? productionRun.getSettlement()
@@ -322,12 +323,13 @@ export async function executeProductionBenchmarkCase(
       try {
         settlement = productionRun.settle({
           outcome: aborted ? "aborted" : "error",
-          message: stableFailureFor(error, aborted).code,
+          message: diagnostic.message,
         });
       } catch {
         settlement = productionRun.getSettlement() ?? undefined;
       }
     }
+    const failure = stableFailureFor(error, aborted, settlement?.stableFailureCode, diagnostic);
     // A deterministic task-contract failure can happen after the provider turn
     // was already persisted successfully. Do not duplicate the assistant turn
     // or overwrite its non-zero trace usage with an "incomplete" zero-usage
@@ -337,11 +339,11 @@ export async function executeProductionBenchmarkCase(
         ...persistParams,
         retryCount: Math.max(0, attempts - 1),
         collector: lastCollector,
-        errorMessage: stableFailureFor(error, aborted).code,
+        errorMessage: diagnostic.message,
         modelUsage: (error as { __modelUsage?: Record<string, never> }).__modelUsage,
       });
     }
-    persistTerminalLifecycle(lifecycleEmitter, runPersist, aborted ? "aborted" : "error", stableFailureFor(error, aborted).code);
+    persistTerminalLifecycle(lifecycleEmitter, runPersist, aborted ? "aborted" : "error", failure.code);
     return assemblePersistedPrediction({
       db,
       traceId,
@@ -352,7 +354,7 @@ export async function executeProductionBenchmarkCase(
       fallbackResult: completedResult,
       startedAt,
       now: options.now ?? Date.now,
-      failure: stableFailureFor(error, aborted, settlement?.stableFailureCode),
+      failure,
     });
   } finally {
     restoreRetrievalService();
@@ -617,43 +619,91 @@ function stableFailureFor(
   error: unknown,
   aborted: boolean,
   settlementCode?: string | null,
+  diagnostic = safeBenchmarkDiagnostic(error, []),
 ): NonNullable<BenchmarkPrediction["failure"]> {
-  if (aborted) return { kind: "canceled", code: "benchmark_aborted", source: "resource", details: {} };
+  const details = diagnosticDetails(diagnostic);
+  if (aborted) return { kind: "canceled", code: "benchmark_aborted", source: "resource", details };
   if (error instanceof Error && error.name === "HumanDecisionRequiredError") {
-    return { kind: "human_decision_required", code: "benchmark_human_decision_required", source: "policy", details: {} };
+    return { kind: "human_decision_required", code: "benchmark_human_decision_required", source: "policy", details };
   }
   if (error instanceof Error && (error.name === "TimeoutError" || /deadline|timeout|timed out/i.test(error.message))) {
-    return { kind: "resource_exhausted", code: "benchmark_wall_time_exceeded", source: "resource", details: {} };
+    return { kind: "resource_exhausted", code: "benchmark_wall_time_exceeded", source: "resource", details };
+  }
+  if (/task contract denies external egress/i.test(diagnostic.message)) {
+    return { kind: "permission_denied", code: "task_contract_external_egress_denied", source: "policy", details };
+  }
+  if (/auth_unavailable|no auth available/i.test(diagnostic.message)) {
+    return { kind: "dependency_unavailable", code: "provider_auth_unavailable", source: "dependency", details };
   }
   const provider = classifyTransientProviderError(error);
   if (provider.status === 401 || provider.status === 403) {
-    return { kind: "dependency_unavailable", code: "provider_auth_failed", source: "dependency", details: { status: provider.status } };
+    return { kind: "dependency_unavailable", code: "provider_auth_failed", source: "dependency", details: { ...details, status: provider.status } };
   }
   if (provider.status === 400 || provider.status === 404) {
-    return { kind: "dependency_unavailable", code: "provider_model_or_endpoint_invalid", source: "dependency", details: { status: provider.status } };
+    return { kind: "dependency_unavailable", code: "provider_model_or_endpoint_invalid", source: "dependency", details: { ...details, status: provider.status } };
   }
   if (provider.status === 429) {
-    return { kind: "transient_external_failure", code: "provider_rate_limited", source: "dependency", details: { status: provider.status } };
+    return { kind: "transient_external_failure", code: "provider_rate_limited", source: "dependency", details: { ...details, status: provider.status } };
   }
   if (provider.status !== undefined && provider.status >= 500) {
-    return { kind: "transient_external_failure", code: "provider_unavailable", source: "dependency", details: { status: provider.status } };
+    return { kind: "transient_external_failure", code: "provider_unavailable", source: "dependency", details: { ...details, status: provider.status } };
   }
   if (provider.retryable) {
-    return { kind: "transient_external_failure", code: provider.reason, source: "dependency", details: { status: provider.status ?? null } };
+    return { kind: "transient_external_failure", code: provider.reason, source: "dependency", details: { ...details, status: provider.status ?? null } };
   }
   if (settlementCode) {
     if (/validator|evidence|assertion/.test(settlementCode)) {
-      return { kind: "deterministic_validation_failed", code: settlementCode, source: "validator", details: {} };
+      return { kind: "deterministic_validation_failed", code: settlementCode, source: "validator", details };
     }
     if (/policy|permission/.test(settlementCode)) {
-      return { kind: "permission_denied", code: settlementCode, source: "policy", details: {} };
+      return { kind: "permission_denied", code: settlementCode, source: "policy", details };
     }
     if (/timeout|budget|resource/.test(settlementCode)) {
-      return { kind: "resource_exhausted", code: settlementCode, source: "resource", details: {} };
+      return { kind: "resource_exhausted", code: settlementCode, source: "resource", details };
     }
-    return { kind: "capability_missing", code: settlementCode, source: "capability", details: {} };
+    return { kind: "capability_missing", code: settlementCode, source: "capability", details };
   }
-  return { kind: "internal_error", code: "production_agent_failed", source: "capability", details: {} };
+  return { kind: "internal_error", code: "production_agent_failed", source: "capability", details };
+}
+
+type BenchmarkErrorDiagnostic = {
+  name: string;
+  message: string;
+  upstreamCode?: string;
+  fingerprint: string;
+};
+
+function safeBenchmarkDiagnostic(error: unknown, secrets: readonly string[]): BenchmarkErrorDiagnostic {
+  const record = typeof error === "object" && error !== null ? error as Record<string, unknown> : undefined;
+  const name = error instanceof Error && error.name.trim() ? error.name.trim() : "UnknownError";
+  let message = error instanceof Error ? error.message : typeof error === "string" ? error : String(error);
+  for (const secret of secrets.filter((value) => value.length >= 4)) {
+    message = message.split(secret).join("<redacted-secret>");
+  }
+  message = message
+    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, "<redacted-secret>")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]{12,}/gi, "Bearer <redacted-secret>")
+    .replace(/(?:\/Users\/[^/\s"']+|[A-Za-z]:\\Users\\[^\\\s"']+)/g, "<redacted-user-path>")
+    .slice(0, 1_000)
+    .trim() || "benchmark execution failed";
+  const rawCode = record?.code;
+  const upstreamCode = typeof rawCode === "string" && /^[A-Za-z0-9_.:-]{1,80}$/.test(rawCode)
+    ? rawCode
+    : undefined;
+  return {
+    name,
+    message,
+    ...(upstreamCode ? { upstreamCode } : {}),
+    fingerprint: sha256Json({ name, message, upstreamCode: upstreamCode ?? null }),
+  };
+}
+
+function diagnosticDetails(diagnostic: BenchmarkErrorDiagnostic): Record<string, string> {
+  return {
+    errorName: diagnostic.name,
+    errorFingerprint: diagnostic.fingerprint,
+    ...(diagnostic.upstreamCode ? { upstreamCode: diagnostic.upstreamCode } : {}),
+  };
 }
 
 function persistTerminalLifecycle(

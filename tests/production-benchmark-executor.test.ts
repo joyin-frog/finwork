@@ -348,6 +348,34 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     assert.equal(providerTerminated.prediction.failure?.code, "transient_transport_provider_response_error");
     assert.equal(providerTerminated.prediction.failure?.source, "dependency");
 
+    let authUnavailableCalls = 0;
+    const authUnavailable = await executeCase(benchmarkCase("auth-unavailable"), async () => {
+      authUnavailableCalls += 1;
+      const error = Object.assign(
+        new Error('503 {"error":{"message":"auth_unavailable: no auth available"}}'),
+        { code: "PROVIDER_RESPONSE_ERROR" },
+      );
+      (error as Error & { __collector?: unknown }).__collector = {
+        collectedChunks: [],
+        collectedEvents: [],
+      };
+      throw error;
+    });
+    assert.equal(authUnavailableCalls, 2, "transient auth-pool failures retain one bounded retry");
+    assert.equal(authUnavailable.prediction.failure?.code, "provider_auth_unavailable");
+    assert.equal(authUnavailable.prediction.failure?.source, "dependency");
+
+    const diagnosticFailure = await executeCase(benchmarkCase("safe-diagnostic"), async () => {
+      throw new Error(`diagnostic detail includes ${settings.apiKey}`);
+    });
+    assert.equal(diagnosticFailure.prediction.failure?.code, "foundation_agent_error");
+    assert.match(String(diagnosticFailure.prediction.failure?.details.errorFingerprint), /^[a-f0-9]{64}$/);
+    const persistedDiagnostic = getDb().prepare(`
+      SELECT error_message FROM agent_traces WHERE trace_id = ?
+    `).get(diagnosticFailure.prediction.execution?.traceId) as { error_message: string };
+    assert.match(persistedDiagnostic.error_message, /diagnostic detail includes <redacted-secret>/);
+    assert.doesNotMatch(persistedDiagnostic.error_message, new RegExp(settings.apiKey));
+
     let timeoutCalls = 0;
     const timedOut = await executeCase(benchmarkCase("timeout"), async () => {
       timeoutCalls += 1;

@@ -22,6 +22,10 @@ export const systemPromptFileRefTestPromise = (async () => {
     full.includes("不得执行模型提供的任意代码") && full.includes("analyze_tabular") && !full.includes("run_python"),
     "T6b FAIL: 应禁止任意代码执行并指向 analyze_tabular"
   );
+  assert.ok(
+    full.includes("AskUserQuestion") && full.includes("不要只在普通回复里提问"),
+    "T6c FAIL: 缺少关键输入或需要用户决策时必须进入正式 ask_user 协议"
+  );
 
   // ── 动态:本会话输出目录绝对路径注入 ────────────────────────────────────
   assert.ok(

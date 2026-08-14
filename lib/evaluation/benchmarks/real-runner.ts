@@ -134,6 +134,7 @@ export function createRealBenchmarkStopPolicy(input: {
       return { code: "benchmark_wall_time_exceeded", faultDomain: "resource" };
     }
     if (code === "provider_auth_failed") return { code, faultDomain: "dependency" };
+    if (code === "provider_auth_unavailable") return { code, faultDomain: "dependency" };
     if (code === "provider_model_or_endpoint_invalid") return { code, faultDomain: "dependency" };
     if (result.datasetId === "spreadsheetbench_v2" && (
       result.scores.artifact !== 1

@@ -98,6 +98,59 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
       },
       { db },
     );
+
+    let deniedNetworkCalls = 0;
+    const deniedNetworkDefinition: FinanceToolDefinition = {
+      id: "research_web",
+      name: "Research web",
+      namespace: "finance_worker",
+      description: "Network capability that is denied by the task contract",
+      schema: { query: z.string() },
+      riskLevel: "medium",
+      handler: async () => {
+        deniedNetworkCalls += 1;
+        return { content: [{ type: "text", text: "must not execute" }] };
+      },
+    };
+    const deniedNetworkRuntime = createFinanceCapabilityRuntime(
+      [deniedNetworkDefinition],
+      {
+        ...runtime.context,
+        runId: "runtime-network-denied",
+        caseId: "case-runtime-network-denied",
+        foundation: {
+          ...runtime.context.foundation!,
+          runId: "runtime-network-denied",
+          caseId: "case-runtime-network-denied",
+          security: {
+            ...runtime.context.foundation!.security,
+            allowExternalEgress: false,
+            allowedDomains: [],
+          },
+        },
+      },
+      { db },
+    );
+    const networkGrant = db.prepare(`
+      SELECT actions_json FROM security_acl_grants
+      WHERE case_id='case-runtime-network-denied'
+        AND capability_id='finance-tool.research_web'
+    `).get() as { actions_json: string };
+    assert.ok(!JSON.parse(networkGrant.actions_json).includes("network"), "denied egress must never be pre-granted");
+    assert.equal(
+      Number((db.prepare(`
+        SELECT COUNT(*) AS n FROM security_egress_grants
+        WHERE case_id='case-runtime-network-denied'
+      `).get() as { n: number }).n),
+      0,
+      "denied egress must not create destination grants",
+    );
+    await assert.rejects(
+      () => deniedNetworkRuntime.execute(deniedNetworkDefinition, { query: "test" }),
+      /denied|grant|permission|network/i,
+      "the denied network tool must fail closed only if it is actually selected",
+    );
+    assert.equal(deniedNetworkCalls, 0, "denied network handler must not execute");
     const manifest = runtime.registry.resolve("finance-tool.analyze_tabular", "1");
     assert.equal(manifest?.validators.length, 1);
     assert.equal(manifest?.validators[0]?.blocking, true);
@@ -153,7 +206,7 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
   } finally {
     db.close();
   }
-  console.log("finance-capability-runtime: policy coverage, single authority, resources, adapter order passed ✓");
+  console.log("finance-capability-runtime: policy coverage, denied egress bootstrap, single authority, resources, adapter order passed ✓");
 })();
 
 function count(db: DatabaseSync, table: string): number {

@@ -126,6 +126,12 @@ export function scoreBenchmarkPrediction(
   const expectedNumbers = oracle.expected.numericAnswers;
   const numeric = numericAccuracy(extractNumbers(answer), expectedNumbers);
   const citationResult = citationScores(prediction.citations, oracle.expected.citations);
+  // General Agent tasks are open-ended summaries, not short-answer QA. A
+  // correct answer may include a safety explanation or evidence context around
+  // the expected fact; exact match and token-F1 would mark that as a false
+  // negative. Keep strict scoring for the finance QA datasets.
+  const expectedFactContained = benchmarkCase.datasetId === "general_agent_pilot"
+    && expectedAnswers.some((expected) => normalizeText(answer).includes(normalizeText(expected)));
 
   let artifact: number | null = null;
   if (oracle.expected.artifact) {
@@ -149,7 +155,11 @@ export function scoreBenchmarkPrediction(
   }
 
   const hasExpectedAnswer = expectedAnswers.length > 0 || expectedNumbers.length > 0;
-  const answerPassed = !hasExpectedAnswer || exactMatch === 1 || numeric === 1 || (f1 ?? 0) >= 0.8;
+  const answerPassed = !hasExpectedAnswer
+    || exactMatch === 1
+    || numeric === 1
+    || (f1 ?? 0) >= 0.8
+    || expectedFactContained;
   if (!answerPassed) failures.push("answer_mismatch");
   if (citationResult.recall !== null && citationResult.recall < 1) failures.push("citation_recall_failed");
   if (citationResult.precision !== null && citationResult.precision < 1) failures.push("citation_precision_failed");

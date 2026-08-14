@@ -160,20 +160,25 @@ export class FinanceCapabilityRuntime implements FinanceToolRuntime {
       const capability = this.registry.resolve(capabilityId(definition.id), CAPABILITY_VERSION);
       if (!capability) throw new Error(`Capability ${definition.id} is not registered`);
       const actions = actionsForCapability(capability);
-      if (actions.length) {
+      // A denied network capability may remain visible in the catalog so the
+      // execution guard can fail it closed when selected. Do not fail the
+      // entire Agent while bootstrapping an otherwise local task, and never
+      // pre-grant the denied network action.
+      const grantableActions = foundation.security.allowExternalEgress
+        ? actions
+        : actions.filter((action) => action !== "network");
+      if (grantableActions.length) {
         ensureTaskCapabilityGrant(authorizer, {
           principal: foundation.principal,
           tenantId: foundation.tenantId,
           caseId: foundation.caseId,
           capabilityId: capability.id,
-          actions,
+          actions: grantableActions,
           expiresAt,
         });
       }
       if (actions.includes("network")) {
-        if (!foundation.security.allowExternalEgress) {
-          throw new Error(`Task contract denies external egress for ${capability.id}`);
-        }
+        if (!foundation.security.allowExternalEgress) continue;
         for (const domain of foundation.security.allowedDomains) {
           ensureTaskEgressGrant(authorizer, {
             principal: foundation.principal,
