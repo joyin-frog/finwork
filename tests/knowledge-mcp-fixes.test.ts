@@ -13,7 +13,7 @@ import {
   insertKnowledgeDocument,
 } from "../lib/db/sqlite.ts";
 import { createHash } from "node:crypto";
-import { createProductionRetrievalService, type RetrievalEmbedder } from "../lib/retrieval/index.ts";
+import { createProductionRetrievalService } from "../lib/retrieval/index.ts";
 import type { SdkLike } from "../lib/agent/mcp-tools/sdk-types.ts";
 
 // ── mock SDK that captures name, description, schema, handler ────────────────
@@ -46,16 +46,9 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   const db = initializeFinanceDatabase(openFinanceDatabase(path.join(baseDir, "fixes.db")));
 
   const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
-  const deterministicEmbedder: RetrievalEmbedder = async (texts) => texts.map((text) => [
-    text.includes("科目") ? 1 : 0,
-    text.includes("差旅") ? 1 : 0,
-    text.includes("住宿") ? 1 : 0,
-    0.1,
-  ]);
   const retrieval = createProductionRetrievalService({
     db,
     casRoot: path.join(baseDir, "artifacts", "cas"),
-    embedder: deterministicEmbedder,
   });
 
   // ── Seed immutable Retrieval v2 artifacts ───────────────────────────────
@@ -114,12 +107,13 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   const { createSearchKnowledgeTool, createReadFileTool } = await import(
     "../lib/agent/mcp-tools/knowledge.ts"
   );
+  const retrievalOptions = { getRetrievalService: () => retrieval };
 
   // ── Fix 1: topK clamp ────────────────────────────────────────────────────
   // FAIL BEFORE FIX: topK:10 throws zod validation error
   {
     const { sdk, tools } = makeMockSdk();
-    createSearchKnowledgeTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
     const entry = tools.get("search_knowledge");
     assert.ok(entry, "Fix1 FAIL: search_knowledge not registered");
@@ -144,7 +138,7 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 1b: default topK=3 path still works ──────────────────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createSearchKnowledgeTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
     const { handler } = tools.get("search_knowledge")!;
     let threw = false;
@@ -160,16 +154,16 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 2: description exposes governed hybrid retrieval ────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createSearchKnowledgeTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
     const entry = tools.get("search_knowledge");
     assert.ok(entry, "Fix2 FAIL: search_knowledge not found");
 
     const desc = entry.desc;
-    const mentionsHybrid = desc.includes("混合检索");
+    const mentionsBm25 = desc.includes("BM25");
     assert.ok(
-      mentionsHybrid,
-      `Fix2 FAIL: description should mention hybrid retrieval. Got: "${desc}"`
+      mentionsBm25,
+      `Fix2 FAIL: description should mention BM25 retrieval. Got: "${desc}"`
     );
 
     assert.ok(
@@ -195,7 +189,7 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 3: resolveDoc fallback for a sanitized alias ─────────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk);
+    createReadFileTool(sdk, retrievalOptions);
 
     const { handler } = tools.get("read_file")!;
 
@@ -218,7 +212,7 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 3b: exact title match still works (regression guard) ─────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk);
+    createReadFileTool(sdk, retrievalOptions);
 
     const { handler } = tools.get("read_file")!;
 
@@ -239,7 +233,7 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 3c: file_name exact match still works ────────────────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk);
+    createReadFileTool(sdk, retrievalOptions);
 
     const { handler } = tools.get("read_file")!;
 
@@ -251,6 +245,81 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     );
 
     console.log("knowledge-mcp-fixes Fix3c: file_name exact match still works ✓");
+  }
+
+  // ── Fix 4: large documents are read in bounded, addressable line ranges ──
+  {
+    const longTitle = "长篇财务制度";
+    const longText = Array.from({ length: 450 }, (_, index) => `制度条款 ${index + 1}`).join("\n");
+    const longHash = sha256(longText);
+    const longId = insertKnowledgeDocument({
+      title: longTitle,
+      file_name: `${longTitle}.txt`,
+      mime_type: "text/plain",
+      category: "general",
+      size_bytes: Buffer.byteLength(longText),
+      chunk_count: 0,
+      content_hash: longHash,
+    }, db);
+    await retrieval.indexKnowledgeDocument({
+      knowledgeDocumentId: longId,
+      title: longTitle,
+      fileName: `${longTitle}.txt`,
+      sourceContentHash: longHash,
+      parsedText: longText,
+      category: "general",
+    });
+    const { sdk, tools } = makeMockSdk();
+    createReadFileTool(sdk, retrievalOptions);
+    const result = await tools.get("read_file")!.handler({
+      fileName: `${longTitle}.txt`,
+      startLine: 401,
+      endLine: 410,
+    }) as { content: Array<{ text: string }> };
+    const text = result.content[0]?.text ?? "";
+    assert.match(text, /第 401-410 行/);
+    assert.match(text, /401: 制度条款 401/);
+    assert.doesNotMatch(text, /400: 制度条款 400/);
+    assert.match(text, /startLine=411/);
+    console.log("knowledge-mcp-fixes Fix4: bounded line-range reading ✓");
+  }
+
+  // ── Fix 4b: one giant line can continue by stable character offset ───────
+  {
+    const giantTitle = "单行压缩制度";
+    const giantText = "A".repeat(60_000);
+    const giantHash = sha256(giantText);
+    const giantId = insertKnowledgeDocument({
+      title: giantTitle,
+      file_name: `${giantTitle}.txt`,
+      mime_type: "text/plain",
+      category: "general",
+      size_bytes: Buffer.byteLength(giantText),
+      chunk_count: 0,
+      content_hash: giantHash,
+    }, db);
+    await retrieval.indexKnowledgeDocument({
+      knowledgeDocumentId: giantId,
+      title: giantTitle,
+      fileName: `${giantTitle}.txt`,
+      sourceContentHash: giantHash,
+      parsedText: giantText,
+      category: "general",
+    });
+    const { sdk, tools } = makeMockSdk();
+    createReadFileTool(sdk, retrievalOptions);
+    const first = await tools.get("read_file")!.handler({ fileName: `${giantTitle}.txt` }) as {
+      content: Array<{ text: string }>;
+    };
+    assert.match(first.content[0]?.text ?? "", /startChar=50000/);
+    const second = await tools.get("read_file")!.handler({
+      fileName: `${giantTitle}.txt`,
+      startChar: 50_000,
+      maxChars: 10_000,
+    }) as { content: Array<{ text: string }> };
+    assert.match(second.content[0]?.text ?? "", /字符 50000-59999/);
+    assert.doesNotMatch(second.content[0]?.text ?? "", /内容未读完/);
+    console.log("knowledge-mcp-fixes Fix4b: giant-line character pagination ✓");
   }
 
   // Cleanup env (best-effort; test harness may re-run)

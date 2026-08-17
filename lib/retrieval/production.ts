@@ -8,12 +8,10 @@ import {
   markKnowledgeHits,
   type KnowledgeDocumentRow,
 } from "@/lib/db/sqlite";
-import { EMBED_MODEL } from "@/lib/knowledge/embed-model";
 import { readTextMirror } from "@/lib/knowledge/storage";
 import { getAppDataDir } from "@/lib/runtime/paths";
-import type { RetrievalEmbedder, RetrievalHit, RetrievalSearchResponse } from "./contracts";
-import { RetrievalError } from "./contracts";
-import { PersistentEmbeddingPool } from "./embedding-pool";
+import type { RetrievalHit, RetrievalSearchResponse } from "./contracts";
+import { RETRIEVAL_INDEX_PROFILE, RetrievalError } from "./contracts";
 import { defaultTextRetrievalParser, RetrievalIndexer } from "./indexer";
 import { RetrievalSearchService } from "./search";
 
@@ -85,10 +83,20 @@ export type KnowledgeSearchApiResult = {
 export type ProductionRetrievalServiceOptions = {
   db: DatabaseSync;
   artifacts: ArtifactStore;
-  embedder: RetrievalEmbedder;
   principal?: PrincipalRef;
   /** Optional hard scope for one benchmark/task. Undefined keeps normal ACL-only production search. */
   allowedArtifactVersionIds?: readonly string[];
+  /** Production singleton only: lazily migrate active pre-Retrieval-v2 knowledge before use. */
+  autoMigrateKnowledge?: boolean;
+  /** Test/host seam for legacy text mirrors. */
+  readKnowledgeText?: (contentHash: string) => string | null;
+};
+
+export type KnowledgeMigrationResult = {
+  indexed: number;
+  skipped: number;
+  failed: number;
+  failures: Array<{ id: number; error: string }>;
 };
 
 function bindingFor(db: DatabaseSync, knowledgeDocumentId: number): KnowledgeBindingRow | undefined {
@@ -124,21 +132,29 @@ function revokeDocumentInTransaction(db: DatabaseSync, retrievalDocumentId: stri
 export class ProductionRetrievalService {
   readonly db: DatabaseSync;
   readonly artifacts: ArtifactStore;
-  readonly embedder: RetrievalEmbedder;
   readonly principal: PrincipalRef;
   readonly allowedArtifactVersionIds: readonly string[] | undefined;
+  readonly autoMigrateKnowledge: boolean;
+  readonly readKnowledgeText: (contentHash: string) => string | null;
   readonly indexer: RetrievalIndexer;
   readonly searchService: RetrievalSearchService;
+  private knowledgeMigrationInFlight: Promise<KnowledgeMigrationResult> | undefined;
+  private knowledgeMigrationSnapshot: {
+    signature: string;
+    checkedAtMs: number;
+    result: KnowledgeMigrationResult;
+  } | undefined;
 
   constructor(options: ProductionRetrievalServiceOptions) {
     this.db = options.db;
     this.artifacts = options.artifacts;
-    this.embedder = options.embedder;
     this.principal = options.principal ?? LOCAL_RETRIEVAL_PRINCIPAL;
     this.allowedArtifactVersionIds = options.allowedArtifactVersionIds === undefined
       ? undefined
       : [...new Set(options.allowedArtifactVersionIds.map((value) => value.trim()).filter(Boolean))];
-    this.indexer = new RetrievalIndexer(this.db, this.artifacts, defaultTextRetrievalParser, this.embedder);
+    this.autoMigrateKnowledge = options.autoMigrateKnowledge === true;
+    this.readKnowledgeText = options.readKnowledgeText ?? readTextMirror;
+    this.indexer = new RetrievalIndexer(this.db, this.artifacts, defaultTextRetrievalParser);
     this.searchService = new RetrievalSearchService(this.db);
   }
 
@@ -163,6 +179,7 @@ export class ProductionRetrievalService {
           SET title=?, document_type=?, classification='internal', updated_at=?
           WHERE document_id=?
         `).run(request.title, request.category, at, current.retrieval_document_id);
+        this.indexer.refreshDocumentTitleTerms(current.retrieval_document_id, request.title);
         this.db.prepare(`UPDATE retrieval_chunks SET active=? WHERE document_id=?`).run(
           available ? 1 : 0,
           current.retrieval_document_id,
@@ -226,7 +243,7 @@ export class ProductionRetrievalService {
         classification: "internal",
       },
       acl: [{ principal: indexingPrincipal, grantedAt: at }],
-      embeddingModel: EMBED_MODEL,
+      indexProfile: RETRIEVAL_INDEX_PROFILE,
       requestedAt: at,
       parserVersion: "retrieval-parser-v1",
       chunkerVersion: "structure-chunker-v1",
@@ -350,16 +367,99 @@ export class ProductionRetrievalService {
     return new TextDecoder("utf-8", { fatal: true }).decode(this.artifacts.read(binding.artifact_version_id));
   }
 
+  /**
+   * Lazily brings active legacy knowledge rows onto Retrieval v2. The lock is
+   * process-local; index registration and binding activation remain atomic in
+   * SQLite, so concurrent hosts can safely race without exposing staging data.
+   */
+  async ensureKnowledgeDocumentsReady(): Promise<KnowledgeMigrationResult> {
+    if (!this.autoMigrateKnowledge) {
+      return { indexed: 0, skipped: 0, failed: 0, failures: [] };
+    }
+    if (this.knowledgeMigrationInFlight) return await this.knowledgeMigrationInFlight;
+    const missing = this.listMissingLegacyKnowledgeDocuments();
+    const signature = missing.map((doc) => `${doc.id}:${doc.content_hash}`).join("|");
+    const previous = this.knowledgeMigrationSnapshot;
+    if (previous?.signature === signature &&
+      (previous.result.failed === 0 || Date.now() - previous.checkedAtMs < 60_000)) {
+      return previous.result;
+    }
+    this.knowledgeMigrationInFlight = this.reindexMissingKnowledgeDocuments(missing);
+    try {
+      const result = await this.knowledgeMigrationInFlight;
+      const remainingDocuments = this.listMissingLegacyKnowledgeDocuments();
+      const remainingSignature = remainingDocuments.map((doc) => `${doc.id}:${doc.content_hash}`).join("|");
+      const remainingIds = new Set(remainingDocuments.map((doc) => doc.id));
+      const remainingFailures = result.failures.filter((failure) => remainingIds.has(failure.id));
+      this.knowledgeMigrationSnapshot = {
+        signature: remainingSignature,
+        checkedAtMs: Date.now(),
+        result: {
+          indexed: 0,
+          skipped: 0,
+          failed: remainingFailures.length,
+          failures: remainingFailures,
+        },
+      };
+      return result;
+    } finally {
+      this.knowledgeMigrationInFlight = undefined;
+    }
+  }
+
+  private listMissingLegacyKnowledgeDocuments(): KnowledgeDocumentRow[] {
+    return this.db.prepare(`
+      SELECT k.*
+      FROM knowledge_documents k
+      WHERE k.archived=0
+        AND NOT EXISTS (
+          SELECT 1 FROM knowledge_retrieval_bindings b
+          WHERE b.knowledge_document_id=k.id
+        )
+      ORDER BY k.updated_at DESC
+    `).all() as KnowledgeDocumentRow[];
+  }
+
+  private async reindexMissingKnowledgeDocuments(
+    documents: readonly KnowledgeDocumentRow[],
+  ): Promise<KnowledgeMigrationResult> {
+    let indexed = 0;
+    let skipped = 0;
+    let failed = 0;
+    const failures: Array<{ id: number; error: string }> = [];
+    for (const doc of documents) {
+      const text = this.readKnowledgeText(doc.content_hash);
+      if (!text) {
+        failed += 1;
+        failures.push({ id: doc.id, error: "text mirror is missing; re-upload the source document" });
+        continue;
+      }
+      try {
+        const result = await this.indexKnowledgeDocument({
+          knowledgeDocumentId: doc.id,
+          title: doc.title,
+          fileName: doc.file_name,
+          sourceContentHash: doc.content_hash,
+          parsedText: text,
+          category: doc.category,
+        });
+        if (result.reused) skipped += 1;
+        else indexed += 1;
+      } catch (error) {
+        failed += 1;
+        failures.push({ id: doc.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return { indexed, skipped, failed, failures };
+  }
+
   async search(query: string, topK = 10, now = new Date().toISOString()): Promise<RetrievalSearchResponse> {
-    const vectors = await this.embedder([query], EMBED_MODEL);
-    const queryVector = vectors[0];
-    if (!queryVector) throw new RetrievalError("embedding_failed", "query embedding is empty");
+    await this.ensureKnowledgeDocumentsReady();
     return this.searchService.search({
       principal: this.principal,
       query,
-      mode: "hybrid",
-      queryVector: [...queryVector],
-      embeddingModel: EMBED_MODEL,
+      mode: "bm25",
+      indexProfile: RETRIEVAL_INDEX_PROFILE,
       filters: {
         entityRefs: [],
         documentTypes: [],
@@ -431,16 +531,25 @@ export class ProductionRetrievalService {
         continue;
       }
       try {
-        const result = await this.indexKnowledgeDocument({
-          knowledgeDocumentId: doc.id,
-          title: doc.title,
-          fileName: doc.file_name,
-          sourceContentHash: doc.content_hash,
-          parsedText: text,
-          category: doc.category,
-        });
-        if (result.reused) skipped += 1;
-        else indexed += 1;
+        const current = bindingFor(this.db, doc.id);
+        if (current?.source_content_hash === doc.content_hash) {
+          await this.indexer.rebuildDocument(
+            current.retrieval_document_id,
+            `knowledge-reindex-${doc.id}`,
+          );
+          indexed += 1;
+        } else {
+          const result = await this.indexKnowledgeDocument({
+            knowledgeDocumentId: doc.id,
+            title: doc.title,
+            fileName: doc.file_name,
+            sourceContentHash: doc.content_hash,
+            parsedText: text,
+            category: doc.category,
+          });
+          if (result.reused) skipped += 1;
+          else indexed += 1;
+        }
       } catch (error) {
         failed += 1;
         failures.push({ id: doc.id, error: error instanceof Error ? error.message : String(error) });
@@ -451,15 +560,14 @@ export class ProductionRetrievalService {
 }
 
 let singletonDb: DatabaseSync | undefined;
-let singletonPool: PersistentEmbeddingPool | undefined;
 let singletonService: ProductionRetrievalService | undefined;
 let installedService: ProductionRetrievalService | undefined;
 
 /**
  * 显式安装由应用组合根提供的 Retrieval v2 服务。
  *
- * 主要用于测试和受控宿主将确定性/远程 embedder 注入完整的知识入库链路；
- * 未安装时生产环境仍使用持久化本地 worker，绝不自动降级为词法检索。
+ * 主要用于测试和受控宿主注入独立数据库、ACL 与 Artifact 存储；
+ * 生产环境与测试环境都使用同一套本地 BM25 词法索引。
  * 返回的恢复函数避免同一进程内的测试或多宿主相互污染。
  */
 export function installProductionRetrievalService(service: ProductionRetrievalService): () => void {
@@ -479,38 +587,35 @@ export function getProductionRetrievalService(): ProductionRetrievalService {
   const db = getDb();
   if (!singletonService || singletonDb !== db) {
     singletonDb = db;
-    singletonPool = singletonPool ?? new PersistentEmbeddingPool();
     singletonService = new ProductionRetrievalService({
       db,
       artifacts: new ArtifactStore(db, path.join(getAppDataDir(), "artifacts", "cas")),
-      embedder: singletonPool.embed,
+      autoMigrateKnowledge: true,
     });
   }
   return singletonService;
 }
 
-/** Release the process-owned embedding workers used by CLI/one-shot hosts. */
 export async function closeProductionRetrievalService(): Promise<void> {
-  const pool = singletonPool;
   singletonService = undefined;
   singletonDb = undefined;
-  singletonPool = undefined;
-  await pool?.close();
 }
 
 export function createProductionRetrievalService(options: {
   db?: DatabaseSync;
-  embedder: RetrievalEmbedder;
   casRoot?: string;
   principal?: PrincipalRef;
   allowedArtifactVersionIds?: readonly string[];
+  autoMigrateKnowledge?: boolean;
+  readKnowledgeText?: (contentHash: string) => string | null;
 }): ProductionRetrievalService {
   const db = options.db ?? getDb();
   return new ProductionRetrievalService({
     db,
     artifacts: new ArtifactStore(db, options.casRoot ?? path.join(getAppDataDir(), "artifacts", "cas")),
-    embedder: options.embedder,
     principal: options.principal,
     allowedArtifactVersionIds: options.allowedArtifactVersionIds,
+    autoMigrateKnowledge: options.autoMigrateKnowledge,
+    readKnowledgeText: options.readKnowledgeText,
   });
 }

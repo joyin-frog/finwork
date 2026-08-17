@@ -31,6 +31,10 @@
     "case_history_events",
     "case_human_decisions",
     "case_nodes",
+    "case_plan_step_nodes",
+    "case_plan_steps",
+    "case_plan_versions",
+    "case_preflight_results",
     "case_run_bindings",
     "case_step_attempts",
     "cases",
@@ -38,6 +42,7 @@
     "chat_attachments",
     "chat_conversations",
     "chat_feedback",
+    "chat_message_workspace_roots",
     "chat_messages",
     "checklist_artifacts",
     "citation_records",
@@ -55,10 +60,10 @@
     "fact_obligations",
     "fact_payroll",
     "feature_events",
+    "file_changesets",
     "foundation_diagnostics",
     "incremental_cache_entries",
     "knowledge_documents",
-    "knowledge_embeddings",
     "knowledge_retrieval_bindings",
     "library_files",
     "memory_access_log_v2",
@@ -81,9 +86,14 @@
     "resource_soak_runs",
     "resource_temp_workspaces",
     "resource_usage_events",
-    "retrieval_ann_buckets",
     "retrieval_chunk_edges",
     "retrieval_chunks",
+    "retrieval_chunks_fts",
+    "retrieval_chunks_fts_config",
+    "retrieval_chunks_fts_content",
+    "retrieval_chunks_fts_data",
+    "retrieval_chunks_fts_docsize",
+    "retrieval_chunks_fts_idx",
     "retrieval_document_acl",
     "retrieval_documents",
     "retrieval_ingestion_jobs",
@@ -91,6 +101,7 @@
     "retrieval_query_cache",
     "role_memory",
     "run_events",
+    "script_executions",
     "secret_leases",
     "security_acl_grants",
     "security_audit_events",
@@ -99,8 +110,15 @@
     "skill_snapshots",
     "subagent_dispatches",
     "task_contracts",
+    "task_file_refs",
     "tool_executions",
-    "worker_jobs"
+    "worker_jobs",
+    "workspace_asset_versions",
+    "workspace_assets",
+    "workspace_blob_chunks",
+    "workspace_blobs",
+    "workspace_chunks",
+    "workspace_roots"
   ],
   "indexes": [
     "idx_agent_runs_conversation",
@@ -138,18 +156,24 @@
     "idx_case_edges_to",
     "idx_case_history_sequence",
     "idx_case_nodes_case_status",
+    "idx_case_plan_case",
+    "idx_case_plan_one_active",
+    "idx_case_plan_steps_status",
+    "idx_case_preflight_case",
     "idx_case_run_bindings_state",
     "idx_cases_state",
     "idx_cases_task",
     "idx_chat_agent_events_message_id",
     "idx_chat_agent_events_trace",
     "idx_chat_agent_events_type_created",
+    "idx_chat_attachments_asset",
     "idx_chat_attachments_message_id",
     "idx_chat_conversations_updated_at",
     "idx_chat_conversations_user",
     "idx_chat_feedback_conversation",
     "idx_chat_feedback_trace",
     "idx_chat_feedback_updated",
+    "idx_chat_message_workspace_roots_root",
     "idx_chat_messages_conversation_id",
     "idx_checklist_artifacts_conversation_id",
     "idx_citation_records_claim",
@@ -169,10 +193,10 @@
     "idx_fact_obligations_due",
     "idx_fact_obligations_src_doc",
     "idx_fact_payroll_period",
+    "idx_file_changesets_run",
     "idx_foundation_diagnostics_time",
     "idx_incremental_cache_lru",
     "idx_knowledge_documents_category",
-    "idx_knowledge_embeddings_doc",
     "idx_knowledge_retrieval_artifact",
     "idx_knowledge_retrieval_source_hash",
     "idx_library_files_created",
@@ -197,7 +221,6 @@
     "idx_resource_temp_workspace_sweep",
     "idx_resource_usage_scope",
     "idx_retrieval_acl_active",
-    "idx_retrieval_ann_chunk",
     "idx_retrieval_cache_expiry",
     "idx_retrieval_chunks_document",
     "idx_retrieval_chunks_parent",
@@ -208,12 +231,19 @@
     "idx_role_memory_role",
     "idx_run_events_run_id",
     "idx_run_events_settled_once",
+    "idx_script_executions_run",
+    "idx_script_executions_script",
     "idx_secret_leases_active",
     "idx_security_acl_match",
     "idx_security_egress_match",
     "idx_security_policy_decision_scope",
+    "idx_task_file_refs_run",
     "idx_tool_executions_created",
-    "idx_worker_jobs_queue"
+    "idx_worker_jobs_queue",
+    "idx_workspace_asset_versions_blob",
+    "idx_workspace_assets_batch",
+    "idx_workspace_assets_name",
+    "idx_workspace_blob_chunks_chunk"
   ],
   "indexDetails": [
     {
@@ -357,6 +387,22 @@
       "table": "case_nodes"
     },
     {
+      "name": "idx_case_plan_case",
+      "table": "case_plan_versions"
+    },
+    {
+      "name": "idx_case_plan_one_active",
+      "table": "case_plan_versions"
+    },
+    {
+      "name": "idx_case_plan_steps_status",
+      "table": "case_plan_steps"
+    },
+    {
+      "name": "idx_case_preflight_case",
+      "table": "case_preflight_results"
+    },
+    {
       "name": "idx_case_run_bindings_state",
       "table": "case_run_bindings"
     },
@@ -381,6 +427,10 @@
       "table": "chat_agent_events"
     },
     {
+      "name": "idx_chat_attachments_asset",
+      "table": "chat_attachments"
+    },
+    {
       "name": "idx_chat_attachments_message_id",
       "table": "chat_attachments"
     },
@@ -403,6 +453,10 @@
     {
       "name": "idx_chat_feedback_updated",
       "table": "chat_feedback"
+    },
+    {
+      "name": "idx_chat_message_workspace_roots_root",
+      "table": "chat_message_workspace_roots"
     },
     {
       "name": "idx_chat_messages_conversation_id",
@@ -481,6 +535,10 @@
       "table": "fact_payroll"
     },
     {
+      "name": "idx_file_changesets_run",
+      "table": "file_changesets"
+    },
+    {
       "name": "idx_foundation_diagnostics_time",
       "table": "foundation_diagnostics"
     },
@@ -491,10 +549,6 @@
     {
       "name": "idx_knowledge_documents_category",
       "table": "knowledge_documents"
-    },
-    {
-      "name": "idx_knowledge_embeddings_doc",
-      "table": "knowledge_embeddings"
     },
     {
       "name": "idx_knowledge_retrieval_artifact",
@@ -593,10 +647,6 @@
       "table": "retrieval_document_acl"
     },
     {
-      "name": "idx_retrieval_ann_chunk",
-      "table": "retrieval_ann_buckets"
-    },
-    {
       "name": "idx_retrieval_cache_expiry",
       "table": "retrieval_query_cache"
     },
@@ -637,6 +687,14 @@
       "table": "run_events"
     },
     {
+      "name": "idx_script_executions_run",
+      "table": "script_executions"
+    },
+    {
+      "name": "idx_script_executions_script",
+      "table": "script_executions"
+    },
+    {
       "name": "idx_secret_leases_active",
       "table": "secret_leases"
     },
@@ -653,12 +711,32 @@
       "table": "security_policy_decisions"
     },
     {
+      "name": "idx_task_file_refs_run",
+      "table": "task_file_refs"
+    },
+    {
       "name": "idx_tool_executions_created",
       "table": "tool_executions"
     },
     {
       "name": "idx_worker_jobs_queue",
       "table": "worker_jobs"
+    },
+    {
+      "name": "idx_workspace_asset_versions_blob",
+      "table": "workspace_asset_versions"
+    },
+    {
+      "name": "idx_workspace_assets_batch",
+      "table": "workspace_assets"
+    },
+    {
+      "name": "idx_workspace_assets_name",
+      "table": "workspace_assets"
+    },
+    {
+      "name": "idx_workspace_blob_chunks_chunk",
+      "table": "workspace_blob_chunks"
     }
   ],
   "columns": {
@@ -3028,6 +3106,278 @@
         "pk": 0
       }
     ],
+    "case_plan_step_nodes": [
+      {
+        "cid": 0,
+        "name": "plan_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "step_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "node_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 3
+      }
+    ],
+    "case_plan_steps": [
+      {
+        "cid": 0,
+        "name": "step_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "plan_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "step_key",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "title",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "expected_outcome",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "ordinal",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "user_visible",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "1",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "blocking",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": "1",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "result_summary",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "started_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "ended_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "case_plan_versions": [
+      {
+        "cid": 0,
+        "name": "plan_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "case_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "version",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "goal",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "reason",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "created_by",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "case_preflight_results": [
+      {
+        "cid": 0,
+        "name": "preflight_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "case_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "capability_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "required",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "candidate_tools_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "reason",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "checked_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
     "case_run_bindings": [
       {
         "cid": 0,
@@ -3372,6 +3722,22 @@
         "notnull": 1,
         "dflt_value": "0",
         "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "asset_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "asset_version_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
       }
     ],
     "chat_conversations": [
@@ -3511,6 +3877,32 @@
         "type": "TEXT",
         "notnull": 1,
         "dflt_value": "CURRENT_TIMESTAMP",
+        "pk": 0
+      }
+    ],
+    "chat_message_workspace_roots": [
+      {
+        "cid": 0,
+        "name": "message_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "root_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
         "pk": 0
       }
     ],
@@ -5020,6 +5412,96 @@
         "pk": 0
       }
     ],
+    "file_changesets": [
+      {
+        "cid": 0,
+        "name": "changeset_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "run_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "asset_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "base_version_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "candidate_version_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "diff_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "diff_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "validation_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "resolved_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
     "foundation_diagnostics": [
       {
         "cid": 0,
@@ -5255,64 +5737,6 @@
         "type": "TEXT",
         "notnull": 1,
         "dflt_value": "'none'",
-        "pk": 0
-      }
-    ],
-    "knowledge_embeddings": [
-      {
-        "cid": 0,
-        "name": "id",
-        "type": "INTEGER",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 1
-      },
-      {
-        "cid": 1,
-        "name": "document_id",
-        "type": "INTEGER",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 2,
-        "name": "chunk_index",
-        "type": "INTEGER",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 3,
-        "name": "text",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 4,
-        "name": "embedding",
-        "type": "BLOB",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 5,
-        "name": "model",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 6,
-        "name": "created_at",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": "CURRENT_TIMESTAMP",
         "pk": 0
       }
     ],
@@ -7056,40 +7480,6 @@
         "pk": 0
       }
     ],
-    "retrieval_ann_buckets": [
-      {
-        "cid": 0,
-        "name": "model",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 1
-      },
-      {
-        "cid": 1,
-        "name": "band_no",
-        "type": "INTEGER",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 2
-      },
-      {
-        "cid": 2,
-        "name": "bucket_hash",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 3
-      },
-      {
-        "cid": 3,
-        "name": "chunk_id",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 4
-      }
-    ],
     "retrieval_chunk_edges": [
       {
         "cid": 0,
@@ -7231,22 +7621,6 @@
       },
       {
         "cid": 14,
-        "name": "embedding",
-        "type": "BLOB",
-        "notnull": 0,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 15,
-        "name": "embedding_dim",
-        "type": "INTEGER",
-        "notnull": 0,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 16,
         "name": "active",
         "type": "INTEGER",
         "notnull": 1,
@@ -7254,10 +7628,150 @@
         "pk": 0
       },
       {
-        "cid": 17,
+        "cid": 15,
         "name": "created_at",
         "type": "TEXT",
         "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "retrieval_chunks_fts": [
+      {
+        "cid": 0,
+        "name": "chunk_id",
+        "type": "",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 1,
+        "name": "body_terms",
+        "type": "",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "title_terms",
+        "type": "",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "retrieval_chunks_fts_config": [
+      {
+        "cid": 0,
+        "name": "k",
+        "type": "",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "v",
+        "type": "",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "retrieval_chunks_fts_content": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "c0",
+        "type": "",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "c1",
+        "type": "",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "c2",
+        "type": "",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "retrieval_chunks_fts_data": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "block",
+        "type": "BLOB",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "retrieval_chunks_fts_docsize": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "sz",
+        "type": "BLOB",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "retrieval_chunks_fts_idx": [
+      {
+        "cid": 0,
+        "name": "segid",
+        "type": "",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "term",
+        "type": "",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "pgno",
+        "type": "",
+        "notnull": 0,
         "dflt_value": null,
         "pk": 0
       }
@@ -7419,7 +7933,7 @@
       },
       {
         "cid": 13,
-        "name": "embedding_model",
+        "name": "index_profile",
         "type": "TEXT",
         "notnull": 1,
         "dflt_value": null,
@@ -7761,6 +8275,112 @@
         "type": "TEXT",
         "notnull": 1,
         "dflt_value": "datetime('now')",
+        "pk": 0
+      }
+    ],
+    "script_executions": [
+      {
+        "cid": 0,
+        "name": "execution_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "run_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "script_asset_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "script_version_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "sandbox_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "args_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "input_refs_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "output_manifest_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'[]'",
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "exit_code",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "error_message",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "started_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 12,
+        "name": "completed_at",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
         "pk": 0
       }
     ],
@@ -8476,6 +9096,56 @@
         "pk": 0
       }
     ],
+    "task_file_refs": [
+      {
+        "cid": 0,
+        "name": "ref_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "run_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "asset_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "version_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "role",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
     "tool_executions": [
       {
         "cid": 0,
@@ -8628,6 +9298,362 @@
         "name": "error_message",
         "type": "TEXT",
         "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "workspace_asset_versions": [
+      {
+        "cid": 0,
+        "name": "version_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "asset_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "version_no",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "blob_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "parent_version_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "source_fingerprint_json",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'{}'",
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "workspace_assets": [
+      {
+        "cid": 0,
+        "name": "asset_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "source_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "display_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "media_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "workspace_root_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "relative_path",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "batch_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "current_version_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "lifecycle_status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'active'",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "updated_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "workspace_blob_chunks": [
+      {
+        "cid": 0,
+        "name": "blob_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "ordinal",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 2
+      },
+      {
+        "cid": 2,
+        "name": "chunk_id",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "workspace_blobs": [
+      {
+        "cid": 0,
+        "name": "blob_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "content_hmac",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "size_bytes",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "media_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "chunk_count",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "workspace_chunks": [
+      {
+        "cid": 0,
+        "name": "chunk_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "size_bytes",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "storage_path",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      }
+    ],
+    "workspace_roots": [
+      {
+        "cid": 0,
+        "name": "root_id",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt_value": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "display_name",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "locator_ciphertext",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "locator_nonce",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "locator_tag",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "locator_hmac",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "permission",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "write_policy",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "output_subdir",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'Finwork 输出'",
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "status",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": "'active'",
+        "pk": 0
+      },
+      {
+        "cid": 10,
+        "name": "created_at",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt_value": null,
+        "pk": 0
+      },
+      {
+        "cid": 11,
+        "name": "last_seen_at",
+        "type": "TEXT",
+        "notnull": 1,
         "dflt_value": null,
         "pk": 0
       }

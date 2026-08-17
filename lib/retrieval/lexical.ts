@@ -1,5 +1,17 @@
 const WORD_PATTERN = /[\p{L}\p{N}_-]+/gu;
 const CJK_PATTERN = /[\u3400-\u9fff\uf900-\ufaff]/;
+const ENGLISH_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "did", "do", "does",
+  "for", "from", "how", "in", "is", "it", "of", "on", "or", "the", "to",
+  "was", "were", "what", "when", "where", "which", "who", "why", "with",
+]);
+
+function normalizeEnglishTerm(token: string): string {
+  if (token.length > 4 && token.endsWith("s") && !/(?:ss|is|us)$/.test(token)) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
 
 export function normalizeRetrievalText(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
@@ -12,7 +24,8 @@ export function lexicalTerms(value: string): string[] {
   for (const match of normalized.matchAll(WORD_PATTERN)) {
     const token = match[0];
     if (!CJK_PATTERN.test(token)) {
-      if (token.length > 1 || /^\d+$/.test(token)) terms.push(token);
+      const term = normalizeEnglishTerm(token);
+      if ((term.length > 1 || /^\d+$/.test(term)) && !ENGLISH_STOP_WORDS.has(term)) terms.push(term);
       continue;
     }
     const chars = Array.from(token);

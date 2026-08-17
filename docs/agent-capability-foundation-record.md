@@ -6,6 +6,8 @@
 > 主要输入：`docs/spec/design-xlsx-capabilities.md`、当前代码与测试、既有 Run/交付/RAG/记忆设计  
 > 对应总实施文档：[`docs/spec/spec-agent-capability-foundation.md`](spec/spec-agent-capability-foundation.md)
 
+> 2026-08-17 更新：本文保留的 embedding / 向量检索段落是历史设计上下文，已不代表当前生产实现。当前知识检索权威链为结构化解析 → SQLite FTS5/BM25 → ACL 过滤 → 结构上下文 → 不可变引用，不下载、不加载 Embedding 模型。
+
 ## 1. 为什么先写这份记录
 
 Finwork 目前已经不是“给模型接几个工具”的早期项目。仓库里已有 Run 合同、交付质量门、权限检查、知识库、记忆、Excel 工具、文件预览和一批财务 Skill；但这些能力仍主要以独立模块和局部约定存在。

@@ -22,26 +22,13 @@ import {
   hasActiveKnowledgePathLease,
   writeTextMirror,
 } from "./storage";
-import type { EmbedRunner } from "./embeddings";
-import { ensureEmbedModel, getEmbedModelDir } from "./embed-model";
 import {
-  createProductionRetrievalService,
   getProductionRetrievalService,
-  hasInstalledProductionRetrievalService,
   type ProductionRetrievalService,
 } from "@/lib/retrieval/production";
 
-function retrievalService(embedRunner?: EmbedRunner): ProductionRetrievalService {
-  if (!embedRunner) return getProductionRetrievalService();
-  return createProductionRetrievalService({
-    embedder: async (texts) => await embedRunner([...texts], getEmbedModelDir()),
-  });
-}
-
-async function ensureRetrievalReady(embedRunner?: EmbedRunner): Promise<void> {
-  if (embedRunner || hasInstalledProductionRetrievalService()) return;
-  const result = await ensureEmbedModel();
-  if (!result.ok) throw new Error(`检索模型不可用：${result.detail}`);
+function retrievalService(): ProductionRetrievalService {
+  return getProductionRetrievalService();
 }
 
 export async function ingestDocument(params: {
@@ -53,10 +40,8 @@ export async function ingestDocument(params: {
   sizeBytes: number;
   storagePath?: string;
   onProgress?: (stage: string, percent: number) => void;
-  /** 可注入 embed runner（测试用）；未提供则走真实 worker */
-  embedRunner?: EmbedRunner;
 }): Promise<{ documentId: number; chunkCount: number }> {
-  const { filePath, title, fileName, mimeType, category, sizeBytes, storagePath, onProgress, embedRunner } = params;
+  const { filePath, title, fileName, mimeType, category, sizeBytes, storagePath, onProgress } = params;
 
   onProgress?.("计算文件哈希", 5);
   const fileBuffer = readFileSync(filePath);
@@ -68,7 +53,6 @@ export async function ingestDocument(params: {
   const resolvedCategory = category ?? inferCategoryFromDocument({ fileName, title, text });
 
   if (!text.trim()) throw new Error("文档内容为空，无法建立索引");
-  await ensureRetrievalReady(embedRunner);
 
   // 文本镜像只服务预览与旧数据迁移；生产检索的权威源是不可变 Artifact。
   onProgress?.("写入预览文本", 55);
@@ -81,7 +65,7 @@ export async function ingestDocument(params: {
 
     onProgress?.("建立受控检索索引", 75);
     try {
-      await retrievalService(embedRunner).indexKnowledgeDocument({
+      await retrievalService().indexKnowledgeDocument({
         knowledgeDocumentId: oldDoc.id,
         title,
         fileName,
@@ -143,7 +127,7 @@ export async function ingestDocument(params: {
 
   onProgress?.("建立受控检索索引", 85);
   try {
-    await retrievalService(embedRunner).indexKnowledgeDocument({
+    await retrievalService().indexKnowledgeDocument({
       knowledgeDocumentId: documentId,
       title,
       fileName,

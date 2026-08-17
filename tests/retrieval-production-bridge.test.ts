@@ -10,7 +10,6 @@ import {
   createProductionRetrievalService,
   LOCAL_RETRIEVAL_PRINCIPAL,
   RetrievalError,
-  type RetrievalEmbedder,
 } from "../lib/retrieval/index.ts";
 
 const NOW = "2026-08-09T08:00:00.000Z";
@@ -25,16 +24,6 @@ function makeDb(): DatabaseSync {
   runMigrations(db, ":memory:", () => null);
   return db;
 }
-
-const deterministicEmbedder: RetrievalEmbedder = async (texts) => texts.map((text) => {
-  const normalized = text.toLowerCase();
-  return [
-    normalized.includes("差旅") ? 1 : 0,
-    normalized.includes("住宿") ? 1 : 0,
-    normalized.includes("税") ? 1 : 0,
-    0.1,
-  ];
-});
 
 function insertDoc(db: DatabaseSync, title: string, fileName: string, content: string): number {
   return insertKnowledgeDocument({
@@ -67,7 +56,6 @@ export const retrievalProductionBridgeTestPromise = (async () => {
     const service = createProductionRetrievalService({
       db,
       casRoot: path.join(root, "cas"),
-      embedder: deterministicEmbedder,
     });
     const firstText = "# 差旅制度\n\n差旅住宿标准为每晚 500 元，超出部分需要单独审批。";
     const knowledgeDocumentId = insertDoc(db, "差旅制度", "travel-policy.txt", firstText);
@@ -99,7 +87,6 @@ export const retrievalProductionBridgeTestPromise = (async () => {
     const unauthorized = createProductionRetrievalService({
       db,
       casRoot: path.join(root, "cas"),
-      embedder: deterministicEmbedder,
       principal: { id: "other-user", type: "user", tenantId: "local" },
     });
     const unauthorizedSearch = await unauthorized.search("差旅住宿标准", 5, "2026-08-09T08:01:30.000Z");
@@ -121,15 +108,14 @@ export const retrievalProductionBridgeTestPromise = (async () => {
 
     const previousBinding = binding(db, knowledgeDocumentId);
     assert.ok(previousBinding);
-    const failingService = createProductionRetrievalService({
-      db,
-      casRoot: path.join(root, "cas"),
-      embedder: async () => {
-        throw new RetrievalError("embedding_failed", "fixture embedding failure", { retryable: true });
-      },
-    });
+    db.exec(`
+      CREATE TRIGGER fixture_retrieval_index_failure
+      BEFORE INSERT ON retrieval_chunks
+      WHEN NEW.text LIKE '%600 元%'
+      BEGIN SELECT RAISE(ABORT, 'fixture lexical index failure'); END;
+    `);
     const failedText = "# 差旅制度\n\n差旅住宿标准改为每晚 600 元。";
-    await assert.rejects(() => failingService.indexKnowledgeDocument({
+    await assert.rejects(() => service.indexKnowledgeDocument({
       knowledgeDocumentId,
       title: "差旅制度（待发布）",
       fileName: "travel-policy.txt",
@@ -137,7 +123,8 @@ export const retrievalProductionBridgeTestPromise = (async () => {
       parsedText: failedText,
       category: "finance_policy",
       now: "2026-08-09T08:04:00.000Z",
-    }), /fixture embedding failure/);
+    }), /fixture lexical index failure/);
+    db.exec("DROP TRIGGER fixture_retrieval_index_failure");
     assert.deepEqual(binding(db, knowledgeDocumentId), previousBinding, "failed indexing must not switch the production binding");
     assert.equal(service.readKnowledgeDocument(knowledgeDocumentId), firstText);
     assert.equal((db.prepare("SELECT current_version_id FROM artifacts WHERE artifact_id=?").get(first.artifactId) as { current_version_id: string }).current_version_id, first.artifactVersionId, "failed staging version must not become current");
@@ -191,7 +178,6 @@ export const retrievalProductionBridgeTestPromise = (async () => {
     const caseScoped = createProductionRetrievalService({
       db,
       casRoot: path.join(root, "cas"),
-      embedder: deterministicEmbedder,
       allowedArtifactVersionIds: [second.artifactVersionId],
     });
     const scoped = await caseScoped.search("差旅住宿标准", 10, "2026-08-09T08:09:00.000Z");
@@ -217,6 +203,37 @@ export const retrievalProductionBridgeTestPromise = (async () => {
       sourceIdSearch.hits.some((hit) => hit.citation.artifactVersionId === sourceIdIndex.artifactVersionId),
       "document title and stable source id must participate in lexical retrieval",
     );
+
+    const bm25Search = await service.search(
+      "供应商交付延迟",
+      5,
+      "2026-08-09T08:09:30.000Z",
+    );
+    assert.ok(bm25Search.hits.some((hit) => hit.citation.artifactVersionId === sourceIdIndex.artifactVersionId));
+    assert.equal(bm25Search.diagnostics.mode, "bm25");
+
+    const legacyText = "# 旧知识自动迁移\n\n采购合同超过十万元必须经过法务审批。";
+    const legacyId = insertDoc(db, "旧采购审批制度", "legacy-procurement.txt", legacyText);
+    assert.equal(binding(db, legacyId), undefined);
+    let legacyMirrorReads = 0;
+    const autoMigration = createProductionRetrievalService({
+      db,
+      casRoot: path.join(root, "cas"),
+      autoMigrateKnowledge: true,
+      readKnowledgeText: (contentHash) => {
+        legacyMirrorReads += 1;
+        return contentHash === sha256(legacyText) ? legacyText : null;
+      },
+    });
+    const migratedSearch = await autoMigration.search(
+      "采购合同法务审批",
+      5,
+      "2026-08-09T08:09:40.000Z",
+    );
+    assert.ok(binding(db, legacyId), "first governed read should bind a legacy knowledge row to Retrieval v2");
+    assert.ok(migratedSearch.hits.some((hit) => hit.citation.title === "旧采购审批制度"));
+    await autoMigration.search("采购合同法务审批", 5, "2026-08-09T08:09:50.000Z");
+    assert.equal(legacyMirrorReads, 1, "unchanged legacy state must not be reparsed on every search");
 
     assert.deepEqual(LOCAL_RETRIEVAL_PRINCIPAL, { id: "local-user", type: "user", tenantId: "local" });
     console.log("retrieval-production-bridge: staged activation, immutable citations, ACL, archive restore and atomic version switching passed ✓");

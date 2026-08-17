@@ -2421,6 +2421,328 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 43,
+    name: "encrypted_file_workspace",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS workspace_roots (
+          root_id             TEXT PRIMARY KEY,
+          display_name        TEXT NOT NULL,
+          locator_ciphertext  TEXT NOT NULL,
+          locator_nonce       TEXT NOT NULL,
+          locator_tag         TEXT NOT NULL,
+          locator_hmac        TEXT NOT NULL UNIQUE,
+          permission          TEXT NOT NULL CHECK(permission IN ('read','read_write')),
+          write_policy        TEXT NOT NULL CHECK(write_policy IN ('output_subdir','confirm_replace')),
+          output_subdir       TEXT NOT NULL DEFAULT 'Finwork 输出',
+          status              TEXT NOT NULL CHECK(status IN ('active','unavailable','revoked')) DEFAULT 'active',
+          created_at          TEXT NOT NULL,
+          last_seen_at        TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS workspace_chunks (
+          chunk_id        TEXT PRIMARY KEY,
+          size_bytes      INTEGER NOT NULL CHECK(size_bytes >= 0),
+          storage_path    TEXT NOT NULL UNIQUE,
+          created_at      TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS workspace_blobs (
+          blob_id         TEXT PRIMARY KEY,
+          content_hmac    TEXT NOT NULL UNIQUE,
+          size_bytes      INTEGER NOT NULL CHECK(size_bytes >= 0),
+          media_type      TEXT NOT NULL,
+          chunk_count     INTEGER NOT NULL CHECK(chunk_count >= 0),
+          created_at      TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS workspace_blob_chunks (
+          blob_id       TEXT NOT NULL REFERENCES workspace_blobs(blob_id) ON DELETE CASCADE,
+          ordinal       INTEGER NOT NULL CHECK(ordinal >= 0),
+          chunk_id      TEXT NOT NULL REFERENCES workspace_chunks(chunk_id),
+          PRIMARY KEY(blob_id, ordinal)
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspace_blob_chunks_chunk ON workspace_blob_chunks(chunk_id);
+
+        CREATE TABLE IF NOT EXISTS workspace_assets (
+          asset_id           TEXT PRIMARY KEY,
+          source_kind        TEXT NOT NULL CHECK(source_kind IN ('managed','external','generated')),
+          display_name       TEXT NOT NULL,
+          media_type         TEXT NOT NULL,
+          workspace_root_id  TEXT REFERENCES workspace_roots(root_id) ON DELETE SET NULL,
+          relative_path      TEXT,
+          batch_id           TEXT,
+          current_version_id TEXT,
+          lifecycle_status   TEXT NOT NULL CHECK(lifecycle_status IN ('active','archived','tombstoned')) DEFAULT 'active',
+          created_at         TEXT NOT NULL,
+          updated_at         TEXT NOT NULL,
+          UNIQUE(workspace_root_id, relative_path)
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspace_assets_name ON workspace_assets(display_name, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_workspace_assets_batch ON workspace_assets(batch_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS workspace_asset_versions (
+          version_id             TEXT PRIMARY KEY,
+          asset_id               TEXT NOT NULL REFERENCES workspace_assets(asset_id) ON DELETE CASCADE,
+          version_no             INTEGER NOT NULL CHECK(version_no > 0),
+          blob_id                TEXT REFERENCES workspace_blobs(blob_id),
+          parent_version_id      TEXT REFERENCES workspace_asset_versions(version_id),
+          source_fingerprint_json TEXT NOT NULL DEFAULT '{}',
+          created_at             TEXT NOT NULL,
+          UNIQUE(asset_id, version_no)
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspace_asset_versions_blob ON workspace_asset_versions(blob_id);
+
+        CREATE TABLE IF NOT EXISTS task_file_refs (
+          ref_id       TEXT PRIMARY KEY,
+          run_id       TEXT NOT NULL,
+          asset_id     TEXT NOT NULL REFERENCES workspace_assets(asset_id),
+          version_id   TEXT NOT NULL REFERENCES workspace_asset_versions(version_id),
+          role         TEXT NOT NULL CHECK(role IN ('input','output','baseline','evidence')),
+          created_at   TEXT NOT NULL,
+          UNIQUE(run_id, asset_id, version_id, role)
+        );
+        CREATE INDEX IF NOT EXISTS idx_task_file_refs_run ON task_file_refs(run_id, role, created_at);
+
+        CREATE TABLE IF NOT EXISTS file_changesets (
+          changeset_id       TEXT PRIMARY KEY,
+          run_id             TEXT NOT NULL,
+          asset_id           TEXT NOT NULL REFERENCES workspace_assets(asset_id),
+          base_version_id    TEXT REFERENCES workspace_asset_versions(version_id),
+          candidate_version_id TEXT NOT NULL REFERENCES workspace_asset_versions(version_id),
+          diff_kind          TEXT NOT NULL,
+          diff_json          TEXT NOT NULL,
+          validation_json    TEXT NOT NULL,
+          status             TEXT NOT NULL CHECK(status IN ('pending','approved','applied','rejected','failed')),
+          created_at         TEXT NOT NULL,
+          resolved_at        TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_file_changesets_run ON file_changesets(run_id, status, created_at);
+
+        CREATE TABLE IF NOT EXISTS chat_message_workspace_roots (
+          message_id  INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+          root_id     TEXT NOT NULL REFERENCES workspace_roots(root_id),
+          created_at  TEXT NOT NULL,
+          PRIMARY KEY(message_id, root_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_message_workspace_roots_root
+          ON chat_message_workspace_roots(root_id, message_id);
+      `);
+      const hasChatAttachments = db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='chat_attachments'").get();
+      if (hasChatAttachments) {
+        addColumnIfMissing(db, "chat_attachments", "asset_id", "TEXT REFERENCES workspace_assets(asset_id)");
+        addColumnIfMissing(db, "chat_attachments", "asset_version_id", "TEXT REFERENCES workspace_asset_versions(version_id)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_chat_attachments_asset ON chat_attachments(asset_id, asset_version_id)");
+      }
+    },
+  },
+  {
+    version: 44,
+    name: "script_execution_provenance",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS script_executions (
+          execution_id       TEXT PRIMARY KEY,
+          run_id             TEXT NOT NULL,
+          script_asset_id    TEXT NOT NULL REFERENCES workspace_assets(asset_id),
+          script_version_id  TEXT NOT NULL REFERENCES workspace_asset_versions(version_id),
+          sandbox_kind       TEXT NOT NULL,
+          args_json          TEXT NOT NULL DEFAULT '[]',
+          input_refs_json    TEXT NOT NULL DEFAULT '[]',
+          output_manifest_json TEXT NOT NULL DEFAULT '[]',
+          status             TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
+          exit_code          INTEGER,
+          error_message      TEXT,
+          started_at         TEXT NOT NULL,
+          completed_at       TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_script_executions_run
+          ON script_executions(run_id, started_at);
+        CREATE INDEX IF NOT EXISTS idx_script_executions_script
+          ON script_executions(script_asset_id, script_version_id);
+      `);
+    },
+  },
+  {
+    version: 45,
+    name: "work_plan_runtime",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS case_plan_versions (
+          plan_id       TEXT PRIMARY KEY,
+          case_id       TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          version       INTEGER NOT NULL CHECK(version > 0),
+          goal          TEXT NOT NULL,
+          reason        TEXT NOT NULL,
+          status        TEXT NOT NULL CHECK(status IN
+            ('active','superseded','completed','failed','canceled','interrupted')),
+          created_by    TEXT NOT NULL CHECK(created_by IN ('deterministic','model','user','recovery')),
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          UNIQUE(case_id, version)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_case_plan_one_active
+          ON case_plan_versions(case_id) WHERE status = 'active';
+        CREATE INDEX IF NOT EXISTS idx_case_plan_case
+          ON case_plan_versions(case_id, version DESC);
+
+        CREATE TABLE IF NOT EXISTS case_plan_steps (
+          step_id          TEXT PRIMARY KEY,
+          plan_id          TEXT NOT NULL REFERENCES case_plan_versions(plan_id) ON DELETE CASCADE,
+          step_key         TEXT NOT NULL,
+          title            TEXT NOT NULL,
+          expected_outcome TEXT NOT NULL,
+          status           TEXT NOT NULL CHECK(status IN
+            ('pending','ready','running','waiting_user','blocked','verifying',
+             'succeeded','failed','skipped','canceled','interrupted')),
+          ordinal          INTEGER NOT NULL CHECK(ordinal >= 0),
+          user_visible     INTEGER NOT NULL DEFAULT 1 CHECK(user_visible IN (0,1)),
+          blocking         INTEGER NOT NULL DEFAULT 1 CHECK(blocking IN (0,1)),
+          result_summary   TEXT,
+          started_at       TEXT,
+          ended_at         TEXT,
+          updated_at       TEXT NOT NULL,
+          UNIQUE(plan_id, step_key),
+          UNIQUE(plan_id, ordinal)
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_plan_steps_status
+          ON case_plan_steps(plan_id, status, ordinal);
+
+        CREATE TABLE IF NOT EXISTS case_plan_step_nodes (
+          plan_id TEXT NOT NULL REFERENCES case_plan_versions(plan_id) ON DELETE CASCADE,
+          step_id TEXT NOT NULL REFERENCES case_plan_steps(step_id) ON DELETE CASCADE,
+          node_id TEXT NOT NULL REFERENCES case_nodes(node_id) ON DELETE CASCADE,
+          PRIMARY KEY(plan_id, step_id, node_id),
+          UNIQUE(plan_id, node_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS case_preflight_results (
+          preflight_id           TEXT PRIMARY KEY,
+          case_id                TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+          capability_id          TEXT NOT NULL,
+          required               INTEGER NOT NULL CHECK(required IN (0,1)),
+          status                 TEXT NOT NULL CHECK(status IN ('available','missing','blocked')),
+          candidate_tools_json   TEXT NOT NULL DEFAULT '[]',
+          reason                 TEXT NOT NULL,
+          checked_at             TEXT NOT NULL,
+          UNIQUE(case_id, capability_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_case_preflight_case
+          ON case_preflight_results(case_id, status, capability_id);
+      `);
+      const active = db.prepare(`
+        SELECT mode,authority FROM capability_rollout_epochs WHERE state='active' LIMIT 1
+      `).get() as { mode: string; authority: string } | undefined;
+      if (!active || active.mode !== "cutover" || active.authority !== "new") {
+        db.prepare("UPDATE capability_rollout_epochs SET state='retired' WHERE state='active'").run();
+        db.prepare(`
+          INSERT INTO capability_rollout_epochs(mode,authority,state,reason,created_at)
+          VALUES ('cutover','new','active',?,?)
+        `).run(
+          "v45 one-way production authority cutover",
+          new Date().toISOString(),
+        );
+      }
+    },
+  },
+  {
+    version: 46,
+    name: "bm25_lexical_retrieval",
+    up: (db) => {
+      const documentColumns = new Set(
+        (db.prepare("PRAGMA table_info(retrieval_documents)").all() as Array<{ name: string }>).map((column) => column.name),
+      );
+      if (documentColumns.has("embedding_model") && !documentColumns.has("index_profile")) {
+        db.exec("ALTER TABLE retrieval_documents RENAME COLUMN embedding_model TO index_profile");
+      }
+      db.exec(`
+        UPDATE retrieval_documents SET index_profile='bm25-lexical-v1';
+
+        DROP TABLE IF EXISTS retrieval_chunks_fts;
+
+        CREATE TEMP TABLE retrieval_chunks_v45_backup AS
+          SELECT chunk_id,document_id,artifact_version_id,parent_chunk_id,ordinal,node_type,
+                 depth,heading,text,text_hash,locator_json,char_start,char_end,token_count,active,created_at
+          FROM retrieval_chunks;
+        CREATE TEMP TABLE retrieval_edges_v45_backup AS SELECT * FROM retrieval_chunk_edges;
+        CREATE TEMP TABLE retrieval_terms_v45_backup AS SELECT * FROM retrieval_lexical_terms;
+
+        DROP TABLE retrieval_chunk_edges;
+        DROP TABLE retrieval_lexical_terms;
+        DROP TABLE IF EXISTS retrieval_ann_buckets;
+        DROP TABLE retrieval_chunks;
+
+        CREATE TABLE retrieval_chunks (
+          chunk_id            TEXT PRIMARY KEY,
+          document_id         TEXT NOT NULL REFERENCES retrieval_documents(document_id) ON DELETE CASCADE,
+          artifact_version_id TEXT NOT NULL REFERENCES artifact_versions(version_id),
+          parent_chunk_id      TEXT REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          ordinal              INTEGER NOT NULL CHECK(ordinal >= 0),
+          node_type            TEXT NOT NULL CHECK(node_type IN ('document','section','paragraph','list','table','table_row','sheet','sheet_range','page','code')),
+          depth                INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0),
+          heading              TEXT,
+          text                 TEXT NOT NULL,
+          text_hash            TEXT NOT NULL,
+          locator_json         TEXT NOT NULL,
+          char_start           INTEGER NOT NULL CHECK(char_start >= 0),
+          char_end             INTEGER NOT NULL CHECK(char_end > char_start),
+          token_count          INTEGER NOT NULL CHECK(token_count >= 0),
+          active               INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+          created_at           TEXT NOT NULL,
+          UNIQUE(document_id, ordinal)
+        );
+        INSERT INTO retrieval_chunks
+          SELECT * FROM retrieval_chunks_v45_backup;
+        CREATE INDEX idx_retrieval_chunks_document ON retrieval_chunks(document_id, active, ordinal);
+        CREATE INDEX idx_retrieval_chunks_parent ON retrieval_chunks(parent_chunk_id, active);
+
+        CREATE TABLE retrieval_chunk_edges (
+          from_chunk_id TEXT NOT NULL REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          to_chunk_id   TEXT NOT NULL REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          relation      TEXT NOT NULL CHECK(relation IN ('parent','next','previous','table_header','same_section')),
+          PRIMARY KEY(from_chunk_id, to_chunk_id, relation),
+          CHECK(from_chunk_id <> to_chunk_id)
+        );
+        INSERT INTO retrieval_chunk_edges SELECT * FROM retrieval_edges_v45_backup;
+
+        CREATE TABLE retrieval_lexical_terms (
+          term       TEXT NOT NULL,
+          chunk_id   TEXT NOT NULL REFERENCES retrieval_chunks(chunk_id) ON DELETE CASCADE,
+          term_freq  INTEGER NOT NULL CHECK(term_freq > 0),
+          PRIMARY KEY(term, chunk_id)
+        );
+        CREATE INDEX idx_retrieval_lexical_chunk ON retrieval_lexical_terms(chunk_id);
+        INSERT INTO retrieval_lexical_terms SELECT * FROM retrieval_terms_v45_backup;
+
+        DROP TABLE retrieval_chunks_v45_backup;
+        DROP TABLE retrieval_edges_v45_backup;
+        DROP TABLE retrieval_terms_v45_backup;
+
+        CREATE VIRTUAL TABLE retrieval_chunks_fts USING fts5(
+          chunk_id UNINDEXED,
+          body_terms,
+          title_terms,
+          tokenize='unicode61 remove_diacritics 2'
+        );
+        INSERT INTO retrieval_chunks_fts(chunk_id, body_terms, title_terms)
+        SELECT
+          c.chunk_id,
+          COALESCE(group_concat(lt.term, ' '), ''),
+          lower(
+            CASE WHEN c.ordinal=0 OR c.node_type IN ('document','section','sheet','page') THEN d.title || ' ' ELSE '' END
+            || COALESCE(c.heading, '')
+          )
+        FROM retrieval_chunks c
+        JOIN retrieval_documents d ON d.document_id=c.document_id
+        LEFT JOIN retrieval_lexical_terms lt ON lt.chunk_id=c.chunk_id
+        GROUP BY c.chunk_id;
+
+        DROP TABLE IF EXISTS knowledge_embeddings;
+        DELETE FROM retrieval_query_cache;
+      `);
+    },
+  },
 ];
 
 /** 当前代码所知的最新 schema version */

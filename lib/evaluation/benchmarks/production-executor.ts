@@ -29,7 +29,6 @@ import { EvidenceLedger } from "@/lib/evidence/ledger";
 import { SecurityAuthorizer } from "@/lib/security/kernel";
 import { authorizeEvidenceWrite } from "@/lib/security/evidence-authorization";
 import {
-  getProductionRetrievalService,
   installProductionRetrievalService,
   ProductionRetrievalService,
 } from "@/lib/retrieval/production";
@@ -39,7 +38,7 @@ import {
   insertChatMessage,
 } from "@/lib/db/sqlite";
 import { readAgentSettings, type AgentSettings } from "@/lib/settings/agent-settings";
-import { getAppDataDir, getConversationFilesDir } from "@/lib/runtime/paths";
+import { getAppDataDir, getConversationFilesDir, getRunFileWorkspacePaths } from "@/lib/runtime/paths";
 import { wrapExternalContext } from "@/lib/agent/external-context";
 import { beginProductionTaskRun, type ProductionTaskSettlement } from "@/lib/task/production-runtime";
 import {
@@ -154,9 +153,13 @@ export async function executeProductionBenchmarkCase(
         routerFailureHint: effectiveRouterResult.path === "fallback" ? effectiveRouterResult.decision.reasoning : null,
       });
   const legacyContract = createLegacyBenchmarkTaskContract(context.taskContract);
-  const outputDir = path.join(getConversationFilesDir(conversationId), "generate");
-  fs.mkdirSync(outputDir, { recursive: true });
+  const runPaths = getRunFileWorkspacePaths(traceId);
+  const outputDir = runPaths.work;
+  for (const directory of [runPaths.inputs, runPaths.work, runPaths.outputs]) {
+    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  }
   const beforeGenerate = snapshotConversationFiles(conversationId);
+  const beforeWorking = snapshotFilesUnder(outputDir);
   const runPersist = createRunPersistenceContext({
     runId: traceId,
     traceId,
@@ -193,6 +196,8 @@ export async function executeProductionBenchmarkCase(
     conversationId,
     existingRuntimeSessionId: null,
     beforeGenerate,
+    beforeWorking,
+    outputDir,
     traceId,
     startedAt,
     routerResult: effectiveRouterResult,
@@ -209,7 +214,6 @@ export async function executeProductionBenchmarkCase(
     ? installProductionRetrievalService(new ProductionRetrievalService({
         db,
         artifacts: new ArtifactStore(db, casRoot),
-        embedder: getProductionRetrievalService().embedder,
         principal: { id: "benchmark-runner", type: "service", tenantId: "benchmark" },
         allowedArtifactVersionIds: executionCase.inputs.map((artifact) => artifact.versionId),
       }))
@@ -597,7 +601,10 @@ function isInlineTextMedia(mediaType: string): boolean {
 }
 
 function snapshotConversationFiles(conversationId: number): Set<string> {
-  const root = getConversationFilesDir(conversationId);
+  return snapshotFilesUnder(getConversationFilesDir(conversationId));
+}
+
+function snapshotFilesUnder(root: string): Set<string> {
   if (!fs.existsSync(root)) return new Set();
   const files = new Set<string>();
   const visit = (directory: string) => {

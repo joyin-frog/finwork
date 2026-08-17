@@ -2,21 +2,24 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { ArtifactStore } from "@/lib/artifacts/store";
 import { canonicalJson } from "@/lib/capability/hash";
-import { annBucketKeys, vectorToBuffer } from "./ann";
 import { RetrievalAccessController } from "./access";
 import { chunkStructuredText } from "./chunker";
 import {
   ParsedRetrievalDocumentSchema,
   RetrievalError,
   RetrievalRegistrationSchema,
-  type RetrievalEmbedder,
   type RetrievalParser,
   type RetrievalRegistration,
 } from "./contracts";
 import { RetrievalJobQueue, type RetrievalJob } from "./jobs";
-import { lexicalTermFrequency } from "./lexical";
+import { lexicalTermFrequency, lexicalTerms } from "./lexical";
 
 export type RegisterResult = { documentId: string; jobId?: string; reused: boolean };
+
+function titleTerms(title: string, heading: string | null | undefined, nodeType: string, ordinal: number): string {
+  const structuralTitle = ordinal === 0 || ["document", "section", "sheet", "page"].includes(nodeType) ? title : "";
+  return lexicalTerms(`${structuralTitle} ${heading ?? ""}`).join(" ");
+}
 
 function asRetrievalError(error: unknown): RetrievalError {
   if (error instanceof RetrievalError) return error;
@@ -49,7 +52,6 @@ export class RetrievalIndexer {
     readonly db: DatabaseSync,
     readonly artifacts: ArtifactStore,
     readonly parser: RetrievalParser,
-    readonly embedder: RetrievalEmbedder,
   ) {
     this.queue = new RetrievalJobQueue(db);
     this.access = new RetrievalAccessController(db);
@@ -74,12 +76,12 @@ export class RetrievalIndexer {
 
     const existing = this.db.prepare(`
       SELECT document_id, index_status FROM retrieval_documents
-      WHERE artifact_version_id=? AND parser_version=? AND chunker_version=? AND embedding_model=?
+      WHERE artifact_version_id=? AND parser_version=? AND chunker_version=? AND index_profile=?
     `).get(
       registration.artifactVersionId,
       registration.parserVersion,
       registration.chunkerVersion,
-      registration.embeddingModel,
+      registration.indexProfile,
     ) as { document_id: string; index_status: string } | undefined;
 
     if (existing?.index_status === "ready") {
@@ -94,7 +96,7 @@ export class RetrievalIndexer {
         INSERT INTO retrieval_documents
           (document_id, artifact_id, artifact_version_id, content_hash, title, document_type,
            entity_refs_json, period_start, period_end, effective_date, classification,
-           parser_version, chunker_version, embedding_model, index_status, created_at, updated_at)
+           parser_version, chunker_version, index_profile, index_status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
         ON CONFLICT(document_id) DO UPDATE SET
           title=excluded.title, document_type=excluded.document_type,
@@ -116,7 +118,7 @@ export class RetrievalIndexer {
         registration.metadata.classification,
         registration.parserVersion,
         registration.chunkerVersion,
-        registration.embeddingModel,
+        registration.indexProfile,
         registration.requestedAt,
         registration.requestedAt,
       );
@@ -148,17 +150,46 @@ export class RetrievalIndexer {
     return await this.processClaimed(this.queue.claim(jobId, workerId, at), workerId, at);
   }
 
+  async rebuildDocument(
+    documentId: string,
+    workerId: string,
+    at = new Date().toISOString(),
+  ): Promise<RetrievalJob> {
+    const existing = this.db.prepare(`
+      SELECT document_id FROM retrieval_documents WHERE document_id=?
+    `).get(documentId) as { document_id: string } | undefined;
+    if (!existing) throw new RetrievalError("index_failed", `retrieval document not found: ${documentId}`);
+    this.db.prepare(`
+      UPDATE retrieval_documents
+      SET index_status='queued', error_code=NULL, error_message=NULL, updated_at=?
+      WHERE document_id=?
+    `).run(at, documentId);
+    const job = this.queue.enqueue(documentId, at);
+    return await this.processJob(job.jobId, workerId, at);
+  }
+
+  refreshDocumentTitleTerms(documentId: string, title: string): void {
+    const rows = this.db.prepare(`
+      SELECT chunk_id,heading,node_type,ordinal FROM retrieval_chunks WHERE document_id=?
+    `).all(documentId) as Array<{ chunk_id: string; heading: string | null; node_type: string; ordinal: number }>;
+    const update = this.db.prepare(`
+      UPDATE retrieval_chunks_fts SET title_terms=? WHERE chunk_id=?
+    `);
+    for (const row of rows) {
+      update.run(titleTerms(title, row.heading, row.node_type, row.ordinal), row.chunk_id);
+    }
+  }
+
   async processClaimed(job: RetrievalJob, workerId: string, at = new Date().toISOString()): Promise<RetrievalJob> {
     try {
       const document = this.db.prepare(`
-        SELECT artifact_version_id, media_type, title, embedding_model
+        SELECT artifact_version_id, media_type, title
         FROM retrieval_documents d JOIN artifact_versions v ON v.version_id=d.artifact_version_id
         WHERE document_id=?
       `).get(job.documentId) as {
         artifact_version_id: string;
         media_type: string;
         title: string;
-        embedding_model: string;
       } | undefined;
       if (!document) throw new RetrievalError("index_failed", `retrieval document not found: ${job.documentId}`);
       this.db.prepare(`
@@ -182,39 +213,27 @@ export class RetrievalIndexer {
 
       const { chunks, edges } = chunkStructuredText(job.documentId, parsed.text);
       if (chunks.length === 0) throw new RetrievalError("parser_failed", "parser produced no indexable structures");
-      let vectors: readonly (readonly number[])[];
-      try {
-        vectors = await this.embedder(chunks.map((chunk) => chunk.text), document.embedding_model);
-      } catch (error) {
-        if (error instanceof RetrievalError) throw error;
-        throw new RetrievalError("embedding_failed", error instanceof Error ? error.message : String(error), { retryable: true, cause: error });
-      }
-      if (vectors.length !== chunks.length) {
-        throw new RetrievalError("embedding_failed", `embedding count mismatch: expected ${chunks.length}, got ${vectors.length}`, { retryable: true });
-      }
-      const dimension = vectors[0]?.length ?? 0;
-      if (dimension === 0 || vectors.some((vector) => vector.length !== dimension || vector.some((value) => !Number.isFinite(value)))) {
-        throw new RetrievalError("embedding_failed", "embedding vectors have invalid or inconsistent dimensions", { retryable: true });
-      }
-
       this.db.exec("BEGIN");
       try {
+        this.db.prepare(`
+          DELETE FROM retrieval_chunks_fts
+          WHERE chunk_id IN (SELECT chunk_id FROM retrieval_chunks WHERE document_id=?)
+        `).run(job.documentId);
         this.db.prepare("DELETE FROM retrieval_chunks WHERE document_id=?").run(job.documentId);
         const insertChunk = this.db.prepare(`
           INSERT INTO retrieval_chunks
             (chunk_id, document_id, artifact_version_id, parent_chunk_id, ordinal, node_type,
              depth, heading, text, text_hash, locator_json, char_start, char_end, token_count,
-             embedding, embedding_dim, active, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+             active, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         `);
         const insertTerm = this.db.prepare(`
           INSERT INTO retrieval_lexical_terms(term, chunk_id, term_freq) VALUES (?, ?, ?)
         `);
-        const insertBucket = this.db.prepare(`
-          INSERT INTO retrieval_ann_buckets(model, band_no, bucket_hash, chunk_id) VALUES (?, ?, ?, ?)
+        const insertFts = this.db.prepare(`
+          INSERT INTO retrieval_chunks_fts(chunk_id, body_terms, title_terms) VALUES (?, ?, ?)
         `);
-        chunks.forEach((chunk, index) => {
-          const vector = vectors[index];
+        chunks.forEach((chunk) => {
           insertChunk.run(
             chunk.id,
             job.documentId,
@@ -230,17 +249,20 @@ export class RetrievalIndexer {
             chunk.charStart,
             chunk.charEnd,
             chunk.tokenCount,
-            vectorToBuffer(vector),
-            vector.length,
             at,
           );
           for (const [term, frequency] of lexicalTermFrequency(chunk.text)) insertTerm.run(term, chunk.id, frequency);
-          for (const key of annBucketKeys(vector)) insertBucket.run(document.embedding_model, key.bandNo, key.bucketHash, chunk.id);
+          insertFts.run(
+            chunk.id,
+            lexicalTerms(chunk.text).join(" "),
+            titleTerms(document.title, chunk.heading, chunk.nodeType, chunk.ordinal),
+          );
         });
         const insertEdge = this.db.prepare(`
           INSERT INTO retrieval_chunk_edges(from_chunk_id, to_chunk_id, relation) VALUES (?, ?, ?)
         `);
         for (const edge of edges) insertEdge.run(edge.fromChunkId, edge.toChunkId, edge.relation);
+        this.db.prepare("DELETE FROM retrieval_query_cache").run();
         this.db.prepare(`
           UPDATE retrieval_documents
           SET index_status='ready', error_code=NULL, error_message=NULL, indexed_at=?, updated_at=?

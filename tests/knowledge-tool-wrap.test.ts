@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync } from "node:fs";
 import type { SdkLike } from "../lib/agent/mcp-tools/sdk-types.ts";
+import type { ProductionRetrievalService } from "../lib/retrieval/production.ts";
 
 // Mock SDK that captures the handler for direct invocation
 function makeMockSdk(): { sdk: SdkLike; handlers: Record<string, (args: unknown) => Promise<unknown>> } {
@@ -66,6 +67,22 @@ export const knowledgeToolWrapTestPromise = (async () => {
   // We mock searchKnowledge by importing the tool creator with a mock that intercepts
   // at the tool handler level using a fake sdk
   const { createSearchKnowledgeTool, createQueryKnowledgeTool } = await import("../lib/agent/mcp-tools/knowledge.ts");
+  const service = {
+    search: async () => ({
+      hits: [],
+      diagnostics: {
+        mode: "bm25",
+        cacheHit: false,
+        authorizedDocumentCount: 0,
+        bm25CandidateCount: 0,
+        expandedCandidateCount: 0,
+        scoredCandidateCount: 0,
+        elapsedMs: 0,
+        indexVersion: "bm25-index-v1",
+      },
+    }),
+  } as unknown as ProductionRetrievalService;
+  const options = { getRetrievalService: () => service };
 
   // Create a mock for the search handler by observing the return format.
   // We patch process.env to point DB to a temp dir so sqlite init doesn't fail.
@@ -76,7 +93,7 @@ export const knowledgeToolWrapTestPromise = (async () => {
   // we verify the non-wrapping paths (error returns) are plain strings.
 
   const { sdk: sdk1, handlers: handlers1 } = makeMockSdk();
-  createSearchKnowledgeTool(sdk1);
+  createSearchKnowledgeTool(sdk1, options);
   const searchHandler = handlers1["search_knowledge"];
   assert.ok(searchHandler, "T2 FAIL: search_knowledge handler 应已注册");
 
@@ -99,7 +116,7 @@ export const knowledgeToolWrapTestPromise = (async () => {
 
   // ── T3: query_knowledge tool — empty result is not wrapped ───────────────
   const { sdk: sdk2, handlers: handlers2 } = makeMockSdk();
-  createQueryKnowledgeTool(sdk2);
+  createQueryKnowledgeTool(sdk2, options);
   const queryHandler = handlers2["query_knowledge"];
   assert.ok(queryHandler, "T3 FAIL: query_knowledge handler 应已注册");
 

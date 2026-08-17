@@ -3,12 +3,10 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { getDb } from "../lib/db/sqlite.ts";
 import { getAppDataDir } from "../lib/runtime/paths.ts";
 import { closeProductionRetrievalService, getProductionRetrievalService } from "../lib/retrieval/production.ts";
-import { EMBED_MODEL, ensureEmbedModel } from "../lib/knowledge/embed-model.ts";
 import {
   materializeBenchmarkImport,
   writeBenchmarkMaterializationManifest,
 } from "../lib/evaluation/benchmarks/materialization.ts";
-import { readNormalizedBenchmarkCases } from "../lib/evaluation/benchmarks/importer.ts";
 
 function parseArgs(argv: string[]): Map<string, string | true> {
   const values = new Map<string, string | true>();
@@ -43,18 +41,6 @@ const outputPath = path.resolve(
     : path.join(importDir, "materialization-manifest.json"),
 );
 const db = getDb();
-const importedCases = await readNormalizedBenchmarkCases(path.join(importDir, "cases.jsonl"));
-const needsRetrieval = importedCases.some((benchmarkCase) =>
-  benchmarkCase.context.textBlocks.length > 0 || benchmarkCase.context.tables.length > 0
-);
-if (needsRetrieval) {
-  const embeddingModel = await ensureEmbedModel({
-    onProgress: (message) => console.error(`[benchmark-materialize] ${message}`),
-  });
-  if (!embeddingModel.ok) {
-    throw new Error(`benchmark_embedding_model_unavailable:${embeddingModel.detail}`);
-  }
-}
 const retrieval = getProductionRetrievalService();
 try {
   const result = await materializeBenchmarkImport({
@@ -64,7 +50,7 @@ try {
     casesPath: path.join(importDir, "cases.jsonl"),
     assetsRoot,
     acknowledgeLicenseReview: true,
-    retrieval: { indexer: retrieval.indexer, embeddingModel: EMBED_MODEL },
+    retrieval: { indexer: retrieval.indexer },
   });
   await writeBenchmarkMaterializationManifest(result.manifest, outputPath);
   const goalStatePath = path.join(

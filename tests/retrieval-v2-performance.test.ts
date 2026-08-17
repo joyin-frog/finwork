@@ -7,15 +7,13 @@ import { ArtifactStore } from "../lib/artifacts/store.ts";
 import { runMigrations } from "../lib/db/migrations.ts";
 import {
   RetrievalSearchService,
-  annBucketKeys,
+  buildBm25MatchQuery,
   lexicalTerms,
-  vectorToBuffer,
 } from "../lib/retrieval/index.ts";
 
 const NOW = "2026-08-09T00:00:00.000Z";
 const CHUNK_COUNT = 100_000;
-const MODEL = "bge-small-zh-v1.5";
-const QUERY_VECTOR = [1, 0] as const;
+const INDEX_PROFILE = "bm25-lexical-v1";
 
 export const retrievalV2PerformanceTestPromise = (async () => {
   const root = mkdtempSync(path.join(tmpdir(), "finwork-retrieval-perf-"));
@@ -36,13 +34,13 @@ export const retrievalV2PerformanceTestPromise = (async () => {
       INSERT INTO retrieval_documents(
         document_id, artifact_id, artifact_version_id, content_hash, title, document_type,
         entity_refs_json, period_start, period_end, effective_date, classification,
-        parser_version, chunker_version, embedding_model, index_status, indexed_at,
+        parser_version, chunker_version, index_profile, index_status, indexed_at,
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?)
     `).run(
       "document-perf", artifact.artifactId, artifact.versionId, artifact.sha256,
       "十万分块检索基准", "finance_policy", '["entity-1"]', "2026-01-01", "2026-12-31",
-      "2026-01-01", "internal", "retrieval-parser-v1", "structure-chunker-v1", MODEL,
+      "2026-01-01", "internal", "retrieval-parser-v1", "structure-chunker-v1", INDEX_PROFILE,
       NOW, NOW, NOW,
     );
     db.prepare(`
@@ -54,17 +52,15 @@ export const retrievalV2PerformanceTestPromise = (async () => {
       INSERT INTO retrieval_chunks(
         chunk_id, document_id, artifact_version_id, parent_chunk_id, ordinal, node_type, depth,
         heading, text, text_hash, locator_json, char_start, char_end, token_count,
-        embedding, embedding_dim, active, created_at
-      ) VALUES (?, 'document-perf', ?, NULL, ?, 'paragraph', 0, NULL, ?, ?, ?, ?, ?, ?, ?, 2, 1, ?)
+        active, created_at
+      ) VALUES (?, 'document-perf', ?, NULL, ?, 'paragraph', 0, NULL, ?, ?, ?, ?, ?, ?, 1, ?)
     `);
-    const insertAnn = db.prepare(`
-      INSERT INTO retrieval_ann_buckets(model, band_no, bucket_hash, chunk_id) VALUES (?, ?, ?, ?)
+    const insertFts = db.prepare(`
+      INSERT INTO retrieval_chunks_fts(chunk_id, body_terms, title_terms) VALUES (?, ?, ?)
     `);
     const insertTerm = db.prepare(`
       INSERT INTO retrieval_lexical_terms(term, chunk_id, term_freq) VALUES (?, ?, 1)
     `);
-    const annKey = annBucketKeys(QUERY_VECTOR)[0];
-    const embedding = vectorToBuffer(QUERY_VECTOR);
     const targetText = "增值税 申报 税率 6% 的权威证据";
     db.exec("BEGIN");
     try {
@@ -82,10 +78,13 @@ export const retrievalV2PerformanceTestPromise = (async () => {
           start,
           start + text.length,
           Math.max(1, Math.ceil(text.length / 2)),
-          embedding,
           NOW,
         );
-        insertAnn.run(MODEL, annKey.bandNo, annKey.bucketHash, chunkId);
+        insertFts.run(
+          chunkId,
+          index === CHUNK_COUNT - 1 ? lexicalTerms(text).join(" ") : "普通 会计 凭证",
+          "十万 分块 检索 基准",
+        );
       }
       const targetChunkId = `chunk-${(CHUNK_COUNT - 1).toString().padStart(6, "0")}`;
       for (const term of new Set(lexicalTerms(targetText))) insertTerm.run(term, targetChunkId);
@@ -99,9 +98,8 @@ export const retrievalV2PerformanceTestPromise = (async () => {
     const response = new RetrievalSearchService(db).search({
       principal: { id: "user-1", type: "user", tenantId: "tenant-1" },
       query: "增值税 申报 税率",
-      mode: "hybrid",
-      queryVector: QUERY_VECTOR,
-      embeddingModel: MODEL,
+      mode: "bm25",
+      indexProfile: INDEX_PROFILE,
       filters: {
         entityRefs: ["entity-1"],
         period: { start: "2026-01-01", end: "2026-12-31" },
@@ -117,17 +115,16 @@ export const retrievalV2PerformanceTestPromise = (async () => {
     const elapsedMs = performance.now() - started;
     assert.equal(response.diagnostics.authorizedDocumentCount, 1);
     assert.ok(response.hits.some((hit) => hit.text === targetText));
-    assert.ok(response.diagnostics.annCandidateCount <= 50);
-    assert.ok(response.diagnostics.lexicalCandidateCount <= 50);
+    assert.ok(response.diagnostics.bm25CandidateCount <= 50);
     assert.ok(response.diagnostics.scoredCandidateCount <= 100);
     assert.ok(elapsedMs < 3_000, `100k-chunk bounded retrieval took ${elapsedMs.toFixed(1)}ms`);
 
     const plan = db.prepare(`
       EXPLAIN QUERY PLAN
-      SELECT chunk_id FROM retrieval_ann_buckets
-      WHERE model=? AND band_no=? AND bucket_hash=? LIMIT 50
-    `).all(MODEL, annKey.bandNo, annKey.bucketHash) as Array<{ detail: string }>;
-    assert.ok(plan.some((row) => row.detail.includes("SEARCH retrieval_ann_buckets")), JSON.stringify(plan));
+      SELECT chunk_id FROM retrieval_chunks_fts
+      WHERE retrieval_chunks_fts MATCH ? LIMIT 50
+    `).all(buildBm25MatchQuery("增值税 申报 税率")) as Array<{ detail: string }>;
+    assert.ok(plan.some((row) => row.detail.includes("VIRTUAL TABLE INDEX")), JSON.stringify(plan));
 
     console.log(
       `retrieval-v2-performance: ${CHUNK_COUNT.toLocaleString()} chunks, ` +

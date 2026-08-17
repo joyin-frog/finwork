@@ -11,11 +11,10 @@ import {
   RetrievalIndexer,
   RetrievalSearchRequestSchema,
   RetrievalSearchService,
-  annBucketKeys,
+  buildBm25MatchQuery,
   chunkStructuredText,
   defaultTextRetrievalParser,
   lexicalTerms,
-  type RetrievalEmbedder,
   type RetrievalParser,
   type RetrievalRegistration,
 } from "../lib/retrieval/index.ts";
@@ -27,6 +26,18 @@ function makeDb(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
   runMigrations(db, ":memory:", () => null);
+  const tables = new Set((db.prepare(`
+    SELECT name FROM sqlite_master WHERE type IN ('table','view')
+  `).all() as Array<{ name: string }>).map((row) => row.name));
+  assert.ok(tables.has("retrieval_chunks_fts"), "latest schema must contain the BM25 FTS5 index");
+  assert.ok(!tables.has("knowledge_embeddings"), "latest schema must not retain the legacy embedding table");
+  assert.ok(!tables.has("retrieval_ann_buckets"), "latest schema must not retain the legacy ANN table");
+  const documentColumns = new Set((db.prepare("PRAGMA table_info(retrieval_documents)").all() as Array<{ name: string }>).map((row) => row.name));
+  const chunkColumns = new Set((db.prepare("PRAGMA table_info(retrieval_chunks)").all() as Array<{ name: string }>).map((row) => row.name));
+  assert.ok(documentColumns.has("index_profile"));
+  assert.ok(!documentColumns.has("embedding_model"));
+  assert.ok(!chunkColumns.has("embedding"));
+  assert.ok(!chunkColumns.has("embedding_dim"));
   return db;
 }
 
@@ -48,7 +59,7 @@ function makeRegistration(
       classification: "confidential",
     },
     acl: [{ principal: OWNER, grantedAt: NOW }],
-    embeddingModel: "bge-small-zh-v1.5",
+    indexProfile: "bm25-lexical-v1",
     requestedAt: NOW,
     parserVersion: "retrieval-parser-v1",
     chunkerVersion: "structure-chunker-v1",
@@ -59,9 +70,8 @@ function searchRequest(overrides: Record<string, unknown> = {}) {
   return {
     principal: OWNER,
     query: "增值税 申报 税率",
-    mode: "hybrid" as const,
-    queryVector: [1, 0],
-    embeddingModel: "bge-small-zh-v1.5",
+    mode: "bm25" as const,
+    indexProfile: "bm25-lexical-v1",
     filters: {
       entityRefs: ["entity-1"],
       period: { start: "2026-01-01", end: "2026-12-31" },
@@ -77,15 +87,10 @@ function searchRequest(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const embedder: RetrievalEmbedder = async (texts) => texts.map((_, index) => [1, index % 2]);
-
 export const retrievalV2TestPromise = (async () => {
-  assert.throws(
-    () => RetrievalSearchRequestSchema.parse({ ...searchRequest(), queryVector: undefined }),
-    /requires queryVector/,
-  );
+  assert.equal(RetrievalSearchRequestSchema.parse(searchRequest()).mode, "bm25");
   assert.deepEqual(lexicalTerms("增值税 VAT 2026"), lexicalTerms("增值税 VAT 2026"));
-  assert.deepEqual(annBucketKeys([1, 0, 0]), annBucketKeys([1, 0, 0]));
+  assert.match(buildBm25MatchQuery("增值税 VAT"), /"vat"/);
 
   const longText = `# 税务政策\n\n${"增值税申报规则。".repeat(700)}`;
   const structured = chunkStructuredText("doc-structure", longText);
@@ -113,7 +118,7 @@ export const retrievalV2TestPromise = (async () => {
       if (input.title.includes("解析失败")) throw new RetrievalError("parser_failed", "fixture parser rejected document");
       return defaultTextRetrievalParser(input);
     };
-    const indexer = new RetrievalIndexer(db, artifacts, parser, embedder);
+    const indexer = new RetrievalIndexer(db, artifacts, parser);
     const registration = makeRegistration(artifact, "增值税申报政策");
     const registered = indexer.register(registration);
     assert.equal(registered.reused, false);
@@ -137,6 +142,19 @@ export const retrievalV2TestPromise = (async () => {
     assert.ok(evidenceHit, "hybrid retrieval should return the paragraph containing the cited tax rate");
     const cached = search.search(searchRequest());
     assert.equal(cached.diagnostics.cacheHit, true);
+
+    db.prepare("DELETE FROM retrieval_chunks_fts WHERE chunk_id IN (SELECT chunk_id FROM retrieval_chunks WHERE document_id=?)").run(registered.documentId);
+    db.prepare("DELETE FROM retrieval_query_cache").run();
+    assert.equal(search.search(searchRequest()).hits.length, 0, "missing FTS rows must not be masked by legacy term tables");
+    const rebuilt = await indexer.rebuildDocument(registered.documentId, "rebuild-worker", "2026-08-09T00:00:20.000Z");
+    assert.equal(rebuilt.status, "succeeded");
+    assert.ok(search.search(searchRequest({ now: "2026-08-09T00:00:21.000Z" })).hits.length > 0);
+
+    const unrelated = search.search(searchRequest({
+      query: "火星基地氧气循环",
+      now: "2026-08-09T00:00:30.000Z",
+    }));
+    assert.equal(unrelated.hits.length, 0, "BM25 must return no evidence when no query token matches");
 
     db.prepare(`
       INSERT INTO task_contracts(task_id, contract_version, contract_json, contract_hash, created_at, updated_at)

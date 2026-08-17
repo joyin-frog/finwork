@@ -24,8 +24,6 @@ function makeDb(): DatabaseSync {
   return db;
 }
 
-const fixedEmbedder = async (texts: readonly string[]) => texts.map(() => [1, 0, 0, 0, 0, 0, 0, 0]);
-
 export const benchmarkMaterializationTestPromise = (async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "finwork-benchmark-materialization-"));
   const db = makeDb();
@@ -91,7 +89,7 @@ export const benchmarkMaterializationTestPromise = (async () => {
       "RAG inputs must not silently bypass Retrieval v2",
     );
     const artifacts = new ArtifactStore(db, casRoot);
-    const indexer = new RetrievalIndexer(db, artifacts, defaultTextRetrievalParser, fixedEmbedder);
+    const indexer = new RetrievalIndexer(db, artifacts, defaultTextRetrievalParser);
     const finance = await materializeBenchmarkImport({
       db,
       casRoot,
@@ -99,7 +97,7 @@ export const benchmarkMaterializationTestPromise = (async () => {
       casesPath: financeFiles.casesPath,
       assetsRoot,
       acknowledgeLicenseReview: true,
-      retrieval: { indexer, embeddingModel: "benchmark-test-embedding" },
+      retrieval: { indexer },
       createdAt: "2026-08-13T00:00:02.000Z",
     });
     const financeSource = finance.manifest.cases[0]?.sources[0];
@@ -107,9 +105,8 @@ export const benchmarkMaterializationTestPromise = (async () => {
     const search = new RetrievalSearchService(db).search({
       principal: { id: "benchmark-runner", type: "service", tenantId: "benchmark" },
       query: "operating income",
-      mode: "hybrid",
-      queryVector: [1, 0, 0, 0, 0, 0, 0, 0],
-      embeddingModel: "benchmark-test-embedding",
+      mode: "bm25",
+      indexProfile: "bm25-lexical-v1",
       filters: { entityRefs: [], documentTypes: [], artifactVersionIds: [] },
       topK: 5,
       candidateLimit: 20,
@@ -134,7 +131,7 @@ export const benchmarkMaterializationTestPromise = (async () => {
         casesPath: tamperedPath,
         assetsRoot,
         acknowledgeLicenseReview: true,
-        retrieval: { indexer, embeddingModel: "benchmark-test-embedding" },
+        retrieval: { indexer },
       }),
       /benchmark_manifest_source_mismatch/,
     );

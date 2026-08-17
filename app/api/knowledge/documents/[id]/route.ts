@@ -4,7 +4,6 @@ import { deleteDocument } from "@/lib/knowledge/pipeline";
 import { deleteStoredFile, hasActiveKnowledgePathLease, readTextMirror } from "@/lib/knowledge/storage";
 import { deriveCashObligations, persistDerivedObligations } from "@/lib/domain/cash-obligations";
 import type { DocMetadata, MetaStatus } from "@/lib/knowledge/types";
-import { ensureEmbedModel } from "@/lib/knowledge/embed-model";
 import { getProductionRetrievalService } from "@/lib/retrieval/production";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -78,8 +77,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // 旧知识库数据可能尚未建立 Retrieval v2 绑定。恢复前必须先完成索引，
     // 不能把“界面已取消归档、Agent 仍不可见”的半状态暴露出去。
     if (!body.archived && !retrieval.hasKnowledgeBinding(docId)) {
-      const model = await ensureEmbedModel();
-      if (!model.ok) throw new Error(`检索模型不可用：${model.detail}`);
       const parsedText = readTextMirror(knowledgeDocument.content_hash);
       if (!parsedText) throw new Error("文档解析文本已丢失，请重新上传后再恢复");
       await retrieval.indexKnowledgeDocument({

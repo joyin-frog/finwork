@@ -285,7 +285,7 @@ try {
       roleMemoryRows: counts.role_memory ?? 0,
       memoryFiles,
       knowledgeDocumentRows: counts.knowledge_documents ?? 0,
-      knowledgeEmbeddingRows: counts.knowledge_embeddings ?? 0,
+      knowledgeBm25Rows: counts.retrieval_chunks_fts ?? 0,
       deliverableRows: counts.deliverables ?? 0,
       artifactRows: counts.artifacts ?? 0,
       generatedFileRows: counts.library_files ?? 0,

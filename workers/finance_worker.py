@@ -57,6 +57,16 @@ def _is_legacy_xls(path: Path) -> bool:
     return path.suffix.lower() == ".xls"
 
 
+def _excel_column_name(index: int) -> str:
+    """1-based Excel column index to A1-style column name."""
+    value = index
+    result = ""
+    while value > 0:
+        value, remainder = divmod(value - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+
 def extract_xls(path: Path) -> str:
     """Read legacy .xls via xlrd — never openpyxl."""
     import xlrd
@@ -68,6 +78,8 @@ def extract_xls(path: Path) -> str:
             continue
         parts.append(f"## Sheet: {sheet.name}\n")
         max_cols = sheet.ncols
+        parts.append("| Excel行 | " + " | ".join(_excel_column_name(i + 1) for i in range(max_cols)) + " |")
+        parts.append("|" + "|".join(["---"] * (max_cols + 1)) + "|")
         for row_index in range(sheet.nrows):
             cells = []
             for col_index in range(max_cols):
@@ -76,11 +88,24 @@ def extract_xls(path: Path) -> str:
                     cells.append("")
                 else:
                     cells.append(str(cell.value))
-            parts.append("| " + " | ".join(cells) + " |")
-            if row_index == 0:
-                parts.append("|" + "|".join(["---"] * max_cols) + "|")
+            parts.append(f"| {row_index + 1} | " + " | ".join(cells) + " |")
         parts.append("")
     return "\n".join(parts)
+
+
+def _effective_value_bounds(ws):
+    """Return bounds of cells with values, ignoring formatting-only ghost cells."""
+    min_row = max_row = min_col = max_col = None
+    for cell in ws._cells.values():
+        if cell.value is None:
+            continue
+        min_row = cell.row if min_row is None else min(min_row, cell.row)
+        max_row = cell.row if max_row is None else max(max_row, cell.row)
+        min_col = cell.column if min_col is None else min(min_col, cell.column)
+        max_col = cell.column if max_col is None else max(max_col, cell.column)
+    if min_row is None:
+        return None
+    return min_row, max_row, min_col, max_col
 
 
 def extract_xlsx(path: Path) -> str:
@@ -93,17 +118,35 @@ def extract_xlsx(path: Path) -> str:
     parts: list[str] = []
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
+        # Excel files commonly retain formatting far beyond their real data
+        # range. openpyxl includes those styled empty cells in max_row /
+        # max_column, so an unbounded iter_rows() can turn a small financial
+        # statement into millions of empty Markdown cells and exhaust the
+        # agent context. Derive the extraction range from cells that actually
+        # contain cached values; formatting-only cells are not document text.
+        bounds = _effective_value_bounds(ws)
+        if bounds is None:
             continue
+        min_row, max_row, min_col, max_col = bounds
         parts.append(f"## Sheet: {sheet_name}\n")
-        max_cols = max(len(row) for row in rows)
-        for i, row in enumerate(rows):
+        parts.append(
+            "| Excel行 | "
+            + " | ".join(_excel_column_name(i) for i in range(min_col, max_col + 1))
+            + " |"
+        )
+        parts.append("|" + "|".join(["---"] * (max_col - min_col + 2)) + "|")
+        rows = ws.iter_rows(
+            min_row=min_row,
+            max_row=max_row,
+            min_col=min_col,
+            max_col=max_col,
+            values_only=True,
+        )
+        max_cols = max_col - min_col + 1
+        for i, row in enumerate(rows, start=min_row):
             cells = [str(cell) if cell is not None else "" for cell in row]
             cells += [""] * (max_cols - len(cells))
-            parts.append("| " + " | ".join(cells) + " |")
-            if i == 0:
-                parts.append("|" + "|".join(["---"] * max_cols) + "|")
+            parts.append(f"| {i} | " + " | ".join(cells) + " |")
         parts.append("")
     wb.close()
     return "\n".join(parts)
@@ -166,8 +209,9 @@ def inspect_excel(path: Path):
     for sheet_name in formula_wb.sheetnames:
         ws = formula_wb[sheet_name]
         value_ws = value_wb[sheet_name]
-        max_row = ws.max_row or 0
-        max_column = ws.max_column or 0
+        bounds = _effective_value_bounds(ws)
+        max_row = bounds[1] if bounds else 0
+        max_column = bounds[3] if bounds else 0
         merged_ranges = [str(item) for item in ws.merged_cells.ranges]
         frozen_panes = str(ws.freeze_panes) if ws.freeze_panes else None
 
@@ -180,8 +224,9 @@ def inspect_excel(path: Path):
         layout_issues = []
         number_formats = {}
 
-        for cell in next(ws.iter_rows(min_row=1, max_row=1, values_only=False), []):
-            header_row.append(cell.value)
+        if max_column > 0:
+            for cell in next(ws.iter_rows(min_row=1, max_row=1, max_col=max_column, values_only=False), []):
+                header_row.append(cell.value)
 
         sample_limit = min(max_row, 8)
         for row_index in range(2, sample_limit + 1):
@@ -197,7 +242,12 @@ def inspect_excel(path: Path):
             for cell in row
             for coordinate in [cell.coordinate]
         }
-        for row in ws.iter_rows(values_only=False):
+        bounded_rows = (
+            ws.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_column, values_only=False)
+            if max_row > 0 and max_column > 0
+            else []
+        )
+        for row in bounded_rows:
             for cell in row:
                 if isinstance(cell.value, str) and cell.value.startswith("="):
                     formula_count += 1
@@ -1776,89 +1826,6 @@ def cmd_export_payslips_xlsx():
     print(json.dumps({"filePath": output_path}, ensure_ascii=False))
 
 
-# ── embedding 域（语义检索，WP12） ──────────────────────────
-_embedding_runtime_cache = {}
-
-
-def _load_embedding_runtime(model_dir):
-    import os as _os
-    onnx_path = _os.path.join(model_dir, "model_quantized.onnx")
-    tokenizer_path = _os.path.join(model_dir, "tokenizer.json")
-    if not _os.path.exists(onnx_path) or not _os.path.exists(tokenizer_path):
-        raise RuntimeError("model_not_found")
-    cached = _embedding_runtime_cache.get(model_dir)
-    if cached is not None:
-        return cached
-    try:
-        from tokenizers import Tokenizer  # type: ignore
-        import onnxruntime as ort  # type: ignore
-        import numpy as np  # type: ignore
-    except ImportError as e:
-        raise RuntimeError(f"import_error: {e}") from e
-    tokenizer = Tokenizer.from_file(tokenizer_path)
-    tokenizer.enable_padding(pad_id=0, pad_token="[PAD]", length=512)
-    tokenizer.enable_truncation(max_length=512)
-    session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-    runtime = (tokenizer, session, np)
-    _embedding_runtime_cache[model_dir] = runtime
-    return runtime
-
-
-def _embed_payload(payload):
-    texts = payload.get("texts", [])
-    model_dir = payload.get("model_dir", "")
-    if not isinstance(texts, list) or any(not isinstance(text, str) for text in texts):
-        return {"ok": False, "error": "invalid_texts"}
-    if not texts:
-        return {"ok": True, "dim": 512, "vectors": []}
-    try:
-        tokenizer, session, np = _load_embedding_runtime(model_dir)
-        encodings = tokenizer.encode_batch(texts)
-        input_ids = np.array([encoding.ids for encoding in encodings], dtype=np.int64)
-        attention_mask = np.array([encoding.attention_mask for encoding in encodings], dtype=np.int64)
-        token_type_ids = np.zeros_like(input_ids, dtype=np.int64)
-        outputs = session.run(None, {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "token_type_ids": token_type_ids,
-        })
-        token_embeddings = outputs[0]
-        mask_expanded = attention_mask[:, :, None].astype(np.float32)
-        embeddings = (token_embeddings * mask_expanded).sum(axis=1) / mask_expanded.sum(axis=1).clip(min=1e-9)
-        embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True).clip(min=1e-9)
-        vectors = embeddings.tolist()
-        return {"ok": True, "dim": len(vectors[0]) if vectors else 512, "vectors": vectors}
-    except Exception as e:
-        message = str(e)
-        if message == "model_not_found" or message.startswith("import_error:"):
-            return {"ok": False, "error": message}
-        return {"ok": False, "error": f"embed_error: {message}"}
-
-
-def cmd_embed_texts():
-    """Single-request compatibility command. The persistent pool uses embed-server."""
-    try:
-        payload = json.loads(sys.stdin.read())
-    except Exception as e:
-        print(json.dumps({"ok": False, "error": f"invalid_json: {e}"}, ensure_ascii=False))
-        return
-    print(json.dumps(_embed_payload(payload), ensure_ascii=False))
-
-
-def cmd_embed_server():
-    """Long-lived NDJSON embedding server; one request and one response per line."""
-    for raw in sys.stdin:
-        request_id = None
-        try:
-            payload = json.loads(raw)
-            request_id = payload.get("id")
-            result = _embed_payload(payload)
-        except Exception as e:
-            result = {"ok": False, "error": f"invalid_json: {e}"}
-        result["id"] = request_id
-        print(json.dumps(result, ensure_ascii=False), flush=True)
-
-
 # ── 命令分发入口 ────────────────────────────────────────────
 def main():
     _force_utf8_stdio()
@@ -1913,14 +1880,8 @@ def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "export-payslips-xlsx":
         cmd_export_payslips_xlsx()
         return
-    if len(sys.argv) >= 2 and sys.argv[1] == "embed-texts":
-        cmd_embed_texts()
-        return
-    if len(sys.argv) >= 2 and sys.argv[1] == "embed-server":
-        cmd_embed_server()
-        return
     raise SystemExit(
-        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | document-server | inspect-excel <path> | inspect-excel-cells <path> <json-addresses> | inspect-excel-formulas <path> <json-addresses> | compare-excel-allowlist <reference> <candidate> <sheet> <json-columns> | patch-workbook <src> <dst> <json-edits> | convert-xls <xls> <xlsx> | probe-spreadsheet | probe-recalc <soffice> | recalc-xlsx <xlsx> <soffice> [timeout] | ocr-image <path> | export-voucher-xlsx | export-payslips-xlsx | embed-texts | embed-server"
+        "usage: finance_worker.py --selfcheck | demo | analyze-csv <path> | extract-text <path> | document-server | inspect-excel <path> | inspect-excel-cells <path> <json-addresses> | inspect-excel-formulas <path> <json-addresses> | compare-excel-allowlist <reference> <candidate> <sheet> <json-columns> | patch-workbook <src> <dst> <json-edits> | convert-xls <xls> <xlsx> | probe-spreadsheet | probe-recalc <soffice> | recalc-xlsx <xlsx> <soffice> [timeout] | ocr-image <path> | export-voucher-xlsx | export-payslips-xlsx"
     )
 
 

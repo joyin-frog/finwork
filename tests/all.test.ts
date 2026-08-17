@@ -69,8 +69,12 @@ process.on("unhandledRejection", (err) => {
   const { retrievalV2TestPromise } = await import("./retrieval-v2.test.ts");
   await retrievalV2TestPromise;
 
-  const { retrievalEmbeddingPoolTestPromise } = await import("./retrieval-embedding-pool.test.ts");
-  await retrievalEmbeddingPoolTestPromise;
+  const { retrievalPrefetchTestPromise } = await import("./retrieval-prefetch.test.ts");
+  await retrievalPrefetchTestPromise;
+
+  const { retrievalEvaluationTestPromise } = await import("./retrieval-evaluation.test.ts");
+  await retrievalEvaluationTestPromise;
+
 
   const { documentIrTestPromise } = await import("./document-ir.test.ts");
   await documentIrTestPromise;
@@ -769,8 +773,6 @@ process.on("unhandledRejection", (err) => {
 
   const { bankReconBatchTestPromise } = await import("./bank-recon-batch.test.ts");
   await bankReconBatchTestPromise;
-  const { semanticSearchTestPromise } = await import("./semantic-search.test.ts");
-  await semanticSearchTestPromise;
 
   const { auditUndoTestPromise } = await import("./audit-undo.test.ts");
   await auditUndoTestPromise;

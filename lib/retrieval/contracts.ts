@@ -10,7 +10,8 @@ import {
 
 export const RETRIEVAL_PARSER_VERSION = "retrieval-parser-v1";
 export const RETRIEVAL_CHUNKER_VERSION = "structure-chunker-v1";
-export const RETRIEVAL_INDEX_VERSION = "hybrid-index-v1";
+export const RETRIEVAL_INDEX_PROFILE = "bm25-lexical-v1";
+export const RETRIEVAL_INDEX_VERSION = "bm25-index-v1";
 
 export const RetrievalClassificationSchema = z.enum([
   "public",
@@ -37,8 +38,6 @@ export type RetrievalNodeType = z.infer<typeof RetrievalNodeTypeSchema>;
 export const RetrievalErrorCodeSchema = z.enum([
   "parser_unavailable",
   "parser_failed",
-  "embedding_unavailable",
-  "embedding_failed",
   "index_failed",
   "unauthorized",
   "citation_invalid",
@@ -93,7 +92,7 @@ export const RetrievalRegistrationSchema = z
     acl: z.array(RetrievalAclGrantSchema).min(1),
     parserVersion: IdentifierSchema.default(RETRIEVAL_PARSER_VERSION),
     chunkerVersion: IdentifierSchema.default(RETRIEVAL_CHUNKER_VERSION),
-    embeddingModel: IdentifierSchema,
+    indexProfile: IdentifierSchema.default(RETRIEVAL_INDEX_PROFILE),
     requestedAt: IsoDateTimeSchema,
   })
   .strict();
@@ -158,9 +157,8 @@ export const RetrievalSearchRequestSchema = z
   .object({
     principal: PrincipalRefSchema,
     query: z.string().trim().min(1).max(10_000),
-    mode: z.enum(["hybrid", "lexical_only"]).default("hybrid"),
-    queryVector: z.array(z.number().finite()).min(1).max(16_384).optional(),
-    embeddingModel: IdentifierSchema,
+    mode: z.literal("bm25").default("bm25"),
+    indexProfile: IdentifierSchema.default(RETRIEVAL_INDEX_PROFILE),
     filters: RetrievalSearchFiltersSchema.default({
       entityRefs: [],
       documentTypes: [],
@@ -171,12 +169,7 @@ export const RetrievalSearchRequestSchema = z
     cacheTtlSeconds: z.number().int().min(0).max(86_400).default(300),
     now: IsoDateTimeSchema,
   })
-  .strict()
-  .superRefine((request, ctx) => {
-    if (request.mode === "hybrid" && !request.queryVector) {
-      ctx.addIssue({ code: "custom", message: "hybrid retrieval requires queryVector", path: ["queryVector"] });
-    }
-  });
+  .strict();
 export type RetrievalSearchRequest = z.infer<typeof RetrievalSearchRequestSchema>;
 
 export const CitationRecordV2Schema = z
@@ -191,8 +184,7 @@ export const CitationRecordV2Schema = z
     quotedText: z.string().min(1),
     quoteHash: Sha256Schema,
     effectiveDate: z.iso.date().optional(),
-    lexicalScore: z.number().finite().nonnegative(),
-    vectorScore: z.number().finite().min(-1).max(1).optional(),
+    bm25Score: z.number().finite().nonnegative(),
     rerankScore: z.number().finite(),
   })
   .strict();
@@ -211,12 +203,13 @@ export type RetrievalHit = z.infer<typeof RetrievalHitSchema>;
 
 export const RetrievalDiagnosticsSchema = z
   .object({
+    mode: z.literal("bm25"),
     cacheHit: z.boolean(),
     authorizedDocumentCount: z.number().int().nonnegative(),
-    lexicalCandidateCount: z.number().int().nonnegative(),
-    annCandidateCount: z.number().int().nonnegative(),
+    bm25CandidateCount: z.number().int().nonnegative(),
     expandedCandidateCount: z.number().int().nonnegative(),
     scoredCandidateCount: z.number().int().nonnegative(),
+    rejectedCandidateCount: z.number().int().nonnegative().optional(),
     elapsedMs: z.number().finite().nonnegative(),
     indexVersion: IdentifierSchema,
   })
@@ -236,5 +229,3 @@ export type RetrievalParser = (input: {
   mediaType: string;
   title: string;
 }) => Promise<ParsedRetrievalDocument>;
-
-export type RetrievalEmbedder = (texts: readonly string[], model: string) => Promise<readonly (readonly number[])[]>;

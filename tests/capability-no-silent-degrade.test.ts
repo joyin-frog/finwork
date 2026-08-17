@@ -19,8 +19,8 @@ export const capabilityNoSilentDegradeTestPromise = (async () => {
       ok: false,
       failure: {
         kind: "dependency_unavailable",
-        code: "embedding_model_unavailable",
-        message: "Embedding model is unavailable",
+        code: "ocr_runtime_unavailable",
+        message: "OCR runtime is unavailable",
         retryable: false,
         details: { provider: "local" },
       },
@@ -32,7 +32,7 @@ export const capabilityNoSilentDegradeTestPromise = (async () => {
     resultSchema.safeParse({
       ok: true,
       output: { documentId: 1 },
-      warning: "embedding failed; lexical-only fallback used",
+      warning: "OCR failed; raw-text fallback used",
     }).success,
     false,
     "a successful result must not smuggle a silent degradation field",

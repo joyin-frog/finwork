@@ -7,6 +7,7 @@ import type { ArtifactRef } from "@/lib/artifacts/contracts";
 import { DocumentLocatorSchema, type DocumentLocator } from "@/lib/artifacts/contracts";
 import { canonicalJson } from "@/lib/capability/hash";
 import type { RetrievalIndexer } from "@/lib/retrieval/indexer";
+import { RETRIEVAL_INDEX_PROFILE } from "@/lib/retrieval/contracts";
 import {
   BenchmarkImportManifestSchema,
   BenchmarkMaterializationManifestSchema,
@@ -21,7 +22,6 @@ import { readNormalizedBenchmarkCases } from "./importer";
 
 export interface BenchmarkRetrievalMaterializer {
   indexer: RetrievalIndexer;
-  embeddingModel: string;
   parserVersion?: string;
   chunkerVersion?: string;
 }
@@ -246,10 +246,10 @@ async function materializeGeneratedSource(input: {
       principal: { id: "benchmark-runner", type: "service", tenantId: "benchmark" },
       grantedAt: input.createdAt,
     }],
-    embeddingModel: input.retrieval.embeddingModel,
     requestedAt: input.createdAt,
     parserVersion: input.retrieval.parserVersion ?? "benchmark-parser-v1",
     chunkerVersion: input.retrieval.chunkerVersion ?? "structure-chunker-v1",
+    indexProfile: RETRIEVAL_INDEX_PROFILE,
   });
   if (registration.jobId) {
     await input.retrieval.indexer.processJob(

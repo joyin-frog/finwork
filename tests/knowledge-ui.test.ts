@@ -46,7 +46,7 @@ export const knowledgeUiTestPromise = (async () => {
   assert.ok(!prompt.includes("检索阶梯"), "T5 FAIL: system prompt 不应重复工具选择细节");
   const knowledgeTools = await readFile("lib/agent/mcp-tools/knowledge.ts", "utf-8");
   assert.ok(
-    knowledgeTools.includes("受 ACL 约束的混合检索") &&
+    knowledgeTools.includes("受 ACL 约束的 BM25 关键词检索") &&
       knowledgeTools.includes("不可变来源版本") &&
       knowledgeTools.includes("不执行 shell 命令") &&
       knowledgeTools.includes("不允许绕过检索权限直接扫描文本镜像"),

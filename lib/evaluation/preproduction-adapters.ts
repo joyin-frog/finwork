@@ -12,9 +12,7 @@ import { insertKnowledgeDocument } from "@/lib/db/sqlite";
 import { validateDocxFile } from "@/lib/deliverable/validators/docx";
 import { generateDocx, probeDocxPdfRenderer, renderDocxToPdf } from "@/lib/document-generation";
 import { parseDocumentFile } from "@/lib/document-ir/adapters";
-import { EMBED_MODEL, isEmbedModelReady } from "@/lib/knowledge/embed-model";
 import { GovernedMemoryStore } from "@/lib/memory-v2/store";
-import { PersistentEmbeddingPool } from "@/lib/retrieval/embedding-pool";
 import { createProductionRetrievalService } from "@/lib/retrieval/production";
 import {
   spreadsheetCompareAllowedCells,
@@ -245,7 +243,6 @@ async function taxPayrollPreflight(context: PreproductionScenarioContext): Promi
       blockers.push(error instanceof Error ? error.message : String(error));
     }
   }
-  if (!isEmbedModelReady(EMBED_MODEL)) blockers.push(`embedding_model_unavailable:${EMBED_MODEL}`);
   const renderer = probeDocxPdfRenderer();
   if (!renderer.ok) blockers.push(`document_renderer_unavailable:${renderer.detail}`);
   return [...new Set(blockers)];
@@ -272,7 +269,6 @@ async function executeTaxPayroll(context: PreproductionScenarioContext): Promise
   fs.mkdirSync(context.workDir, { recursive: true });
   const databasePath = path.join(context.workDir, "tax-payroll-evidence.sqlite");
   const db = new DatabaseSync(databasePath);
-  const embeddingPool = new PersistentEmbeddingPool({ size: 1 });
   const principal = { id: "evaluation.service", type: "service" as const, tenantId: "evaluation" };
   try {
     runMigrations(db, databasePath, () => null);
@@ -287,7 +283,6 @@ async function executeTaxPayroll(context: PreproductionScenarioContext): Promise
     }, db);
     const retrieval = createProductionRetrievalService({
       db,
-      embedder: embeddingPool.embed,
       casRoot: path.join(context.workDir, "retrieval-cas"),
       principal,
     });
@@ -446,8 +441,7 @@ async function executeTaxPayroll(context: PreproductionScenarioContext): Promise
       sourceLocator: parameters.sourceLocator,
       toolVersions: {
         documentParser: "finwork.document-ir:v1",
-        embedding: EMBED_MODEL,
-        retrieval: "hybrid-index-v1",
+        retrieval: "bm25-index-v1",
         memory: "governed-memory-v2",
         businessRules: "finance-rule-pack:2026.1",
         documentGenerator: generated.producer,
@@ -504,7 +498,6 @@ async function executeTaxPayroll(context: PreproductionScenarioContext): Promise
       },
     };
   } finally {
-    await embeddingPool.close();
     db.close();
   }
 }
@@ -525,7 +518,6 @@ async function multiDocumentRagPreflight(context: PreproductionScenarioContext):
       blockers.push(error instanceof Error ? error.message : String(error));
     }
   }
-  if (!isEmbedModelReady(EMBED_MODEL)) blockers.push(`embedding_model_unavailable:${EMBED_MODEL}`);
   const renderer = probeDocxPdfRenderer();
   if (!renderer.ok) blockers.push(`document_renderer_unavailable:${renderer.detail}`);
   return [...new Set(blockers)];
@@ -566,13 +558,11 @@ async function executeMultiDocumentRag(context: PreproductionScenarioContext): P
   fs.mkdirSync(context.workDir, { recursive: true });
   const databasePath = path.join(context.workDir, "multi-document-rag-evidence.sqlite");
   const db = new DatabaseSync(databasePath);
-  const embeddingPool = new PersistentEmbeddingPool({ size: 1 });
   const principal = { id: "evaluation.service", type: "service" as const, tenantId: "evaluation" };
   try {
     runMigrations(db, databasePath, () => null);
     const retrieval = createProductionRetrievalService({
       db,
-      embedder: embeddingPool.embed,
       casRoot: path.join(context.workDir, "retrieval-cas"),
       principal,
     });
@@ -683,7 +673,7 @@ async function executeMultiDocumentRag(context: PreproductionScenarioContext): P
       metadata: [
         { label: "来源数量", value: String(sourceRecords.length) },
         { label: "已验证结论", value: String(verifiedClaims.length) },
-        { label: "检索模型", value: EMBED_MODEL },
+        { label: "检索引擎", value: "BM25 lexical" },
       ],
       sections: [
         {
@@ -744,8 +734,7 @@ async function executeMultiDocumentRag(context: PreproductionScenarioContext): P
       sourceLocator: parameters.claims[0]!.sourceLocator,
       toolVersions: {
         documentParser: "finwork.document-ir:v1",
-        embedding: EMBED_MODEL,
-        retrieval: "hybrid-index-rerank-v1",
+        retrieval: "bm25-index-v1",
         memory: "governed-memory-v2",
         documentGenerator: generated.producer,
         documentValidator: validated.validatorId,
@@ -807,7 +796,6 @@ async function executeMultiDocumentRag(context: PreproductionScenarioContext): P
       },
     };
   } finally {
-    await embeddingPool.close();
     db.close();
   }
 }
