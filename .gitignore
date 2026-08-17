@@ -34,6 +34,8 @@ excel/
 test-results/
 docs/audits/overlay-consistency/
 playwright-report/
+.playwright-cli/
+output/playwright/
 .loop-sandbox/
 agent-skills/skills/*/output/
 workers/output/
