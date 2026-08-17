@@ -1,4 +1,4 @@
-import type { AgentEvent, ChatAttachment, Conversation, GeneratedAttachment, Message, ModelTier, ReferencedFile, SkillRef } from "@/app/chat/chat-types";
+import type { AgentEvent, ChatAttachment, Conversation, FolderRef, GeneratedAttachment, Message, ModelTier, ReferencedFile, SkillRef } from "@/app/chat/chat-types";
 import { contractToLegacyEvents } from "@/lib/agent/runtime-events";
 import type { AgentEventEnvelope } from "@/lib/agent/runtime-events";
 export { formatFolderPathLine, folderNameFromPath, splitFolderPathLines, FOLDER_PATH_LINE_PREFIX } from "@/app/chat/folder-path";
@@ -9,12 +9,23 @@ export async function submitAgentRequest(params: {
   attachments: ChatAttachment[];
   referencedAttachments: ReferencedFile[];
   referencedSkills?: SkillRef[];
+  folderRefs?: FolderRef[];
   modelTier?: ModelTier;
   /** 专员会话（E 刀）：创建新会话时绑定的角色 id；既有会话忽略此参数（服务端以 DB 为准）。 */
   role?: string;
   signal: AbortSignal;
 }) {
-  const { messages, conversationId, attachments, referencedAttachments, referencedSkills, modelTier, role, signal } = params;
+  const { messages, conversationId, attachments, referencedAttachments, referencedSkills, folderRefs, modelTier, role, signal } = params;
+  const workspaceRootIds = [...new Set((folderRefs ?? []).map((folder) => folder.rootId).filter(Boolean))];
+  const managedAgentAttachments = attachments.flatMap((file) => file.assetId ? [{
+    assetId: file.assetId,
+    versionId: file.versionId,
+    name: file.name,
+    mimeType: file.mimeType,
+    size: file.size,
+    dataUrl: "",
+  }] : []);
+  const pendingUploads = attachments.filter((file) => !file.assetId);
   const refAgentAttachments = referencedAttachments.map((file) => ({
     name: file.name,
     mimeType: file.mimeType,
@@ -26,27 +37,29 @@ export async function submitAgentRequest(params: {
   const skillNames = (referencedSkills ?? []).map((s) => s.name);
   const tier = modelTier;
 
-  if (attachments.length) {
+  if (pendingUploads.length) {
     const formData = new FormData();
     formData.append("messages", JSON.stringify(messages));
     if (conversationId) formData.append("conversationId", String(conversationId));
-    for (const attachment of attachments) {
+    for (const attachment of pendingUploads) {
       const file = dataUrlToFile(attachment);
       if (file) formData.append("files", file, attachment.name);
     }
     if (refAgentAttachments.length) {
       formData.append("referencedAttachments", JSON.stringify(refAgentAttachments));
     }
+    if (managedAgentAttachments.length) formData.append("managedAttachments", JSON.stringify(managedAgentAttachments));
     if (skillNames.length) formData.append("referencedSkills", JSON.stringify(skillNames));
     if (tier) formData.append("modelTier", tier);
     if (role) formData.append("role", role);
+    if (workspaceRootIds.length) formData.append("workspaceRootIds", JSON.stringify(workspaceRootIds));
     return fetch("/api/agent/query", { method: "POST", body: formData, signal });
   }
 
   return fetch("/api/agent/query", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ conversationId, messages, attachments: refAgentAttachments, referencedSkills: skillNames, modelTier: tier, role }),
+    body: JSON.stringify({ conversationId, messages, attachments: [...managedAgentAttachments, ...refAgentAttachments], referencedSkills: skillNames, workspaceRootIds, modelTier: tier, role }),
     signal
   });
 }
@@ -58,14 +71,23 @@ export function buildUserContent(text: string, attachments: ChatAttachment[], re
 }
 
 export async function readAttachment(file: File): Promise<ChatAttachment> {
-  const [dataUrl, text] = await Promise.all([readAsDataUrl(file), shouldReadAsText(file) ? readAsText(file) : undefined]);
+  const form = new FormData();
+  form.append("files", file, file.name);
+  const response = await fetch("/api/workspace/uploads", { method: "POST", body: form });
+  const payload = await response.json() as {
+    data?: { assets?: Array<{ assetId: string; versionId: string; name: string; mediaType: string; sizeBytes: number }> };
+    error?: string;
+  };
+  const asset = payload.data?.assets?.[0];
+  if (!response.ok || !asset) throw new Error(payload.error ?? "文件上传失败");
   return {
-    id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
-    name: file.name || "clipboard-file",
-    mimeType: file.type || "application/octet-stream",
-    size: file.size,
-    dataUrl,
-    text
+    id: asset.assetId,
+    assetId: asset.assetId,
+    versionId: asset.versionId,
+    name: asset.name,
+    mimeType: asset.mediaType,
+    size: asset.sizeBytes,
+    dataUrl: "",
   };
 }
 

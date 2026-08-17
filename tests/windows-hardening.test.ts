@@ -8,11 +8,60 @@ import { installPythonRuntime, type InstallSteps } from "../lib/runtime/python-i
 // ③ tar 不可用时经 InstallSteps 注入抛含引导中文错误
 export const windowsHardeningTestPromise = (async () => {
 
+  // Windows 11 MXC policy: only the native BaseContainer tier is accepted;
+  // DACL mutation and network access stay disabled.
+  {
+    const { parseWindowsMxcProbe } = await import("../lib/agent/tools/process-sandbox.ts");
+    const { buildWindowsMxcPolicy } = await import("../lib/agent/mcp-tools/run-task-python.ts");
+    assert.deepEqual(parseWindowsMxcProbe('{"tier":"base-container","warnings":[]}'), {
+      tier: "base-container",
+      warnings: [],
+    });
+    const policy = buildWindowsMxcPolicy({
+      python: "C:\\Finwork\\Python\\python.exe",
+      args: ["C:\\Finwork\\task_python_runner.py", "policy", "C:\\Task\\script.py"],
+      cwd: "C:\\Task",
+      env: { PYTHONUTF8: "1", FINWORK_OS_SANDBOX: "windows-mxc-base-container" },
+      timeoutMs: 90_000,
+      readRoots: ["C:\\Task\\inputs", "C:\\Finwork\\task_python_runner.py"],
+      runtimeRoots: ["C:\\Finwork\\Python"],
+    }) as {
+      timeoutMs: number;
+      network: { allowOutbound: boolean; allowLocalNetwork: boolean };
+      ui: { allowWindows: boolean; clipboard: string; allowInputInjection: boolean };
+      filesystem: { readwritePaths: string[]; readonlyPaths: string[] };
+    };
+    assert.equal(policy.network.allowOutbound, false);
+    assert.equal(policy.network.allowLocalNetwork, false);
+    assert.equal(policy.ui.allowWindows, false);
+    assert.equal(policy.ui.clipboard, "none");
+    assert.equal(policy.ui.allowInputInjection, false);
+    assert.equal(policy.timeoutMs, 90_000);
+    assert.deepEqual(policy.filesystem.readwritePaths, ["C:\\Task"]);
+    assert.ok(policy.filesystem.readonlyPaths.includes("C:\\Finwork\\Python"));
+
+    const source = readFileSync("lib/agent/mcp-tools/run-task-python.ts", "utf8");
+    const sandboxSource = readFileSync("lib/agent/tools/process-sandbox.ts", "utf8");
+    const prepareSource = readFileSync("scripts/prepare-tauri.mjs", "utf8");
+    assert.ok(source.includes("requireWindowsMxcBaseContainer"), "Windows 执行前必须验证 base-container tier");
+    assert.ok(source.includes('import("@microsoft/mxc-sdk")'), "Windows config 必须由官方 MXC SDK 构造");
+    assert.ok(source.includes("createConfigFromPolicy"), "不得手写 MXC wire config");
+    assert.ok(source.includes('"--experimental"'), "BaseContainer 调用必须显式启用 Windows 实验 contract");
+    assert.ok(!source.includes("FINWORK_WINDOWS_SANDBOX_BROKER"), "不得保留自研 AppContainer broker");
+    assert.ok(
+      sandboxSource.indexOf('path.join(projectRoot, "bin", "mxc", "wxc-exec.exe")')
+        < sandboxSource.indexOf("FINWORK_MXC_EXECUTABLE"),
+      "生产包必须优先使用随包固定的 MXC runner",
+    );
+    assert.ok(prepareSource.includes('path.join(mxcTargetDir, "wxc-exec.exe")'), "Windows 包必须携带官方 MXC runner");
+    assert.ok(prepareSource.includes("LICENSE.Microsoft-MXC.md"), "Windows 包必须携带 MXC 许可证");
+  }
+
   // ──────────────────────────────────────────────────────────
   // ① helper: 输出含两个编码键 + extra 覆盖优先级
   // ──────────────────────────────────────────────────────────
   {
-    const { pythonSpawnEnv } = await import("../lib/runtime/python-env.ts");
+    const { pythonSpawnEnv, trustedPythonWorkerEnv } = await import("../lib/runtime/python-env.ts");
 
     // 基础：必须含两个编码键
     const env = pythonSpawnEnv();
@@ -27,10 +76,16 @@ export const windowsHardeningTestPromise = (async () => {
 
     // 继承 process.env
     assert.equal(env.PATH, process.env.PATH, "helper FAIL: 应继承 process.env.PATH");
+
+    process.env.FINWORK_TEST_PROVIDER_SECRET = "do-not-forward";
+    const workerEnv = trustedPythonWorkerEnv(undefined, ["FINANCE_PDF_MAX_OCR_PAGES"]);
+    assert.equal(workerEnv.FINWORK_TEST_PROVIDER_SECRET, undefined, "fixed worker 不得继承宿主密钥");
+    assert.equal(workerEnv.PATH, process.env.PATH, "fixed worker 应保留可执行程序 PATH");
+    delete process.env.FINWORK_TEST_PROVIDER_SECRET;
   }
 
   // ──────────────────────────────────────────────────────────
-  // ② 调用点枚举断言：每个文件源码正向包含 pythonSpawnEnv
+  // ② 调用点枚举断言：每个文件源码正向包含统一 env helper
   // ──────────────────────────────────────────────────────────
   // 开工 rg 现场枚举出的调用点清单（无注入 6 处 + 已注入 4 处 + installer pip）
   const callsites: Array<{ file: string; label: string }> = [
@@ -52,8 +107,8 @@ export const windowsHardeningTestPromise = (async () => {
   for (const { file, label } of callsites) {
     const src = readFileSync(file, "utf-8");
     assert.ok(
-      src.includes("pythonSpawnEnv"),
-      `callsite FAIL [${label}]: ${file} 未使用 pythonSpawnEnv`
+      src.includes("pythonSpawnEnv") || src.includes("trustedPythonWorkerEnv"),
+      `callsite FAIL [${label}]: ${file} 未使用 Python env helper`
     );
   }
 

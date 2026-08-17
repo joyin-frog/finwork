@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { getProjectRoot, getPythonPath } from "./paths";
-import { pythonSpawnEnv } from "./python-env";
+import { trustedPythonWorkerEnv } from "./python-env";
 import { resolveLibreOffice, type LibreOfficeResolveResult } from "./libreoffice-resolver";
 import { getSpreadsheetCapabilities, type SpreadsheetCapabilities } from "./spreadsheet-probe";
 import { artifactToolInspect, artifactToolProbe, artifactToolRecalc } from "./artifact-tool-provider";
@@ -26,7 +26,7 @@ function runPython(args: string[], opts?: { timeoutMs?: number; stdin?: string }
   const worker = path.join(getProjectRoot(), "workers", "finance_worker.py");
   return new Promise((resolve, reject) => {
     const child = spawn(pythonPath, [worker, ...args], {
-      env: pythonSpawnEnv(),
+      env: trustedPythonWorkerEnv(),
       cwd: os.tmpdir(),
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -491,10 +491,7 @@ function execFileAsync(cmd: string, args: string[], timeoutMs: number): Promise<
       {
         timeout: timeoutMs,
         maxBuffer: 16 * 1024 * 1024,
-        env: {
-          ...process.env,
-          SAL_USE_VCLPLUGIN: "svp",
-        },
+        env: trustedPythonWorkerEnv({ SAL_USE_VCLPLUGIN: "svp" }),
         cwd: os.tmpdir(),
       },
       (err, _stdout, stderr) => {

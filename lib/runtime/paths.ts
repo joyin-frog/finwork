@@ -55,6 +55,38 @@ export function getConversationFilesDir(conversationId: number | string) {
 }
 
 /**
+ * 用户文件工作区。managed/ 是加密内容寻址存储；runs/ 只放按回合解密的短期工作副本。
+ * 它与旧 conversation files 分离，避免聊天删除时误删仍被其它任务引用的资产。
+ */
+export function getFileWorkspaceDir() {
+  return process.env.FINANCE_AGENT_FILE_WORKSPACE_DIR
+    ?? path.join(getAppDataDir(), "file-workspace");
+}
+
+export function getFileWorkspaceKeyPath() {
+  return process.env.FINANCE_AGENT_FILE_WORKSPACE_KEY_FILE
+    ?? path.join(getAppDataDir(), "file-workspace-key");
+}
+
+export function getRunFileWorkspaceDir(runId: string) {
+  return path.join(getFileWorkspaceDir(), "runs", runId);
+}
+
+/**
+ * 单次执行的明文工作面。inputs 只读，work 是 Agent 唯一写入区，outputs
+ * 只放通过交付门后的最终物化副本；整个 runRoot 都按短期保留策略回收。
+ */
+export function getRunFileWorkspacePaths(runId: string) {
+  const root = getRunFileWorkspaceDir(runId);
+  return {
+    root,
+    inputs: path.join(root, "inputs"),
+    work: path.join(root, "work"),
+    outputs: path.join(root, "outputs"),
+  };
+}
+
+/**
  * 可丢弃资源工作区。它与用户文件目录严格分离，只允许资源治理层做两阶段回收。
  */
 export function getResourceWorkspaceDir() {

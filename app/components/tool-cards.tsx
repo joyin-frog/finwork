@@ -17,6 +17,7 @@ import {
 import { ReceiptCard, parseCalcReceiptStructured } from "./receipt-card";
 import { ChecklistCard, parseChecklistStructured } from "./checklist-card";
 import { TransferProposalCard, parseTransferProposalStructured } from "./transfer-proposal-card";
+import { WorkspaceChangeCard, parseWorkspaceChangeReview } from "./workspace-change-card";
 
 /**
  * kind 字段判别注册表（TOOLS_WITH_RESULT_CARD 的权威来源见下方，由 TOOL_CARD_REGISTRY 派生）。
@@ -36,6 +37,10 @@ const KIND_CARD_REGISTRY: Record<string, (structured: unknown) => ReactNode> = {
     // D2·刀8: 转交卡——由 propose_transfer 工具返回，用户点按钮才真正发起转交。
     const data = parseTransferProposalStructured(structured);
     return data ? <TransferProposalCard data={data} /> : null;
+  },
+  workspace_change_review: (structured) => {
+    const data = parseWorkspaceChangeReview(structured);
+    return data ? <WorkspaceChangeCard data={data} /> : null;
   },
 };
 

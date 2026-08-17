@@ -124,6 +124,24 @@ if (existsSync(rgPath)) {
   console.warn(`⚠ 未找到 ripgrep 二进制(${rgPath});知识库搜索在产物中将不可用。`);
 }
 
+// Windows 11 dynamic-code sandbox. Keep the final package lean: the npm
+// package contains several architectures/backends, but Finwork only needs the
+// current-architecture wxc-exec process-container runner and its MIT license.
+if (process.platform === "win32") {
+  if (process.arch !== "x64" && process.arch !== "arm64") {
+    throw new Error(`prepare-tauri: MXC 不支持 Windows ${process.arch}`);
+  }
+  const mxcPackageDir = path.join(root, "node_modules", "@microsoft", "mxc-sdk");
+  const mxcSource = path.join(mxcPackageDir, "bin", process.arch, "wxc-exec.exe");
+  const mxcTargetDir = path.join(binResourceDir, "mxc");
+  if (!existsSync(mxcSource)) {
+    throw new Error("prepare-tauri: @microsoft/mxc-sdk 缺少当前架构的 wxc-exec.exe");
+  }
+  await mkdir(mxcTargetDir, { recursive: true });
+  await cp(mxcSource, path.join(mxcTargetDir, "wxc-exec.exe"));
+  await cp(path.join(mxcPackageDir, "LICENSE.md"), path.join(mxcTargetDir, "LICENSE.Microsoft-MXC.md"));
+}
+
 await rm(nodeResourceDir, { recursive: true, force: true });
 await mkdir(nodeResourceDir, { recursive: true });
 await cp(process.execPath, path.join(nodeResourceDir, nodeBinaryName));

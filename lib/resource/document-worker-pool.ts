@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { cpus } from "node:os";
 import path from "node:path";
-import { pythonSpawnEnv } from "@/lib/runtime/python-env";
+import { trustedPythonWorkerEnv } from "@/lib/runtime/python-env";
 import { getProjectRoot, getPythonPath } from "@/lib/runtime/paths";
 import { ResourceLimitError } from "./contracts";
 
@@ -98,7 +98,7 @@ class NdjsonDocumentWorker implements DocumentWorkerClient {
     const workerPath = path.join(getProjectRoot(), "workers", "finance_worker.py");
     const child = spawn(getPythonPath(), [workerPath, "document-server"], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: pythonSpawnEnv(),
+      env: trustedPythonWorkerEnv(undefined, ["FINANCE_PDF_MAX_OCR_PAGES"]),
     });
     this.child = child;
     this.stdoutBuffer = "";

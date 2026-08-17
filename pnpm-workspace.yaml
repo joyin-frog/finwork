@@ -3,6 +3,7 @@ pmOnFail: ignore
 allowBuilds:
   '@google/genai': true
   esbuild: true
+  node-pty: false
   protobufjs: true
   sharp: true
   unrs-resolver: true

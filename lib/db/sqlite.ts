@@ -91,8 +91,32 @@ export function getDb(): DatabaseSync {
     // backupDatabase 无条件备份(见 tools/finance/payroll),数据安全不受影响。
     scheduleStartupBackup(db, currentPath);
     scheduleStartupResourceMaintenance(db);
+    scheduleStartupFileWorkspaceMaintenance(db);
   }
   return _db;
+}
+
+function scheduleStartupFileWorkspaceMaintenance(db: DatabaseSync) {
+  setImmediate(async () => {
+    if (_db !== db) return;
+    try {
+      const queryOnly = db.prepare("PRAGMA query_only").get() as { query_only?: number } | undefined;
+      if (Number(queryOnly?.query_only ?? 0) === 1) return;
+      const [{ FileWorkspaceStore }, { getFileWorkspaceMasterKey }, { getFileWorkspaceDir }] = await Promise.all([
+        import("@/lib/file-workspace/store"),
+        import("@/lib/file-workspace/key-store"),
+        import("@/lib/runtime/paths"),
+      ]);
+      if (_db !== db) return;
+      const store = new FileWorkspaceStore(db, getFileWorkspaceDir(), await getFileWorkspaceMasterKey());
+      const result = store.maintainStorage();
+      if (Object.values(result).some((value) => value > 0)) {
+        console.info(`[file-workspace] 启动维护完成:${JSON.stringify(result)}`);
+      }
+    } catch (error) {
+      console.error(`[file-workspace] 启动维护失败:${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
 }
 
 function scheduleStartupResourceMaintenance(db: DatabaseSync) {
@@ -348,6 +372,7 @@ export type StoredChatMessage = {
   content: string;
   createdAt: string;
   agentEvents?: StoredAgentEvent[];
+  workspaceRoots?: Array<{ rootId: string; name: string }>;
 };
 
 export type StoredAgentEvent = {
@@ -378,6 +403,8 @@ export type StoredChatAttachment = {
   mimeType: string;
   sizeBytes: number;
   storagePath: string;
+  assetId?: string | null;
+  assetVersionId?: string | null;
   role: "user" | "assistant";
   createdAt: string;
 };
@@ -389,6 +416,8 @@ type AttachmentRow = {
   mime_type: string;
   size_bytes: number;
   storage_path: string;
+  asset_id?: string | null;
+  asset_version_id?: string | null;
   role: "user" | "assistant";
   created_at: string;
 };
@@ -440,6 +469,18 @@ export function insertChatMessage(
   return Number(result.lastInsertRowid);
 }
 
+export function insertChatMessageWorkspaceRoots(messageId: number, rootIds: string[]): void {
+  const unique = [...new Set(rootIds)];
+  if (!unique.length) return;
+  const db = getDb();
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO chat_message_workspace_roots(message_id,root_id,created_at)
+    SELECT ?,root_id,? FROM workspace_roots WHERE root_id=? AND status='active'
+  `);
+  const now = new Date().toISOString();
+  for (const rootId of unique) insert.run(messageId, now, rootId);
+}
+
 export function listAgentEventsForMessage(messageId: number): StoredAgentEvent[] {
   const db = getDb();
   const rows = db
@@ -471,7 +512,9 @@ export function listChatMessages(conversationId: number) {
     eventsByMsgId.set(evt.message_id, list);
   }
 
-  return rows.map((row) => mapMessageRow(row, eventsByMsgId.get(row.id) ?? []));
+  const rootsByMsgId = listMessageWorkspaceRoots(db, msgIds);
+
+  return rows.map((row) => mapMessageRow(row, eventsByMsgId.get(row.id) ?? [], rootsByMsgId.get(row.id) ?? []));
 }
 
 export function listRecentChatConversations(limit = 10) {
@@ -495,6 +538,7 @@ export function listRecentChatConversations(limit = 10) {
 
   const msgIds = msgRows.map((r) => r.id);
   let eventsByMsgId = new Map<number, StoredAgentEvent[]>();
+  const rootsByMsgId = listMessageWorkspaceRoots(db, msgIds);
 
   if (msgIds.length > 0) {
     const evtPlaceholders = msgIds.map(() => "?").join(",");
@@ -513,7 +557,7 @@ export function listRecentChatConversations(limit = 10) {
   const msgsByConvId = new Map<number, StoredChatMessage[]>();
   for (const msg of msgRows) {
     const list = msgsByConvId.get(msg.conversation_id) ?? [];
-    list.push(mapMessageRow(msg, eventsByMsgId.get(msg.id) ?? []));
+    list.push(mapMessageRow(msg, eventsByMsgId.get(msg.id) ?? [], rootsByMsgId.get(msg.id) ?? []));
     msgsByConvId.set(msg.conversation_id, list);
   }
 
@@ -617,14 +661,14 @@ export function setChatConversationRuntimeSession(
 export function insertChatAttachment(attachment: Omit<StoredChatAttachment, "createdAt">) {
   const db = getDb();
   db.prepare(
-    "INSERT INTO chat_attachments (id, message_id, file_name, mime_type, size_bytes, storage_path, role) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(attachment.id, attachment.messageId, attachment.fileName, attachment.mimeType, attachment.sizeBytes, attachment.storagePath, attachment.role);
+    "INSERT INTO chat_attachments (id, message_id, file_name, mime_type, size_bytes, storage_path, role, asset_id, asset_version_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(attachment.id, attachment.messageId, attachment.fileName, attachment.mimeType, attachment.sizeBytes, attachment.storagePath, attachment.role, attachment.assetId ?? null, attachment.assetVersionId ?? null);
 }
 
 export function getMessageAttachments(messageId: number): StoredChatAttachment[] {
   const db = getDb();
   const rows = db
-    .prepare("SELECT id, message_id, file_name, mime_type, size_bytes, storage_path, role, created_at FROM chat_attachments WHERE message_id = ? ORDER BY id ASC")
+    .prepare("SELECT id, message_id, file_name, mime_type, size_bytes, storage_path, role, created_at, asset_id, asset_version_id FROM chat_attachments WHERE message_id = ? ORDER BY id ASC")
     .all(messageId) as AttachmentRow[];
   return rows.map(mapAttachmentRow);
 }
@@ -633,7 +677,7 @@ export function getConversationAttachments(conversationId: number): StoredChatAt
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT a.id, a.message_id, a.file_name, a.mime_type, a.size_bytes, a.storage_path, a.role, a.created_at
+      `SELECT a.id, a.message_id, a.file_name, a.mime_type, a.size_bytes, a.storage_path, a.role, a.created_at, a.asset_id, a.asset_version_id
        FROM chat_attachments a
        JOIN chat_messages m ON a.message_id = m.id
        WHERE m.conversation_id = ?
@@ -659,6 +703,8 @@ function mapAttachmentRow(row: AttachmentRow): StoredChatAttachment {
     mimeType: row.mime_type,
     sizeBytes: row.size_bytes,
     storagePath: row.storage_path,
+    assetId: row.asset_id ?? null,
+    assetVersionId: row.asset_version_id ?? null,
     role: row.role,
     createdAt: row.created_at
   };
@@ -677,15 +723,42 @@ function mapConversationRow(row: ConversationRow, messages: StoredChatMessage[])
   };
 }
 
-function mapMessageRow(row: MessageRow, agentEvents: StoredAgentEvent[] = []): StoredChatMessage {
+function mapMessageRow(
+  row: MessageRow,
+  agentEvents: StoredAgentEvent[] = [],
+  workspaceRoots: Array<{ rootId: string; name: string }> = [],
+): StoredChatMessage {
   return {
     id: row.id,
     conversationId: row.conversation_id,
     role: row.role,
     content: row.content,
     createdAt: row.created_at,
-    agentEvents
+    agentEvents,
+    workspaceRoots: workspaceRoots.length ? workspaceRoots : undefined,
   };
+}
+
+function listMessageWorkspaceRoots(
+  db: DatabaseSync,
+  messageIds: number[],
+): Map<number, Array<{ rootId: string; name: string }>> {
+  const result = new Map<number, Array<{ rootId: string; name: string }>>();
+  if (!messageIds.length) return result;
+  const placeholders = messageIds.map(() => "?").join(",");
+  const rows = db.prepare(`
+    SELECT mr.message_id,r.root_id,r.display_name
+    FROM chat_message_workspace_roots mr
+    JOIN workspace_roots r ON r.root_id=mr.root_id
+    WHERE mr.message_id IN (${placeholders})
+    ORDER BY mr.created_at,mr.root_id
+  `).all(...messageIds) as Array<{ message_id: number; root_id: string; display_name: string }>;
+  for (const row of rows) {
+    const roots = result.get(row.message_id) ?? [];
+    roots.push({ rootId: row.root_id, name: row.display_name });
+    result.set(row.message_id, roots);
+  }
+  return result;
 }
 
 function mapAgentEventRow(row: AgentEventRow): StoredAgentEvent {
@@ -1147,6 +1220,19 @@ export function listAllFiles(opts: ListFilesOptions = {}, db = getDb()): Unified
     kept_at: string;
   }>;
 
+  const assetRows = db.prepare(`
+    SELECT a.asset_id,a.display_name,a.media_type,a.source_kind,a.created_at,
+           COALESCE(b.size_bytes,json_extract(v.source_fingerprint_json,'$.sizeBytes'),0) AS size_bytes
+    FROM workspace_assets a
+    JOIN workspace_asset_versions v ON v.version_id=a.current_version_id
+    LEFT JOIN workspace_blobs b ON b.blob_id=v.blob_id
+    WHERE a.lifecycle_status='active'
+      AND NOT EXISTS (SELECT 1 FROM chat_attachments ca WHERE ca.asset_id=a.asset_id)
+    ORDER BY a.updated_at DESC
+  `).all() as Array<{
+    asset_id: string; display_name: string; media_type: string; source_kind: string; created_at: string; size_bytes: number;
+  }>;
+
   let results: UnifiedFileEntry[] = [
     ...attachRows.map((r) => ({
       id: `attach:${r.id}`,
@@ -1181,6 +1267,18 @@ export function listAllFiles(opts: ListFilesOptions = {}, db = getDb()): Unified
       source: r.source_label || "已保留文件库",
       conversationId: null,
       storagePath: r.storage_path,
+      createdAt: r.created_at,
+      kept: true,
+    })),
+    ...assetRows.map((r) => ({
+      id: `asset:${r.asset_id}`,
+      kind: "library" as const,
+      name: r.display_name,
+      mime: r.media_type,
+      sizeBytes: r.size_bytes,
+      source: r.source_kind === "external" ? "授权文件夹" : "加密文件库",
+      conversationId: null,
+      storagePath: `asset/${r.asset_id}`,
       createdAt: r.created_at,
       kept: true,
     })),
@@ -1338,14 +1436,17 @@ export function deleteLibraryFile(
   } else if (fileId.startsWith("attach:")) {
     const id = fileId.slice(7);
     const row = db.prepare(`
-      SELECT a.storage_path, a.file_name, m.conversation_id
+      SELECT a.storage_path, a.file_name, a.asset_id, m.conversation_id
       FROM chat_attachments a
       LEFT JOIN chat_messages m ON a.message_id = m.id
       WHERE a.id = ?
-    `).get(id) as { storage_path: string; file_name: string; conversation_id: number | null } | undefined;
+    `).get(id) as { storage_path: string; file_name: string; asset_id: string | null; conversation_id: number | null } | undefined;
     if (!row) throw new Error(`chat_attachments 找不到记录: ${id}`);
     // For conversation attachments, storage_path is relative
-    if (row.storage_path && row.conversation_id) {
+    if (row.asset_id) {
+      db.prepare("UPDATE workspace_assets SET lifecycle_status='tombstoned',updated_at=? WHERE asset_id=?")
+        .run(new Date().toISOString(), row.asset_id);
+    } else if (row.storage_path && row.conversation_id) {
       const absPath = path.join(getConversationFilesDir(row.conversation_id), row.storage_path);
       if (existsSync(absPath)) unlinkSync(absPath);
     } else if (row.storage_path && existsSync(row.storage_path)) {
@@ -1358,6 +1459,14 @@ export function deleteLibraryFile(
   } else if (fileId.startsWith("know:")) {
     // Knowledge deletion is handled by the knowledge API, not here
     throw new Error("知识库文件请从知识库页面删除");
+  } else if (fileId.startsWith("asset:")) {
+    const assetId = fileId.slice(6);
+    const changed = db.prepare("UPDATE workspace_assets SET lifecycle_status='tombstoned',updated_at=? WHERE asset_id=? AND lifecycle_status='active'")
+      .run(new Date().toISOString(), assetId);
+    if (Number(changed.changes) !== 1) throw new Error(`workspace_assets 找不到记录: ${assetId}`);
+    db.prepare("INSERT INTO audit_logs (event_type, payload) VALUES (?, ?)").run(
+      "file_deleted", JSON.stringify({ source: "workspace_assets", assetId, at: new Date().toISOString() })
+    );
   } else {
     throw new Error(`未知文件 ID 格式: ${fileId}`);
   }

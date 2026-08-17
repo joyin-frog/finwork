@@ -56,6 +56,27 @@ const summaries: Record<string, SummaryFn> = {
     return query ? `查询知识库：${query.slice(0, 32)}` : "查询知识库";
   },
   read_file: (i) => { const f = str(i, "fileName"); return f ? `读取资料：${f}` : "读取资料"; },
+  list_workspace_files: (i) => {
+    const query = str(i, "query");
+    return query ? `搜索已授权文件：${query.slice(0, 32)}` : "查看已授权文件";
+  },
+  read_workspace_file: () => "读取已授权文件",
+  patch_workspace_workbook: (i) => {
+    const output = str(i, "outputName");
+    return output ? `更新工作簿：${output}` : "更新受管工作簿";
+  },
+  begin_workspace_change: (i) => {
+    const count = arrayLen(i, "targets");
+    return `冻结文件修改计划${count ? `（${count} 项）` : ""}`;
+  },
+  review_workspace_change: (i) => {
+    const candidate = str(i, "candidatePath").split(/[\\/]/).at(-1);
+    return candidate ? `复核文件变更：${candidate}` : "复核文件变更";
+  },
+  run_task_python: (i) => {
+    const script = str(i, "scriptPath").split(/[\\/]/).at(-1);
+    return script ? `运行任务脚本：${script}` : "运行任务脚本";
+  },
   research_web: (i) => {
     const subject = str(i, "legalName");
     const topics = Array.isArray((i as Record<string, unknown>)?.topics)

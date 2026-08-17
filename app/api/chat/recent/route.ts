@@ -1,22 +1,16 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs/promises";
-import path from "node:path";
 import {
   countChatConversations,
   deleteChatConversation,
   getChatConversation,
   listRecentChatConversations,
   listRecentConversationSummaries,
-  migrateKeptAttachmentsBeforeConversationDelete,
   setConversationPinned,
   updateChatConversationTitle
 } from "@/lib/db/sqlite";
 import { syncGeneratedAttachments } from "@/lib/chat/generated-files";
-import { getConversationFilesDir, getAppDataDir } from "@/lib/runtime/paths";
-
-function getLibraryDir() {
-  return path.join(getAppDataDir(), "files", "library");
-}
+import { getConversationFilesDir } from "@/lib/runtime/paths";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -89,21 +83,6 @@ export async function DELETE(request: Request) {
     const url = new URL(request.url);
     const id = Number(url.searchParams.get("id"));
     if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
-
-    // 生命周期解耦(spec C):删对话前,先把 kept=1 的附件迁到库目录。
-    // 迁移失败则报错,不继续删除(保护用户文件)。
-    try {
-      migrateKeptAttachmentsBeforeConversationDelete(
-        id,
-        getConversationFilesDir,
-        getLibraryDir()
-      );
-    } catch (migrateError) {
-      return NextResponse.json(
-        { ok: false, error: `保留文件迁移失败,对话未删除: ${migrateError instanceof Error ? migrateError.message : String(migrateError)}` },
-        { status: 500 }
-      );
-    }
 
     deleteChatConversation(id);
 

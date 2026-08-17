@@ -105,10 +105,12 @@ jobs:
       # ripgrep / 完整 .next/server 覆盖；并跑打包期硬校验：node:sqlite 可用、SDK 二进制存在）。
       - run: pnpm run build
       - run: pnpm run tauri:prepare
+      - name: Validate packaged Microsoft MXC contract
+        run: node scripts/windows-mxc-contract-smoke.mjs
       - name: Pi-only packaged preflight
         run: pnpm run eval:ar14:packaged
-      # 校验 Rust 外壳在 Windows 能编译（含 KILL_ON_JOB_CLOSE 的 Job Object FFI，mac 上被 cfg 隔离编不到）。
-      - name: Cargo check (Windows shell, incl. Job Object FFI)
+      # 校验 Rust 外壳在 Windows 能编译；动态 Python 的隔离边界由上面的官方 MXC runner 提供。
+      - name: Cargo check (Windows shell)
         working-directory: src-tauri
         run: cargo check
       # 启动组装好的 next-server，打一圈路由，扫描有无「漏 chunk / 平台二进制缺失 / stdio 编码」等致命签名。

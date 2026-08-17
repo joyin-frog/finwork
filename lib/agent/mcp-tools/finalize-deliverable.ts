@@ -13,6 +13,9 @@ import {
 } from "@/lib/deliverable";
 import type { SdkLike } from "./sdk-types";
 import { withFileMutationQueue } from "@/lib/agent/tools/file-mutation-queue";
+import { getDb } from "@/lib/db/sqlite";
+import { getFileWorkspaceStore, recordGeneratedOutputVersion } from "@/lib/file-workspace";
+import { getRunFileWorkspacePaths } from "@/lib/runtime/paths";
 
 type Sdk = SdkLike;
 
@@ -136,6 +139,41 @@ export function createFinalizeDeliverableTool(
           };
         }
 
+        const workspaceOutputs: Array<{
+          assetId: string;
+          versionId: string;
+          logicalPath: string;
+          sha256: string;
+          taskPath: string;
+        }> = [];
+        if (options.runId && options.conversationId != null) {
+          const workspace = await getFileWorkspaceStore();
+          const runPaths = getRunFileWorkspacePaths(options.runId);
+          for (const finalized of result.finalized) {
+            const workingPath = path.resolve(outputDir, finalized.name);
+            const evidence = await recordGeneratedOutputVersion({
+              store: workspace,
+              db: getDb(),
+              runId: options.runId,
+              filePath: workingPath,
+              logicalPath: finalized.name,
+              source: "finalize",
+            });
+            const taskPath = workspace.materializeVersion(
+              evidence.versionId,
+              runPaths.outputs,
+              finalized.name,
+            );
+            workspaceOutputs.push({
+              assetId: evidence.assetId,
+              versionId: evidence.versionId,
+              logicalPath: evidence.logicalPath,
+              sha256: evidence.sha256,
+              taskPath,
+            });
+          }
+        }
+
         const gateNote =
           result.gate.ok
             ? "合同所需交付物证据已齐。"
@@ -152,6 +190,7 @@ export function createFinalizeDeliverableTool(
             finalized: result.finalized,
             evidences: result.evidences,
             gate: result.gate,
+            workspaceOutputs,
             // 明确：不包含 runStatus / completed
           },
         };

@@ -14,6 +14,26 @@ export type AgentFoundationContext = {
   budget: ResourceBudget;
 };
 
+/** Stable, user-readable execution plan. It contains business steps, never hidden reasoning. */
+export type AgentWorkPlanSummary = {
+  planId: string;
+  caseId: string;
+  version: number;
+  goal: string;
+  status: "active" | "superseded" | "completed" | "failed" | "canceled" | "interrupted";
+  steps: Array<{
+    stepId: string;
+    stepKey: string;
+    title: string;
+    expectedOutcome: string;
+    status: "pending" | "ready" | "running" | "waiting_user" | "blocked" | "verifying" | "succeeded" | "failed" | "skipped" | "canceled" | "interrupted";
+    ordinal: number;
+    userVisible: boolean;
+    blocking: boolean;
+    resultSummary?: string | null;
+  }>;
+};
+
 export type AgentMessage = {
   role: "user" | "assistant";
   content: string;
@@ -27,6 +47,8 @@ export type AgentIntent =
   | "complex_workflow";
 
 export type AgentAttachment = {
+  assetId?: string;
+  versionId?: string;
   name: string;
   mimeType: string;
   size: number;
@@ -51,6 +73,8 @@ export type FinworkAgentRequest = {
   resumeSession?: boolean;
   requestId?: string;
   attachments?: AgentAttachment[];
+  /** 用户在本回合明确选择的持久化授权文件夹；Agent 只能通过 File Broker 使用。 */
+  workspaceRootIds?: string[];
   outputDir?: string;
   emit?: (event: AgentRuntimeEvent) => void;
   onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void;
@@ -68,6 +92,8 @@ export type FinworkAgentRequest = {
   intent?: AgentIntent;
   /** Agent code must propagate this identity instead of deriving another case id. */
   foundation?: AgentFoundationContext;
+  /** Backend-owned business plan supplied for execution context and future UI. */
+  workPlan?: AgentWorkPlanSummary;
 };
 
 export type FinworkAgentUsage = {

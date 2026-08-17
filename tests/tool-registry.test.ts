@@ -42,6 +42,9 @@ export const toolRegistryTestPromise = (async () => {
     "record_sales_invoices",
     "record_invoice_settlement",
     "query_sales_invoices",
+    "review_workspace_change",
+    "begin_workspace_change",
+    "run_task_python",
   ]) {
     assert.ok(serverToolNames.includes(shortName), `T2 FAIL: ${shortName} 未注册进 finance_worker MCP server`);
   }

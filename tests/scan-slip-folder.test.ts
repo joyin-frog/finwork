@@ -9,10 +9,9 @@ export const scanSlipFolderTestPromise = (async () => {
   const handlers = new Map<string, (a: unknown) => Promise<unknown>>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mockSdk: any = { tool: (n: string, _d: string, _s: unknown, h: (a: unknown) => unknown) => { handlers.set(n, h); return { name: n }; } };
-  createScanSlipFolderTool(mockSdk);
-  const scan = handlers.get("scan_slip_folder")!;
-
   const dir = mkdtempSync(path.join(tmpdir(), "finance-agent-scan-"));
+  createScanSlipFolderTool(mockSdk, [dir]);
+  const scan = handlers.get("scan_slip_folder")!;
   try {
     // 子文件夹一笔:付款单 + 发票 + 回单
     mkdirSync(path.join(dir, "0601-付杰强"));

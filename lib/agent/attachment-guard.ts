@@ -42,7 +42,8 @@ export function isAllowedAttachmentPath(storagePath: string, conversationId: num
  */
 export function sanitizeAttachments<T extends { storagePath?: string }>(
   attachments: T[],
-  conversationId: number | string | undefined
+  conversationId: number | string | undefined,
+  additionalRoots: string[] = [],
 ): { kept: T[]; dropped: T[] } {
   const kept: T[] = [];
   const dropped: T[] = [];
@@ -51,7 +52,13 @@ export function sanitizeAttachments<T extends { storagePath?: string }>(
       kept.push(a);
       continue;
     }
-    const resolved = resolveInScopeAttachmentPath(a.storagePath, conversationId);
+    const conversationPath = resolveInScopeAttachmentPath(a.storagePath, conversationId);
+    const candidate = path.resolve(a.storagePath);
+    const additionalPath = additionalRoots.some((root) => {
+      const resolvedRoot = path.resolve(root);
+      return candidate === resolvedRoot || candidate.startsWith(resolvedRoot + path.sep);
+    }) ? candidate : null;
+    const resolved = conversationPath ?? additionalPath;
     if (resolved) kept.push({ ...a, storagePath: resolved });
     else dropped.push(a);
   }

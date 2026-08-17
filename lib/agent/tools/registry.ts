@@ -28,6 +28,13 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "query_knowledge",  category: "finance", riskLevel: "medium" },
   { name: "read_file",        category: "finance", riskLevel: "safe" },
   { name: "read_document",     category: "finance", riskLevel: "safe" },
+  { name: "list_workspace_files", category: "finance", riskLevel: "safe" },
+  { name: "read_workspace_file", category: "finance", riskLevel: "safe" },
+  { name: "patch_workspace_workbook", category: "finance", riskLevel: "medium" },
+  { name: "begin_workspace_change", category: "finance", riskLevel: "medium" },
+  { name: "review_workspace_change", category: "finance", riskLevel: "medium" },
+  // Task-authored code runs without network, with task-scoped reads and output-only writes.
+  { name: "run_task_python", category: "finance", riskLevel: "medium" },
   { name: "inspect_document_structure", category: "finance", riskLevel: "safe" },
   { name: "patch_document", category: "finance", riskLevel: "medium" },
   // Workbook primitives: deterministic inspection/transform tools exposed by

@@ -15,3 +15,36 @@ export function pythonSpawnEnv(extra?: Record<string, string | undefined>): Node
     ...extra,
   };
 }
+
+/**
+ * Environment for source-controlled, fixed-command workers.
+ *
+ * Unlike pythonSpawnEnv this deliberately does not inherit provider/API
+ * credentials. It is not a filesystem sandbox; use it only for repository
+ * workers whose command and code are not authored by the model.
+ */
+export function trustedPythonWorkerEnv(
+  extra?: Record<string, string | undefined>,
+  inheritedKeys: readonly string[] = [],
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    NODE_ENV: process.env.NODE_ENV ?? "production",
+    PYTHONUTF8: "1",
+    PYTHONIOENCODING: "utf-8",
+    PYTHONDONTWRITEBYTECODE: "1",
+    PYTHONNOUSERSITE: "1",
+  };
+  const runtimeKeys = [
+    "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
+    "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+    "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT",
+  ];
+  for (const key of [...runtimeKeys, ...inheritedKeys]) {
+    const value = process.env[key];
+    if (value != null) env[key] = value;
+  }
+  for (const [key, value] of Object.entries(extra ?? {})) {
+    if (value != null) env[key] = value;
+  }
+  return env;
+}

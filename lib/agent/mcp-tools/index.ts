@@ -15,6 +15,8 @@ import {
   createMergeTablesTool,
 } from "./workbook-checks";
 import { createScanSlipFolderTool } from "./scan-slip-folder";
+import { createWorkspaceFileTools } from "./workspace-files";
+import { createRunTaskPythonTool } from "./run-task-python";
 import { createKingdeeTools } from "./kingdee-tools";
 import { createFinanceTools } from "./finance-tools";
 import { createPayrollTools } from "../tools/finance/payroll";
@@ -60,6 +62,8 @@ export type FinanceMcpServerOptions = {
   foundation?: AgentFoundationContext;
   /** Parent-owned model override inherited by all nested workers. */
   modelOverride?: string;
+  workspaceRootIds?: string[];
+  workspaceAssetIds?: string[];
 };
 
 function createFinanceWorkerTools(
@@ -78,6 +82,7 @@ function createFinanceWorkerTools(
       cidNum != null && Number.isFinite(cidNum) ? getConversationFilesDir(cidNum) : undefined,
     ...serverOptions?.finalize,
   };
+  const taskPythonReadRoots = new Set(serverOptions?.readDocumentAllowedRoots ?? []);
   return [
     createAnalyzeTabularTool(sdk),
       createCreateWorkbookTool(sdk, { outputDir }),
@@ -98,6 +103,18 @@ function createFinanceWorkerTools(
       createReadDocumentTool(sdk, {
         allowedRoots: [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])],
       }),
+      ...createWorkspaceFileTools(sdk, {
+        rootIds: serverOptions?.workspaceRootIds,
+        assetIds: serverOptions?.workspaceAssetIds,
+        runId: traceId,
+        outputDir,
+        onPreparedInput: (preparedPath) => taskPythonReadRoots.add(preparedPath),
+      }),
+      createRunTaskPythonTool(sdk, {
+        outputDir,
+        runId: traceId,
+        allowedReadRoots: () => [...taskPythonReadRoots],
+      }),
       createPatchWorkbookTool(sdk, {
         outputDir,
         allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
@@ -116,7 +133,7 @@ function createFinanceWorkerTools(
       }),
       createDetectDataIssuesTool(sdk),
       createMergeTablesTool(sdk),
-      createScanSlipFolderTool(sdk),
+      createScanSlipFolderTool(sdk, [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])]),
       createRememberConventionTool(sdk),
       createRememberRoleConventionTool(sdk),
       createRecordBusinessMetricsTool(sdk),

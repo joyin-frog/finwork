@@ -73,3 +73,27 @@ export async function openLocalFolder(folderPath: string) {
     toast.error("无法打开文件夹");
   }
 }
+
+/** 历史消息只保留 rootId；需要打开时由桌面令牌临时解析真实路径。 */
+export async function openWorkspaceRoot(rootId: string) {
+  if (!rootId || typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+    toast.error("这个文件夹需要在 Finwork 桌面端打开");
+    return;
+  }
+  try {
+    const [{ invoke }, { open }] = await Promise.all([
+      import("@tauri-apps/api/core"),
+      import("@tauri-apps/plugin-shell"),
+    ]);
+    const token = await invoke<string>("workspace_auth_token");
+    const response = await fetch(`/api/workspace/roots/${encodeURIComponent(rootId)}/reveal`, {
+      headers: { "x-finwork-workspace-auth": token },
+    });
+    const payload = await response.json() as { ok?: boolean; data?: { path?: string }; error?: string };
+    if (!response.ok || !payload.data?.path) throw new Error(payload.error ?? "文件夹授权已失效");
+    await open(payload.data.path);
+  } catch (error) {
+    console.error("[open-workspace-root] failed", error);
+    toast.error("无法打开文件夹");
+  }
+}

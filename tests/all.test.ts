@@ -12,6 +12,10 @@ process.on("unhandledRejection", (err) => {
 // 它们由 `npm run test:pi` 以独立进程跑,`npm test` 已串起两者(见 package.json)。
 
 (async () => {
+  // 必须在 smoke.test 永久切换 APP_DATA_DIR 之前验证真实已安装 Python runtime。
+  const { taskPythonSandboxTestPromise } = await import("./task-python-sandbox.test.ts");
+  await taskPythonSandboxTestPromise;
+
   const { smokeTestPromise } = await import("./smoke.test.ts");
   await smokeTestPromise;
 
@@ -108,6 +112,12 @@ process.on("unhandledRejection", (err) => {
 
   const { fileLifecycleTestPromise } = await import("./file-lifecycle.test.ts");
   await fileLifecycleTestPromise;
+
+  const { fileWorkspaceTestPromise } = await import("./file-workspace.test.ts");
+  await fileWorkspaceTestPromise;
+
+  const { workspaceChangeLoopTestPromise } = await import("./workspace-change-loop.test.ts");
+  await workspaceChangeLoopTestPromise;
 
   const { resourceGovernorTestPromise } = await import("./resource-governor.test.ts");
   await resourceGovernorTestPromise;

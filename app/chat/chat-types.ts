@@ -12,11 +12,14 @@ export type Message = {
   createdAt?: string;
   imageDataUrls?: string[];
   displayFiles?: DisplayFile[];
+  /** 用户本回合授权的目录；持久化只保存 rootId/name，不保存主机绝对路径。 */
+  workspaceRoots?: Array<{ rootId: string; name: string; path?: string }>;
   agentEvents?: StoredAgentEvent[];
 };
 
 export type DisplayFile = {
   id?: string | number;
+  assetId?: string;
   name: string;
   mimeType: string;
   sizeBytes: number;
@@ -27,6 +30,8 @@ export type DisplayFile = {
 
 export type ChatAttachment = {
   id: string;
+  assetId?: string;
+  versionId?: string;
   name: string;
   mimeType: string;
   size: number;
@@ -34,9 +39,11 @@ export type ChatAttachment = {
   text?: string;
 };
 
-/** 输入框草稿区选中的本地文件夹(展示为专属卡片;发送时写入「文件夹路径:」行给 Agent)。 */
+/** 输入框草稿区选中的本地文件夹；Agent 只接收 rootId。 */
 export type FolderRef = {
   id: string;
+  /** File Broker 授权根 ID；Agent 只接收这个 ID，不接收主机路径。 */
+  rootId: string;
   path: string;
   name: string;
 };

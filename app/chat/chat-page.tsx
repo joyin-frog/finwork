@@ -27,7 +27,6 @@ import { syncCompletedConversationTitle, useNavState } from "@/app/shared/nav-st
 import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import {
   buildUserContent,
-  formatFolderPathLine,
   getClipboardFiles,
 } from "@/app/chat/chat-request";
 import { folderNameFromPath, splitFolderPathLines } from "@/app/chat/folder-path";
@@ -892,8 +891,8 @@ export default function ChatPage({
     }
   }
 
-  // 选文件夹:桌面端选本地目录 → 专属卡片进托盘,不自动发送。
-  // 用户可再打字表达意图;路径在发送时写入消息正文供 Agent 读取。
+  // 选文件夹:桌面端选本地目录 → File Broker 注册 rootId → 专属卡片进托盘。
+  // 主机路径只留在当前 Webview 展示态，不进聊天正文，也不发给 Agent。
   async function pickReceiptFolder() {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
@@ -901,11 +900,21 @@ export default function ChatPage({
       if (!folder || typeof folder !== "string") return;
       const path = folder.trim();
       if (!path) return;
+      const { invoke } = await import("@tauri-apps/api/core");
+      const workspaceAuth = await invoke<string>("workspace_auth_token");
+      const response = await fetch("/api/workspace/roots", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-finwork-workspace-auth": workspaceAuth },
+        body: JSON.stringify({ path, permission: "read_write", writePolicy: "output_subdir" }),
+      });
+      const payload = await response.json() as { ok?: boolean; data?: { root?: { rootId: string; name: string } }; error?: string };
+      if (!response.ok || !payload.data?.root) throw new Error(payload.error ?? "文件夹授权失败");
+      const root = payload.data.root;
       setFolderRefs((prev) => {
-        if (prev.some((f) => f.path === path)) return prev;
+        if (prev.some((f) => f.rootId === root.rootId)) return prev;
         return [
           ...prev,
-          { id: `folder-${path}-${crypto.randomUUID()}`, path, name: folderNameFromPath(path) },
+          { id: `folder-${root.rootId}`, rootId: root.rootId, path, name: root.name || folderNameFromPath(path) },
         ];
       });
       setMentionActive(false);
@@ -925,16 +934,17 @@ export default function ChatPage({
     const outgoingFolders = folderRefs;
     const baseMessages = messages;
 
-    const folderLines = outgoingFolders.map((f) => formatFolderPathLine(f.path)).filter(Boolean);
-    const textWithFolders = [value, ...folderLines].filter(Boolean).join("\n");
+    const textWithFolders = value;
     const hasContent = textWithFolders || outgoingAttachments.length || outgoingRefAttachments.length;
     if (!hasContent || loading) return;
 
-    const userContent = buildUserContent(textWithFolders, outgoingAttachments, outgoingRefAttachments);
+    const userContent = buildUserContent(textWithFolders, outgoingAttachments, outgoingRefAttachments)
+      || (outgoingFolders.length ? "请分析这个文件夹。" : "");
     const imageDataUrls = outgoingAttachments.filter((a) => a.mimeType.startsWith("image/")).map((a) => a.dataUrl);
     const displayFiles: DisplayFile[] = [
       ...outgoingAttachments.map((file) => ({
         id: file.id,
+        assetId: file.assetId,
         name: file.name,
         mimeType: file.mimeType,
         sizeBytes: file.size,
@@ -949,7 +959,13 @@ export default function ChatPage({
         storagePath: file.storagePath
       }))
     ];
-    const userMsg: Message = { role: "user", content: userContent, imageDataUrls, displayFiles };
+    const userMsg: Message = {
+      role: "user",
+      content: userContent,
+      imageDataUrls,
+      displayFiles,
+      workspaceRoots: outgoingFolders.map((folder) => ({ rootId: folder.rootId, name: folder.name, path: folder.path })),
+    };
     const nextMessages: Message[] = [...baseMessages, userMsg];
 
     // 把发送 + 流式读取交给跨页存活的 store:流式态由它按会话 key 持有,
@@ -975,6 +991,7 @@ export default function ChatPage({
       requestMessages: nextMessages,
       attachments: outgoingAttachments,
       referencedAttachments: outgoingRefAttachments,
+      folderRefs: outgoingFolders,
       referencedSkills: outgoingSkills,
       modelTier,
       // 专员会话（E 刀）：首条消息携带角色,服务端创建会话时落 role_id;既有会话由 DB 行为准
@@ -1016,6 +1033,7 @@ export default function ChatPage({
     setFolderRefs(
       folders.map((f) => ({
         id: `folder-${f.path}-${crypto.randomUUID()}`,
+        rootId: "",
         path: f.path,
         name: f.name,
       })),

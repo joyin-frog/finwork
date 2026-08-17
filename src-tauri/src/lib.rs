@@ -17,6 +17,13 @@ struct ServerProcess {
   shutting_down: AtomicBool,
 }
 
+struct WorkspaceAuthToken(String);
+
+#[tauri::command]
+fn workspace_auth_token(state: tauri::State<'_, WorkspaceAuthToken>) -> String {
+  state.0.clone()
+}
+
 #[derive(Clone)]
 struct NextServerConfig {
   resource_dir: PathBuf,
@@ -59,8 +66,10 @@ const WINDOWS_RELEASE_DATA_DIRECTORY_NAME: &str = "Finwork Data";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  let startup_workspace_token = generate_workspace_auth_token();
   tauri::Builder::default()
     .manage(ServerProcess::default())
+    .manage(WorkspaceAuthToken(startup_workspace_token))
     // single-instance 守卫必须在 Builder 链上、.setup() 之前注册，
     // 应用启动前挂钩；第二实例启动时聚焦已有主窗口。
     .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -72,6 +81,11 @@ pub fn run() {
       let is_release = !cfg!(debug_assertions);
       let boot_id = generate_boot_id();
       let app_data_dir = resolve_app_data_dir(app, is_release);
+      if let Some(dir) = app_data_dir.as_ref() {
+        std::fs::create_dir_all(dir)?;
+        let token = app.state::<WorkspaceAuthToken>().0.clone();
+        write_workspace_auth_token(&dir.join("workspace-auth-token"), &token)?;
+      }
       let host_log_target = match app_data_dir.as_ref() {
         Some(dir) => Target::new(TargetKind::Folder {
           path: dir.join("logs"),
@@ -149,6 +163,7 @@ pub fn run() {
       }
       Ok(())
     })
+    .invoke_handler(tauri::generate_handler![workspace_auth_token])
     .on_window_event(|window, event| {
       let shutdown_event = match event {
         WindowEvent::CloseRequested { .. } => WindowShutdownEvent::CloseRequested,
@@ -172,6 +187,25 @@ pub fn run() {
     })
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
+}
+
+fn generate_workspace_auth_token() -> String {
+  let mut bytes = [0u8; 32];
+  getrandom::getrandom(&mut bytes).expect("secure random source unavailable");
+  bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn write_workspace_auth_token(path: &Path, token: &str) -> std::io::Result<()> {
+  let mut options = OpenOptions::new();
+  options.create(true).truncate(true).write(true);
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.mode(0o600);
+  }
+  let mut file = options.open(path)?;
+  file.write_all(token.as_bytes())?;
+  file.flush()
 }
 
 fn start_next_server(

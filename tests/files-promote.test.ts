@@ -54,17 +54,8 @@ export const filesPromoteTestPromise = (async () => {
       installProductionRetrievalService,
     } = await import("../lib/retrieval/production.ts");
     const db = getDb();
-    const deterministicEmbedder = async (texts: readonly string[]) => texts.map((text) => {
-      const normalized = text.toLowerCase();
-      return [
-        normalized.length || 1,
-        [...normalized].reduce((sum, char) => sum + char.charCodeAt(0), 0) || 1,
-        normalized.split(/\s+/u).filter(Boolean).length || 1,
-      ];
-    });
     restoreRetrievalService = installProductionRetrievalService(createProductionRetrievalService({
       db,
-      embedder: deterministicEmbedder,
       casRoot: path.join(appData, "artifacts", "cas"),
     }));
 

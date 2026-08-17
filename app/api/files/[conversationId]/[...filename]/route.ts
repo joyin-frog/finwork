@@ -4,6 +4,9 @@ import path from "node:path";
 import { stat } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import { getConversationFilesDir } from "@/lib/runtime/paths";
+import { getRunFileWorkspaceDir } from "@/lib/runtime/paths";
+import { getDb } from "@/lib/db/sqlite";
+import { getFileWorkspaceStore } from "@/lib/file-workspace";
 import { isAllowedAppPath, isValidConversationId } from "./open-with-allowlist";
 
 export async function GET(
@@ -15,11 +18,26 @@ export async function GET(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const relativePath = filename.join("/");
-  const fullPath = path.join(getConversationFilesDir(conversationId), relativePath);
+  let fullPath: string;
+  if (filename[0] === "asset" && filename[1]) {
+    const row = getDb().prepare(`
+      SELECT a.asset_version_id,a.file_name FROM chat_attachments a
+      JOIN chat_messages m ON m.id=a.message_id
+      WHERE m.conversation_id=? AND a.asset_id=?
+      ORDER BY a.created_at DESC LIMIT 1
+    `).get(Number(conversationId), filename[1]) as { asset_version_id: string | null; file_name: string } | undefined;
+    if (!row?.asset_version_id) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const store = await getFileWorkspaceStore();
+    fullPath = store.materializeVersion(row.asset_version_id, path.join(getRunFileWorkspaceDir("preview"), conversationId), row.file_name);
+  } else {
+    fullPath = path.join(getConversationFilesDir(conversationId), relativePath);
+  }
 
   // Prevent path traversal
   const resolved = path.resolve(fullPath);
-  const root = path.resolve(getConversationFilesDir(conversationId));
+  const root = filename[0] === "asset"
+    ? path.resolve(path.join(getRunFileWorkspaceDir("preview"), conversationId))
+    : path.resolve(getConversationFilesDir(conversationId));
   if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
