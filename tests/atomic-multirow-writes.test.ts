@@ -28,11 +28,6 @@ export const atomicMultirowWritesTestPromise = (async () => {
     const retrieval = createProductionRetrievalService({
       db,
       casRoot: path.join(baseDir, "artifacts", "cas"),
-      embedder: async (texts: readonly string[]) => texts.map((text) => [
-        text.length || 1,
-        [...text].reduce((sum, char) => sum + char.charCodeAt(0), 0) || 1,
-        1,
-      ]),
     });
     restoreRetrievalService = installProductionRetrievalService(retrieval);
 

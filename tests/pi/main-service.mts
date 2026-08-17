@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   buildPiPrompt,
+  canContinueReadOnlyTurnAfterProviderFailure,
   lastAssistantError,
   resolveResumableSession,
   throwIfLastAssistantProviderError,
@@ -70,6 +71,32 @@ assert.doesNotMatch(fresh.text, /第一问|第一答/, "历史内容不应泄进
 assert.match(fresh.text, /当前请求/);
 assert.match(fresh.text, /<attachment name="note.txt">/);
 
+const planned = buildPiPrompt(
+  [{ role: "user", content: "分析报表" }],
+  [],
+  undefined,
+  [],
+  {
+    planId: "plan-1",
+    caseId: "case-1",
+    version: 1,
+    goal: "分析报表",
+    status: "active",
+    steps: [{
+      stepId: "step-1",
+      stepKey: "inspect_inputs",
+      title: "检查输入",
+      expectedOutcome: "读取报表",
+      status: "ready",
+      ordinal: 0,
+      userVisible: true,
+      blocking: true,
+    }],
+  },
+);
+assert.match(planned.text, /进度由结构化 WorkPlan 和工具事件展示/);
+assert.match(planned.text, /不要在工具调用之间输出.*过程旁白/);
+
 const resumed = buildPiPrompt(
   [
     { role: "user", content: "旧问题" },
@@ -120,14 +147,49 @@ const xlsxPrompt = buildPiPrompt(
   }],
 );
 assert.match(xlsxPrompt.text, /先用 read 加载 xlsx Skill：.*agent-skills\/skills\/xlsx\/SKILL\.md/);
-assert.match(xlsxPrompt.text, /改动用户上传的表格.*必须用 `patch_workbook`/);
-assert.match(xlsxPrompt.text, /新建空白表格必须调用 `create_workbook`/);
-assert.match(xlsxPrompt.text, /不要用 Bash、Python、openpyxl 或 pandas 直接生成或改写 XLSX/);
-assert.match(xlsxPrompt.text, /附件在沙箱中只读/);
-assert.match(xlsxPrompt.text, /不得覆盖原件/);
-assert.match(xlsxPrompt.text, /拆成多次受控工具调用/);
-assert.match(xlsxPrompt.text, /不要用超长脚本绕过工具合同/);
+assert.match(xlsxPrompt.text, /受管 assetId 表格.*`patch_workspace_workbook`/);
+assert.match(xlsxPrompt.text, /旧式路径附件.*`patch_workbook`/);
+assert.match(xlsxPrompt.text, /优先用 `create_workbook` \/ `patch_workspace_workbook`/);
+assert.match(xlsxPrompt.text, /通用工具不足.*反复 edit Python 脚本/);
+assert.match(xlsxPrompt.text, /read_workspace_file 获取任务内只读 taskPath/);
+assert.match(xlsxPrompt.text, /不能覆盖输入/);
+assert.match(xlsxPrompt.text, /不得用 openpyxl\/pandas 对用户现有工作簿做 load→save/);
+assert.match(xlsxPrompt.text, /begin_workspace_change.*planId/);
+assert.match(xlsxPrompt.text, /review_workspace_change\(planId=.*final=true\)/);
 assert.match(xlsxPrompt.text, /finalize_deliverable/);
+const xlsxReadOnlyPrompt = buildPiPrompt(
+  [{ role: "user", content: "分析下这个报表" }],
+  [{
+    name: "report.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    size: 100,
+    dataUrl: "",
+    storagePath: path.join(root, "report.xlsx"),
+  }],
+  {
+    version: 1,
+    taskKind: "spreadsheet",
+    spreadsheetRequirement: {
+      needsLegacyXlsRead: false,
+      needsWrite: false,
+      needsRecalc: false,
+      needsRender: false,
+      needsMacroPreservation: false,
+    },
+    requiredDeliverables: [],
+    expectationSnapshot: {},
+  },
+);
+assert.match(xlsxReadOnlyPrompt.text, /表格只读分析任务/);
+assert.match(xlsxReadOnlyPrompt.text, /受管 assetId 附件用 read_workspace_file/);
+assert.match(xlsxReadOnlyPrompt.text, /旧式路径附件才用 read_document/);
+assert.match(xlsxReadOnlyPrompt.text, /当前合同不要求创建、修改或交付文件/);
+assert.match(xlsxReadOnlyPrompt.text, /交叉核对资产负债表、利润表和现金流量表/);
+assert.match(xlsxReadOnlyPrompt.text, /必须再用 read 加载经营分析 Skill/);
+assert.match(xlsxReadOnlyPrompt.text, /固定解析器 .*business-analysis\/scripts\/parse_statements\.py/);
+assert.match(xlsxReadOnlyPrompt.text, /run_task_python 在任务沙箱执行/);
+assert.match(xlsxReadOnlyPrompt.text, /不得把它改称独立研发费用/);
+assert.doesNotMatch(xlsxReadOnlyPrompt.text, /完成后必须检查输出文件/);
 const xlsxRecalcPrompt = buildPiPrompt(
   [{ role: "user", content: "生成需要重算的 Excel" }],
   [{
@@ -169,8 +231,9 @@ const docxPrompt = buildPiPrompt(
     expectationSnapshot: {},
   },
 );
-assert.match(docxPrompt.text, /\/tmp 不可写/);
-assert.match(docxPrompt.text, /不要在 Bash 中运行 validate\.py、soffice/);
+assert.match(docxPrompt.text, /用 `run_task_python` 执行/);
+assert.match(docxPrompt.text, /不要改用 Bash、自行启动 Python/);
+assert.match(docxPrompt.text, /默认无网络、不能启动子进程/);
 assert.match(docxPrompt.text, /由 finalize_deliverable 在受控运行时完成/);
 
 const transientErrorThenSuccess = [
@@ -192,7 +255,7 @@ assert.doesNotThrow(
   () => throwIfLastAssistantProviderError(transientErrorThenSuccess, "gpt-test", false),
   "后续成功结束态应允许正常进入交付门禁",
 );
-const terminalProviderError = [{
+const terminalProviderError = [{ type: "turn_start" }, {
   type: "message_end",
   message: {
     role: "assistant",
@@ -206,10 +269,48 @@ assert.throws(
   () => throwIfLastAssistantProviderError(terminalProviderError, "gpt-test", false),
   (error: unknown) => {
     assert.equal((error as { code?: string }).code, "PROVIDER_RESPONSE_ERROR");
+    assert.equal((error as { __numTurns?: number }).__numTurns, 1);
     assert.match((error as Error).message, /auth_unavailable/);
     return true;
   },
   "Provider 错误必须在 completion repair 前立即抛出",
+);
+
+const transientProviderError = Object.assign(new Error("stream disconnected before response.completed"), {
+  code: "PROVIDER_RESPONSE_ERROR",
+});
+const readOnlyContract = {
+  version: 1,
+  taskKind: "spreadsheet",
+  spreadsheetRequirement: {
+    needsLegacyXlsRead: false,
+    needsWrite: false,
+    needsRecalc: false,
+    needsRender: false,
+    needsMacroPreservation: false,
+  },
+  requiredDeliverables: [],
+  expectationSnapshot: {},
+} as const;
+assert.equal(
+  canContinueReadOnlyTurnAfterProviderFailure(transientProviderError, [{
+    toolCallId: "read-1",
+    toolName: "read_workspace_file",
+    capabilityIds: ["spreadsheet.read"],
+    completedAt: new Date().toISOString(),
+  }], readOnlyContract),
+  true,
+  "只读任务在临时断流后应允许同 session 续答一次",
+);
+assert.equal(
+  canContinueReadOnlyTurnAfterProviderFailure(transientProviderError, [{
+    toolCallId: "write-1",
+    toolName: "patch_workbook",
+    capabilityIds: ["spreadsheet.write"],
+    completedAt: new Date().toISOString(),
+  }], readOnlyContract),
+  false,
+  "出现写入副作用后不得自动续答",
 );
 
 console.log("Pi main service ✓ controlled locator, fresh/resume prompt and attachments");

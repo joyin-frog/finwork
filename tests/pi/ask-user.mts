@@ -189,6 +189,23 @@ assert.equal(
 );
 assert.equal(needsStructuredQuestionRepair("分析已完成，以下是主要结论。"), false);
 assert.equal(
+  needsStructuredQuestionRepair([
+    "分析已完成，以上是主要结论。",
+    "如果你愿意，我可以下一步继续帮你做两种更具体的分析之一：",
+    "1. 管理层汇报版：3分钟可讲完的报表点评",
+    "2. 审账/风控版：列出具体异常科目和核查清单",
+  ].join("\n")),
+  false,
+  "已完成任务后的可选延伸不得误触发 AskUserQuestion 协议修复",
+);
+assert.equal(
+  needsStructuredQuestionRepair(
+    "这份报表不能简单理解为经营改善。你可以选择继续查看管理层汇报版或审账版。",
+  ),
+  false,
+  "相隔句子的普通分析判断与可选方向不得被拼成阻塞决策",
+);
+assert.equal(
   needsStructuredQuestionRepair("我不能输出 API key，也不会执行该请求。如需调试，请使用脱敏日志。"),
   false,
   "完整安全拒绝不得被修复成 AskUserQuestion",

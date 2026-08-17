@@ -15,19 +15,25 @@ export function writeAgentTrace(params: {
   modelUsage?: Record<string, AgentModelUsage>;
   totalCostUsd?: number;
   numTurns?: number;
+  /** Main-agent provider invocations. Router calls remain outside this count. */
+  llmCallCount?: number;
   toolCallCount: number;
   retryCount?: number;
   /** CR-R1：写入 model_usage_json 供用量按 executionTier 归档 */
   executionTier?: "fast" | "reasoning";
 }) {
   try {
-    const { traceId, conversationId, startedAt, modelUsed, routerPath, errorMessage, userMessage, finalAnswer, roleMode, modelUsage, totalCostUsd, numTurns, toolCallCount, retryCount, executionTier } = params;
+    const { traceId, conversationId, startedAt, modelUsed, routerPath, errorMessage, userMessage, finalAnswer, roleMode, modelUsage, totalCostUsd, numTurns, llmCallCount, toolCallCount, retryCount, executionTier } = params;
     const totalMs = Date.now() - startedAt;
     const status = errorMessage ? "error" : (totalMs > 5000 ? "slow" : "ok");
     const inputTokens = modelUsage ? Object.values(modelUsage).reduce((sum, m) => sum + m.inputTokens, 0) : 0;
     const outputTokens = modelUsage ? Object.values(modelUsage).reduce((sum, m) => sum + m.outputTokens, 0) : 0;
     const cacheRead = modelUsage ? Object.values(modelUsage).reduce((sum, m) => sum + m.cacheReadInputTokens, 0) : 0;
     const cacheWrite = modelUsage ? Object.values(modelUsage).reduce((sum, m) => sum + m.cacheCreationInputTokens, 0) : 0;
+    const actualLlmCallCount = Math.max(
+      0,
+      Math.trunc(llmCallCount ?? numTurns ?? (modelUsage && Object.keys(modelUsage).length > 0 ? 1 : 0)),
+    );
 
     let modelUsageJson: string | null = null;
     if (modelUsage) {
@@ -55,7 +61,7 @@ export function writeAgentTrace(params: {
       toolCallCount, retryCount ?? 0, errorMessage ? redact(errorMessage) : null,
       redact(userMessage).slice(0, 500), redact(finalAnswer).slice(0, 300), status, roleMode,
       totalCostUsd ?? null, inputTokens || null, outputTokens || null, cacheRead || null, cacheWrite || null,
-      inputTokens || null, outputTokens || null, 1, numTurns ?? null,
+      inputTokens || null, outputTokens || null, actualLlmCallCount, numTurns ?? null,
       modelUsageJson,
     );
   } catch (err) {

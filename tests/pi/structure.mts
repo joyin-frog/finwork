@@ -13,8 +13,9 @@ import path from "node:path";
 
 const definitions = buildFinanceToolDefinitions("/tmp/finwork-pi-structure");
 // 45 → 49:新增无损 xlsx 编辑与校验工具；49 → 50:新增受限的声明式
-// create_workbook；50 → 53:新增文档结构读取、文档补丁和受治理的联网研究。
-const EXPECTED_PRODUCTION_TOOL_COUNT = 53;
+// create_workbook；50 → 53:新增文档结构读取、文档补丁和受治理的联网研究；
+// 53 → 58:新增文件工作区与变更证据闭环；58 → 59:新增受沙箱约束的任务 Python。
+const EXPECTED_PRODUCTION_TOOL_COUNT = 59;
 assert.equal(definitions.length, EXPECTED_PRODUCTION_TOOL_COUNT, "AS0 production catalog count must stay frozen");
 assert.equal(
   new Set(definitions.map((item) => item.id)).size,
@@ -28,6 +29,7 @@ for (const id of [
   "patch_document",
   "create_workbook",
   "research_web",
+  "run_task_python",
   "remember_convention",
   "analyze_tabular",
   "process_voucher_batch",

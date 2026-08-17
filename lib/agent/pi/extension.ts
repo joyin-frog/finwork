@@ -144,9 +144,9 @@ export function evaluateBuiltinToolCall(
       : path.resolve(roots.readRoot, filePath);
     // 会话目录 + 技能目录（只读）。技能目录必须放行，否则 SKILL.md 指向的
     // references/ 与 scripts/ 读不到，渐进披露形同虚设。
-    const allowed = [roots.readRoot, ...(roots.skillRoots ?? [])];
+    const allowed = [roots.readRoot, ...(roots.readRoots ?? []), ...(roots.skillRoots ?? [])];
     if (!allowed.some((root) => isInsidePath(resolvedFilePath, root))) {
-      return `只能读取本次会话目录或技能目录内的文件：${roots.readRoot}。读 Office/PDF 二进制请用 read_document。`;
+      return `只能读取本次会话目录、任务输入快照或技能目录内的文件。读 Office/PDF 二进制请用 read_workspace_file 或 read_document。`;
     }
     return null;
   }

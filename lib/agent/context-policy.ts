@@ -17,10 +17,16 @@ const finance = (name: string) => name;
 const kingdee = (name: string) => name;
 
 const FILE_TOOLS = [
+  finance("list_workspace_files"),
+  finance("read_workspace_file"),
+  finance("patch_workspace_workbook"),
+  finance("begin_workspace_change"),
+  finance("review_workspace_change"),
+  finance("run_task_python"),
   finance("read_document"),
   finance("read_file"),
   finance("analyze_tabular"),
-  // 新建工作簿的唯一受治理入口；Pi prompt 已明确禁止脚本直接生成 XLSX。
+  // 常规新建优先走声明式入口；超出表达力时才允许 run_task_python 生成候选并进入变更复核闭环。
   finance("create_workbook"),
   // 改用户已有的工作簿必须走它;不放进白名单模型就只能退回 openpyxl 重写,
   // 而那会清空整册公式缓存(实测 1164 → 0)。

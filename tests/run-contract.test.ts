@@ -18,6 +18,7 @@ export const runContractTestPromise = (async () => {
     validateRunCheckpoint,
     assertNotTerminationReason,
     deriveTaskContractForTurn,
+    spreadsheetOutputRequested,
   } = await import("../lib/agent/run-contract.ts");
 
   // AR2a settled 三值映射
@@ -176,6 +177,101 @@ export const runContractTestPromise = (async () => {
     assert.equal(sheet.requiredDeliverables[0]?.qualityProfile, "generic");
     assert.equal(sheet.spreadsheetRequirement?.needsRecalc, false);
     assert.equal(validateTaskContract(sheet).ok, true);
+
+    const readOnlyAnalysis = deriveTaskContractForTurn({
+      intent: "complex_workflow",
+      attachments: [{ name: "财务报表.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
+      userMessage: "分析下这个报表",
+    });
+    assert.equal(readOnlyAnalysis.taskKind, "spreadsheet");
+    assert.equal(readOnlyAnalysis.spreadsheetRequirement?.needsWrite, false);
+    assert.equal(readOnlyAnalysis.spreadsheetRequirement?.needsRecalc, false);
+    assert.equal(readOnlyAnalysis.requiredDeliverables.length, 0);
+    assert.equal(validateTaskContract(readOnlyAnalysis).ok, true);
+
+    const requestedWorkbook = deriveTaskContractForTurn({
+      intent: "complex_workflow",
+      attachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "分析后生成一份 Excel 分析表",
+    });
+    assert.equal(requestedWorkbook.taskKind, "spreadsheet");
+    assert.equal(requestedWorkbook.spreadsheetRequirement?.needsWrite, true);
+    assert.equal(requestedWorkbook.requiredDeliverables[0]?.id, "workbook");
+
+    assert.equal(spreadsheetOutputRequested("可以做成 Excel 么"), true);
+    assert.equal(spreadsheetOutputRequested("你生成的 Excel 都没有公式"), false);
+
+    const acceptedWorkbookContinuation = deriveTaskContractForTurn({
+      intent: "complex_workflow",
+      attachments: [],
+      priorAttachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "好",
+      messages: [
+        { role: "user", content: "可以做成Excel么，里面有数据，也可以做成条状图和饼图" },
+        { role: "assistant", content: "可以，我可以直接生成带图表的 Excel 工作簿。" },
+        { role: "user", content: "好" },
+      ],
+    });
+    assert.equal(acceptedWorkbookContinuation.taskKind, "spreadsheet");
+    assert.equal(acceptedWorkbookContinuation.spreadsheetRequirement?.needsWrite, true);
+    assert.equal(acceptedWorkbookContinuation.requiredDeliverables.length, 1);
+
+    const generatedWorkbookQuestion = deriveTaskContractForTurn({
+      intent: "complex_workflow",
+      attachments: [],
+      priorAttachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "你为什么不能插入图表？",
+      messages: [{ role: "user", content: "你为什么不能插入图表？" }],
+    });
+    assert.equal(generatedWorkbookQuestion.taskKind, "spreadsheet");
+    assert.equal(generatedWorkbookQuestion.spreadsheetRequirement?.needsWrite, false);
+    assert.equal(generatedWorkbookQuestion.requiredDeliverables.length, 0);
+
+    const acceptedFormulaRepair = deriveTaskContractForTurn({
+      intent: "complex_workflow",
+      attachments: [],
+      priorAttachments: [{ name: "财务报表.xlsx" }, { name: "管理层分析.xlsx" }],
+      userMessage: "可以",
+      messages: [
+        { role: "user", content: "你生成的Excel都没有公式，我不敢置信" },
+        { role: "assistant", content: "我可以直接重做一版公式化分析 Excel。" },
+        { role: "user", content: "可以" },
+      ],
+    });
+    assert.equal(acceptedFormulaRepair.spreadsheetRequirement?.needsWrite, true);
+    assert.equal(acceptedFormulaRepair.requiredDeliverables.length, 1);
+
+    const staleWorkbookOffer = deriveTaskContractForTurn({
+      intent: "direct",
+      attachments: [],
+      priorAttachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "好",
+      messages: [
+        { role: "assistant", content: "我可以生成一份 Excel 分析表。" },
+        { role: "user", content: "先解释一下亏损原因。" },
+        { role: "assistant", content: "需要我再展开说明销售费用吗？" },
+        { role: "user", content: "好" },
+      ],
+    });
+    assert.equal(staleWorkbookOffer.taskKind, "text");
+    assert.equal(staleWorkbookOffer.requiredDeliverables.length, 0);
+
+    const requestedTextReport = deriveTaskContractForTurn({
+      intent: "complex_workflow",
+      attachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "分析并生成一份文字报告",
+    });
+    assert.equal(requestedTextReport.taskKind, "spreadsheet");
+    assert.equal(requestedTextReport.spreadsheetRequirement?.needsWrite, false);
+    assert.equal(requestedTextReport.requiredDeliverables.length, 0);
+
+    const requestedEdit = deriveTaskContractForTurn({
+      intent: "tool_use",
+      attachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "把错误公式修复一下",
+    });
+    assert.equal(requestedEdit.spreadsheetRequirement?.needsWrite, true);
+    assert.equal(requestedEdit.requiredDeliverables.length, 1);
 
     const complex = deriveTaskContractForTurn({
       intent: "complex_workflow",

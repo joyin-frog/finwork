@@ -53,6 +53,31 @@ export async function runMockAgent(
   };
   const done = (): FinworkAgentResult => ({ mode: "mock", runtimeSessionId, content: full });
 
+  // Read-only spreadsheet analysis must exercise the same read capability as
+  // production without inventing a workbook deliverable.
+  if (
+    runOptions.attachments?.some((attachment) => /\.(?:xlsx|xlsm|xls|csv|tsv)$/i.test(attachment.name)) &&
+    runOptions.taskContract?.spreadsheetRequirement?.needsWrite === false
+  ) {
+    await say("好的，我先读取并分析这份表格。");
+    emitEvent({
+      type: "tool_started",
+      toolCallId: "mock-read-sheet-1",
+      toolName: "read_document",
+      input: { filePath: runOptions.attachments[0]?.storagePath ?? runOptions.attachments[0]?.name },
+    });
+    await sleep(delay);
+    emitEvent({
+      type: "tool_completed",
+      toolCallId: "mock-read-sheet-1",
+      toolName: "read_document",
+      content: "已读取工作簿并识别关键数据。",
+      durationMs: 6,
+    });
+    await say("分析完成：已读取工作簿；当前请求不要求生成或交付新文件。");
+    return done();
+  }
+
   // ── journey: 生成文件(写真文件进 outputDir,供产物追踪 + 预览验证)──────────
   if (/生成|导出|excel|表格|报表|xlsx|文件/i.test(text)) {
     await say("好的,我来生成一个示例表格。");

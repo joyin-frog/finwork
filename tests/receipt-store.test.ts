@@ -292,15 +292,38 @@ export const receiptStoreTestPromise = (async () => {
       financeExpense: 5000,
       netProfit: 105000,
     },
+    cashFlow: {
+      operatingCashFlow: -120000,
+      investingCashFlow: -10000,
+      financingCashFlow: 150000,
+      netCashIncrease: 20000,
+    },
+    sourceCells: {
+      "balanceSheet.totalAssets": { sheet: "资产负债表", range: "B37" },
+      "incomeStatement.revenue": { sheet: "利润表", range: "D5" },
+      "cashFlow.operatingCashFlow": { sheet: "现金流量表", range: "I12" },
+    },
     asOf: "2026-03-31",
     source: "2026年3月报表",
   });
   assert.ok(!analysisResult.isError, `RS-T7 FAIL: 经营分析不应报错，实际: ${JSON.stringify(analysisResult)}`);
-  const analysisSC = analysisResult.structuredContent as { provenance?: { caliberVersion: string; asOf: string; sources: unknown[] } };
+  const analysisSC = analysisResult.structuredContent as {
+    provenance?: {
+      caliberVersion: string;
+      asOf: string;
+      sources: unknown[];
+      workbookFacts: Array<{ field: string; value: number; locator: { kind: string; sheet: string; range: string } }>;
+    };
+  };
   assert.ok(analysisSC.provenance, `RS-T7 FAIL: structuredContent 应含 provenance 段`);
   assert.ok(analysisSC.provenance!.caliberVersion, `RS-T7 FAIL: provenance.caliberVersion 应存在`);
   assert.ok(analysisSC.provenance!.asOf, `RS-T7 FAIL: provenance.asOf 应存在`);
   assert.ok(Array.isArray(analysisSC.provenance!.sources), `RS-T7 FAIL: provenance.sources 应为数组`);
+  assert.deepEqual(analysisSC.provenance!.workbookFacts, [
+    { field: "balanceSheet.totalAssets", value: 300000, locator: { kind: "sheet_range", sheet: "资产负债表", range: "B37" } },
+    { field: "incomeStatement.revenue", value: 500000, locator: { kind: "sheet_range", sheet: "利润表", range: "D5" } },
+    { field: "cashFlow.operatingCashFlow", value: -120000, locator: { kind: "sheet_range", sheet: "现金流量表", range: "I12" } },
+  ]);
   // content 尾部含溯源行（中文）
   const analysisText = analysisResult.content[0].text as string;
   assert.ok(analysisText.includes("口径"), `RS-T7 FAIL: content 应含溯源说明（含"口径"），实际末尾: ${analysisText.slice(-200)}`);

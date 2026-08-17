@@ -398,7 +398,6 @@ export const obligationsLiveTestPromise = (async () => {
       restoreRetrievalService = installProductionRetrievalService(createProductionRetrievalService({
         db,
         casRoot: path.join(os.tmpdir(), `finance-agent-oblive-v6-cas-${pid}`),
-        embedder: async (texts: readonly string[]) => texts.map((text) => [text.length || 1, 1, 1]),
       }));
 
       const docId = insertKnowledgeDoc(db);
@@ -451,11 +450,6 @@ export const obligationsLiveTestPromise = (async () => {
       const retrieval = createProductionRetrievalService({
         db,
         casRoot: path.join(os.tmpdir(), `finance-agent-oblive-v7-cas-${pid}`),
-        embedder: async (texts: readonly string[]) => texts.map((text) => [
-          text.length || 1,
-          [...text].reduce((sum, char) => sum + char.charCodeAt(0), 0) || 1,
-          text.split(/\s+/u).filter(Boolean).length || 1,
-        ]),
       });
       restoreRetrievalService = installProductionRetrievalService(retrieval);
 

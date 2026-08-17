@@ -23,6 +23,7 @@ export type RoleDefinition = {
 // 所有角色共享的底座工具（现状内置文件/检索工具照旧放行，不在此列）
 export const SHARED_TOOLS = [
   "analyze_tabular", "search_knowledge", "query_knowledge", "read_file", "read_document",
+  "list_workspace_files", "read_workspace_file", "patch_workspace_workbook", "begin_workspace_change", "review_workspace_change",
   "inspect_document_structure", "finalize_deliverable",
 ];
 

@@ -20,6 +20,9 @@ export type PersistTurnParams = {
   conversationId: number | undefined;
   existingRuntimeSessionId: string | null;
   beforeGenerate: Set<string>;
+  /** 本回合 run/work 的执行前快照；旧调用可省略并继续使用会话 generate。 */
+  beforeWorking?: Set<string>;
+  outputDir?: string;
   traceId: string;
   startedAt: number;
   routerResult: Awaited<ReturnType<typeof runRouter>>;
@@ -34,6 +37,24 @@ export type PersistedAgentTurn = {
   fullContent: string;
   generatedAttachments: ReturnType<typeof recordNewGeneratedFiles>;
 };
+
+/** Count attempted tool invocations once; completion events are not calls. */
+export function countToolCalls(events: AgentTurnCollector["collectedEvents"]): number {
+  const seenIds = new Set<string>();
+  let count = 0;
+  for (const event of events) {
+    if (event.type !== "tool_use" && event.type !== "tool_started") continue;
+    const id = event.type === "tool_use"
+      ? (typeof event.id === "string" ? event.id : undefined)
+      : (typeof event.toolCallId === "string" ? event.toolCallId : undefined);
+    if (id) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+    }
+    count += 1;
+  }
+  return count;
+}
 
 /** Assistant-message persistence is shared by HTTP and benchmark execution. */
 export function insertAssistantTurn(
@@ -89,11 +110,9 @@ export function persistAgentTurn(
     messageId = insertAssistantTurn(conversationId, fullContent, collector, traceId);
   }
 
-  cleanupUnfinalizedFiles(conversationId, beforeGenerate);
+  cleanupUnfinalizedFiles(conversationId, params.beforeWorking ?? beforeGenerate, params.outputDir);
   const generatedAttachments = recordNewGeneratedFiles(conversationId, messageId, beforeGenerate);
-  const toolCallCount = collector.collectedEvents.filter(
-    (event) => event.type === "tool_use" || event.type === "tool_result",
-  ).length;
+  const toolCallCount = countToolCalls(collector.collectedEvents);
   const resolved = params.resolvedModel;
   writeAgentTrace({
     traceId,
@@ -108,6 +127,7 @@ export function persistAgentTurn(
     modelUsage: "modelUsage" in result ? result.modelUsage : undefined,
     totalCostUsd: "totalCostUsd" in result ? result.totalCostUsd : undefined,
     numTurns: "numTurns" in result ? result.numTurns : undefined,
+    llmCallCount: "numTurns" in result ? result.numTurns : undefined,
     toolCallCount,
     retryCount: params.retryCount,
     executionTier: resolved?.executionTier,
@@ -122,6 +142,7 @@ export function persistIncompleteTurn(
     collector: AgentTurnCollector;
     errorMessage: string;
     modelUsage?: Record<string, AgentModelUsage>;
+    numTurns?: number;
   },
 ): PersistedAgentTurn {
   const {
@@ -135,6 +156,7 @@ export function persistIncompleteTurn(
     collector,
     errorMessage,
     modelUsage,
+    numTurns,
     resolvedModel,
   } = params;
 
@@ -158,9 +180,7 @@ export function persistIncompleteTurn(
   }
 
   const generatedAttachments = recordNewGeneratedFiles(conversationId, messageId, beforeGenerate);
-  const toolCallCount = collector.collectedEvents.filter(
-    (event) => event.type === "tool_use" || event.type === "tool_result",
-  ).length;
+  const toolCallCount = countToolCalls(collector.collectedEvents);
   writeAgentTrace({
     traceId,
     conversationId,
@@ -174,6 +194,8 @@ export function persistIncompleteTurn(
     toolCallCount,
     retryCount: params.retryCount,
     modelUsage,
+    numTurns,
+    llmCallCount: numTurns,
     executionTier: resolvedModel?.executionTier,
   });
   return { messageId, fullContent, generatedAttachments };
