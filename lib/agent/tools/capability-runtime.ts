@@ -59,11 +59,9 @@ type FinanceToolOutput = z.infer<typeof FinanceToolOutputSchema>;
  * Post-authorization execution boundary for the production finance catalog.
  *
  * The existing FinanceToolAuthorizer remains the policy/confirmation authority
- * and is always called before this runtime by the Pi adapter. During shadow and
- * rollback the legacy handler is the only executor. After an explicit atomic
- * cutover the same handler is invoked exactly once through CapabilityExecutor,
- * which adds attempts, resource leases and structured failures without changing
- * the tool implementation itself.
+ * and is always called before this runtime by the Pi adapter. CapabilityExecutor
+ * is the sole production authority and invokes the registered tool handler once,
+ * with attempts, resource leases and structured failures around it.
  */
 export class FinanceCapabilityRuntime implements FinanceToolRuntime {
   readonly registry: CapabilityRegistry;
@@ -99,10 +97,9 @@ export class FinanceCapabilityRuntime implements FinanceToolRuntime {
     }
     this.executor = new CapabilityExecutor(
       this.registry,
-      // The task-scoped security decision is enforced once before the rollout
-      // gateway, so both legacy and cutover authority paths share the same
-      // default-deny boundary. The existing Pi authorizer remains the human
-      // confirmation boundary for high-risk operations.
+      // The task-scoped security decision is enforced before the single
+      // production executor. The Pi authorizer remains the human confirmation
+      // boundary for high-risk operations.
       [],
       new LedgerExecutionGovernor(ledger),
     );
@@ -126,8 +123,6 @@ export class FinanceCapabilityRuntime implements FinanceToolRuntime {
       const denied = await this.securityGuard(capability, args);
       if (denied) throw new CapabilityExecutionError(denied);
     }
-    const legacy = async (input: Record<string, unknown>) =>
-      normalizeOutput(await definition.handler(input, { signal }));
     const next = async (input: Record<string, unknown>) => {
       const result = await this.executor.execute({
         capabilityId: capabilityId(definition.id),
@@ -145,11 +140,7 @@ export class FinanceCapabilityRuntime implements FinanceToolRuntime {
       operation: policy.operation,
       caseId: this.context.caseId,
       runId: this.context.runId,
-      legacy,
       next,
-      // Never provide a shadow executor implicitly. Existing finance handlers
-      // may read through network/cache layers or emit telemetry, so even reads
-      // cannot safely be duplicated without a dedicated implementation.
     });
   }
 

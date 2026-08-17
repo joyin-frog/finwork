@@ -5,6 +5,7 @@ import {
   evaluateExecutionRequirements,
   executionRequirementsFromToolGroups,
   executionRequirementsForSpreadsheetTask,
+  hasSuccessfulArtifactWrite,
 } from "../lib/capability/execution-gate.ts";
 
 export const capabilityExecutionGateTestPromise = (async () => {
@@ -49,6 +50,12 @@ export const capabilityExecutionGateTestPromise = (async () => {
     ledger.snapshot(),
   );
   assert.equal(gate.ok, true, "successful patch_workbook must prove read and write semantics");
+  assert.equal(hasSuccessfulArtifactWrite(ledger.snapshot()), true, "successful workbook write must require a delivery contract");
+
+  const failedWriteLedger = new CapabilityExecutionLedger();
+  failedWriteLedger.record({ type: "tool_started", toolName: "create_workbook", toolCallId: "failed-write" });
+  failedWriteLedger.record({ type: "tool_completed", toolCallId: "failed-write", isError: true });
+  assert.equal(hasSuccessfulArtifactWrite(failedWriteLedger.snapshot()), false, "failed writes must not create a delivery obligation");
 
   ledger.record({
     type: "tool_started",

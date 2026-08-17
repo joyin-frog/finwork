@@ -79,6 +79,32 @@ export type AgentRuntimeEvent =
       terminationReason?: string;
       qualityStatus?: string;
     }
+  /** Backend-owned business plan. Payload is deliberately user-readable and contains no chain-of-thought. */
+  | {
+      type: "work_plan_created";
+      planId: string;
+      caseId: string;
+      version: number;
+      goal: string;
+      steps: Array<{ stepId: string; stepKey: string; title: string; expectedOutcome: string; status: string; ordinal: number }>;
+    }
+  | {
+      type: "work_plan_revised";
+      planId: string;
+      caseId: string;
+      version: number;
+      reason: string;
+    }
+  | {
+      type: "work_plan_step_changed";
+      planId: string;
+      caseId: string;
+      stepId: string;
+      stepKey: string;
+      from: string;
+      to: string;
+      summary?: string;
+    }
   /** 对话级事件：标题更新（runId=null，在 settled 之后异步到达）。 */
   | { type: "title_updated"; title: string; conversationId?: number | null }
   // ── 共享事件（新旧同名，payload 一致）────────────────────────────────────
@@ -291,6 +317,9 @@ export function contractToLegacyEvents(envelope: AgentEventEnvelope): LegacyEven
     // （CR-R1 持久化 run_state_changed / settled 走 run_events，不进 chat_agent_events）
     case "run_settled":
     case "run_state_changed":
+    case "work_plan_created":
+    case "work_plan_revised":
+    case "work_plan_step_changed":
     case "title_updated":
     case "turn_started":
     case "message_started":

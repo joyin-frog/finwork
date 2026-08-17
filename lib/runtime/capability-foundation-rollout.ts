@@ -48,13 +48,22 @@ export class CapabilityFoundationRollout {
     return row ? rowToEpoch(row) : null;
   }
 
-  ensureInitialized(reason = "initial shadow rollout; legacy remains authoritative"): RolloutEpoch {
-    return this.active() ?? this.activate("shadow", "legacy", reason);
+  ensureInitialized(reason = "Capability Foundation is the sole production authority"): RolloutEpoch {
+    const active = this.active();
+    if (active?.mode === "cutover" && active.authority === "new") return active;
+    return this.activate("cutover", "new", reason);
   }
 
-  beginShadow(reason: string): RolloutEpoch { return this.activate("shadow", "legacy", reason); }
-  cutover(reason: string): RolloutEpoch { return this.activate("cutover", "new", reason); }
-  rollback(reason: string): RolloutEpoch { return this.activate("rollback", "legacy", reason); }
+  beginShadow(reason: string): never {
+    throw new Error(`shadow authority is retired; Capability Foundation is production-only (${reason.trim() || "no reason"})`);
+  }
+  cutover(reason: string): RolloutEpoch {
+    const active = this.ensureInitialized(reason);
+    return active;
+  }
+  rollback(reason: string): never {
+    throw new Error(`legacy rollback authority is retired; use capability-level recovery instead (${reason.trim() || "no reason"})`);
+  }
 
   recordComparison(input: {
     caseId?: string;
@@ -127,4 +136,3 @@ export class CapabilityFoundationRollout {
     }
   }
 }
-

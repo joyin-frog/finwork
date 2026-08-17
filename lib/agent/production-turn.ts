@@ -9,6 +9,7 @@ import type {
   AgentMessage,
   AgentModelUsage,
   AgentQuestion,
+  AgentWorkPlanSummary,
 } from "@/lib/agent/contracts";
 import { filterIdentity, createStreamingIdentityFilter } from "@/lib/safety/identity-filter";
 import { redact } from "@/lib/safety/pii";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/agent/runtime-events";
 import { persistRuntimeEnvelope, type RunPersistenceContext } from "@/lib/agent/run-event-persistence";
 import { deriveTaskContractForTurn, type TaskContract } from "@/lib/agent/run-contract";
+import { prefetchRouterKnowledge } from "@/lib/agent/retrieval-prefetch";
 
 /**
  * Production agent turn shared by the HTTP route and benchmark execution.
@@ -38,6 +40,7 @@ export type AgentTurnParams = {
   runtimeSessionId: string | null;
   existingRuntimeSessionId: string | null;
   attachments: AgentAttachment[];
+  workspaceRootIds?: string[];
   outputDir: string | undefined;
   routerResult: Awaited<ReturnType<typeof runRouter>>;
   modelOverride?: string;
@@ -51,7 +54,8 @@ export type AgentTurnParams = {
   taskContract?: TaskContract | null;
   executionTier?: import("@/lib/settings/model-config").ExecutionTier | null;
   foundation?: AgentFoundationContext;
-  onRuntimeEvent?: (event: AgentRuntimeEvent) => void;
+  workPlan?: AgentWorkPlanSummary;
+  onRuntimeEvent?: (event: AgentRuntimeEvent) => AgentRuntimeEvent[] | void;
   /** Caller-owned hard limits; benchmark execution uses the V3 contract budget. */
   agentServiceOptions?: PiAgentServiceOptions;
   /** Provider/service seam for integration tests; production uses runPiAgent. */
@@ -85,6 +89,8 @@ export async function runAgentTurn(
 
   if (routerResult.path === "cheap" && routerResult.decision.directAnswer) {
     const answer = filterIdentity(routerResult.decision.directAnswer);
+    params.onRuntimeEvent?.({ type: "message_started", channel: "text" });
+    params.onRuntimeEvent?.({ type: "message_completed", channel: "text", content: answer });
     collector.collectedChunks.push(answer);
     coalesceTextIntoEvents(collector.collectedEvents, answer);
     return {
@@ -108,7 +114,7 @@ export async function runAgentTurn(
   const mainEmitter = createEmitter(traceId, params.conversationId ?? null, null, runCounter);
 
   const handleEmit = (event: AgentRuntimeEvent, emitter: AgentEmitter) => {
-    params.onRuntimeEvent?.(event);
+    const derivedEvents = params.onRuntimeEvent?.(event) ?? [];
     let filteredEvent: AgentRuntimeEvent = event;
 
     if (event.type === "ask_user") {
@@ -140,14 +146,21 @@ export async function runAgentTurn(
     }
     if (params.runPersist) persistRuntimeEnvelope(envelope, params.runPersist);
     params.emitEnvelope?.(envelope);
+    for (const derivedEvent of derivedEvents) {
+      const derivedEnvelope = emitter.wrap(derivedEvent);
+      if (params.runPersist) persistRuntimeEnvelope(derivedEnvelope, params.runPersist);
+      params.emitEnvelope?.(derivedEnvelope);
+    }
   };
 
+  const preparedAgentMessages = await prefetchRouterKnowledge(agentMessages, routerResult.decision);
   const data = await (params.agentRunner ?? runPiAgent)({
-    messages: agentMessages,
+    messages: preparedAgentMessages,
     runtimeSessionId,
     resumeSession: Boolean(existingRuntimeSessionId),
     requestId: traceId,
     attachments,
+    workspaceRootIds: params.workspaceRootIds,
     outputDir,
     traceId,
     conversationId: params.conversationId,
@@ -158,10 +171,12 @@ export async function runAgentTurn(
     taskContract: params.taskContract ?? deriveTaskContractForTurn({
       intent: routerResult.decision.intent,
       attachments,
+      userMessage: [...agentMessages].reverse().find((message) => message.role === "user")?.content,
     }),
     executionTier: params.executionTier,
     intent: routerResult.decision.intent,
     foundation: params.foundation,
+    workPlan: params.workPlan,
     emit: (event) => handleEmit(event, mainEmitter),
     onSubagentEvent: (event, instanceId) => {
       const subEmitter = createEmitter(traceId, params.conversationId ?? null, instanceId, runCounter);

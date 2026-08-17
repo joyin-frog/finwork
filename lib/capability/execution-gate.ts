@@ -30,15 +30,19 @@ export type ExecutionGateDecision =
       diagnosticFingerprint: string;
     };
 
-const TOOL_CAPABILITY_MAP: Readonly<Record<string, readonly string[]>> = {
+export const TOOL_CAPABILITY_MAP: Readonly<Record<string, readonly string[]>> = {
   read: ["spreadsheet.read", "document.read", "filesystem.read"],
   read_file: ["spreadsheet.read", "document.read", "filesystem.read"],
   read_document: ["spreadsheet.read", "document.read"],
+  read_workspace_file: ["spreadsheet.read", "document.read", "filesystem.read"],
   inspect_document_structure: ["document.read", "document.inspect"],
   patch_document: ["document.read", "document.write"],
   analyze_tabular: ["spreadsheet.read", "spreadsheet.analyze", "finance.analyze"],
   create_workbook: ["spreadsheet.write"],
   patch_workbook: ["spreadsheet.read", "spreadsheet.write"],
+  patch_workspace_workbook: ["spreadsheet.read", "spreadsheet.write"],
+  review_workspace_change: ["spreadsheet.validate", "workspace.change-review"],
+  run_task_python: ["sandboxed.code-execution", "filesystem.write"],
   check_workbook_ties: ["spreadsheet.read", "spreadsheet.validate"],
   finalize_deliverable: ["spreadsheet.validate", "artifact.deliver"],
   search: ["retrieval.search"],
@@ -47,7 +51,22 @@ const TOOL_CAPABILITY_MAP: Readonly<Record<string, readonly string[]>> = {
   research_web: ["research.web"],
   web_search: ["research.web-search"],
   fetch_url: ["research.fetch"],
+  spawn_subagent: ["agent.delegate"],
 };
+
+/** Deterministic catalog lookup used by preflight before any model is called. */
+export function toolsForCapability(capabilityId: string): string[] {
+  const normalized = capabilityId.trim();
+  if (!normalized) return [];
+  if (normalized === "agent.turn") return ["agent.turn"];
+  if (normalized.startsWith("finance-tool.")) {
+    return [normalized.slice("finance-tool.".length)].filter((tool) => tool in TOOL_CAPABILITY_MAP);
+  }
+  return Object.entries(TOOL_CAPABILITY_MAP)
+    .filter(([, capabilityIds]) => capabilityIds.includes(normalized))
+    .map(([tool]) => tool)
+    .sort();
+}
 
 function normalizeToolName(toolName: string): string {
   return toolName.trim().toLowerCase().replace(/[\s-]+/g, "_");
@@ -157,6 +176,14 @@ export function evaluateExecutionRequirements(
     message: `缺少可验证的能力执行事实：${details.join("；")}`,
     diagnosticFingerprint,
   };
+}
+
+/** 成功写出用户可见文件后，完成态必须由声明式交付合同和验证证据收口。 */
+export function hasSuccessfulArtifactWrite(facts: readonly ExecutionFact[]): boolean {
+  return facts.some((fact) =>
+    fact.capabilityIds.includes("spreadsheet.write")
+    || fact.capabilityIds.includes("document.write")
+  );
 }
 
 export function executionRequirementsForSpreadsheetTask(input: {

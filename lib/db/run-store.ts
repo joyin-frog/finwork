@@ -18,6 +18,7 @@ import {
   type TerminationReason,
 } from "@/lib/agent/run-contract";
 import type { ExecutionRole, ExecutionTier } from "@/lib/settings/model-config";
+import { recoverInterruptedTaskCases } from "@/lib/task/recovery";
 
 export const RUN_REPLAY_SCHEMA_VERSION = 1 as const;
 
@@ -29,6 +30,9 @@ export const DURABLE_RUN_EVENT_TYPES = new Set<AgentRuntimeEvent["type"]>([
   "compaction_completed",
   "run_ended",
   "run_state_changed",
+  "work_plan_created",
+  "work_plan_revised",
+  "work_plan_step_changed",
   "run_settled",
 ]);
 
@@ -511,5 +515,6 @@ export function pauseOrphanRunsOnBoot(reason: TerminationReason = "process_crash
        heartbeat_at = ?
      WHERE status IN ('queued', 'running', 'waiting_user', 'waiting_dependency')`
   ).run(reason, now, now);
+  if (reason === "process_crash") recoverInterruptedTaskCases(db, new Date(now));
   return Number(result.changes ?? 0);
 }

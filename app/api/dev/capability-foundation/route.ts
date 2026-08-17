@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/sqlite";
 import { captureFoundationDiagnostics } from "@/lib/observability/foundation-diagnostics";
-import { CapabilityFoundationRollout, type RolloutMode } from "@/lib/runtime/capability-foundation-rollout";
+import { CapabilityFoundationRollout } from "@/lib/runtime/capability-foundation-rollout";
 
 export const dynamic = "force-dynamic";
 
@@ -25,19 +25,16 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   if (process.env.NODE_ENV === "production") return unavailable();
   try {
-    const body = await request.json() as { action?: RolloutMode; reason?: string };
+    const body = await request.json() as { action?: string; reason?: string };
     const reason = body.reason?.trim() ?? "";
-    if (!reason) return NextResponse.json({ ok: false, error: "缺少切换原因" }, { status: 400 });
-
+    if (body.action !== "ensure") {
+      return NextResponse.json(
+        { ok: false, error: "shadow/legacy 切换已退役；生产环境仅允许 Capability Foundation 权威" },
+        { status: 410 },
+      );
+    }
     const rollout = new CapabilityFoundationRollout(getDb());
-    const epoch = body.action === "shadow"
-      ? rollout.beginShadow(reason)
-      : body.action === "cutover"
-        ? rollout.cutover(reason)
-        : body.action === "rollback"
-          ? rollout.rollback(reason)
-          : null;
-    if (!epoch) return NextResponse.json({ ok: false, error: "不支持的切换动作" }, { status: 400 });
+    const epoch = rollout.ensureInitialized(reason || "developer authority assertion");
     return NextResponse.json({ ok: true, epoch });
   } catch (error) {
     return NextResponse.json(

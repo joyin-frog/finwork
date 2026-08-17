@@ -853,6 +853,9 @@ process.on("unhandledRejection", (err) => {
   const { productionTaskRuntimeTestPromise } = await import("./production-task-runtime.test.ts");
   await productionTaskRuntimeTestPromise;
 
+  const { workPlanRuntimeTestPromise } = await import("./work-plan-runtime.test.ts");
+  await workPlanRuntimeTestPromise;
+
 })().catch((err) => {
   console.error("[all.test] 测试链失败:", err);
   process.exitCode = 1;

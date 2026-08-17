@@ -1,19 +1,20 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { NextResponse } from "next/server";
 import type {
+  AgentAttachment,
   AgentModelUsage,
-  AgentQuestion,
 } from "@/lib/agent/contracts";
 import { writeSpan } from "@/lib/observability/spans";
 import { writeAgentTrace } from "@/lib/observability/trace-write";
 import { readAgentSettings } from "@/lib/settings/agent-settings";
 import {
   getChatConversation,
+  getConversationAttachments,
   getDb,
   updateChatConversationTitle
 } from "@/lib/db/sqlite";
-import { filterIdentity } from "@/lib/safety/identity-filter";
-import { runRouter } from "@/lib/agent/router";
 import { generateConversationTitle } from "@/lib/agent/conversation-title";
 import { cancelPendingQuestions, createPendingQuestion } from "@/lib/agent/pending-questions";
 import { redact } from "@/lib/safety/pii";
@@ -32,7 +33,13 @@ import {
   withRunEventPersistence,
   type RunPersistenceContext,
 } from "@/lib/agent/run-event-persistence";
-import { deriveTaskContractForTurn, isTerminalRunStatus, type TaskContract } from "@/lib/agent/run-contract";
+import {
+  deriveTaskContractForTurn,
+  isTerminalRunStatus,
+  shouldInheritSpreadsheetAttachments,
+} from "@/lib/agent/run-contract";
+import { getConversationFilesDir, getRunFileWorkspaceDir } from "@/lib/runtime/paths";
+import { getFileWorkspaceStore } from "@/lib/file-workspace";
 import {
   registerRunAbort,
   unregisterRunAbort,
@@ -56,6 +63,20 @@ import {
 } from "@/lib/agent/turn-persistence";
 
 const log = createLogger("agent-query");
+
+function mergeTaskAttachments(
+  current: readonly AgentAttachment[],
+  inherited: readonly AgentAttachment[],
+): AgentAttachment[] {
+  const merged = new Map<string, AgentAttachment>();
+  for (const attachment of [...inherited, ...current]) {
+    const key = attachment.storagePath
+      ? path.resolve(attachment.storagePath)
+      : `${attachment.name}\u0000${attachment.size}\u0000${attachment.mimeType}`;
+    merged.set(key, attachment);
+  }
+  return [...merged.values()];
+}
 
 export async function POST(request: Request) {
   const traceId = randomUUID();
@@ -82,9 +103,10 @@ export async function POST(request: Request) {
 
   const {
     conversationId, existingRuntimeSessionId, runtimeSessionId,
-    agentMessages, attachments, outputDir, beforeGenerate,
+    agentMessages, attachments, outputDir, beforeGenerate, beforeWorking,
     lastUserContent, useStreaming, routerResult, modelOverride: tierModelOverride,
     sessionRoleId, modelTier,
+    workspaceRootIds,
   } = r;
 
   // ── CR-R1: Router 之后真实模型接线（只消费 resolveExecutionModel）──
@@ -119,22 +141,64 @@ export async function POST(request: Request) {
       status: "queued",
     });
 
+    const persistedMessages = conversationId
+      ? (getChatConversation(conversationId)?.messages ?? []).map((message) => ({
+          role: message.role,
+          content: message.content,
+        }))
+      : agentMessages;
+    const priorAttachments: AgentAttachment[] = [];
+    if (conversationId) {
+      const candidates = getConversationAttachments(conversationId)
+        .filter((attachment) => /(?:spreadsheet|excel|csv)/i.test(attachment.mimeType)
+          || /\.(?:xlsx|xlsm|xls|csv|tsv)$/i.test(attachment.fileName));
+      const workspaceStore = candidates.some((attachment) => attachment.assetVersionId)
+        ? await getFileWorkspaceStore()
+        : null;
+      for (const attachment of candidates) {
+        const storagePath = attachment.assetVersionId && workspaceStore
+          ? workspaceStore.materializeVersion(attachment.assetVersionId, path.join(getRunFileWorkspaceDir(traceId), "inputs"), attachment.fileName)
+          : path.resolve(getConversationFilesDir(conversationId), attachment.storagePath);
+        priorAttachments.push({
+          assetId: attachment.assetId ?? undefined,
+          versionId: attachment.assetVersionId ?? undefined,
+          name: attachment.fileName,
+          mimeType: attachment.mimeType,
+          size: attachment.sizeBytes,
+          dataUrl: "",
+          storagePath,
+        });
+      }
+    }
+    const inheritPriorAttachments = shouldInheritSpreadsheetAttachments({
+      userMessage: lastUserContent,
+      messages: persistedMessages,
+    });
+    const effectiveAttachments = mergeTaskAttachments(
+      attachments,
+      inheritPriorAttachments ? priorAttachments : [],
+    );
     const taskContract = deriveTaskContractForTurn({
       intent: routerResult.decision.intent,
       attachments,
+      priorAttachments,
+      userMessage: lastUserContent,
+      messages: persistedMessages,
     });
     foundationTaskRun = beginProductionTaskRun({
       db: getDb(),
       traceId,
       conversationId,
       goal: lastUserContent,
-      attachments,
+      attachments: effectiveAttachments,
       legacyContract: taskContract,
       roleId: sessionRoleId,
+      intent: routerResult.decision.intent,
     });
     const turnParams: AgentTurnParams = {
       traceId, agentMessages, runtimeSessionId, existingRuntimeSessionId,
-      attachments, outputDir, routerResult, conversationId,
+      attachments: effectiveAttachments, outputDir, routerResult, conversationId,
+      workspaceRootIds,
       // CR-R1：resolveExecutionModel 结果 → SDK model / ANTHROPIC_MODEL
       modelOverride,
       // 专员会话（E 刀）:以会话绑定的角色身份运行本回合
@@ -143,10 +207,11 @@ export async function POST(request: Request) {
       taskContract,
       executionTier: resolvedModel?.executionTier ?? null,
       foundation: foundationTaskRun.foundation,
+      workPlan: foundationTaskRun.plan,
       onRuntimeEvent: (event) => foundationTaskRun?.recordRuntimeEvent(event),
     };
     const persistParams: PersistTurnParams = {
-      conversationId, existingRuntimeSessionId, beforeGenerate,
+      conversationId, existingRuntimeSessionId, beforeGenerate, beforeWorking, outputDir,
       traceId, startedAt, routerResult, lastUserContent, roleMode,
       resolvedModel,
     };
@@ -154,7 +219,7 @@ export async function POST(request: Request) {
     if (useStreaming) {
       return createStreamingResponse({
         turnParams, persistParams, conversationId, traceId, startedAt,
-        requestSignal: request.signal, runPersist, foundationTaskRun,
+        requestSignal: request.signal, runPersist, foundationTaskRun, workspaceRootIds,
       });
     }
 
@@ -163,20 +228,33 @@ export async function POST(request: Request) {
       const emitter = createEmitter(traceId, conversationId ?? null);
       const startedEnv = emitter.wrap({ type: "run_started", conversationId: conversationId ?? null });
       persistRuntimeEnvelope(startedEnv, runPersist);
+      for (const event of foundationTaskRun.takePendingEvents()) {
+        persistRuntimeEnvelope(emitter.wrap(event), runPersist);
+      }
       markRunRunning(runPersist, (e) => emitter.wrap(e));
     }
 
     const { result, collector } = await runAgentTurn(turnParams);
     const { messageId, generatedAttachments } = persistAgentTurn({ ...persistParams, result, collector });
+    await publishDeliveredFiles(traceId, conversationId, workspaceRootIds, generatedAttachments);
     {
       const emitter = createEmitter(traceId, conversationId ?? null);
+      for (const event of foundationTaskRun.completeExecution()) {
+        persistRuntimeEnvelope(emitter.wrap(event), runPersist);
+      }
       foundationTaskRun.markValidating();
+      for (const event of foundationTaskRun.takePendingEvents()) {
+        persistRuntimeEnvelope(emitter.wrap(event), runPersist);
+      }
       const gateDecision = decideSettleFromCompletionGate(traceId, turnParams.taskContract);
       foundationTaskRun.settle({
         outcome: gateDecision.outcome,
         message: gateDecision.gateMessage,
         assistantMessageId: messageId,
       });
+      for (const event of foundationTaskRun.takePendingEvents()) {
+        persistRuntimeEnvelope(emitter.wrap(event), runPersist);
+      }
       const endedEnv = emitter.wrap({
         type: "run_ended",
         kind: gateDecision.outcome === "completed" ? "complete" : "incomplete",
@@ -203,6 +281,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, data: { ...result, conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const failedRun = getAgentRun(traceId);
+    if (failedRun && !isTerminalRunStatus(failedRun.status)) {
+      updateAgentRunStatus(traceId, "failed", {
+        terminationReason: /preflight/i.test(message) ? "dependency_missing" : "sdk_error",
+        errorCode: /preflight/i.test(message) ? "foundation_preflight_failed" : "agent_error",
+        errorMessage: redact(message),
+      });
+    }
     log.error("failed", { traceId, durationMs: Date.now() - startedAt, error });
     // 原始错误落盘:前端只会看到 humanize 后的「网络不稳定…」,真因(401/404/超时/网关地址错等)
     // 需在 server-<date>.log 留底才查得到。best-effort,不 await。
@@ -210,15 +296,17 @@ export async function POST(request: Request) {
     // 出错也保留已完成的部分(非流式路径同样不该整回合归零);拿不到 collector 才只记错误 trace。
     const collector = (error as { __collector?: AgentTurnCollector }).__collector;
     const partialUsage = (error as { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage;
+    const partialNumTurns = (error as { __numTurns?: number }).__numTurns;
     const isAbort = error instanceof Error && error.name === "AbortError";
     if (collector) {
-      persistIncompleteTurn({ conversationId, existingRuntimeSessionId, beforeGenerate, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage: message, modelUsage: partialUsage, resolvedModel });
+      persistIncompleteTurn({ conversationId, existingRuntimeSessionId, beforeGenerate, beforeWorking, outputDir, traceId, startedAt, routerResult, lastUserContent, roleMode, collector, errorMessage: message, modelUsage: partialUsage, numTurns: partialNumTurns, resolvedModel });
     } else {
       writeAgentTrace({
         traceId, conversationId, startedAt,
         modelUsed: resolvedModel?.modelId ?? modelLabel(routerResult),
         routerPath: routerResult.path, errorMessage: message, userMessage: lastUserContent.slice(0, 500),
         finalAnswer: "", roleMode, toolCallCount: 0, modelUsage: partialUsage,
+        numTurns: partialNumTurns, llmCallCount: partialNumTurns,
         executionTier: resolvedModel?.executionTier,
       });
     }
@@ -254,6 +342,7 @@ function createStreamingResponse(params: {
   requestSignal?: AbortSignal;
   runPersist: RunPersistenceContext;
   foundationTaskRun: ProductionTaskRun;
+  workspaceRootIds: string[];
 }) {
   const {
     turnParams,
@@ -264,6 +353,7 @@ function createStreamingResponse(params: {
     requestSignal,
     runPersist,
     foundationTaskRun,
+    workspaceRootIds,
   } = params;
   const encoder = new TextEncoder();
 
@@ -309,6 +399,9 @@ function createStreamingResponse(params: {
       {
         const startedEnv = streamEmitter.wrap({ type: "run_started", conversationId: conversationId ?? null });
         emitAndPersist(startedEnv);
+        for (const event of foundationTaskRun.takePendingEvents()) {
+          emitAndPersist(streamEmitter.wrap(event));
+        }
         markRunRunning(runPersist, (e) => streamEmitter.wrap(e), enqueueEnvelope);
       }
 
@@ -354,16 +447,26 @@ function createStreamingResponse(params: {
 
         collector.collectedEvents.push(...askEvents);
         const { messageId, generatedAttachments } = persistAgentTurn({ ...persistParams, result, collector });
+        await publishDeliveredFiles(traceId, conversationId, workspaceRootIds, generatedAttachments);
+        for (const event of foundationTaskRun.completeExecution()) {
+          emitAndPersist(streamEmitter.wrap(event));
+        }
         writeSpan({ traceId, spanType: "stream", name: "SSE stream", startedAt, durationMs: Date.now() - startedAt });
 
         // CR-R2：CompletionGate —— 有交付合同则不得仅凭 agent 结束标 completed
         foundationTaskRun.markValidating();
+        for (const event of foundationTaskRun.takePendingEvents()) {
+          emitAndPersist(streamEmitter.wrap(event));
+        }
         const gateDecision = decideSettleFromCompletionGate(traceId, turnParams.taskContract);
         foundationTaskRun.settle({
           outcome: gateDecision.outcome,
           message: gateDecision.gateMessage,
           assistantMessageId: messageId,
         });
+        for (const event of foundationTaskRun.takePendingEvents()) {
+          emitAndPersist(streamEmitter.wrap(event));
+        }
         settleRun(gateDecision.outcome, gateDecision.gateMessage ? { message: gateDecision.gateMessage } : undefined);
         {
           const after = getAgentRun(traceId);
@@ -406,6 +509,7 @@ function createStreamingResponse(params: {
         void appendServerLog(`[agent-query/stream] failed traceId=${traceId} ${redact(error instanceof Error ? error.stack ?? error.message : String(error))}`);
         const collector = (error as { __collector?: AgentTurnCollector }).__collector;
         const partialUsage = (error as { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage;
+        const partialNumTurns = (error as { __numTurns?: number }).__numTurns;
         // AR2a: 三路径收口 — abort 路径 vs 错误路径（stop API 已 settle 则跳过）
         const isAbort = error instanceof Error && error.name === "AbortError";
         const already = getAgentRun(traceId);
@@ -415,12 +519,16 @@ function createStreamingResponse(params: {
             outcome: isAbort ? "aborted" : "error",
             message: redact(msg),
           });
+          for (const event of foundationTaskRun.takePendingEvents()) {
+            emitAndPersist(streamEmitter.wrap(event));
+          }
         } catch (foundationError) {
           log.error("foundation task stream settlement failed", { traceId, error: foundationError });
         }
         if (collector) {
           collector.collectedEvents.push(...askEvents);
-          const { generatedAttachments } = persistIncompleteTurn({ ...persistParams, collector, errorMessage: msg, modelUsage: partialUsage });
+          const { generatedAttachments } = persistIncompleteTurn({ ...persistParams, collector, errorMessage: msg, modelUsage: partialUsage, numTurns: partialNumTurns });
+          await publishDeliveredFiles(traceId, conversationId, workspaceRootIds, generatedAttachments);
           settleRun(isAbort ? "aborted" : "error", { message: redact(msg) });
           if (!skipClientFrames) {
             enqueue({ type: "incomplete", conversationId, conversation: conversationId ? getChatConversation(conversationId) : null, generatedAttachments: generatedAttachments.length ? generatedAttachments : undefined, message: redact(msg) });
@@ -432,6 +540,8 @@ function createStreamingResponse(params: {
             routerPath: persistParams.routerResult.path, errorMessage: msg,
             userMessage: persistParams.lastUserContent, finalAnswer: "", roleMode: persistParams.roleMode, toolCallCount: 0,
             modelUsage: partialUsage,
+            numTurns: partialNumTurns,
+            llmCallCount: partialNumTurns,
             executionTier: persistParams.resolvedModel?.executionTier,
           });
           settleRun(isAbort ? "aborted" : "error", { message: redact(msg) });
@@ -447,6 +557,61 @@ function createStreamingResponse(params: {
   });
 
   return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" } });
+}
+
+async function publishDeliveredFiles(
+  runId: string,
+  conversationId: number | undefined,
+  workspaceRootIds: string[],
+  files: Array<{ name: string; formal?: boolean }>,
+): Promise<void> {
+  if (!conversationId || !workspaceRootIds.length) return;
+  const formal = files.filter((file) => file.formal);
+  if (!formal.length) return;
+  const store = await getFileWorkspaceStore();
+  const names = new Set(formal.map((file) => file.name));
+  const delivered = getDb().prepare(`
+    SELECT a.file_name,a.storage_path FROM chat_attachments a
+    JOIN chat_messages m ON m.id=a.message_id
+    WHERE m.conversation_id=? AND a.role='assistant' AND a.storage_path LIKE 'delivered/%'
+    ORDER BY a.created_at DESC
+  `).all(conversationId) as Array<{ file_name: string; storage_path: string }>;
+  for (const rootId of workspaceRootIds) {
+    const targetDir = store.outputDirectoryForRoot(rootId);
+    for (const file of delivered.filter((item) => names.has(item.file_name))) {
+      const source = path.resolve(getConversationFilesDir(conversationId), file.storage_path);
+      const conversationRoot = path.resolve(getConversationFilesDir(conversationId));
+      if (!source.startsWith(conversationRoot + path.sep)) continue;
+      if (!fs.existsSync(source)) continue;
+      const target = uniquePublishedPath(targetDir, path.basename(file.file_name));
+      fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL);
+      store.ingestManagedBuffer({
+        name: path.basename(target),
+        mediaType: guessPublishedMime(target),
+        content: fs.readFileSync(target),
+        sourceKind: "generated",
+      });
+    }
+  }
+}
+
+function uniquePublishedPath(dir: string, fileName: string): string {
+  const extension = path.extname(fileName);
+  const stem = path.basename(fileName, extension);
+  let target = path.join(dir, fileName);
+  for (let index = 2; fs.existsSync(target); index += 1) target = path.join(dir, `${stem} ${index}${extension}`);
+  return target;
+}
+
+function guessPublishedMime(filePath: string): string {
+  const map: Record<string, string> = {
+    ".xlsx":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xlsm":"application/vnd.ms-excel.sheet.macroEnabled.12",
+    ".docx":"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx":"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".pdf":"application/pdf", ".csv":"text/csv", ".txt":"text/plain", ".md":"text/markdown",
+  };
+  return map[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
 

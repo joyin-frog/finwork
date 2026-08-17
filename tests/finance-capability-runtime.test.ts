@@ -156,21 +156,11 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
     assert.equal(manifest?.validators[0]?.blocking, true);
     assert.ok(manifest?.validatorHandlers?.[manifest.validators[0]!.id]);
 
-    const shadow = await runtime.execute(definition, { value: 1 });
-    assert.equal(calls, 1, "shadow mode must execute the legacy handler once");
-    assert.deepEqual(shadow, { content: [{ type: "text", text: "1" }] });
-    assert.equal(count(db, "capability_attempts"), 0, "legacy authority must not forge new attempts");
-    assert.equal(count(db, "capability_shadow_comparisons"), 1);
-    assert.equal(
-      (db.prepare("SELECT outcome FROM capability_shadow_comparisons").get() as { outcome: string }).outcome,
-      "inconclusive",
-    );
-
-    runtime.rollout.cutover("runtime unit gate passed");
-    const cutover = await runtime.execute(definition, { value: 2 });
-    assert.equal(calls, 2, "cutover must invoke the shared handler exactly once");
-    assert.deepEqual(cutover, { content: [{ type: "text", text: "2" }] });
+    const first = await runtime.execute(definition, { value: 1 });
+    assert.equal(calls, 1, "Foundation must invoke the shared handler exactly once");
+    assert.deepEqual(first, { content: [{ type: "text", text: "1" }] });
     assert.equal(count(db, "capability_attempts"), 1);
+    assert.equal(count(db, "capability_shadow_comparisons"), 0);
     assert.equal(
       (db.prepare("SELECT status FROM capability_attempts").get() as { status: string }).status,
       "succeeded",
@@ -181,10 +171,11 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
       "released",
     );
 
-    runtime.rollout.rollback("runtime rollback rehearsal");
-    await runtime.execute(definition, { value: 3 });
-    assert.equal(calls, 3, "rollback must return to one legacy execution");
-    assert.equal(count(db, "capability_attempts"), 1);
+    const second = await runtime.execute(definition, { value: 2 });
+    assert.deepEqual(second, { content: [{ type: "text", text: "2" }] });
+    assert.equal(calls, 2);
+    assert.equal(count(db, "capability_attempts"), 2);
+    assert.throws(() => runtime.rollout.rollback("runtime rollback rehearsal"), /retired/);
 
     const sequence: string[] = [];
     const adapterRuntime: FinanceToolRuntime = {

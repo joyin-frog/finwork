@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import type { AgentAttachment, AgentFoundationContext } from "@/lib/agent/contracts";
+import type { AgentAttachment, AgentFoundationContext, AgentIntent, AgentWorkPlanSummary } from "@/lib/agent/contracts";
 import type { TaskContract as LegacyTaskContract } from "@/lib/agent/run-contract";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 import { ArtifactStore } from "@/lib/artifacts/store";
@@ -10,6 +10,7 @@ import { DocumentLocatorSchema, type ArtifactRef } from "@/lib/artifacts/contrac
 import type { PrincipalRef } from "@/lib/capability/common";
 import {
   CapabilityExecutionLedger,
+  capabilityIdsForTool,
   evaluateExecutionRequirements,
   type ExecutionRequirement,
 } from "@/lib/capability/execution-gate";
@@ -24,6 +25,7 @@ import { SecurityAuthorizer } from "@/lib/security/kernel";
 import { ensureTaskCapabilityGrant } from "@/lib/security/session-grants";
 import { TaskContractV3Schema, type TaskContractV3 } from "./contracts";
 import { TaskStore } from "./store";
+import { buildWorkPlan, evaluateTaskPreflight, WorkPlanStore } from "./work-plan";
 
 type GateOutcome = "completed" | "aborted" | "error";
 
@@ -63,7 +65,10 @@ export type ProductionTaskRun = {
   taskId: string;
   caseId: string;
   foundation: AgentFoundationContext;
-  recordRuntimeEvent(event: AgentRuntimeEvent): void;
+  plan: AgentWorkPlanSummary;
+  takePendingEvents(): AgentRuntimeEvent[];
+  recordRuntimeEvent(event: AgentRuntimeEvent): AgentRuntimeEvent[];
+  completeExecution(summary?: string): AgentRuntimeEvent[];
   markValidating(): void;
   settle(input: {
     outcome: GateOutcome;
@@ -87,6 +92,7 @@ export function beginProductionTaskRun(input: {
   principalId?: string;
   tenantId?: string;
   roleId?: string | null;
+  intent?: AgentIntent;
   casRoot?: string;
 }): ProductionTaskRun {
   const suppliedContract = input.taskContract
@@ -95,12 +101,12 @@ export function beginProductionTaskRun(input: {
   const taskId = suppliedContract?.id ?? `task-${input.traceId}`;
   const caseId = suppliedContract?.caseId ?? `case-${input.traceId}`;
   const runId = input.traceId;
-  const nodeId = `node-${input.traceId}`;
   const artifacts = new ArtifactStore(
     input.db,
     input.casRoot ?? path.join(getAppDataDir(), "artifacts", "cas"),
   );
   const taskStore = new TaskStore(input.db);
+  const workPlans = new WorkPlanStore(input.db);
   const evidence = new EvidenceLedger(input.db);
   const businessCases = new BusinessCaseStore(input.db);
   const suppliedPrincipal = suppliedContract?.security.allowedPrincipals.find((candidate) =>
@@ -193,6 +199,7 @@ export function beginProductionTaskRun(input: {
   const taskInputArtifacts = contract.inputs;
   const sourceEvidenceRefs: EvidenceRef[] = [];
   const sourceEvidenceByArtifactVersion = new Map<string, EvidenceRef>();
+  const inputArtifactByLogicalName = new Map<string, ArtifactRef>();
   for (const artifact of taskInputArtifacts) {
     artifacts.addRef(artifact.versionId, "case_input", caseId);
     const createdAt = new Date().toISOString();
@@ -224,38 +231,78 @@ export function beginProductionTaskRun(input: {
     const sourceRef = { evidenceId: source.id, outputHash: source.outputHash };
     sourceEvidenceRefs.push(sourceRef);
     sourceEvidenceByArtifactVersion.set(artifact.versionId, sourceRef);
+    inputArtifactByLogicalName.set(artifact.logicalName.trim().toLowerCase(), artifact);
   }
   taskStore.transitionCase(caseId, "preflight");
-  taskStore.savePlan({
+  const createdPlan = buildWorkPlan({
     caseId,
-    version: 1,
-    nodes: [{
-      id: nodeId,
-      capabilityId: "agent.turn",
-      capabilityVersion: "1.0.0",
-      status: "pending",
-      input: {
-        taskId,
-        inputArtifactVersionIds: taskInputArtifacts.map((artifact) => artifact.versionId),
-        legacyTaskKind: input.legacyContract.taskKind,
-      },
-      inputHash: sha256Json({
-        taskId,
-        inputArtifactVersionIds: taskInputArtifacts.map((artifact) => artifact.versionId),
-        legacyTaskKind: input.legacyContract.taskKind,
-      }),
-      idempotencyKey: input.traceId,
-      ordinal: 0,
-    }],
-    edges: [],
-    createdAt: new Date().toISOString(),
+    runId,
+    contract,
+    intent: input.intent,
+    reason: "production task contract accepted",
   });
+  taskStore.savePlan(createdPlan.casePlan);
+  let currentPlan = workPlans.create(createdPlan);
+  const pendingPlanEvents: AgentRuntimeEvent[] = [{
+    type: "work_plan_created",
+    planId: currentPlan.planId,
+    caseId,
+    version: currentPlan.version,
+    goal: currentPlan.goal,
+    steps: currentPlan.steps.filter((step) => step.userVisible).map((step) => ({
+      stepId: step.stepId,
+      stepKey: step.stepKey,
+      title: step.title,
+      expectedOutcome: step.expectedOutcome,
+      status: step.status,
+      ordinal: step.ordinal,
+    })),
+  }];
+  const changeStep = (
+    stepKey: string,
+    status: AgentWorkPlanSummary["steps"][number]["status"],
+    summary?: string,
+  ) => {
+    const changed = workPlans.setStepStatus(caseId, stepKey, status, summary);
+    if (!changed) return;
+    currentPlan = changed.plan;
+    pendingPlanEvents.push({
+      type: "work_plan_step_changed",
+      planId: changed.plan.planId,
+      caseId,
+      stepId: changed.step.stepId,
+      stepKey,
+      from: changed.from,
+      to: changed.step.status,
+      ...(summary ? { summary } : {}),
+    });
+  };
+  const promoteNextStep = (stepKey: string) => {
+    const index = currentPlan.steps.findIndex((step) => step.stepKey === stepKey);
+    const next = index >= 0 ? currentPlan.steps[index + 1] : undefined;
+    if (next?.status === "pending") changeStep(next.stepKey, "ready");
+  };
+  const preflight = evaluateTaskPreflight(contract);
+  workPlans.savePreflight(caseId, preflight);
+  changeStep("preflight", "running");
+  const missingPreflight = preflight.filter((result) => result.required && result.status !== "available");
+  if (missingPreflight.length > 0) {
+    const failure = { code: "foundation_preflight_failed", missing: missingPreflight };
+    changeStep("preflight", "failed", "必需能力不可用");
+    workPlans.finish(caseId, "failed");
+    taskStore.transitionCase(caseId, "failed", failure);
+    bindRun("failed", new Date().toISOString());
+    throw new Error(`foundation preflight failed: ${missingPreflight.map((item) => item.capabilityId).join(", ")}`);
+  }
+  changeStep("preflight", "succeeded", "输入、权限、资源与能力检查通过");
+  promoteNextStep("preflight");
   taskStore.transitionCase(caseId, "planned");
   taskStore.transitionCase(caseId, "running");
-  taskStore.updateNodeStatus(nodeId, "running");
   taskStore.saveCheckpoint(caseId, {
-    phase: "agent_turn_started",
+    phase: "plan_ready",
     traceId: input.traceId,
+    planId: currentPlan.planId,
+    planVersion: currentPlan.version,
     inputArtifactVersionIds: taskInputArtifacts.map((artifact) => artifact.versionId),
   });
 
@@ -265,6 +312,7 @@ export function beginProductionTaskRun(input: {
   let outputArtifacts: ArtifactRef[] = [];
   let deliveredOutputCount = 0;
   let deliveryGatePassed = expectedCount === 0;
+  const startedTools = new Map<string, { toolName: string; input?: unknown }>();
   const buildSettlement = (result: {
     outcome: GateOutcome;
     state: ProductionTaskSettlement["state"];
@@ -315,9 +363,18 @@ export function beginProductionTaskRun(input: {
       stableFailureCode: result.stableFailureCode ?? null,
     };
   };
+  const drainPlanEvents = () => pendingPlanEvents.splice(0, pendingPlanEvents.length);
+  const markActivePlanFailed = (summary: string) => {
+    const active = currentPlan.steps.find((step) =>
+      ["ready", "running", "verifying", "waiting_user"].includes(step.status)
+    );
+    if (active) changeStep(active.stepKey, "failed", summary);
+    workPlans.finish(caseId, "failed");
+  };
   return {
     taskId,
     caseId,
+    plan: currentPlan,
     foundation: {
       taskId,
       caseId,
@@ -327,9 +384,41 @@ export function beginProductionTaskRun(input: {
       security: contract.security,
       budget: contract.budget,
     },
+    takePendingEvents: drainPlanEvents,
     recordRuntimeEvent(event) {
-      if (settled) return;
+      if (settled) return [];
+      const before = pendingPlanEvents.length;
       executionLedger.record(event);
+      if (
+        (event.type === "message_started" || event.type === "message_delta")
+        && currentPlan.steps.find((step) => step.stepKey === "inspect_inputs")?.status === "succeeded"
+      ) {
+        changeStep("execute", "running");
+      }
+      if (event.type === "tool_started") {
+        if (event.toolCallId) startedTools.set(event.toolCallId, { toolName: event.toolName, input: event.input });
+        const step = workPlanStepForTool(event.toolName, event.input);
+        if (step) changeStep(step.stepKey, "running");
+      }
+      if (event.type === "tool_completed" && event.isError !== true) {
+        const started = event.toolCallId ? startedTools.get(event.toolCallId) : undefined;
+        const completedToolName = event.toolName || started?.toolName;
+        const step = completedToolName ? workPlanStepForTool(completedToolName, started?.input) : null;
+        if (step?.completesStep && step.stepKey !== "deliver") {
+          changeStep(step.stepKey, "succeeded", `${completedToolName} 执行完成`);
+          promoteNextStep(step.stepKey);
+        }
+      }
+      if (event.type === "ask_user") {
+        const active = currentPlan.steps.find((step) => step.status === "running");
+        if (active) changeStep(active.stepKey, "waiting_user", "等待用户提供必要决策");
+        if (taskStore.getCaseState(caseId) === "running") taskStore.transitionCase(caseId, "waiting_for_human");
+      }
+      if (event.type === "ask_user_answered") {
+        const waiting = currentPlan.steps.find((step) => step.status === "waiting_user");
+        if (waiting) changeStep(waiting.stepKey, "running", "已收到用户决策，继续执行");
+        if (taskStore.getCaseState(caseId) === "waiting_for_human") taskStore.transitionCase(caseId, "running");
+      }
       captureGovernedRetrievalEvidence({
         event,
         db: input.db,
@@ -342,10 +431,32 @@ export function beginProductionTaskRun(input: {
         classification: contract.security.classification,
         sourceEvidenceByArtifactVersion,
       });
+      captureBusinessAnalysisEvidence({
+        event,
+        evidence,
+        caseId,
+        traceId: input.traceId,
+        principal,
+        tenantId,
+        authorizer,
+        classification: contract.security.classification,
+        inputArtifactByLogicalName,
+        sourceEvidenceByArtifactVersion,
+      });
+      return pendingPlanEvents.splice(before);
+    },
+    completeExecution(summary = "主 Agent 已形成最终结果") {
+      if (settled) return [];
+      const before = pendingPlanEvents.length;
+      changeStep("execute", "running");
+      changeStep("execute", "succeeded", summary);
+      promoteNextStep("execute");
+      return pendingPlanEvents.splice(before);
     },
     markValidating() {
       if (settled || validating) return;
       taskStore.transitionCase(caseId, "validating");
+      changeStep("validate", "verifying", "正在运行阻断校验与交付检查");
       validating = true;
     },
     getSettlement() {
@@ -359,6 +470,7 @@ export function beginProductionTaskRun(input: {
       if (result.outcome === "completed") {
         if (!validating) {
           taskStore.transitionCase(caseId, "validating");
+          changeStep("validate", "verifying", "正在运行阻断校验与交付检查");
           validating = true;
         }
         const executionDecision = evaluateExecutionRequirements(
@@ -385,7 +497,8 @@ export function beginProductionTaskRun(input: {
             missing: executionDecision.missing,
             observedCapabilityIds: executionDecision.observedCapabilityIds,
           };
-          taskStore.updateNodeStatus(nodeId, "failed", failure);
+          changeStep("validate", "failed", executionDecision.message);
+          workPlans.finish(caseId, "failed");
           taskStore.transitionCase(caseId, "failed", failure);
           bindRun("failed", new Date().toISOString());
           settled = true;
@@ -445,7 +558,8 @@ export function beginProductionTaskRun(input: {
         });
         if (!contractGate.ok) {
           const failure = { code: contractGate.code, ...contractGate.details };
-          taskStore.updateNodeStatus(nodeId, "failed", failure);
+          changeStep("validate", "failed", contractGate.message ?? "交付合同未满足");
+          workPlans.finish(caseId, "failed");
           taskStore.transitionCase(caseId, "failed", failure);
           bindRun("failed", new Date().toISOString());
           settled = true;
@@ -458,11 +572,49 @@ export function beginProductionTaskRun(input: {
             `foundation delivery gate failed [${contractGate.code}]: ${contractGate.message ?? "task contract requirements were not met"}`,
           );
         }
-        evidence.assertDeliveryGate(caseId);
-        taskStore.updateNodeStatus(nodeId, "succeeded", {
-          outputArtifactVersionIds: outputArtifacts.map((artifact) => artifact.versionId),
+        if (outputArtifacts.length > 0 && currentPlan.steps.some((step) => step.stepKey === "produce_outputs")) {
+          changeStep("produce_outputs", "succeeded", `已生成 ${outputArtifacts.length} 个受管产物`);
+          promoteNextStep("produce_outputs");
+        }
+        const unfinishedPlanSteps = currentPlan.steps.filter((step) =>
+          step.blocking
+          && step.stepKey !== "validate"
+          && step.stepKey !== "deliver"
+          && step.status !== "succeeded"
+          && step.status !== "skipped"
+        );
+        evidence.recordAssertion({
+          caseId,
+          assertionId: "work-plan-completion-gate",
+          validatorId: "work-plan.completion-gate",
+          status: unfinishedPlanSteps.length === 0 ? "passed" : "failed",
+          blocking: true,
+          details: { unfinishedStepKeys: unfinishedPlanSteps.map((step) => step.stepKey) },
         });
+        if (unfinishedPlanSteps.length > 0) {
+          const failure = {
+            code: "foundation_plan_incomplete",
+            unfinishedStepKeys: unfinishedPlanSteps.map((step) => step.stepKey),
+          };
+          changeStep("validate", "failed", `计划仍有未完成步骤：${failure.unfinishedStepKeys.join(", ")}`);
+          workPlans.finish(caseId, "failed");
+          taskStore.transitionCase(caseId, "failed", failure);
+          bindRun("failed", new Date().toISOString());
+          settled = true;
+          settlement = buildSettlement({
+            outcome: result.outcome,
+            state: "failed",
+            stableFailureCode: "foundation_plan_incomplete",
+          });
+          throw new Error(`foundation plan gate failed: ${failure.unfinishedStepKeys.join(", ")}`);
+        }
+        evidence.assertDeliveryGate(caseId);
+        changeStep("validate", "succeeded", "阻断校验与证据检查通过");
         taskStore.transitionCase(caseId, "finalizing");
+        if (currentPlan.steps.some((step) => step.stepKey === "deliver")) {
+          changeStep("deliver", "running");
+          changeStep("deliver", "succeeded", `已登记 ${outputArtifacts.length} 个不可变交付物`);
+        }
         taskStore.saveCheckpoint(caseId, {
           phase: "delivery_verified",
           traceId: input.traceId,
@@ -470,12 +622,14 @@ export function beginProductionTaskRun(input: {
           completionEvidence: evidence.buildCompletionEvidence(caseId),
         });
         taskStore.transitionCase(caseId, "delivered");
+        workPlans.finish(caseId, "completed");
         bindRun("succeeded", new Date().toISOString());
         settled = true;
         settlement = buildSettlement({ outcome: result.outcome, state: "delivered" });
       } else {
         if (!validating) {
           taskStore.transitionCase(caseId, "validating");
+          changeStep("validate", "verifying", "正在收口失败与取消状态");
           validating = true;
         }
         evidence.recordAssertion({
@@ -486,11 +640,13 @@ export function beginProductionTaskRun(input: {
           blocking: true,
           details: { outcome: result.outcome, message: result.message ?? null },
         });
-        taskStore.updateNodeStatus(
-          nodeId,
-          result.outcome === "aborted" ? "canceled" : "failed",
-          { outcome: result.outcome, message: result.message ?? null },
-        );
+        if (result.outcome === "aborted") {
+          const active = currentPlan.steps.find((step) => ["ready", "running", "verifying", "waiting_user"].includes(step.status));
+          if (active) changeStep(active.stepKey, "canceled", result.message ?? "任务已取消");
+          workPlans.finish(caseId, "canceled");
+        } else {
+          markActivePlanFailed(result.message ?? "Agent 执行失败");
+        }
         taskStore.transitionCase(
           caseId,
           result.outcome === "aborted" ? "canceled" : "failed",
@@ -616,6 +772,130 @@ function captureGovernedRetrievalEvidence(input: {
     });
     index += 1;
   }
+}
+
+function captureBusinessAnalysisEvidence(input: {
+  event: AgentRuntimeEvent;
+  evidence: EvidenceLedger;
+  caseId: string;
+  traceId: string;
+  principal: PrincipalRef;
+  tenantId: string;
+  authorizer: SecurityAuthorizer;
+  classification: TaskContractV3["security"]["classification"];
+  inputArtifactByLogicalName: ReadonlyMap<string, ArtifactRef>;
+  sourceEvidenceByArtifactVersion: ReadonlyMap<string, EvidenceRef>;
+}): void {
+  const event = input.event;
+  if (event.type !== "tool_completed" || event.isError || event.toolName !== "generate_business_analysis") return;
+  if (!event.structured || typeof event.structured !== "object") return;
+  const provenance = (event.structured as { provenance?: unknown }).provenance;
+  if (!provenance || typeof provenance !== "object") return;
+  const rawSources = (provenance as { sources?: unknown }).sources;
+  const rawFacts = (provenance as { workbookFacts?: unknown }).workbookFacts;
+  if (!Array.isArray(rawSources) || !Array.isArray(rawFacts)) return;
+  const workbookSource = rawSources.find((source) =>
+    source && typeof source === "object" && (source as { kind?: unknown }).kind === "workbook"
+  ) as { logicalName?: unknown } | undefined;
+  const logicalName = typeof workbookSource?.logicalName === "string" ? workbookSource.logicalName.trim().toLowerCase() : "";
+  const spreadsheetInputs = [...input.inputArtifactByLogicalName.values()].filter((artifact) =>
+    /spreadsheet|excel|csv/i.test(artifact.mediaType) || /\.(?:xlsx|xlsm|xls|csv|tsv)$/i.test(artifact.logicalName)
+  );
+  const artifact = input.inputArtifactByLogicalName.get(logicalName)
+    ?? (spreadsheetInputs.length === 1 ? spreadsheetInputs[0] : undefined);
+  if (!artifact) return;
+  const sourceRef = input.sourceEvidenceByArtifactVersion.get(artifact.versionId);
+  if (!sourceRef) return;
+
+  let index = 0;
+  for (const rawFact of rawFacts.slice(0, 200)) {
+    if (!rawFact || typeof rawFact !== "object") continue;
+    const fact = rawFact as { field?: unknown; value?: unknown; locator?: unknown };
+    if (typeof fact.field !== "string" || typeof fact.value !== "number" || !Number.isFinite(fact.value)) continue;
+    const parsedLocator = DocumentLocatorSchema.safeParse(fact.locator);
+    if (!parsedLocator.success || parsedLocator.data.kind !== "sheet_range") continue;
+    const createdAt = new Date().toISOString();
+    const policyDecisionId = authorizeEvidenceWrite({
+      authorizer: input.authorizer,
+      principal: input.principal,
+      tenantId: input.tenantId,
+      caseId: input.caseId,
+      capabilityId: "agent.turn",
+      artifactVersionId: artifact.versionId,
+      classification: input.classification,
+      now: createdAt,
+    });
+    const statement = `${fact.field} = ${fact.value}`;
+    const extraction = input.evidence.addEvidence(input.caseId, {
+      id: randomUUID(),
+      type: "extraction",
+      artifact,
+      locator: parsedLocator.data,
+      producer: {
+        capabilityId: "agent.turn",
+        version: "business-analysis-provenance-bridge-v1",
+        attemptId: `${input.traceId}-business-fact-${index}`.slice(0, 200),
+      },
+      inputs: [sourceRef],
+      outputHash: sha256Json({ field: fact.field, value: fact.value }),
+      policyDecisionId,
+      createdAt,
+    });
+    const claimId = randomUUID();
+    input.evidence.addClaim({
+      id: claimId,
+      caseId: input.caseId,
+      statement,
+      structuredValue: { field: fact.field, value: fact.value },
+      evidenceRefs: [extraction.id],
+      status: "verified",
+    });
+    input.evidence.addCitation({
+      id: randomUUID(),
+      claimId,
+      artifactVersionId: artifact.versionId,
+      locator: parsedLocator.data,
+      quoteHash: sha256Json(statement),
+      createdAt,
+    });
+    index += 1;
+  }
+}
+
+function workPlanStepForTool(
+  toolName: string,
+  input?: unknown,
+): { stepKey: string; completesStep: boolean } | null {
+  const normalized = toolName.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "read" && isSkillInstructionRead(input)) return null;
+  // Manifest discovery is part of input inspection, but it does not prove that
+  // the user file itself has been opened. Keep the step running until the
+  // subsequent read_workspace_file/read_document succeeds.
+  if (normalized === "list_workspace_files") {
+    return { stepKey: "inspect_inputs", completesStep: false };
+  }
+  const capabilities = capabilityIdsForTool(normalized);
+  if (normalized === "spawn_subagent" || capabilities.includes("agent.delegate")) {
+    return { stepKey: "coordinate_specialists", completesStep: true };
+  }
+  if (capabilities.some((id) => id === "research.web" || id.startsWith("retrieval.") || id.startsWith("research."))) {
+    return { stepKey: "gather_evidence", completesStep: true };
+  }
+  if (normalized === "finalize_deliverable" || capabilities.some((id) => id.endsWith(".write"))) {
+    return { stepKey: "produce_outputs", completesStep: normalized === "finalize_deliverable" };
+  }
+  if (capabilities.some((id) => id.endsWith(".read"))) {
+    return { stepKey: "inspect_inputs", completesStep: normalized !== "list_workspace_files" };
+  }
+  return { stepKey: "execute", completesStep: false };
+}
+
+function isSkillInstructionRead(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false;
+  const pathValue = (input as { path?: unknown }).path;
+  return typeof pathValue === "string"
+    && /(?:^|[\\/])skills?(?:[\\/]|$)/i.test(pathValue)
+    && /(?:^|[\\/])SKILL\.md$/i.test(pathValue);
 }
 
 /**
@@ -869,7 +1149,10 @@ function buildTaskContract(input: {
   principalId: string;
 }): TaskContractV3 {
   const spreadsheet = input.legacyContract.taskKind !== "text";
+  const spreadsheetWrite = input.legacyContract.spreadsheetRequirement?.needsWrite === true;
+  const spreadsheetValidation = input.legacyContract.requiredDeliverables.length > 0;
   const research = isResearchTask(input.goal);
+  const delegation = /跨(?:部门|角色)|专员|协同|并行|subagent/i.test(input.goal);
   const allowedDomains = research ? configuredResearchDomains() : [];
   const allowExternalEgress = research && allowedDomains.length > 0;
   return TaskContractV3Schema.parse({
@@ -892,12 +1175,19 @@ function buildTaskContract(input: {
       ...(spreadsheet
         ? [
             { capabilityId: "spreadsheet.read", versionRange: "^1.0.0" },
-            { capabilityId: "spreadsheet.write", versionRange: "^1.0.0" },
-            { capabilityId: "spreadsheet.validate", versionRange: "^1.0.0" },
+            ...(spreadsheetWrite
+              ? [{ capabilityId: "spreadsheet.write", versionRange: "^1.0.0" }]
+              : []),
+            ...(spreadsheetValidation
+              ? [{ capabilityId: "spreadsheet.validate", versionRange: "^1.0.0" }]
+              : []),
           ]
         : []),
       ...(research
         ? [{ capabilityId: "research.web", versionRange: "^1.0.0" }]
+        : []),
+      ...(delegation
+        ? [{ capabilityId: "agent.delegate", versionRange: "^1.0.0" }]
         : []),
     ],
     invariants: [{
@@ -926,7 +1216,9 @@ function buildTaskContract(input: {
     humanDecisionPoints: [],
     noGuess: ["entity", "period", "currency", "accounting_standard"],
     noDegrade: [
-      ...(spreadsheet ? ["spreadsheet.write", "spreadsheet.validate", "evidence.delivery"] : ["evidence.assertion"]),
+      ...(spreadsheet ? ["spreadsheet.read"] : ["evidence.assertion"]),
+      ...(spreadsheetWrite ? ["spreadsheet.write"] : []),
+      ...(spreadsheetValidation ? ["spreadsheet.validate", "evidence.delivery"] : []),
       ...(research ? ["research.web", "evidence.citation"] : []),
     ],
     security: {

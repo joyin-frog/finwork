@@ -38,6 +38,22 @@ function contract(taskKind: TaskContract["taskKind"]): TaskContract {
   };
 }
 
+function readOnlySpreadsheetContract(): TaskContract {
+  return {
+    version: 1,
+    taskKind: "spreadsheet",
+    spreadsheetRequirement: {
+      needsLegacyXlsRead: false,
+      needsWrite: false,
+      needsRecalc: false,
+      needsRender: false,
+      needsMacroPreservation: false,
+    },
+    requiredDeliverables: [],
+    expectationSnapshot: {},
+  };
+}
+
 function recordSpreadsheetExecution(
   run: ReturnType<typeof beginProductionTaskRun>,
 ): void {
@@ -61,6 +77,13 @@ function recordSpreadsheetExecution(
     toolCallId: `${run.taskId}:finalize`,
     isError: false,
   });
+  recordAgentCompletion(run);
+}
+
+function recordAgentCompletion(run: ReturnType<typeof beginProductionTaskRun>): void {
+  run.recordRuntimeEvent({ type: "message_started", channel: "text" });
+  run.recordRuntimeEvent({ type: "message_completed", channel: "text", content: "done" });
+  run.completeExecution();
 }
 
 function benchmarkArtifactContract(
@@ -142,6 +165,9 @@ export const productionTaskRuntimeTestPromise = (async () => {
       legacyContract: contract("text"),
       casRoot: path.join(dataRoot, "cas"),
     });
+    inputRun.recordRuntimeEvent({ type: "tool_started", toolName: "read_document", toolCallId: "read-input" });
+    inputRun.recordRuntimeEvent({ type: "tool_completed", toolCallId: "read-input", isError: false });
+    recordAgentCompletion(inputRun);
     inputRun.markValidating();
     inputRun.settle({ outcome: "completed" });
     assert.equal(
@@ -169,6 +195,125 @@ export const productionTaskRuntimeTestPromise = (async () => {
       (db.prepare("SELECT COUNT(*) AS count FROM artifact_refs WHERE owner_id = ? AND ref_type = 'case_input'")
         .get(inputRun.caseId) as { count: number }).count,
       1,
+    );
+
+    const readOnlyRun = beginProductionTaskRun({
+      db,
+      traceId: "00000000-0000-4000-8000-000000000009",
+      conversationId: 12,
+      goal: "分析下这个报表",
+      attachments: [{
+        name: "report.xlsx",
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        size: 12,
+        dataUrl: "data:application/octet-stream;base64,dGVzdA==",
+      }],
+      legacyContract: readOnlySpreadsheetContract(),
+      casRoot: path.join(dataRoot, "cas"),
+    });
+    const persistedReadOnlyContract = JSON.parse((db.prepare(
+      "SELECT contract_json FROM task_contracts WHERE task_id = ?",
+    ).get(readOnlyRun.taskId) as { contract_json: string }).contract_json) as TaskContractV3;
+    assert.deepEqual(
+      persistedReadOnlyContract.requiredCapabilities.map((item) => item.capabilityId),
+      ["agent.turn", "spreadsheet.read"],
+    );
+    assert.deepEqual(persistedReadOnlyContract.expectedOutputs, []);
+    assert.ok(!persistedReadOnlyContract.noDegrade.includes("spreadsheet.write"));
+    assert.ok(!persistedReadOnlyContract.noDegrade.includes("spreadsheet.validate"));
+    readOnlyRun.recordRuntimeEvent({
+      type: "tool_started",
+      toolName: "read",
+      toolCallId: "read-xlsx-skill",
+      input: { path: "/opt/finwork/skills/xlsx/SKILL.md" },
+    });
+    readOnlyRun.recordRuntimeEvent({
+      type: "tool_completed",
+      toolName: "read",
+      toolCallId: "read-xlsx-skill",
+      isError: false,
+    });
+    readOnlyRun.recordRuntimeEvent({ type: "message_started", channel: "text" });
+    readOnlyRun.recordRuntimeEvent({ type: "message_completed", channel: "text", content: "开始读取报表" });
+    const persistedBeforeInput = db.prepare(`
+      SELECT s.step_key,s.status FROM case_plan_steps s
+      JOIN case_plan_versions p ON p.plan_id=s.plan_id
+      WHERE p.case_id=?
+    `).all(readOnlyRun.caseId) as Array<{ step_key: string; status: string }>;
+    assert.notEqual(
+      persistedBeforeInput.find((step) => step.step_key === "execute")?.status,
+      "running",
+      "读取 Skill 和中间说明文字不得提前启动 execute",
+    );
+    assert.notEqual(
+      persistedBeforeInput.find((step) => step.step_key === "inspect_inputs")?.status,
+      "succeeded",
+      "读取 Skill 说明不得冒充已读取用户输入",
+    );
+    readOnlyRun.recordRuntimeEvent({
+      type: "tool_started",
+      toolName: "list_workspace_files",
+      toolCallId: "list-read-only-sheet",
+    });
+    readOnlyRun.recordRuntimeEvent({
+      type: "tool_completed",
+      toolName: "list_workspace_files",
+      toolCallId: "list-read-only-sheet",
+      isError: false,
+    });
+    const persistedAfterList = db.prepare(`
+      SELECT s.step_key,s.status FROM case_plan_steps s
+      JOIN case_plan_versions p ON p.plan_id=s.plan_id
+      WHERE p.case_id=?
+    `).all(readOnlyRun.caseId) as Array<{ step_key: string; status: string }>;
+    assert.equal(persistedAfterList.find((step) => step.step_key === "inspect_inputs")?.status, "running");
+    assert.notEqual(persistedAfterList.find((step) => step.step_key === "execute")?.status, "running");
+    readOnlyRun.recordRuntimeEvent({
+      type: "tool_started",
+      toolName: "read_workspace_file",
+      toolCallId: "read-only-sheet",
+    });
+    readOnlyRun.recordRuntimeEvent({
+      type: "tool_completed",
+      toolName: "read_workspace_file",
+      toolCallId: "read-only-sheet",
+      isError: false,
+    });
+    readOnlyRun.recordRuntimeEvent({
+      type: "tool_completed",
+      toolName: "generate_business_analysis",
+      toolCallId: "analyze-read-only-sheet",
+      isError: false,
+      structured: {
+        provenance: {
+          sources: [{ kind: "workbook", logicalName: "report.xlsx", factCount: 2 }],
+          workbookFacts: [{
+            field: "incomeStatement.revenue",
+            value: 55_379_467.47,
+            locator: { kind: "sheet_range", sheet: "利润表", range: "D5" },
+          }, {
+            field: "cashFlow.operatingCashFlow",
+            value: -11_130_687.72,
+            locator: { kind: "sheet_range", sheet: "现金流量表", range: "I12" },
+          }],
+        },
+      },
+    });
+    recordAgentCompletion(readOnlyRun);
+    readOnlyRun.markValidating();
+    assert.equal(readOnlyRun.settle({ outcome: "completed" }).state, "delivered");
+    const cellEvidence = db.prepare(`
+      SELECT locator_json FROM evidence_records
+      WHERE case_id=? AND evidence_type='extraction'
+    `).all(readOnlyRun.caseId) as Array<{ locator_json: string }>;
+    assert.deepEqual(new Set(cellEvidence.map((row) => {
+      const locator = JSON.parse(row.locator_json) as { sheet: string; range: string };
+      return `${locator.sheet}!${locator.range}`;
+    })), new Set(["利润表!D5", "现金流量表!I12"]));
+    assert.equal(
+      (db.prepare("SELECT COUNT(*) AS count FROM citation_records").get() as { count: number }).count,
+      2,
+      "经营分析字段必须形成单元格级 citation",
     );
 
     const benchmarkContract: TaskContractV3 = {
@@ -237,6 +382,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
       "SELECT contract_json FROM task_contracts WHERE task_id = ?",
     ).get(benchmarkRun.taskId) as { contract_json: string }).contract_json) as TaskContractV3;
     assert.deepEqual(persistedBenchmarkContract.budget, benchmarkContract.budget);
+    recordAgentCompletion(benchmarkRun);
     const benchmarkSettlement = benchmarkRun.settle({ outcome: "completed" });
     assert.equal(benchmarkSettlement.state, "delivered");
     assert.equal(benchmarkSettlement.stableFailureCode, null);
@@ -303,6 +449,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
       taskContract: wrongNameContract, principalId: "benchmark-runner", tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
+    recordAgentCompletion(wrongNameRun);
     assert.throws(
       () => wrongNameRun.settle({ outcome: "completed", assistantMessageId: messageId }),
       /foundation_delivery_artifact_missing/,
@@ -316,6 +463,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
       taskContract: missingValidatorContract, principalId: "benchmark-runner", tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
+    recordAgentCompletion(missingValidatorRun);
     assert.throws(
       () => missingValidatorRun.settle({ outcome: "completed", assistantMessageId: messageId }),
       /foundation_required_validator_missing/,
@@ -331,6 +479,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
       taskContract: missingEvidenceContract, principalId: "benchmark-runner", tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
+    recordAgentCompletion(missingEvidenceRun);
     db.prepare(`
       INSERT INTO assertion_results
         (assertion_id, case_id, validator_id, status, blocking, details_json)
@@ -349,6 +498,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
       taskContract: strictSuccessContract, principalId: "benchmark-runner", tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
+    recordAgentCompletion(strictSuccessRun);
     db.prepare(`
       INSERT INTO assertion_results
         (assertion_id, case_id, validator_id, status, blocking, details_json)
@@ -397,6 +547,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
       toolName: "patch_workbook",
       toolCallId: "uncompleted-write",
     });
+    recordAgentCompletion(capabilityMissingRun);
     assert.throws(
       () => capabilityMissingRun.settle({ outcome: "completed", assistantMessageId: messageId }),
       /foundation capability gate failed/,

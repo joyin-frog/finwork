@@ -11,7 +11,7 @@ export const foundationDiagnosticsTestPromise = (async () => {
   try {
     new CapabilityFoundationRollout(db).ensureInitialized("diagnostics fixture");
     const snapshot = captureFoundationDiagnostics(db, "2026-08-09T00:00:00.000Z");
-    assert.equal(snapshot.rollout?.authority, "legacy");
+    assert.equal(snapshot.rollout?.authority, "new");
     assert.equal(snapshot.artifacts.logicalBytes, 0);
     assert.equal(snapshot.retrieval.chunks, 0);
     assert.equal((db.prepare("SELECT COUNT(*) AS n FROM foundation_diagnostics").get() as { n: number }).n, 1);
