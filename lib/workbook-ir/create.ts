@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { addWorkbookCharts, type WorkbookChartInput } from "./charts";
 
 export const WORKBOOK_CREATE_LIMITS = {
   sheets: 20,
@@ -6,6 +7,8 @@ export const WORKBOOK_CREATE_LIMITS = {
   columnsPerSheet: 100,
   totalCells: 100_000,
   formulas: 10_000,
+  chartsPerSheet: 20,
+  totalCharts: 50,
   textLength: 32_767,
 } as const;
 
@@ -26,6 +29,7 @@ export type WorkbookSheetInput = {
   freezeRows?: number;
   autoFilter?: boolean;
   columnWidths?: number[];
+  charts?: WorkbookChartInput[];
 };
 
 export type CreateWorkbookInput = {
@@ -38,6 +42,7 @@ export type WorkbookCreationResult = {
   rowCount: number;
   cellCount: number;
   formulaCount: number;
+  chartCount: number;
 };
 
 const INVALID_SHEET_NAME = /[\\/*?:\[\]]/;
@@ -110,6 +115,7 @@ export async function createWorkbookBuffer(input: CreateWorkbookInput): Promise<
   let rowCount = 0;
   let cellCount = 0;
   let formulaCount = 0;
+  let chartCount = 0;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Finwork";
   workbook.created = new Date();
@@ -123,6 +129,13 @@ export async function createWorkbookBuffer(input: CreateWorkbookInput): Promise<
     names.add(foldedName);
     if (sheetInput.rows.length > WORKBOOK_CREATE_LIMITS.rowsPerSheet) {
       throw new Error(`${name} 行数超过上限 ${WORKBOOK_CREATE_LIMITS.rowsPerSheet}`);
+    }
+    if ((sheetInput.charts?.length ?? 0) > WORKBOOK_CREATE_LIMITS.chartsPerSheet) {
+      throw new Error(`${name} 图表数量超过上限 ${WORKBOOK_CREATE_LIMITS.chartsPerSheet}`);
+    }
+    chartCount += sheetInput.charts?.length ?? 0;
+    if (chartCount > WORKBOOK_CREATE_LIMITS.totalCharts) {
+      throw new Error(`图表总数超过上限 ${WORKBOOK_CREATE_LIMITS.totalCharts}`);
     }
 
     const maxColumns = sheetInput.rows.reduce((max, row) => Math.max(max, row.length), 0);
@@ -201,12 +214,25 @@ export async function createWorkbookBuffer(input: CreateWorkbookInput): Promise<
     }
   }
 
+  for (const sheetInput of input.sheets) {
+    for (const chart of sheetInput.charts ?? []) {
+      if (!names.has(chart.sourceSheet.toLocaleLowerCase("en-US"))) {
+        throw new Error(`图表 ${chart.title} 的 sourceSheet 不存在：${chart.sourceSheet}`);
+      }
+    }
+  }
+
   const bytes = await workbook.xlsx.writeBuffer();
+  const buffer = await addWorkbookCharts(
+    Buffer.from(bytes),
+    input.sheets.map((sheet, index) => ({ sheetIndex: index + 1, charts: sheet.charts ?? [] })),
+  );
   return {
-    buffer: Buffer.from(bytes),
+    buffer,
     sheetCount: input.sheets.length,
     rowCount,
     cellCount,
     formulaCount,
+    chartCount,
   };
 }

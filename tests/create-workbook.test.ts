@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
 import { buildFinanceToolDefinitions } from "@/lib/agent/mcp-tools";
 import { createWorkbookBuffer } from "@/lib/workbook-ir";
+import { getPythonPath } from "@/lib/runtime/paths";
 
 type ToolResult = {
   isError?: boolean;
-  structuredContent?: { filePath?: string };
+  structuredContent?: { filePath?: string; chartCount?: number };
   content?: Array<{ text?: string }>;
 };
 
@@ -31,6 +34,27 @@ export const createWorkbookTestPromise = (async () => {
           ["研发部", 160, 130, { formula: "(C3-B3)/B3", result: -0.1875, numberFormat: "0.0%" }, null],
           ["合计", { formula: "SUM(B2:B3)", result: 260 }, { formula: "SUM(C2:C3)", result: 250 }, null, null],
         ],
+        charts: [
+          {
+            type: "bar",
+            title: "预算与实际",
+            sourceSheet: "汇总",
+            categoryRange: "A2:A3",
+            valueRange: "C2:C3",
+            direction: "column",
+            fromCell: "G2",
+            toCell: "N18",
+          },
+          {
+            type: "pie",
+            title: "实际结构",
+            sourceSheet: "汇总",
+            categoryRange: "A2:A3",
+            valueRange: "C2:C3",
+            fromCell: "G20",
+            toCell: "N36",
+          },
+        ],
       }],
     };
 
@@ -38,6 +62,7 @@ export const createWorkbookTestPromise = (async () => {
     assert.equal(first.isError, undefined);
     const firstPath = first.structuredContent?.filePath;
     assert.ok(firstPath?.endsWith("预算差异.xlsx"));
+    assert.equal(first.structuredContent?.chartCount, 2);
     assert.equal((await stat(firstPath)).mode & 0o777, 0o600);
 
     const workbook = new ExcelJS.Workbook();
@@ -52,6 +77,30 @@ export const createWorkbookTestPromise = (async () => {
     assert.equal(sheet.getCell("E2").value, "=保持为文本");
     assert.equal(sheet.views[0]?.state, "frozen");
     assert.ok(sheet.autoFilter);
+
+    const packageZip = await JSZip.loadAsync(await readFile(firstPath));
+    assert.ok(packageZip.file("xl/charts/chart1.xml"), "bar chart OOXML must exist");
+    assert.ok(packageZip.file("xl/charts/chart2.xml"), "pie chart OOXML must exist");
+    assert.ok(packageZip.file("xl/drawings/drawing1.xml"), "drawing OOXML must exist");
+    assert.match(
+      await packageZip.file("xl/worksheets/sheet1.xml")!.async("string"),
+      /<drawing r:id="rId\d+"\/>/,
+    );
+    const chartProbe = execFileSync(getPythonPath(), [
+      "-c",
+      "import openpyxl,sys; w=openpyxl.load_workbook(sys.argv[1]); print(len(w['汇总']._charts))",
+      firstPath,
+    ], { encoding: "utf8" }).trim();
+    assert.equal(chartProbe, "2", "openpyxl must recognize both native charts");
+
+    const checkTies = definitions.find((item) => item.name === "check_workbook_ties");
+    assert.ok(checkTies);
+    const mismatchedTie = await checkTies.handler({
+      filePath: firstPath,
+      checks: [{ label: "预算=实际", left: ["汇总!B2"], right: ["汇总!C2"], tolerance: 0.01 }],
+    }) as ToolResult;
+    assert.equal(mismatchedTie.isError, true, "mismatched tie must be a failed validation fact");
+    assert.match(mismatchedTie.content?.[0]?.text ?? "", /不平 1/);
 
     const firstBytes = await readFile(firstPath);
     const second = await definition.handler(args) as ToolResult;

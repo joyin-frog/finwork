@@ -45,7 +45,7 @@ export type CanonicalIncomeStatement = {
   cost: number;                  // 营业成本 行2
   sellingExpense: number;        // 销售费用 行11
   adminExpense: number;          // 管理费用 行14
-  rdExpense: number;             // 研发费用 行17
+  rdExpense: number;             // 独立列报的研发费用；管理费用下“其中：研究费用”不得重复计入
   financeExpense: number;        // 财务费用 行18
   netProfit: number;             // 净利润 行32
   /** 上年同期(损益表内置) */

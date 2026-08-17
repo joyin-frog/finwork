@@ -81,7 +81,12 @@ export function createCheckWorkbookTiesTool(
         `勾稽核对：通过 ${counts.passed}、不平 ${counts.failed}、未验证 ${counts.unverifiable}`,
         ...results.map((r) => `${r.status === "passed" ? "✅" : r.status === "failed" ? "❌" : "⚠️"} ${r.label}：${r.detail}`),
       ];
-      return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+      const isError = counts.failed > 0 || counts.unverifiable > 0;
+      return {
+        content: [{ type: "text" as const, text: lines.join("\n") }],
+        structuredContent: { counts, results },
+        ...(isError ? { isError: true as const } : {}),
+      };
     },
   );
 }

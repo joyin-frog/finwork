@@ -82,7 +82,20 @@ export type BudgetData = {
 
 const asPct = (r: RatioResult) => (r.ok ? `${round2(r.value * 100)}%` : `不可算(${r.reason})`);
 const asTimes = (r: RatioResult) => (r.ok ? `${round2(r.value)} 倍/次` : `不可算(${r.reason})`);
-const asPctTimes = (r: RatioResult) => (r.ok ? `${round2(r.value * 100)}%` : `不可算(${r.reason})`);
+
+function asPeriodAwareTimes(r: RatioResult, c: MetricCtx): string {
+  if (!r.ok) return `不可算(${r.reason})`;
+  return c.periodMonths
+    ? `${round2(r.value * c.annualizationFactor)} 次/年（本期 ${round2(r.value)} 次）`
+    : `${round2(r.value)} 次（本期，未年化）`;
+}
+
+function asPeriodAwarePct(r: RatioResult, c: MetricCtx): string {
+  if (!r.ok) return `不可算(${r.reason})`;
+  return c.periodMonths
+    ? `${round2(r.value * c.annualizationFactor * 100)}% 年化（本期 ${round2(r.value * 100)}%）`
+    : `${round2(r.value * 100)}%（本期，未年化）`;
+}
 
 const NO_BASELINE = "无基准";
 
@@ -141,6 +154,8 @@ export type BuildV2Options = {
       netProfit?: number;
     };
   };
+  /** 损益/现金流覆盖的累计月份；提供后周转率和 ROE 按 12/月数年化。 */
+  periodMonths?: number;
   meta: ReportMeta;
 };
 
@@ -163,15 +178,23 @@ type MetricCtx = {
   avgEquity: number;
   avgReceivables: number;
   avgInventory: number;
+  periodMonths?: number;
+  annualizationFactor: number;
 };
 
 /** 指标定义:能力归属 + 名称 + 口径 + 构建三基准列。**加一个指标 = 往本表加一行。** */
 type MetricDef = {
   capability: "偿债能力" | "盈利能力" | "营运能力" | "发展能力";
   name: string;
-  basis: string;
+  basis: string | ((c: MetricCtx) => string);
   build: (c: MetricCtx) => BenchmarkColumns;
 };
+
+function annualizedBasis(label: string, c: MetricCtx): string {
+  return c.periodMonths
+    ? `${label}（按 ${c.periodMonths} 个月累计数年化）`
+    : `${label}（本期值，未年化）`;
+}
 
 /** 同比 RatioResult:本期/上期都可算时取环比,否则 null(→ 渲染为"无基准")。 */
 function yoyOf(cur: RatioResult, prior: RatioResult | null): RatioResult | null {
@@ -234,19 +257,23 @@ const METRIC_REGISTRY: MetricDef[] = [
     },
   },
   {
-    capability: "盈利能力", name: "ROE", basis: "净利润 / 平均净资产",
-    build: (c) => ({ current: asPctTimes(roe(c.is.netProfit, c.avgEquity)), yoy: NO_BASELINE, budget: NO_BASELINE }),
+    capability: "盈利能力", name: "ROE", basis: (c) => annualizedBasis("净利润 / 平均净资产", c),
+    build: (c) => ({ current: asPeriodAwarePct(roe(c.is.netProfit, c.avgEquity), c), yoy: NO_BASELINE, budget: NO_BASELINE }),
   },
   {
-    capability: "盈利能力", name: "杜邦ROE", basis: "净利率 × 总资产周转率 × 权益乘数",
+    capability: "盈利能力", name: "杜邦ROE", basis: (c) => annualizedBasis("净利率 × 总资产周转率 × 平均权益乘数", c),
     build: (c) => {
       const d = dupont({
-        netProfit: c.is.netProfit, revenue: c.is.revenue,
-        avgTotalAssets: c.avgTotalAssets, totalAssets: c.bs.totalAssets, equity: c.bs.equity,
+        netProfit: c.is.netProfit,
+        revenue: c.is.revenue,
+        avgTotalAssets: c.avgTotalAssets,
+        avgEquity: c.avgEquity,
       });
       return {
         current: d.ok
-          ? `${round2(d.roe * 100)}%（净利率${round2(d.netMarginFactor * 100)}%×周转${round2(d.assetTurnoverFactor)}×杠杆${round2(d.equityMultiplierFactor)}）`
+          ? `${c.periodMonths
+              ? `${round2(d.roe * c.annualizationFactor * 100)}% 年化（本期 ${round2(d.roe * 100)}%）`
+              : `${round2(d.roe * 100)}%（本期，未年化）`}（净利率${round2(d.netMarginFactor * 100)}%×周转${round2(d.assetTurnoverFactor * c.annualizationFactor)}×平均杠杆${round2(d.equityMultiplierFactor)}）`
           : `不可算(${d.reason})`,
         yoy: NO_BASELINE, budget: NO_BASELINE,
       };
@@ -254,33 +281,39 @@ const METRIC_REGISTRY: MetricDef[] = [
   },
   // ─── 营运能力 ───
   {
-    capability: "营运能力", name: "应收账款周转率", basis: "营业收入 / 平均应收账款(次/年)",
+    capability: "营运能力", name: "应收账款周转率", basis: (c) => annualizedBasis("营业收入 / 平均应收账款", c),
     build: (c) => {
       const cur = receivablesTurnover(c.is.revenue, c.avgReceivables);
       const priorAvg = c.bsPrior?.receivables != null && c.priorPeriod?.bs?.receivables != null
         ? (c.bsPrior.receivables + c.priorPeriod.bs.receivables) / 2 : c.bsPrior?.receivables;
-      const prior = c.isPrior && priorAvg != null ? receivablesTurnover(c.isPrior.revenue, priorAvg) : null;
-      return { current: asTimes(cur), yoy: fmtYoy(yoyOf(cur, prior)), budget: NO_BASELINE };
+      const prior = c.isPrior && priorAvg != null
+        ? receivablesTurnover(c.isPrior.revenue, priorAvg)
+        : null;
+      return { current: asPeriodAwareTimes(cur, c), yoy: fmtYoy(yoyOf(cur, prior)), budget: NO_BASELINE };
     },
   },
   {
-    capability: "营运能力", name: "存货周转率", basis: "营业成本 / 平均存货(次/年)",
+    capability: "营运能力", name: "存货周转率", basis: (c) => annualizedBasis("营业成本 / 平均存货", c),
     build: (c) => {
       const cur = inventoryTurnover(c.is.cost, c.avgInventory);
       const priorAvg = c.bsPrior?.inventory != null && c.priorPeriod?.bs?.inventory != null
         ? (c.bsPrior.inventory + c.priorPeriod.bs.inventory) / 2 : c.bsPrior?.inventory;
-      const prior = c.isPrior && priorAvg != null ? inventoryTurnover(c.isPrior.cost, priorAvg) : null;
-      return { current: asTimes(cur), yoy: fmtYoy(yoyOf(cur, prior)), budget: NO_BASELINE };
+      const prior = c.isPrior && priorAvg != null
+        ? inventoryTurnover(c.isPrior.cost, priorAvg)
+        : null;
+      return { current: asPeriodAwareTimes(cur, c), yoy: fmtYoy(yoyOf(cur, prior)), budget: NO_BASELINE };
     },
   },
   {
-    capability: "营运能力", name: "总资产周转率", basis: "营业收入 / 平均总资产(次/年)",
+    capability: "营运能力", name: "总资产周转率", basis: (c) => annualizedBasis("营业收入 / 平均总资产", c),
     build: (c) => {
       const cur = totalAssetTurnover(c.is.revenue, c.avgTotalAssets);
       const priorAvg = c.bsPrior?.totalAssets != null && c.priorPeriod?.bs?.totalAssets != null
         ? (c.bsPrior.totalAssets + c.priorPeriod.bs.totalAssets) / 2 : c.bsPrior?.totalAssets;
-      const prior = c.isPrior && priorAvg != null ? totalAssetTurnover(c.isPrior.revenue, priorAvg) : null;
-      return { current: asTimes(cur), yoy: fmtYoy(yoyOf(cur, prior)), budget: NO_BASELINE };
+      const prior = c.isPrior && priorAvg != null
+        ? totalAssetTurnover(c.isPrior.revenue, priorAvg)
+        : null;
+      return { current: asPeriodAwareTimes(cur, c), yoy: fmtYoy(yoyOf(cur, prior)), budget: NO_BASELINE };
     },
   },
   // ─── 发展能力 ───
@@ -326,6 +359,10 @@ const CAPABILITIES = ["偿债能力", "盈利能力", "营运能力", "发展能
 export function buildBusinessAnalysisV2(opts: BuildV2Options): AnalysisReportV2 {
   const { bs, is, budget, priorPeriod, meta } = opts;
   const footnotes: string[] = [];
+  const periodMonths = opts.periodMonths != null
+    ? Math.max(1, Math.min(12, Math.trunc(opts.periodMonths)))
+    : undefined;
+  const annualizationFactor = periodMonths ? 12 / periodMonths : 1;
 
   const bsPrior = bs.prior;
   // 同比基准:优先 is.prior(损益表内置);其次 priorPeriod.is(外部快照,字段可空)
@@ -345,7 +382,7 @@ export function buildBusinessAnalysisV2(opts: BuildV2Options): AnalysisReportV2 
 
   // 平均值(顺序固定:总资产→净资产→应收→存货,保证缺期初脚注顺序稳定)
   const ctx: MetricCtx = {
-    bs, is, budget, priorPeriod, bsPrior, isPrior,
+    bs, is, budget, priorPeriod, bsPrior, isPrior, periodMonths, annualizationFactor,
     avgTotalAssets: avg(bs.totalAssets, bsPrior?.totalAssets ?? priorPeriod?.bs?.totalAssets, "总资产", footnotes),
     avgEquity:      avg(bs.equity,      bsPrior?.equity      ?? priorPeriod?.bs?.equity,      "净资产", footnotes),
     avgReceivables: avg(bs.receivables, bsPrior?.receivables ?? priorPeriod?.bs?.receivables, "应收账款", footnotes),
@@ -356,7 +393,11 @@ export function buildBusinessAnalysisV2(opts: BuildV2Options): AnalysisReportV2 
     title,
     metrics: METRIC_REGISTRY
       .filter((m) => m.capability === title)
-      .map((m) => ({ name: m.name, columns: m.build(ctx), basis: m.basis })),
+      .map((m) => ({
+        name: m.name,
+        columns: m.build(ctx),
+        basis: typeof m.basis === "function" ? m.basis(ctx) : m.basis,
+      })),
   }));
 
   const statusStr = meta.status ?? "草稿";
@@ -366,6 +407,9 @@ export function buildBusinessAnalysisV2(opts: BuildV2Options): AnalysisReportV2 
     `口径:${meta.caliber ?? "未提供(如期末数/未审计,请确认)"}`,
     `结算状态:${statusStr}`,
     "所有数值已归一至「元」;发展能力展示万元换算仅供可读性",
+    ...(periodMonths
+      ? [`期间口径:${periodMonths}个月累计；周转率与ROE按12/${periodMonths}年化，利润率不年化`]
+      : ["期间口径:未提供累计月数；周转率与ROE展示本期值，不标称次/年"]),
   ];
 
   return {
@@ -382,7 +426,7 @@ export function buildBusinessAnalysisV2(opts: BuildV2Options): AnalysisReportV2 
 export function renderAnalysisMarkdownV2(report: AnalysisReportV2, title = "经营分析表 v2"): string {
   const lines: string[] = [`# ${title}`, ""];
   for (const s of report.sections) {
-    lines.push(`## ${s.title}`, "", "| 指标 | 本期 | 同比 | 预算对比 | 口径 |", "|---|---|---|---|---|");
+    lines.push(`## ${s.title}`, "", "| 指标 | 本期 | 基准对比 | 预算对比 | 口径 |", "|---|---|---|---|---|");
     for (const m of s.metrics) {
       lines.push(
         `| ${m.name} | ${m.columns.current} | ${m.columns.yoy} | ${m.columns.budget} | ${m.basis} |`

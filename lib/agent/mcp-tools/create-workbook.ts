@@ -28,6 +28,23 @@ const cell = z.union([
   }),
 ]);
 
+const a1Cell = z.string().regex(/^\$?[A-Z]{1,3}\$?\d{1,7}$/i, "必须是 A1 单元格地址");
+const a1Range = z.string().regex(
+  /^\$?[A-Z]{1,3}\$?\d{1,7}:\$?[A-Z]{1,3}\$?\d{1,7}$/i,
+  "必须是 A1 连续区域，如 A2:A8",
+);
+const chart = z.object({
+  type: z.enum(["bar", "pie"]).describe("bar=条形/柱状图，pie=饼图"),
+  title: z.string().min(1).max(120),
+  sourceSheet: z.string().min(1).max(31).describe("图表源数据所在工作表"),
+  categoryRange: a1Range.describe("分类标签区域，不含工作表名"),
+  valueRange: a1Range.describe("数值区域，不含工作表名"),
+  seriesName: z.string().max(80).optional(),
+  direction: z.enum(["column", "bar"]).optional().describe("bar 图方向；column=竖向柱状，bar=横向条状"),
+  fromCell: a1Cell.describe("图表左上角锚点，如 D2"),
+  toCell: a1Cell.describe("图表右下角锚点，如 L18"),
+});
+
 const sheet = z.object({
   name: z.string().min(1).max(31),
   rows: z.array(z.array(cell).max(WORKBOOK_CREATE_LIMITS.columnsPerSheet)).max(WORKBOOK_CREATE_LIMITS.rowsPerSheet),
@@ -35,6 +52,7 @@ const sheet = z.object({
   freezeRows: z.number().int().min(0).optional(),
   autoFilter: z.boolean().optional(),
   columnWidths: z.array(z.number().min(2).max(100)).max(WORKBOOK_CREATE_LIMITS.columnsPerSheet).optional(),
+  charts: z.array(chart).max(WORKBOOK_CREATE_LIMITS.chartsPerSheet).optional(),
 });
 
 async function publishWithoutOverwrite(outputDir: string, outputName: string, buffer: Buffer): Promise<string> {
@@ -77,6 +95,7 @@ export function createCreateWorkbookTool(
       "生成新工作簿时必须用本工具；已有模板或工作底稿必须改用 patch_workbook，不能重建。",
       "需要汇总时先用 analyze_tabular 得到确定结果，再把明细和公式写入本工具。",
       "公式必须放在 {formula, result?} 对象中；普通字符串即使以 = 开头也会保持为文本。",
+      "需要原生图表时在目标工作表的 charts 中声明 bar/pie、源数据区域和锚点；不要只生成图表数据后让用户手工插图。",
       "外部工作簿引用、网络函数和动态数据连接会被拒绝；含公式的正式交付仍需调用 finalize_deliverable 完成重算和错误扫描。",
       `最多 ${WORKBOOK_CREATE_LIMITS.sheets} 个工作表、每表 ${WORKBOOK_CREATE_LIMITS.rowsPerSheet} 行 × ${WORKBOOK_CREATE_LIMITS.columnsPerSheet} 列、总计 ${WORKBOOK_CREATE_LIMITS.totalCells} 个单元格。`,
       "输出只会写入本回合输出目录；同名文件存在时自动生成新名称，绝不覆盖。",
@@ -98,6 +117,7 @@ export function createCreateWorkbookTool(
           rowCount: created.rowCount,
           cellCount: created.cellCount,
           formulaCount: created.formulaCount,
+          chartCount: created.chartCount,
           sha256,
         };
         return {
@@ -105,7 +125,7 @@ export function createCreateWorkbookTool(
             type: "text" as const,
             text: [
               `已创建 ${outputPath}`,
-              `${created.sheetCount} 个工作表，${created.rowCount} 行，${created.cellCount} 个单元格，${created.formulaCount} 条公式。`,
+              `${created.sheetCount} 个工作表，${created.rowCount} 行，${created.cellCount} 个单元格，${created.formulaCount} 条公式，${created.chartCount} 个原生图表。`,
               created.formulaCount > 0
                 ? "正式交付前必须调用 finalize_deliverable 完成重算与公式错误扫描。"
                 : "正式交付前仍需调用 finalize_deliverable 完成文件验证。",

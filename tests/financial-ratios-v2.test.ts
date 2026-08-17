@@ -47,14 +47,13 @@ export const financialRatiosV2TestPromise = (async () => {
   ok(!equityMultiplier(10000000, -100).ok, "em: 净资产<0 不可算");
 
   // 杜邦三因子:ROE=净利率×周转率×杠杆
-  // 净利润=500000,营收=5000000,平均总资产=10000000,总资产=10000000,净资产=4000000
+  // 净利润=500000,营收=5000000,平均总资产=10000000,平均净资产=4000000
   // 净利率=0.1,周转率=0.5,杠杆=2.5 → ROE=0.125
   const dp = dupont({
     netProfit: 500000,
     revenue: 5000000,
     avgTotalAssets: 10000000,
-    totalAssets: 10000000,
-    equity: 4000000,
+    avgEquity: 4000000,
   });
   ok(dp.ok, "dupont: 应可算");
   if (dp.ok) {
@@ -65,11 +64,11 @@ export const financialRatiosV2TestPromise = (async () => {
   }
 
   // 杜邦:净资产=0 时不可算
-  const dpBad = dupont({ netProfit: 100, revenue: 1000, avgTotalAssets: 500, totalAssets: 500, equity: 0 });
+  const dpBad = dupont({ netProfit: 100, revenue: 1000, avgTotalAssets: 500, avgEquity: 0 });
   ok(!dpBad.ok, "dupont: 净资产=0 应不可算");
 
   // 杜邦:营收=0 时不可算
-  const dpBadRev = dupont({ netProfit: 100, revenue: 0, avgTotalAssets: 500, totalAssets: 500, equity: 200 });
+  const dpBadRev = dupont({ netProfit: 100, revenue: 0, avgTotalAssets: 500, avgEquity: 200 });
   ok(!dpBadRev.ok, "dupont: 营收=0 应不可算");
 
   // ─── 发展能力(periodOverPeriod 已有旧测试,补增长率语义测试) ──

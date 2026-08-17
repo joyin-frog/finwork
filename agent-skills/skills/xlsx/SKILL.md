@@ -96,11 +96,11 @@ openpyxl 的 `load_workbook()` → `save()` 会**清空整册公式的缓存值*
 - **确定的数字直接用 `value` 写数值，不要写成 `formula: "=18299442.55"`。** 常数写成公式会得到一个没有缓存结果的单元格，读回是空的。
 - **只写了 `formula` 没写 `value` 的单元格，读回为空是正常的**，不是写入失败。需要求值就交给 `finalize_deliverable` 的重算流程；**绝不要因此用 openpyxl 重写整册去"修正"**——那会清空全部公式缓存值，得不偿失。
 
-**新建工作簿必须用 `create_workbook`**。它只接收声明式工作表、行、单元格和公式，不执行 Python/Bash，也不会覆盖同名文件。已有模板或工作底稿仍必须用 `patch_workbook`，不能重建。
+常规新建工作簿优先用 `create_workbook`。当声明式工具无法表达特殊清洗、版式或业务计算时，可以在本回合输出目录编写并反复修改 Python 脚本，并且只能通过 `run_task_python` 执行；先读懂文件并用 `begin_workspace_change` 冻结目标，脚本读取 `read_workspace_file` 返回的任务内只读路径、把候选文件写入输出目录，再用 `review_workspace_change` 形成脚本版本、文件版本和语义差异。已有模板或工作底稿仍不得用 openpyxl/pandas 整册 load→save 重写。
 
 **新增 sheet**：`patch_workbook` 的 edit 里加 `createSheet: true` 即可在既有工作簿里建表（不写这个标志、表名又不存在时会报 `sheet_not_found`，防止表名打错被静默变成一张空表）。
 
-### 检查类动作用工具，不要写脚本判断
+### 确定性检查优先用工具，特殊逻辑允许受管脚本
 
 | 需求 | 用这个 | 别这样 |
 | --- | --- | --- |
@@ -108,14 +108,14 @@ openpyxl 的 `load_workbook()` → `save()` 会**清空整册公式的缓存值*
 | 查重复、必填缺失、金额离群、不该为负的负数 | `detect_data_issues` | 自己写判断逻辑 |
 | 多公司/多期间「科目-金额」表汇总成一张 | `merge_labeled_tables` | 手写 merge 脚本 |
 
-这些工具的判定确定、可复现，且读不到值时会明确判「未验证」而不是「不平」。
+这些工具的判定确定、可复现，且读不到值时会明确判「未验证」而不是「不平」。当它们不能表达任务实际口径时，可以写任务脚本补充检查，但脚本结果不能代替确定性文件复核；必须保存脚本版本、验证说明，并让 `review_workspace_change` 把未完成目标反馈回来。
 `merge_labeled_tables` **不做抵消**，产出的合计是简单相加，不能直接当合并报表对外。
 
 **公式重算由产品 Runtime 负责**：不要通过 Bash 调用 `scripts/recalc.py`，不要自行寻找或启动 `soffice`，也不要为了绕过重算而在 Python 中手工模拟整套 Excel 公式引擎。
 
-**输入附件是只读的**：`patch_workbook` 的 `sourcePath` 指向附件原路径即可，它只读不写，输出落在本回合输出目录。不要用 Bash、Write、Python 或临时脚本复制、改写用户附件。
+**输入附件是只读的**：受管附件先用 `read_workspace_file` 获取任务内 `taskPath`。Bash/Python 可以读取该快照，但只能把脚本和结果写到本回合输出目录，绝不能覆盖输入快照或用户原文件。
 
-**控制单次工具输出大小**：`create_workbook` 和 `patch_workbook` 都有显式上限。超出时按工作表或连续编辑批次拆分调用；不要改用 Bash/Write/Python 绕过限制。
+**控制单次工具输出大小**：`create_workbook` 和 `patch_workbook` 都有显式上限。超出或通用工具表达力不足时，可以改用任务脚本分阶段处理；这只扩展计算能力，不能绕过输出目录、资源预算、语义 diff 和质量门。
 
 当工作簿包含需要求值的公式、或正式交付依赖计算后的单元格值时：
 1. 先保存候选 XLSX，并做公式文本、关键输入值、工作表结构和修改范围的静态检查。
@@ -130,20 +130,29 @@ Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测
 
 ### 读取与分析
 1. 用 `read_document` 读取 Excel/CSV，保留工作表名、行列定位和来源证据。
+   - Excel 输出首列的 `Excel行` 是真实物理行号；报表正文里的“行次”只是会计报表项目编号，**绝不能当成单元格行号**。
 2. 合计、平均、最大最小、分组和差异统计必须用 `analyze_tabular`，不要心算。
 3. 勾稽、数据质量和多表归并分别使用 `check_workbook_ties`、`detect_data_issues`、`merge_labeled_tables`。
+   - `check_workbook_ties` 只要出现“不平”或“未验证”，就不得声称勾稽通过；先依据 `Excel行` 修正地址并重跑，真实不平则明确报告差异。
 
 ### 新建工作簿
 1. 先确定工作表、列、单位、数据来源和计算口径。
 2. 用 `create_workbook` 传入声明式 `sheets[].rows`。
 3. 需要动态计算的格子使用 `{ "formula": "SUM(B2:B9)", "result": 5000 }`；普通字符串即使以 `=` 开头也保持文本。
 4. 给标题行设置 `headerRows`；需要冻结表头时设置 `freezeRows`；明细表可设置 `autoFilter`。
-5. 不得用 Bash、Write、Python、openpyxl、pandas 或临时脚本代替 `create_workbook`。
+5. 用户要求图表时，在承载图表的工作表中声明 `charts`：
+   - `type`: `bar` 或 `pie`
+   - `sourceSheet`、`categoryRange`、`valueRange`: 图表源数据
+   - `fromCell`、`toCell`: 图表在工作表中的左上/右下锚点
+   - 条形图用 `direction: "bar"`，柱状图用 `direction: "column"`
+   不得只整理图表数据再让用户手工插图，也不得谎称工具不支持原生图表。
+6. 通用结构用 `create_workbook`；特殊结构允许任务脚本，但必须版本化脚本、复核候选文件并通过交付质量门。
 
 ### 修改既有工作簿
 1. 用 `patch_workbook`，只改明确的单元格。
 2. 不覆盖原件；需要连续修改时把上一次输出作为下一次输入。
 3. 模板自带公式和格式优先，不能重建同名表来“简化”。
+4. 通用工具不足时，先用 `begin_workspace_change` 冻结计划，再用 `run_task_python` 让动态脚本读取任务快照并反复生成候选；每一轮调用 `review_workspace_change(planId=..., final=false)` 查看格子级变化和 `pendingTargets`，最终用同一 planId 和 `final=true` 通过后端完成门。
 
 ## 关键：使用公式，而非硬编码计算结果
 
@@ -162,6 +171,7 @@ Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测
 4. `#REF!`、`#DIV/0!`、`#VALUE!`、`#N/A`、`#NAME?` 任一存在都不能交付。
 5. Runtime 返回 `recalc_unavailable` 时必须停止公式型交付并报告阻塞；不得硬编码结果、安装临时依赖或绕过门禁。
 6. 只有 `finalize_deliverable` 返回正式 CompletionEvidence 后，才能向用户声明文件已交付。
+7. 修改受管输入文件时，没有最终 `review_workspace_change(final=true)` 的变更链，即使文件可打开也不能宣称完成。diff 主要用于 Agent 自检，用户是否查看不影响普通文件交付。
 
 ## 最终检查清单
 
@@ -172,3 +182,4 @@ Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测
 - [ ] 财务勾稽和业务断言已通过
 - [ ] 公式错误为零
 - [ ] 文件可打开、可渲染，且有正式交付证据
+- [ ] 动态脚本（如有）已版本化，最终格子级 diff 已通过后端完成检查且没有未完成目标
