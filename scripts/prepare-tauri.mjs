@@ -82,10 +82,6 @@ await rm(serverResourceDir, { recursive: true, force: true });
 await mkdir(serverResourceDir, { recursive: true });
 await cp(standaloneDir, serverResourceDir, {
   recursive: true,
-  // pnpm 的 standalone 依赖树含包内符号链接。Windows runner 能在构建期创建它们，
-  // 但打包后 Node realpath/stat 这些链接会报 EPERM（例如 next -> styled-jsx）。
-  // Windows 产物必须物化为普通文件；macOS 保留链接以避免无谓复制。
-  dereference: process.platform === "win32",
   // 防止旧构建曾追踪进 standalone 的 Tauri resources 被再次嵌套复制。
   filter: (src) =>
     !src.includes(`${path.sep}src-tauri${path.sep}resources${path.sep}`),

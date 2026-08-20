@@ -29,6 +29,9 @@ const nextConfig: NextConfig = {
   // 客户端预览依赖仍由各自的 dynamic import 控制，不在这里外置。
   serverExternalPackages: [
     "@anthropic-ai/claude-agent-sdk",
+    "@earendil-works/pi-agent-core",
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-coding-agent",
     "exceljs",
     "mammoth",
   ],
