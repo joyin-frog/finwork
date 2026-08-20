@@ -123,17 +123,15 @@ test("chat: ask_user 面板 → 选项 → 继续提交", async ({ page }) => {
 
 test("chat: 多工具流程 → 分组时间线可下钻", async ({ page }) => {
   await sendChat(page, "工具演示");
-  await page.getByText(/已处理/).first().click(); // 展开过程块(折叠摘要为「已处理 N 步 · 时长」)
-  const details = page.locator("details").first();
+  const process = page.locator("details").filter({ has: page.getByText(/^已处理 6 步/) }).first();
+  await process.locator(":scope > summary").click(); // 展开过程块(折叠摘要为「已处理 N 步 · 时长」)
   // 已完成的多步段默认收成一行组摘要(密度对齐 Claude);过程块内容是展开后才挂载的,
-  // 嵌套组用轮询展开(先点开所有未开的组,再断言目标可见)避免惰性挂载竞态
-  await expect(async () => {
-    for (const s of await details.locator("details:not([open]) > summary").elementHandles()) {
-      await s.click();
-    }
-    await expect(details.getByText("【财务分析】")).toBeVisible({ timeout: 500 });   // Skill:友好名(不露 finance-skills: id)
-  }).toPass({ timeout: 20_000 });
-  await expect(details.getByText("差旅住宿标准").first()).toBeVisible();             // search_knowledge:mcp 归一化(组摘要与子行都含对象名,取 first)
-  await expect(details.getByText("运行代码").first()).toBeVisible();                 // run_python:友好文案
-  await details.screenshot({ path: "test-results/tool-steps.png" }).catch(() => {});
+  // 两个工具段被中途 thinking 隔开，逐个展开并断言段内步骤，避免摘要文字造成假阳性。
+  const groups = process.locator("details.details-fold");
+  await expect(groups).toHaveCount(2);
+  await groups.nth(0).locator(":scope > summary").click();
+  await expect(groups.nth(0).getByText("差旅住宿标准").first()).toBeVisible();
+  await groups.nth(1).locator(":scope > summary").click();
+  await expect(groups.nth(1).getByText(/联网尽调/).first()).toBeVisible();
+  await process.screenshot({ path: "test-results/tool-steps.png" }).catch(() => {});
 });

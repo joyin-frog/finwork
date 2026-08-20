@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AgentMessage, FinworkAgentRequest, FinworkAgentResult } from "./contracts";
 import type { AgentRuntimeEvent } from "./runtime-events";
 import { conversationDirFromOutputDir, getDeliveredDir } from "@/lib/deliverable/scope";
+import { getConversationFilesDir } from "@/lib/runtime/paths";
 
 /**
  * 确定性模拟 Agent —— 给 e2e 用。
@@ -93,10 +94,10 @@ export async function runMockAgent(
       // 真 Agent 会在 finalize_deliverable 通过后把成品复制到 delivered/<runId>/。
       // mock 绕过 MCP 工具，也必须复现这个正式附件边界，否则 working 文件按 CR-Q1
       // 不会登记到回答/文件面板，E2E 测到的就不再是真实交付链。
-      const deliveredDir = getDeliveredDir(
-        conversationDirFromOutputDir(runOptions.outputDir),
-        runOptions.requestId ?? "mock-run"
-      );
+      const conversationFilesDir = runOptions.conversationId != null
+        ? getConversationFilesDir(runOptions.conversationId)
+        : conversationDirFromOutputDir(runOptions.outputDir);
+      const deliveredDir = getDeliveredDir(conversationFilesDir, runOptions.requestId ?? "mock-run");
       mkdirSync(deliveredDir, { recursive: true });
       copyFileSync(
         path.join(runOptions.outputDir, fileName),
@@ -172,16 +173,16 @@ export async function runMockAgent(
     await say("我按几个步骤来处理。");
     // 思考与工具按真实时序穿插上报:验证过程时间线里 thinking 步骤的交错展示。
     // 思考后停一拍再发工具:留出「星芒落在思考行」的可观察窗口(流动指示)。
-    runOptions.emit?.({ type: "message_delta", channel: "thinking", delta: "先加载财务分析技能,再跑数、查制度,最后落盘报告。" });
+    runOptions.emit?.({ type: "message_delta", channel: "thinking", delta: "先整理经营数据,再查制度和公开资料,最后落盘报告。" });
     await sleep(delay);
     const steps: Array<{ name: string; input: unknown; result: string; isError?: boolean }> = [
-      { name: "Skill", input: { command: "finance-skills:finance-analysis" }, result: "已加载技能" },
-      // Pi 工具使用全局唯一的裸名，验证工具步骤时间线不依赖来源域前缀。
+      // 只使用当前 Pi 生产目录中的真实工具名，避免 E2E 为退役工具保留兼容展示。
+      { name: "generate_business_analysis", input: { incomeStatement: { current: { revenue: 55379467.47 } } }, result: "已生成经营分析" },
       { name: "analyze_tabular", input: { rows: [{ revenue: 55379467.47 }] }, result: "ok" },
       { name: "search_knowledge", input: { query: "差旅住宿标准" }, result: "命中 3 篇" },
-      { name: "WebSearch", input: { query: "增值税最新税率" }, result: "找到若干结果" },
-      { name: "Edit", input: { file_path: "/Users/user/report.md" }, result: "已写入" },
-      { name: "Bash", input: { command: "ls /nonexistent" }, result: "No such file or directory", isError: true },
+      { name: "research_web", input: { legalName: "示例公司", topics: ["增值税最新税率"] }, result: "找到若干结果" },
+      { name: "edit", input: { path: "/Users/user/report.md" }, result: "已写入" },
+      { name: "bash", input: { command: "ls /nonexistent" }, result: "No such file or directory", isError: true },
     ];
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
