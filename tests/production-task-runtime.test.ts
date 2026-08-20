@@ -3,10 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { TaskContract } from "../lib/agent/run-contract.ts";
+import type { DeliverySpec } from "../lib/agent/run-contract.ts";
 import { runMigrations } from "../lib/db/migrations.ts";
-import { beginProductionTaskRun } from "../lib/task/production-runtime.ts";
+import { beginDeliveryRun } from "../lib/task/production-runtime.ts";
 import type { TaskContractV3 } from "../lib/task/contracts.ts";
+import { ArtifactStore } from "../lib/artifacts/store.ts";
 
 function makeDb(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
@@ -15,7 +16,7 @@ function makeDb(): DatabaseSync {
   return db;
 }
 
-function contract(taskKind: TaskContract["taskKind"]): TaskContract {
+function contract(taskKind: DeliverySpec["taskKind"]): DeliverySpec {
   return {
     version: 1,
     taskKind,
@@ -38,7 +39,7 @@ function contract(taskKind: TaskContract["taskKind"]): TaskContract {
   };
 }
 
-function readOnlySpreadsheetContract(): TaskContract {
+function readOnlySpreadsheetContract(): DeliverySpec {
   return {
     version: 1,
     taskKind: "spreadsheet",
@@ -55,7 +56,7 @@ function readOnlySpreadsheetContract(): TaskContract {
 }
 
 function recordSpreadsheetExecution(
-  run: ReturnType<typeof beginProductionTaskRun>,
+  run: ReturnType<typeof beginDeliveryRun>,
 ): void {
   run.recordRuntimeEvent({
     type: "tool_started",
@@ -80,7 +81,7 @@ function recordSpreadsheetExecution(
   recordAgentCompletion(run);
 }
 
-function recordAgentCompletion(run: ReturnType<typeof beginProductionTaskRun>): void {
+function recordAgentCompletion(run: ReturnType<typeof beginDeliveryRun>): void {
   run.recordRuntimeEvent({ type: "message_started", channel: "text" });
   run.recordRuntimeEvent({ type: "message_completed", channel: "text", content: "done" });
   run.completeExecution();
@@ -151,7 +152,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
   process.env.FINANCE_AGENT_APP_DATA_DIR = dataRoot;
   const db = makeDb();
   try {
-    const inputRun = beginProductionTaskRun({
+    const inputRun = beginDeliveryRun({
       db,
       traceId: "00000000-0000-4000-8000-000000000001",
       conversationId: 11,
@@ -162,7 +163,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
         size: 12,
         dataUrl: "data:text/plain;base64,dmFyaWFuY2U=",
       }],
-      legacyContract: contract("text"),
+      deliverySpec: contract("text"),
       casRoot: path.join(dataRoot, "cas"),
     });
     inputRun.recordRuntimeEvent({ type: "tool_started", toolName: "read_document", toolCallId: "read-input" });
@@ -174,16 +175,16 @@ export const productionTaskRuntimeTestPromise = (async () => {
       (db.prepare("SELECT state FROM cases WHERE case_id = ?").get(inputRun.caseId) as { state: string }).state,
       "delivered",
     );
-    assert.equal(inputRun.foundation.caseId, inputRun.caseId);
-    assert.equal(inputRun.foundation.taskId, inputRun.taskId);
+    assert.equal(inputRun.runContext.caseId, inputRun.caseId);
+    assert.equal(inputRun.runContext.taskId, inputRun.taskId);
     const inputCase = db.prepare(
       "SELECT case_kind, run_id FROM cases WHERE case_id = ?",
     ).get(inputRun.caseId) as { case_kind: string; run_id: string };
     assert.equal(inputCase.case_kind, "general_finance");
-    assert.equal(inputCase.run_id, inputRun.foundation.runId);
+    assert.equal(inputCase.run_id, inputRun.runContext.runId);
     const inputBinding = db.prepare(
       "SELECT state, role_id, capability_ids_json FROM case_run_bindings WHERE case_id = ? AND run_id = ?",
-    ).get(inputRun.caseId, inputRun.foundation.runId) as {
+    ).get(inputRun.caseId, inputRun.runContext.runId) as {
       state: string;
       role_id: string;
       capability_ids_json: string;
@@ -197,7 +198,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
       1,
     );
 
-    const readOnlyRun = beginProductionTaskRun({
+    const readOnlyRun = beginDeliveryRun({
       db,
       traceId: "00000000-0000-4000-8000-000000000009",
       conversationId: 12,
@@ -208,7 +209,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
         size: 12,
         dataUrl: "data:application/octet-stream;base64,dGVzdA==",
       }],
-      legacyContract: readOnlySpreadsheetContract(),
+      deliverySpec: readOnlySpreadsheetContract(),
       casRoot: path.join(dataRoot, "cas"),
     });
     const persistedReadOnlyContract = JSON.parse((db.prepare(
@@ -364,20 +365,20 @@ export const productionTaskRuntimeTestPromise = (async () => {
         retryLimit: 0,
       },
     };
-    const benchmarkRun = beginProductionTaskRun({
+    const benchmarkRun = beginDeliveryRun({
       db,
       traceId: "00000000-0000-4000-8000-000000000006",
       goal: benchmarkContract.goal,
       attachments: [],
-      legacyContract: contract("text"),
-      taskContract: benchmarkContract,
+      deliverySpec: contract("text"),
+      evaluationSpec: benchmarkContract,
       principalId: "benchmark-runner",
       tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
     assert.equal(benchmarkRun.taskId, benchmarkContract.id);
     assert.equal(benchmarkRun.caseId, benchmarkContract.caseId);
-    assert.deepEqual(benchmarkRun.foundation.budget, benchmarkContract.budget);
+    assert.deepEqual(benchmarkRun.runContext.budget, benchmarkContract.budget);
     const persistedBenchmarkContract = JSON.parse((db.prepare(
       "SELECT contract_json FROM task_contracts WHERE task_id = ?",
     ).get(benchmarkRun.taskId) as { contract_json: string }).contract_json) as TaskContractV3;
@@ -390,6 +391,44 @@ export const productionTaskRuntimeTestPromise = (async () => {
     assert.equal(benchmarkSettlement.validation.delivery.passed, true);
     assert.ok(benchmarkSettlement.validation.assertions.passed >= 1);
     assert.deepEqual(benchmarkRun.getSettlement(), benchmarkSettlement);
+
+    const preMaterializedArtifact = new ArtifactStore(db, path.join(dataRoot, "cas")).put({
+      kind: "benchmark_input",
+      logicalName: "policy.md",
+      classification: "public",
+      retention: { policyId: "benchmark-ephemeral" },
+      mediaType: "text/markdown",
+      producer: { component: "production-task-runtime-test", version: "1" },
+      metadata: {},
+      content: Buffer.from("policy evidence", "utf8"),
+      state: "candidate",
+    });
+    const preMaterializedContract: TaskContractV3 = {
+      ...benchmarkContract,
+      id: "benchmark-task:pre-materialized",
+      caseId: "benchmark-case:pre-materialized",
+      inputs: [preMaterializedArtifact],
+    };
+    const preMaterializedRun = beginDeliveryRun({
+      db,
+      traceId: "00000000-0000-4000-8000-000000000016",
+      goal: preMaterializedContract.goal,
+      attachments: [],
+      deliverySpec: contract("text"),
+      evaluationSpec: preMaterializedContract,
+      inputArtifacts: [preMaterializedArtifact],
+      principalId: "benchmark-runner",
+      tenantId: "benchmark",
+      casRoot: path.join(dataRoot, "cas"),
+    });
+    const preMaterializedSteps = preMaterializedRun.plan.steps;
+    assert.equal(
+      preMaterializedSteps.find((step) => step.stepKey === "inspect_inputs")?.status,
+      "succeeded",
+      "受信物化器已经注入的输入不应要求 Agent 冗余 read 后才能完成计划",
+    );
+    recordAgentCompletion(preMaterializedRun);
+    assert.equal(preMaterializedRun.settle({ outcome: "completed" }).state, "delivered");
 
     db.prepare("INSERT INTO chat_conversations(id, title) VALUES (?, ?)").run(11, "production task");
     const messageId = Number(db.prepare(
@@ -410,13 +449,13 @@ export const productionTaskRuntimeTestPromise = (async () => {
       "generate/result.xlsx",
     );
 
-    const deliveredRun = beginProductionTaskRun({
+    const deliveredRun = beginDeliveryRun({
       db,
       traceId: "00000000-0000-4000-8000-000000000002",
       conversationId: 11,
       goal: "Create a validated workbook.",
       attachments: [],
-      legacyContract: contract("spreadsheet"),
+      deliverySpec: contract("spreadsheet"),
       casRoot: path.join(dataRoot, "cas"),
     });
     recordSpreadsheetExecution(deliveredRun);
@@ -428,7 +467,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
     );
     assert.equal(
       (db.prepare("SELECT state FROM case_run_bindings WHERE case_id = ? AND run_id = ?")
-        .get(deliveredRun.caseId, deliveredRun.foundation.runId) as { state: string }).state,
+        .get(deliveredRun.caseId, deliveredRun.runContext.runId) as { state: string }).state,
       "succeeded",
     );
     assert.equal(
@@ -443,40 +482,40 @@ export const productionTaskRuntimeTestPromise = (async () => {
     );
 
     const wrongNameContract = benchmarkArtifactContract("wrong-name", { logicalName: "required.xlsx" });
-    const wrongNameRun = beginProductionTaskRun({
+    const wrongNameRun = beginDeliveryRun({
       db, traceId: "00000000-0000-4000-8000-000000000011", conversationId: 11,
-      goal: wrongNameContract.goal, attachments: [], legacyContract: contract("text"),
-      taskContract: wrongNameContract, principalId: "benchmark-runner", tenantId: "benchmark",
+      goal: wrongNameContract.goal, attachments: [], deliverySpec: contract("text"),
+      evaluationSpec: wrongNameContract, principalId: "benchmark-runner", tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
     recordAgentCompletion(wrongNameRun);
     assert.throws(
       () => wrongNameRun.settle({ outcome: "completed", assistantMessageId: messageId }),
-      /foundation_delivery_artifact_missing/,
+      /delivery_artifact_missing/,
     );
-    assert.equal(wrongNameRun.getSettlement()?.stableFailureCode, "foundation_delivery_artifact_missing");
+    assert.equal(wrongNameRun.getSettlement()?.stableFailureCode, "delivery_artifact_missing");
 
     const missingValidatorContract = benchmarkArtifactContract("missing-validator");
-    const missingValidatorRun = beginProductionTaskRun({
+    const missingValidatorRun = beginDeliveryRun({
       db, traceId: "00000000-0000-4000-8000-000000000012", conversationId: 11,
-      goal: missingValidatorContract.goal, attachments: [], legacyContract: contract("text"),
-      taskContract: missingValidatorContract, principalId: "benchmark-runner", tenantId: "benchmark",
+      goal: missingValidatorContract.goal, attachments: [], deliverySpec: contract("text"),
+      evaluationSpec: missingValidatorContract, principalId: "benchmark-runner", tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
     recordAgentCompletion(missingValidatorRun);
     assert.throws(
       () => missingValidatorRun.settle({ outcome: "completed", assistantMessageId: messageId }),
-      /foundation_required_validator_missing/,
+      /delivery_validator_missing/,
     );
-    assert.equal(missingValidatorRun.getSettlement()?.stableFailureCode, "foundation_required_validator_missing");
+    assert.equal(missingValidatorRun.getSettlement()?.stableFailureCode, "delivery_validator_missing");
 
     const missingEvidenceContract = benchmarkArtifactContract("missing-evidence", {
       evidenceRequirements: [{ evidenceType: "transform", minimumCount: 1, requiresLocator: true }],
     });
-    const missingEvidenceRun = beginProductionTaskRun({
+    const missingEvidenceRun = beginDeliveryRun({
       db, traceId: "00000000-0000-4000-8000-000000000013", conversationId: 11,
-      goal: missingEvidenceContract.goal, attachments: [], legacyContract: contract("text"),
-      taskContract: missingEvidenceContract, principalId: "benchmark-runner", tenantId: "benchmark",
+      goal: missingEvidenceContract.goal, attachments: [], deliverySpec: contract("text"),
+      evaluationSpec: missingEvidenceContract, principalId: "benchmark-runner", tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
     recordAgentCompletion(missingEvidenceRun);
@@ -487,15 +526,15 @@ export const productionTaskRuntimeTestPromise = (async () => {
     `).run("workbook-validator", missingEvidenceRun.caseId);
     assert.throws(
       () => missingEvidenceRun.settle({ outcome: "completed", assistantMessageId: messageId }),
-      /foundation_required_evidence_missing/,
+      /delivery_evidence_missing/,
     );
-    assert.equal(missingEvidenceRun.getSettlement()?.stableFailureCode, "foundation_required_evidence_missing");
+    assert.equal(missingEvidenceRun.getSettlement()?.stableFailureCode, "delivery_evidence_missing");
 
     const strictSuccessContract = benchmarkArtifactContract("strict-success");
-    const strictSuccessRun = beginProductionTaskRun({
+    const strictSuccessRun = beginDeliveryRun({
       db, traceId: "00000000-0000-4000-8000-000000000014", conversationId: 11,
-      goal: strictSuccessContract.goal, attachments: [], legacyContract: contract("text"),
-      taskContract: strictSuccessContract, principalId: "benchmark-runner", tenantId: "benchmark",
+      goal: strictSuccessContract.goal, attachments: [], deliverySpec: contract("text"),
+      evaluationSpec: strictSuccessContract, principalId: "benchmark-runner", tenantId: "benchmark",
       casRoot: path.join(dataRoot, "cas"),
     });
     recordAgentCompletion(strictSuccessRun);
@@ -509,19 +548,19 @@ export const productionTaskRuntimeTestPromise = (async () => {
     assert.equal(strictSuccessSettlement.validation.delivery.delivered, 1);
     assert.equal(strictSuccessSettlement.validation.delivery.passed, true);
 
-    const missingRun = beginProductionTaskRun({
+    const missingRun = beginDeliveryRun({
       db,
       traceId: "00000000-0000-4000-8000-000000000003",
       conversationId: 11,
       goal: "Create another workbook.",
       attachments: [],
-      legacyContract: contract("spreadsheet"),
+      deliverySpec: contract("spreadsheet"),
       casRoot: path.join(dataRoot, "cas"),
     });
     recordSpreadsheetExecution(missingRun);
     assert.throws(
       () => missingRun.settle({ outcome: "completed", assistantMessageId: messageId + 999 }),
-      /foundation delivery gate failed/,
+      /delivery gate failed/,
     );
     assert.equal(
       (db.prepare("SELECT state FROM cases WHERE case_id = ?").get(missingRun.caseId) as { state: string }).state,
@@ -529,40 +568,16 @@ export const productionTaskRuntimeTestPromise = (async () => {
     );
     assert.equal(
       (db.prepare("SELECT state FROM case_run_bindings WHERE case_id = ? AND run_id = ?")
-        .get(missingRun.caseId, missingRun.foundation.runId) as { state: string }).state,
+        .get(missingRun.caseId, missingRun.runContext.runId) as { state: string }).state,
       "failed",
     );
 
-    const capabilityMissingRun = beginProductionTaskRun({
-      db,
-      traceId: "00000000-0000-4000-8000-000000000004",
-      conversationId: 11,
-      goal: "Do not accept an unverified workbook claim.",
-      attachments: [],
-      legacyContract: contract("spreadsheet"),
-      casRoot: path.join(dataRoot, "cas"),
-    });
-    capabilityMissingRun.recordRuntimeEvent({
-      type: "tool_started",
-      toolName: "patch_workbook",
-      toolCallId: "uncompleted-write",
-    });
-    recordAgentCompletion(capabilityMissingRun);
-    assert.throws(
-      () => capabilityMissingRun.settle({ outcome: "completed", assistantMessageId: messageId }),
-      /foundation capability gate failed/,
-    );
-    assert.equal(
-      (db.prepare("SELECT state FROM cases WHERE case_id = ?").get(capabilityMissingRun.caseId) as { state: string }).state,
-      "failed",
-    );
-
-    const abortedRun = beginProductionTaskRun({
+    const abortedRun = beginDeliveryRun({
       db,
       traceId: "00000000-0000-4000-8000-000000000005",
       goal: "Cancel safely.",
       attachments: [],
-      legacyContract: contract("text"),
+      deliverySpec: contract("text"),
       casRoot: path.join(dataRoot, "cas"),
     });
     abortedRun.settle({ outcome: "aborted", message: "user stop" });
@@ -572,7 +587,7 @@ export const productionTaskRuntimeTestPromise = (async () => {
     );
     assert.equal(
       (db.prepare("SELECT state FROM case_run_bindings WHERE case_id = ? AND run_id = ?")
-        .get(abortedRun.caseId, abortedRun.foundation.runId) as { state: string }).state,
+        .get(abortedRun.caseId, abortedRun.runContext.runId) as { state: string }).state,
       "canceled",
     );
   } finally {

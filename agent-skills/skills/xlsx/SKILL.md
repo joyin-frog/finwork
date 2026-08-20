@@ -89,33 +89,26 @@ openpyxl 的 `load_workbook()` → `save()` 会**清空整册公式的缓存值*
 - 所有依赖单元格取值的检查与断言全部读到空值；
 - 装不装 LibreOffice 都救不回来，因为这不是「没重算」，是「原始数据被删了」。
 
-`patch_workbook` 在 XML 层只重写你点名的单元格，其余字节原样保留，并会返回「下游待校验公式」清单。
+`patch_workspace_workbook` 在 XML 层只重写点名的单元格，其余内容原样保留，并自动维护当前候选版本、语义 diff 和复核证据。
 
 用它时注意两点：
 
 - **确定的数字直接用 `value` 写数值，不要写成 `formula: "=18299442.55"`。** 常数写成公式会得到一个没有缓存结果的单元格，读回是空的。
 - **只写了 `formula` 没写 `value` 的单元格，读回为空是正常的**，不是写入失败。需要求值就交给 `finalize_deliverable` 的重算流程；**绝不要因此用 openpyxl 重写整册去"修正"**——那会清空全部公式缓存值，得不偿失。
 
-常规新建工作簿优先用 `create_workbook`。当声明式工具无法表达特殊清洗、版式或业务计算时，可以在本回合输出目录编写并反复修改 Python 脚本，并且只能通过 `run_task_python` 执行；先读懂文件并用 `begin_workspace_change` 冻结目标，脚本读取 `read_workspace_file` 返回的任务内只读路径、把候选文件写入输出目录，再用 `review_workspace_change` 形成脚本版本、文件版本和语义差异。已有模板或工作底稿仍不得用 openpyxl/pandas 整册 load→save 重写。
+常规新建工作簿优先用 `create_workbook`。修改受管工作簿统一用 `patch_workspace_workbook`。特殊清洗或业务计算可以在输出目录编写 Python 脚本并通过 `run_task_python` 执行，让脚本生成 edits JSON，再交给 `patch_workspace_workbook`；版本、diff 和复核证据由 Harness 自动维护。已有模板或工作底稿不得用 openpyxl/pandas 整册 load→save 重写。
 
-**新增 sheet**：`patch_workbook` 的 edit 里加 `createSheet: true` 即可在既有工作簿里建表（不写这个标志、表名又不存在时会报 `sheet_not_found`，防止表名打错被静默变成一张空表）。
+**新增 sheet**：`patch_workspace_workbook` 的 edit 里加 `createSheet: true` 即可在既有工作簿里建表（不写这个标志、表名又不存在时会报 `sheet_not_found`）。
 
-### 确定性检查优先用工具，特殊逻辑允许受管脚本
+### 计算用任务脚本，交付检查由 Harness 负责
 
-| 需求 | 用这个 | 别这样 |
-| --- | --- | --- |
-| 勾稽核对（资产=负债+权益、分季合计=全年、跨表一致） | `check_workbook_ties` | 用 Python 取数再心算比对 |
-| 查重复、必填缺失、金额离群、不该为负的负数 | `detect_data_issues` | 自己写判断逻辑 |
-| 多公司/多期间「科目-金额」表汇总成一张 | `merge_labeled_tables` | 手写 merge 脚本 |
-
-这些工具的判定确定、可复现，且读不到值时会明确判「未验证」而不是「不平」。当它们不能表达任务实际口径时，可以写任务脚本补充检查，但脚本结果不能代替确定性文件复核；必须保存脚本版本、验证说明，并让 `review_workspace_change` 把未完成目标反馈回来。
-`merge_labeled_tables` **不做抵消**，产出的合计是简单相加，不能直接当合并报表对外。
+勾稽、数据质量、合并口径等任务特有逻辑写进可反复调整的任务脚本；不要让模型心算，也不再调用固定的检查小工具。脚本结果只是候选计算，正式结论仍由 `finalize_deliverable` 的结构、公式、渲染和财务 Validator 阻断校验。多公司简单相加不等于合并报表，抵消和勾稽必须由任务脚本明确实现并由专用 Validator 复核。
 
 **公式重算由产品 Runtime 负责**：不要通过 Bash 调用 `scripts/recalc.py`，不要自行寻找或启动 `soffice`，也不要为了绕过重算而在 Python 中手工模拟整套 Excel 公式引擎。
 
 **输入附件是只读的**：受管附件先用 `read_workspace_file` 获取任务内 `taskPath`。Bash/Python 可以读取该快照，但只能把脚本和结果写到本回合输出目录，绝不能覆盖输入快照或用户原文件。
 
-**控制单次工具输出大小**：`create_workbook` 和 `patch_workbook` 都有显式上限。超出或通用工具表达力不足时，可以改用任务脚本分阶段处理；这只扩展计算能力，不能绕过输出目录、资源预算、语义 diff 和质量门。
+**控制单次工具输出大小**：`create_workbook` 和 `patch_workspace_workbook` 都有显式上限。大批量编辑先由任务脚本生成 edits JSON；这只扩展计算能力，不能绕过输出目录、资源预算、语义 diff 和质量门。
 
 当工作簿包含需要求值的公式、或正式交付依赖计算后的单元格值时：
 1. 先保存候选 XLSX，并做公式文本、关键输入值、工作表结构和修改范围的静态检查。
@@ -129,11 +122,10 @@ Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测
 ## 声明式工作流
 
 ### 读取与分析
-1. 用 `read_document` 读取 Excel/CSV，保留工作表名、行列定位和来源证据。
+1. 用 `read_workspace_file` 读取受管 Excel/CSV，保留工作表名、行列定位和来源证据。
    - Excel 输出首列的 `Excel行` 是真实物理行号；报表正文里的“行次”只是会计报表项目编号，**绝不能当成单元格行号**。
 2. 合计、平均、最大最小、分组和差异统计必须用 `analyze_tabular`，不要心算。
-3. 勾稽、数据质量和多表归并分别使用 `check_workbook_ties`、`detect_data_issues`、`merge_labeled_tables`。
-   - `check_workbook_ties` 只要出现“不平”或“未验证”，就不得声称勾稽通过；先依据 `Excel行` 修正地址并重跑，真实不平则明确报告差异。
+3. 任务特有的勾稽、数据质量和多表归并使用 `run_task_python`，结果必须保留来源定位并接受正式 Validator 复核。
 
 ### 新建工作簿
 1. 先确定工作表、列、单位、数据来源和计算口径。
@@ -149,10 +141,10 @@ Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测
 6. 通用结构用 `create_workbook`；特殊结构允许任务脚本，但必须版本化脚本、复核候选文件并通过交付质量门。
 
 ### 修改既有工作簿
-1. 用 `patch_workbook`，只改明确的单元格。
-2. 不覆盖原件；需要连续修改时把上一次输出作为下一次输入。
+1. 用 `patch_workspace_workbook`，只改明确的单元格。
+2. 不覆盖原件；连续修改会自动基于当前候选头，不要自行管理父版本或重读旧 asset。
 3. 模板自带公式和格式优先，不能重建同名表来“简化”。
-4. 通用工具不足时，先用 `begin_workspace_change` 冻结计划，再用 `run_task_python` 让动态脚本读取任务快照并反复生成候选；每一轮调用 `review_workspace_change(planId=..., final=false)` 查看格子级变化和 `pendingTargets`，最终用同一 planId 和 `final=true` 通过后端完成门。
+4. 通用工具不足时，用 `run_task_python` 生成 edits JSON，再调用 `patch_workspace_workbook(editsFilePath=...)`；工具结果会直接返回格子级变化和未完成目标。
 
 ## 关键：使用公式，而非硬编码计算结果
 
@@ -171,7 +163,7 @@ Skill 只描述何时需要重算与如何验证结果；Runtime 安装与探测
 4. `#REF!`、`#DIV/0!`、`#VALUE!`、`#N/A`、`#NAME?` 任一存在都不能交付。
 5. Runtime 返回 `recalc_unavailable` 时必须停止公式型交付并报告阻塞；不得硬编码结果、安装临时依赖或绕过门禁。
 6. 只有 `finalize_deliverable` 返回正式 CompletionEvidence 后，才能向用户声明文件已交付。
-7. 修改受管输入文件时，没有最终 `review_workspace_change(final=true)` 的变更链，即使文件可打开也不能宣称完成。diff 主要用于 Agent 自检，用户是否查看不影响普通文件交付。
+7. 修改受管输入文件时，只有 `patch_workspace_workbook` 形成当前候选链且 `finalize_deliverable` 通过，才能宣称完成。
 
 ## 最终检查清单
 

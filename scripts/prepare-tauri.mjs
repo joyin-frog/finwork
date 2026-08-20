@@ -53,7 +53,7 @@ await injectUpdaterPubkey();
 
 // ──────────────────────────────────────────────────────────────────────────────
 // § B  Next.js 产物打包到 Tauri resources
-//   需要先跑 `pnpm run build` 生成 .next/standalone（npm run build 也兼容）。
+//   需要先跑 `pnpm run build` 生成 .next/standalone。
 //   若产物缺失则打印告警并提前退出(dev 或仅注入 pubkey 时不崩)。
 // ──────────────────────────────────────────────────────────────────────────────
 const nextDir = path.join(root, ".next");
@@ -61,6 +61,9 @@ const standaloneDir = path.join(nextDir, "standalone");
 const staticDir = path.join(nextDir, "static");
 const agentSkillsDir = path.join(root, "agent-skills");
 const workersDir = path.join(root, "workers");
+const libreOfficeRuntimeSource = process.env.FINWORK_LIBREOFFICE_RUNTIME_DIR
+  ? path.resolve(process.env.FINWORK_LIBREOFFICE_RUNTIME_DIR)
+  : path.join(root, "vendor", "libreoffice-runtime");
 const resourcesDir = path.join(root, "src-tauri", "resources");
 const serverResourceDir = path.join(resourcesDir, "next-server");
 const nodeResourceDir = path.join(resourcesDir, "node");
@@ -105,6 +108,18 @@ await cp(workersDir, path.join(serverResourceDir, "workers"), {
 // 安装器首启 pip 读 getProjectRoot()/requirements.txt;生产态 projectRoot = next-server,故把根 requirements 拷过去。
 await cp(path.join(root, "requirements.txt"), path.join(serverResourceDir, "requirements.txt"));
 
+// Optional product-managed LibreOffice provider. Release CI supplies a platform-specific,
+// license-audited runtime at FINWORK_LIBREOFFICE_RUNTIME_DIR; development builds may omit it.
+if (existsSync(libreOfficeRuntimeSource)) {
+  const target = path.join(serverResourceDir, "runtimes", "libreoffice");
+  await rm(target, { recursive: true, force: true });
+  await mkdir(path.dirname(target), { recursive: true });
+  await cp(libreOfficeRuntimeSource, target, { recursive: true });
+  console.log("prepare-tauri: bundled managed LibreOffice provider.");
+} else {
+  console.warn("⚠ 未提供产品 LibreOffice runtime；打包后 Preflight 将尝试已安装/受管 Provider 并明确报告缺失。");
+}
+
 // C 方案:Python 运行时归档 workers/python-runtime.tar.gz 随包,首启解压即用(getBundledPythonArchive),免 GitHub 下载。
 // CI release 的「Bundle Python runtime archive」步骤按平台拉好;本地打包没有时,首启回退联网下载(python-installer 兜底)。
 if (!existsSync(path.join(workersDir, "python-runtime.tar.gz")) && !existsSync(path.join(workersDir, "python-runtime"))) {
@@ -114,14 +129,14 @@ if (!existsSync(path.join(workersDir, "python-runtime.tar.gz")) && !existsSync(p
   );
 }
 
-// 打包 ripgrep 二进制到 bin/(getRgPath() 生产态优先解析 projectRoot/bin/rg);跨平台、不依赖系统安装。
+// 打包 ripgrep 给 Pi grep 使用；知识检索本身走 SQLite FTS5/BM25。
 const rgExe = process.platform === "win32" ? "rg.exe" : "rg";
 const binResourceDir = path.join(serverResourceDir, "bin");
 await mkdir(binResourceDir, { recursive: true });
 if (existsSync(rgPath)) {
   await cp(rgPath, path.join(binResourceDir, rgExe));
 } else {
-  console.warn(`⚠ 未找到 ripgrep 二进制(${rgPath});知识库搜索在产物中将不可用。`);
+  console.warn(`⚠ 未找到 ripgrep 二进制(${rgPath});Pi grep 在产物中将不可用。`);
 }
 
 // Windows 11 dynamic-code sandbox. Keep the final package lean: the npm

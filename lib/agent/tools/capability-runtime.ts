@@ -1,13 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod/v4";
-import type { AgentFoundationContext } from "@/lib/agent/contracts";
+import type { AgentRunContext } from "@/lib/agent/contracts";
 import { CapabilityExecutor, CapabilityExecutionError } from "@/lib/capability/executor";
 import type { CapabilityDefinition } from "@/lib/capability/contracts";
 import { CapabilityRegistry } from "@/lib/capability/registry";
 import { getDb } from "@/lib/db/sqlite";
 import { LedgerExecutionGovernor, ResourceLedger } from "@/lib/resource/ledger";
-import { CapabilityFoundationGateway } from "@/lib/runtime/capability-foundation-gateway";
-import { CapabilityFoundationRollout } from "@/lib/runtime/capability-foundation-rollout";
 import { JsonValueSchema } from "@/lib/capability/common";
 import { actionsForCapability, createCapabilitySecurityGuard } from "@/lib/security/capability-guard";
 import { SecurityAuthorizer } from "@/lib/security/kernel";
@@ -22,7 +20,7 @@ import {
 export type FinanceCapabilityRuntimeContext = {
   runId: string;
   caseId?: string;
-  foundation?: AgentFoundationContext;
+  runContext?: AgentRunContext;
 };
 
 export type FinanceToolRuntime = {
@@ -65,8 +63,6 @@ type FinanceToolOutput = z.infer<typeof FinanceToolOutputSchema>;
  */
 export class FinanceCapabilityRuntime implements FinanceToolRuntime {
   readonly registry: CapabilityRegistry;
-  readonly rollout: CapabilityFoundationRollout;
-  readonly gateway: CapabilityFoundationGateway;
   readonly executor: CapabilityExecutor;
   private readonly securityGuard?: ReturnType<typeof createCapabilitySecurityGuard>;
 
@@ -81,16 +77,14 @@ export class FinanceCapabilityRuntime implements FinanceToolRuntime {
     const ledger = new ResourceLedger(db);
     ensureResourceBudgets(db, ledger, context);
     this.registry = new CapabilityRegistry(db);
-    this.rollout = new CapabilityFoundationRollout(db);
-    this.gateway = new CapabilityFoundationGateway(this.rollout);
-    if (context.foundation) {
+    if (context.runContext) {
       const authorizer = new SecurityAuthorizer(db);
       const destinationDomain = configuredResearchGatewayDomain();
       this.securityGuard = createCapabilitySecurityGuard(authorizer, {
-        principal: context.foundation.principal,
-        tenantId: context.foundation.tenantId,
-        caseId: context.foundation.caseId,
-        classification: context.foundation.security.classification,
+        principal: context.runContext.principal,
+        tenantId: context.runContext.tenantId,
+        caseId: context.runContext.caseId,
+        classification: context.runContext.security.classification,
         destinationDomain: (definition) =>
           definition.id === capabilityId("research_web") ? destinationDomain : undefined,
       });
@@ -104,7 +98,7 @@ export class FinanceCapabilityRuntime implements FinanceToolRuntime {
       new LedgerExecutionGovernor(ledger),
     );
     for (const definition of definitions) registerFinanceCapabilityDefinition(this.registry, definition);
-    if (context.foundation) this.bootstrapTaskGrants(db, context.foundation);
+    if (context.runContext) this.bootstrapTaskGrants(db, context.runContext);
   }
 
   async execute(
@@ -112,41 +106,27 @@ export class FinanceCapabilityRuntime implements FinanceToolRuntime {
     args: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<unknown> {
-    const policy = resolveFinanceCapabilityPolicy(definition.id);
-    const epoch = this.rollout.ensureInitialized();
-    if (epoch.authority === "new" && !this.context.foundation) {
-      throw new Error("Capability cutover requires a production foundation context");
-    }
     if (this.securityGuard) {
       const capability = this.registry.resolve(capabilityId(definition.id), CAPABILITY_VERSION);
       if (!capability) throw new Error(`Capability ${definition.id} is not registered`);
       const denied = await this.securityGuard(capability, args);
       if (denied) throw new CapabilityExecutionError(denied);
     }
-    const next = async (input: Record<string, unknown>) => {
-      const result = await this.executor.execute({
-        capabilityId: capabilityId(definition.id),
-        version: CAPABILITY_VERSION,
-        input,
-        runId: this.context.runId,
-        ...(this.context.caseId ? { caseId: this.context.caseId } : {}),
-        ...(signal ? { signal } : {}),
-      });
-      if (!result.ok) throw new CapabilityExecutionError(result.failure);
-      return result.output;
-    };
-    return this.gateway.execute({
+    const result = await this.executor.execute({
+      capabilityId: capabilityId(definition.id),
+      version: CAPABILITY_VERSION,
       input: args,
-      operation: policy.operation,
-      caseId: this.context.caseId,
       runId: this.context.runId,
-      next,
+      ...(this.context.caseId ? { caseId: this.context.caseId } : {}),
+      ...(signal ? { signal } : {}),
     });
+    if (!result.ok) throw new CapabilityExecutionError(result.failure);
+    return result.output;
   }
 
-  private bootstrapTaskGrants(db: DatabaseSync, foundation: AgentFoundationContext): void {
+  private bootstrapTaskGrants(db: DatabaseSync, runContext: AgentRunContext): void {
     const authorizer = new SecurityAuthorizer(db);
-    const expiresAt = new Date(Date.now() + (foundation.budget.wallTimeMs ?? 4 * 60 * 60 * 1_000)).toISOString();
+    const expiresAt = new Date(Date.now() + (runContext.budget.wallTimeMs ?? 4 * 60 * 60 * 1_000)).toISOString();
     for (const definition of this.definitions) {
       const capability = this.registry.resolve(capabilityId(definition.id), CAPABILITY_VERSION);
       if (!capability) throw new Error(`Capability ${definition.id} is not registered`);
@@ -155,26 +135,26 @@ export class FinanceCapabilityRuntime implements FinanceToolRuntime {
       // execution guard can fail it closed when selected. Do not fail the
       // entire Agent while bootstrapping an otherwise local task, and never
       // pre-grant the denied network action.
-      const grantableActions = foundation.security.allowExternalEgress
+      const grantableActions = runContext.security.allowExternalEgress
         ? actions
         : actions.filter((action) => action !== "network");
       if (grantableActions.length) {
         ensureTaskCapabilityGrant(authorizer, {
-          principal: foundation.principal,
-          tenantId: foundation.tenantId,
-          caseId: foundation.caseId,
+          principal: runContext.principal,
+          tenantId: runContext.tenantId,
+          caseId: runContext.caseId,
           capabilityId: capability.id,
           actions: grantableActions,
           expiresAt,
         });
       }
       if (actions.includes("network")) {
-        if (!foundation.security.allowExternalEgress) continue;
-        for (const domain of foundation.security.allowedDomains) {
+        if (!runContext.security.allowExternalEgress) continue;
+        for (const domain of runContext.security.allowedDomains) {
           ensureTaskEgressGrant(authorizer, {
-            principal: foundation.principal,
-            tenantId: foundation.tenantId,
-            caseId: foundation.caseId,
+            principal: runContext.principal,
+            tenantId: runContext.tenantId,
+            caseId: runContext.caseId,
             capabilityId: capability.id,
             domain,
             expiresAt,
@@ -258,8 +238,8 @@ function registerFinanceCapabilityDefinition(
       inputSchemaId: `finance-tool.${definition.id}.input.v1`,
       outputSchemaId: `finance-tool.${definition.id}.output.v1`,
       preconditions: [{
-        id: "legacy_authorization_succeeded",
-        description: "The existing finance authorization and confirmation boundary completed successfully",
+        id: "tool_authorization_succeeded",
+        description: "The finance tool authorization and confirmation boundary completed successfully",
         blocking: true,
       }],
       sideEffects: policy.sideEffects,
@@ -382,7 +362,7 @@ function ensureResourceBudgets(
       retryLimit: 0,
     });
   }
-  const runBudget = context.foundation?.budget ?? {
+  const runBudget = context.runContext?.budget ?? {
     tokenLimit: 500_000,
     wallTimeMs: 4 * 60 * 60 * 1_000,
     cpuTimeMs: 2 * 60 * 60 * 1_000,

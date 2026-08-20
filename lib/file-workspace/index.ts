@@ -11,3 +11,4 @@ export async function getFileWorkspaceStore(): Promise<FileWorkspaceStore> {
 export * from "./types";
 export * from "./semantic-diff";
 export * from "./execution-evidence";
+export * from "./review-gate";

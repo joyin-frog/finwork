@@ -3,7 +3,7 @@ import path from "node:path";
 import type { HistoricalFinanceCase } from "./cases";
 
 export function checkMinimumDeliverables(
-  contract: HistoricalFinanceCase["taskContract"],
+  contract: HistoricalFinanceCase["deliverySpec"],
   outputDir: string,
 ): { ok: boolean; message?: string } {
   const files = listCandidateFiles(outputDir);

@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { TaskContract } from "../lib/agent/run-contract.ts";
+import type { DeliverySpec } from "../lib/agent/run-contract.ts";
 import {
   copyToDeliveredImmutable,
   finalizeDeliverables,
@@ -32,7 +32,7 @@ import { validateXlsxFile } from "../lib/deliverable/validators/xlsx.ts";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-function baseContract(overrides?: Partial<TaskContract>): TaskContract {
+function baseContract(overrides?: Partial<DeliverySpec>): DeliverySpec {
   return {
     version: 1,
     taskKind: "spreadsheet",
@@ -186,7 +186,7 @@ export const deliverableQualityGateTestPromise = (async () => {
       mkdirSync(generate, { recursive: true });
       writeFileSync(path.join(generate, "out.txt"), "deliverable body");
       const store = new MemoryDeliverableStore();
-      const contract: TaskContract = {
+      const contract: DeliverySpec = {
         version: 1,
         taskKind: "text",
         requiredDeliverables: [
@@ -196,7 +196,7 @@ export const deliverableQualityGateTestPromise = (async () => {
       };
       const result = await finalizeDeliverables(
         [{ name: "out.txt", contractDeliverableId: "note" }],
-        { runId: "run-text", outputDir: generate, conversationFilesDir: conv, taskContract: contract },
+        { runId: "run-text", outputDir: generate, conversationFilesDir: conv, deliverySpec: contract },
         { store, evidenceSink: store }
       );
       assert.equal(result.ok, true);
@@ -218,7 +218,7 @@ export const deliverableQualityGateTestPromise = (async () => {
       writeFileSync(path.join(generate, "x.txt"), "x");
       const r = await finalizeDeliverables(
         [{ name: "x.txt", contractDeliverableId: "nope" }],
-        { runId: "r", outputDir: generate, taskContract: baseContract() },
+        { runId: "r", outputDir: generate, deliverySpec: baseContract() },
         { store: new MemoryDeliverableStore() }
       );
       assert.equal(r.ok, false);
@@ -232,7 +232,7 @@ export const deliverableQualityGateTestPromise = (async () => {
       const generate = path.join(conv, "generate");
       mkdirSync(generate, { recursive: true });
       writeFileSync(path.join(generate, "a.txt"), "a");
-      const contract: TaskContract = {
+      const contract: DeliverySpec = {
         version: 1,
         taskKind: "text",
         requiredDeliverables: [
@@ -244,7 +244,7 @@ export const deliverableQualityGateTestPromise = (async () => {
       const store = new MemoryDeliverableStore();
       const r = await finalizeDeliverables(
         [{ name: "a.txt", contractDeliverableId: "a" }],
-        { runId: "run-miss", outputDir: generate, conversationFilesDir: conv, taskContract: contract },
+        { runId: "run-miss", outputDir: generate, conversationFilesDir: conv, deliverySpec: contract },
         { store, evidenceSink: store }
       );
       assert.equal(r.ok, true);
@@ -268,7 +268,7 @@ export const deliverableQualityGateTestPromise = (async () => {
           runId: "run-xlsx",
           outputDir: generate,
           conversationFilesDir: conv,
-          taskContract: baseContract(),
+          deliverySpec: baseContract(),
         },
         { store, evidenceSink: store }
       );
@@ -594,7 +594,7 @@ export const deliverableQualityGateTestPromise = (async () => {
       const generate = path.join(conv, "generate");
       mkdirSync(generate, { recursive: true });
       writeFileSync(path.join(generate, "db.txt"), "db-body");
-      const contract: TaskContract = {
+      const contract: DeliverySpec = {
         version: 1,
         taskKind: "text",
         requiredDeliverables: [
@@ -604,7 +604,7 @@ export const deliverableQualityGateTestPromise = (async () => {
       };
       const r = await finalizeDeliverables(
         [{ name: "db.txt", contractDeliverableId: "note" }],
-        { runId: "run-db", outputDir: generate, conversationFilesDir: conv, taskContract: contract },
+        { runId: "run-db", outputDir: generate, conversationFilesDir: conv, deliverySpec: contract },
         { store, evidenceSink: store }
       );
       assert.equal(r.ok, true);

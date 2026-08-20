@@ -73,6 +73,40 @@ export const fileWorkspaceTestPromise = (async () => {
     assert.equal(plan.completed.length, 2);
     assert.equal(plan.pending[0]?.address, "利润!D2");
 
+    const sameFormulaAfter = path.join(root, "after-same-formula.xlsx");
+    await writeWorkbook(sameFormulaAfter, 120, "=B2*2");
+    const derivedDiff = await semanticDiffFiles(beforeXlsx, sameFormulaAfter);
+    const derivedPlan = evaluateWorkspaceChangePlan(derivedDiff, [
+      { description: "数字字符串等同于数值", sheet: "利润", cell: "B2", expectedValue: "120" },
+      { description: "上游变化后的派生结果", sheet: "利润", cell: "C2", expectedValue: "999" },
+      { description: "整表批量录入", sheet: "利润", mustChange: true },
+    ]);
+    assert.equal(derivedPlan.complete, true, "派生公式不应被模型在计划阶段猜测的结果值卡死");
+    const wrongDirectValue = evaluateWorkspaceChangePlan(derivedDiff, [
+      { description: "直接输入仍需严格核对", sheet: "利润", cell: "B2", expectedValue: "999" },
+    ]);
+    assert.equal(wrongDirectValue.complete, false, "直接编辑值不符仍必须阻断");
+    const invariantPlan = evaluateWorkspaceChangePlan(derivedDiff, [
+      { description: "保持表头不变", sheet: "利润", cell: "A1", expectedValue: "项目", mustChange: true },
+      { description: "保留未修改列", sheet: "利润", cell: "D2", mustChange: true },
+    ]);
+    assert.equal(invariantPlan.complete, true, "不变项不能因模型误填 mustChange=true 被卡死");
+    const brokenInvariant = evaluateWorkspaceChangePlan(derivedDiff, [
+      { description: "保持收入不变", sheet: "利润", cell: "B2", mustChange: true },
+    ]);
+    assert.equal(brokenInvariant.complete, false, "声明保持不变的单元格发生变化时仍必须阻断");
+    const changeAndPreserveFormula = evaluateWorkspaceChangePlan(derivedDiff, [
+      { description: "生成合并本期数并保持公式可重算", sheet: "利润", mustChange: true },
+    ]);
+    assert.equal(changeAndPreserveFormula.complete, true, "保持公式属性不等于要求整个工作表不变");
+
+    const invalidDateBefore = path.join(root, "invalid-date-before.xlsx");
+    const invalidDateAfter = path.join(root, "invalid-date-after.xlsx");
+    await writeInvalidDateWorkbook(invalidDateBefore, 100);
+    await writeInvalidDateWorkbook(invalidDateAfter, 120);
+    const invalidDateDiff = await semanticDiffFiles(invalidDateBefore, invalidDateAfter);
+    assert.equal(invalidDateDiff.changed, true, "无效 Excel 日期不得让语义复核抛 Invalid time value");
+
     const scriptBefore = path.join(root, "analysis-before.py");
     const scriptAfter = path.join(root, "analysis-after.py");
     writeFileSync(scriptBefore, "amount = 100\n");
@@ -124,5 +158,13 @@ async function writeWorkbook(filePath: string, amount: number, formula: string) 
   const sheet = workbook.addWorksheet("利润");
   sheet.addRow(["项目", "金额", "计算"]);
   sheet.addRow(["收入", amount, { formula: formula.slice(1), result: amount * 2 }]);
+  await workbook.xlsx.writeFile(filePath);
+}
+
+async function writeInvalidDateWorkbook(filePath: string, amount: number) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("利润");
+  sheet.getCell("A1").value = new Date(Number.NaN);
+  sheet.getCell("B2").value = amount;
   await workbook.xlsx.writeFile(filePath);
 }

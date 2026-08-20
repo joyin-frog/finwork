@@ -58,25 +58,18 @@ function conversationRelativePath(filePath: string, conversationId: string): str
 // strip:剥掉类型动词前缀;relabel:剥空后用此固定文案兜底。
 const TOOL_VISUAL: Record<string, { strip?: RegExp; relabel?: string }> = {
   analyze_tabular: { strip: /^整理表格数据(?:（[^）]+）)?[:：]?\s*/ },
-  Bash:       { strip: /^执行[:：]?\s*/ },
-  Skill:      { strip: /^调用技能[:：]?\s*/ },
-  Write:      { strip: /^写入\s*/ },
-  Edit:       { strip: /^编辑\s*/ },
-  MultiEdit:  { strip: /^编辑\s*/ },
-  Read:       { strip: /^读取\s*/ },
-  read_file:  { strip: /^读取资料[:：]?\s*/ },
-  WebSearch:  { strip: /^搜索/ },
-  WebFetch:   { strip: /^获取\s*/ },
-  Grep:       { strip: /^搜索/ },
-  Glob:       { strip: /^查找文件\s*/ },
+  bash:       { strip: /^执行[:：]?\s*/ },
+  write:      { strip: /^写入\s*/ },
+  edit:       { strip: /^编辑\s*/ },
+  read:       { strip: /^读取\s*/ },
+  grep:       { strip: /^搜索/ },
+  find:       { strip: /^查找文件\s*/ },
+  ls:         { strip: /^查看目录\s*/ },
   search_knowledge: { strip: /^检索知识库[:：]?\s*/ },
-  query_knowledge:  { strip: /^查询知识库[:：]?\s*/ },
   AskUserQuestion:  { strip: /^询问[:：]?\s*/ },
   spawn_subagent:   { strip: /^执行子任务[:：]?\s*/ },
   // 单据→凭证系:组头已带动词(「匹配科目 ×8」),子行剥前缀只留对象,避免逐行重复
-  map_voucher_account:    { strip: /^匹配科目\s*/ },
   query_kingdee_accounts: { strip: /^查询金蝶科目[表]?\s*/ },
-  check_voucher_amount:   { strip: /^核对金额\s*/ },
   scan_slip_folder:       { strip: /^扫描单据文件夹\s*/ },
   read_document:          { strip: /^识别单据\s*/ },
 };
@@ -97,15 +90,14 @@ const STEP_ICON_BY_FAMILY: Record<string, IconSvgElement> = {
 };
 
 const TOOL_FAMILY: Record<string, keyof typeof STEP_ICON_BY_FAMILY> = {
-  search_knowledge: "search", query_knowledge: "search", Grep: "search", Glob: "search",
-  WebSearch: "search", query_kingdee_accounts: "search", map_voucher_account: "search",
-  Bash: "command", analyze_tabular: "finance",
-  generate_business_analysis: "finance", check_workbook_ties: "finance",
-  Read: "read", read_file: "read", read_document: "read", WebFetch: "read", scan_slip_folder: "read",
-  Write: "write", Edit: "write", MultiEdit: "write", patch_workbook: "write", finalize_deliverable: "write",
-  Skill: "skill", spawn_subagent: "skill",
+  search_knowledge: "search", grep: "search", find: "search",
+  query_kingdee_accounts: "search",
+  bash: "command", analyze_tabular: "finance",
+  generate_business_analysis: "finance",
+  read: "read", ls: "read", read_document: "read", scan_slip_folder: "read",
+  write: "write", edit: "write", patch_workbook: "write", finalize_deliverable: "write",
+  spawn_subagent: "skill",
   AskUserQuestion: "ask",
-  check_voucher_amount: "finance",
 };
 
 /** 工具事件可能带有多个命名空间(例如 mcp__finance_worker__Read),图标只按最终工具名归类。 */

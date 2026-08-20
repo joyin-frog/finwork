@@ -44,7 +44,7 @@ export function createRunTaskPythonTool(
     [
       "运行本回合输出目录中的 Python 脚本。用于通用工具无法表达的特殊清洗、计算和文件生成。",
       "脚本只能读取任务输入快照和运行时，只能写本回合输出目录，默认无网络、不能启动子进程。",
-      "可反复 edit 脚本并调用本工具；每轮返回新增/修改文件，随后用 review_workspace_change 核对语义差异。",
+      "可反复 edit 脚本并调用本工具；修改既有工作簿时优先输出结构化 edits JSON，再交给 patch_workspace_workbook，版本、diff 和复核由 Harness 自动完成。",
     ].join("\n"),
     {
       scriptPath: z.string().min(1).describe("输出目录内的 .py 脚本相对路径"),

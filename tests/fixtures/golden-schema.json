@@ -21,8 +21,6 @@
     "capability_attempts",
     "capability_definitions",
     "capability_instances",
-    "capability_rollout_epochs",
-    "capability_shadow_comparisons",
     "case_business_edges",
     "case_business_nodes",
     "case_checkpoints",
@@ -69,7 +67,6 @@
     "memory_access_log_v2",
     "memory_deletion_requests_v2",
     "memory_lifecycle_events_v2",
-    "memory_migration_log_v2",
     "memory_records_v2",
     "memory_relations_v2",
     "model_routing_log",
@@ -99,7 +96,6 @@
     "retrieval_ingestion_jobs",
     "retrieval_lexical_terms",
     "retrieval_query_cache",
-    "role_memory",
     "run_events",
     "script_executions",
     "secret_leases",
@@ -148,8 +144,6 @@
     "idx_capability_attempts_run",
     "idx_capability_definitions_status",
     "idx_capability_instances_lookup",
-    "idx_capability_rollout_single_active",
-    "idx_capability_shadow_case",
     "idx_case_business_nodes_kind",
     "idx_case_checkpoints_latest",
     "idx_case_deadlines_due",
@@ -228,7 +222,6 @@
     "idx_retrieval_documents_hash",
     "idx_retrieval_jobs_claim",
     "idx_retrieval_lexical_chunk",
-    "idx_role_memory_role",
     "idx_run_events_run_id",
     "idx_run_events_settled_once",
     "idx_script_executions_run",
@@ -353,14 +346,6 @@
     {
       "name": "idx_capability_instances_lookup",
       "table": "capability_instances"
-    },
-    {
-      "name": "idx_capability_rollout_single_active",
-      "table": "capability_rollout_epochs"
-    },
-    {
-      "name": "idx_capability_shadow_case",
-      "table": "capability_shadow_comparisons"
     },
     {
       "name": "idx_case_business_nodes_kind",
@@ -673,10 +658,6 @@
     {
       "name": "idx_retrieval_lexical_chunk",
       "table": "retrieval_lexical_terms"
-    },
-    {
-      "name": "idx_role_memory_role",
-      "table": "role_memory"
     },
     {
       "name": "idx_run_events_run_id",
@@ -2411,130 +2392,6 @@
         "type": "TEXT",
         "notnull": 1,
         "dflt_value": "datetime('now')",
-        "pk": 0
-      }
-    ],
-    "capability_rollout_epochs": [
-      {
-        "cid": 0,
-        "name": "epoch",
-        "type": "INTEGER",
-        "notnull": 0,
-        "dflt_value": null,
-        "pk": 1
-      },
-      {
-        "cid": 1,
-        "name": "mode",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 2,
-        "name": "authority",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 3,
-        "name": "state",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 4,
-        "name": "reason",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 5,
-        "name": "created_at",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      }
-    ],
-    "capability_shadow_comparisons": [
-      {
-        "cid": 0,
-        "name": "comparison_id",
-        "type": "TEXT",
-        "notnull": 0,
-        "dflt_value": null,
-        "pk": 1
-      },
-      {
-        "cid": 1,
-        "name": "case_id",
-        "type": "TEXT",
-        "notnull": 0,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 2,
-        "name": "run_id",
-        "type": "TEXT",
-        "notnull": 0,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 3,
-        "name": "legacy_hash",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 4,
-        "name": "new_hash",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 5,
-        "name": "equivalent",
-        "type": "INTEGER",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 6,
-        "name": "outcome",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 7,
-        "name": "details_json",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": "'{}'",
-        "pk": 0
-      },
-      {
-        "cid": 8,
-        "name": "created_at",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
         "pk": 0
       }
     ],
@@ -6038,48 +5895,6 @@
         "pk": 0
       }
     ],
-    "memory_migration_log_v2": [
-      {
-        "cid": 0,
-        "name": "source_kind",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 1
-      },
-      {
-        "cid": 1,
-        "name": "source_id",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 2
-      },
-      {
-        "cid": 2,
-        "name": "memory_id",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 3,
-        "name": "source_hash",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 4,
-        "name": "migrated_at",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      }
-    ],
     "memory_records_v2": [
       {
         "cid": 0,
@@ -8175,48 +7990,6 @@
         "type": "TEXT",
         "notnull": 1,
         "dflt_value": null,
-        "pk": 0
-      }
-    ],
-    "role_memory": [
-      {
-        "cid": 0,
-        "name": "id",
-        "type": "INTEGER",
-        "notnull": 0,
-        "dflt_value": null,
-        "pk": 1
-      },
-      {
-        "cid": 1,
-        "name": "role_id",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 2,
-        "name": "content",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 3,
-        "name": "source",
-        "type": "TEXT",
-        "notnull": 0,
-        "dflt_value": null,
-        "pk": 0
-      },
-      {
-        "cid": 4,
-        "name": "created_at",
-        "type": "TEXT",
-        "notnull": 1,
-        "dflt_value": "datetime('now')",
         "pk": 0
       }
     ],

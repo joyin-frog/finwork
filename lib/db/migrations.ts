@@ -918,24 +918,8 @@ export const MIGRATIONS: Migration[] = [
   },
   {
     version: 18,
-    name: "role_memory",
-    up: (db) => {
-      // 智能体 IA · C 刀：每角色独立记忆表（按 role_id 隔离，即隐私边界）。
-      // content = 一条口径/约定；source = 来源标注（手动添加为 NULL，自动沉淀刀再填任务来源）。
-      // CREATE TABLE/INDEX IF NOT EXISTS 幂等，连跑两次无副作用。
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS role_memory (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          role_id TEXT NOT NULL,
-          content TEXT NOT NULL,
-          source TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `);
-      db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_role_memory_role ON role_memory(role_id, created_at DESC)"
-      );
-    },
+    name: "reserved_memory_slot",
+    up: () => {},
   },
   {
     version: 19,
@@ -1494,14 +1478,6 @@ export const MIGRATIONS: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_memory_deletion_requests_memory
           ON memory_deletion_requests_v2(memory_id, requested_at DESC);
 
-        CREATE TABLE IF NOT EXISTS memory_migration_log_v2 (
-          source_kind      TEXT NOT NULL,
-          source_id        TEXT NOT NULL,
-          memory_id        TEXT NOT NULL REFERENCES memory_records_v2(memory_id) ON DELETE CASCADE,
-          source_hash      TEXT NOT NULL,
-          migrated_at     TEXT NOT NULL,
-          PRIMARY KEY(source_kind, source_id)
-        );
       `);
     },
   },
@@ -2045,7 +2021,7 @@ export const MIGRATIONS: Migration[] = [
   },
   {
     version: 35,
-    name: "evaluation_observability_and_rollout",
+    name: "evaluation_observability",
     up: (db) => {
       db.exec(`
         CREATE TABLE IF NOT EXISTS evaluation_manifests (
@@ -2094,30 +2070,6 @@ export const MIGRATIONS: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_foundation_diagnostics_time
           ON foundation_diagnostics(captured_at DESC);
 
-        CREATE TABLE IF NOT EXISTS capability_rollout_epochs (
-          epoch           INTEGER PRIMARY KEY AUTOINCREMENT,
-          mode            TEXT NOT NULL CHECK(mode IN ('shadow','cutover','rollback')),
-          authority       TEXT NOT NULL CHECK(authority IN ('legacy','new')),
-          state           TEXT NOT NULL CHECK(state IN ('active','retired')),
-          reason          TEXT NOT NULL,
-          created_at      TEXT NOT NULL
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_capability_rollout_single_active
-          ON capability_rollout_epochs(state) WHERE state = 'active';
-
-        CREATE TABLE IF NOT EXISTS capability_shadow_comparisons (
-          comparison_id   TEXT PRIMARY KEY,
-          case_id         TEXT,
-          run_id          TEXT,
-          legacy_hash     TEXT NOT NULL,
-          new_hash        TEXT NOT NULL,
-          equivalent      INTEGER NOT NULL CHECK(equivalent IN (0,1)),
-          outcome         TEXT NOT NULL CHECK(outcome IN ('matched','mismatched','inconclusive')),
-          details_json    TEXT NOT NULL DEFAULT '{}',
-          created_at      TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_capability_shadow_case
-          ON capability_shadow_comparisons(case_id, created_at DESC);
       `);
     },
   },
@@ -2631,19 +2583,6 @@ export const MIGRATIONS: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_case_preflight_case
           ON case_preflight_results(case_id, status, capability_id);
       `);
-      const active = db.prepare(`
-        SELECT mode,authority FROM capability_rollout_epochs WHERE state='active' LIMIT 1
-      `).get() as { mode: string; authority: string } | undefined;
-      if (!active || active.mode !== "cutover" || active.authority !== "new") {
-        db.prepare("UPDATE capability_rollout_epochs SET state='retired' WHERE state='active'").run();
-        db.prepare(`
-          INSERT INTO capability_rollout_epochs(mode,authority,state,reason,created_at)
-          VALUES ('cutover','new','active',?,?)
-        `).run(
-          "v45 one-way production authority cutover",
-          new Date().toISOString(),
-        );
-      }
     },
   },
   {

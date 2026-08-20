@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import {
   BusinessRuleRegistry,
-  evaluateDataQualityCapability,
-  evaluateTableMergeCapability,
-  evaluateWorkbookTieCapability,
   financeRuleDefinitions,
   registerFinanceRulePack,
 } from "@/lib/business-rules";
@@ -70,25 +67,6 @@ export const businessRulesTestPromise = (async () => {
   assert.equal(registry.evaluate("consolidation-scope", "2026.1", { expectedEntityIds: ["a", "b"], includedEntityIds: ["a"], excludedEntitiesWithReason: {} }, ARTIFACT_SHA256, "2026-06-30").status, "failed");
   assert.equal(registry.evaluate("voucher-period-alignment", "2026.1", { postingPeriod: "2026-07", documentDate: "2026-06-30" }, ARTIFACT_SHA256, "2026-06-30").status, "failed");
   assert.equal(registry.evaluate("voucher-unique-number", "2026.1", { rows: [{ entity: "A", postingPeriod: "2026-06", voucherNumber: "1" }, { entity: "A", postingPeriod: "2026-06", voucherNumber: "1" }] }, ARTIFACT_SHA256, "2026-06-30").status, "failed");
-
-  const ties = evaluateWorkbookTieCapability(
-    { "资产负债表!A1": 100, "资产负债表!B1": 60, "资产负债表!C1": 40 },
-    [{ label: "资产负债表", left: ["资产负债表!A1"], right: ["资产负债表!B1", "资产负债表!C1"] }],
-  );
-  assert.equal(ties.capabilityId, "finance.workbook.tie-check");
-  assert.equal(ties.results[0]?.status, "passed");
-
-  const quality = evaluateDataQualityCapability([{ id: "1", amount: -1 }, { id: "1", amount: 2 }], { keyFields: ["id"], nonNegativeFields: ["amount"] });
-  assert.equal(quality.capabilityId, "finance.data-quality.detect");
-  assert.ok(quality.issues.some((issue) => issue.kind === "duplicate"));
-  assert.ok(quality.issues.some((issue) => issue.kind === "negative"));
-
-  const merged = evaluateTableMergeCapability([
-    { name: "A", rows: [{ label: "Cash", value: 10 }] },
-    { name: "B", rows: [{ label: "Cash", value: 20 }] },
-  ]);
-  assert.equal(merged.capabilityId, "finance.tables.merge-labeled");
-  assert.equal(merged.merged.rows[0]?.total, 30);
 
   console.log("business-rules tests passed");
 })();

@@ -4,7 +4,7 @@ import type { ResourceBudget } from "@/lib/resource/contracts";
 import type { DataHandlingPolicy } from "@/lib/security/contracts";
 
 /** Production-owned identity shared by a task, its case and nested runs. */
-export type AgentFoundationContext = {
+export type AgentRunContext = {
   taskId: string;
   caseId: string;
   runId: string;
@@ -84,14 +84,14 @@ export type FinworkAgentRequest = {
   traceId?: string;
   conversationId?: number;
   roleId?: string | null;
-  taskContract?: import("./run-contract").TaskContract | null;
+  deliverySpec?: import("./run-contract").DeliverySpec | null;
   /** Explicit governance boundary for Memory v2. Free-form chat must not invent these fields. */
   memoryContext?: Partial<import("@/lib/memory-v2/contracts").MemoryRuntimeContext> | null;
   executionTier?: import("@/lib/settings/model-config").ExecutionTier | null;
   /** Router fact used only for conservative context narrowing; absence keeps the full catalog. */
   intent?: AgentIntent;
   /** Agent code must propagate this identity instead of deriving another case id. */
-  foundation?: AgentFoundationContext;
+  runContext?: AgentRunContext;
   /** Backend-owned business plan supplied for execution context and future UI. */
   workPlan?: AgentWorkPlanSummary;
 };
@@ -122,6 +122,6 @@ export type FinworkAgentResult = {
   roleMode?: string;
   terminationReason?: string;
   repairRounds?: number;
-  repairStopReason?: "completed" | "no_progress" | "max_rounds" | "not_required";
+  repairStopReason?: "completed" | "no_progress" | "max_rounds" | "not_required" | "harness_handled";
   verificationStatus?: "passed" | "not_applicable";
 };

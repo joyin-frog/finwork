@@ -11,8 +11,9 @@ export function createRememberRoleConventionTool(sdk: Sdk) {
   return sdk.tool(
     "remember_role_convention",
     [
-      "把用户确认的专员职责域口径提交为该角色的受治理候选；候选不会直接进入后续派发提示词。",
+      "仅当用户明确说要长期记住、以后默认遵守时，把专员职责域口径提交为该角色的受治理候选；系统会再次向用户确认。",
       "只记跨任务规则、例外或流程偏好；一次性决定、数值结果和任务状态不要记。跨角色约定改用 remember_convention。",
+      "不得根据用户行为、历史任务或模型推测创建候选；候选不会直接进入后续派发提示词。",
       `roleId 可选值:${roleIds}。`,
     ].join("\n"),
     {

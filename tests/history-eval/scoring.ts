@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
-import type { CompletionEvidence, TaskContract } from "@/lib/agent/run-contract";
+import type { CompletionEvidence, DeliverySpec } from "@/lib/agent/run-contract";
 import { parseDocument } from "@/lib/knowledge/parsers";
 import {
   spreadsheetCompareAllowedCells,
@@ -220,7 +220,7 @@ export async function inspectDeliveredArtifacts(
 
 /** repair 期间同一合同项可多次 finalize；评分只读取每个合同项最新的 count 个版本。 */
 export function selectLatestCompletionEvidence(
-  contract: TaskContract,
+  contract: DeliverySpec,
   evidences: CompletionEvidence[],
 ): CompletionEvidence[] {
   return contract.requiredDeliverables.flatMap((required) =>
@@ -235,7 +235,7 @@ export function selectLatestCompletionEvidence(
 }
 
 export function verifyDeliveryContract(
-  contract: TaskContract,
+  contract: DeliverySpec,
   artifacts: ArtifactEvidence[],
 ): { passed: boolean; failures: string[] } {
   const failures: string[] = [];

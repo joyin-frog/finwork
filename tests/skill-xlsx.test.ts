@@ -5,7 +5,8 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { getPythonPath, getBundledPluginRoot } from "../lib/runtime/paths.ts";
 import { getSkillSdkConfig } from "../lib/agent/skills-store.ts";
-import { ALLOWED_TOOLS, BUILTIN_TOOLS } from "../lib/agent/tools/registry.ts";
+import { ALLOWED_TOOLS } from "../lib/agent/tools/registry.ts";
+import { FINWORK_BUILTIN_TOOL_NAMES } from "../lib/agent/pi/tool-names.ts";
 
 // 自写 xlsx skill + Pi 加载配置。行为测试优先:真实跑 recalc.py。
 export const skillXlsxTestPromise = (async () => {
@@ -33,8 +34,8 @@ export const skillXlsxTestPromise = (async () => {
   assert.equal(cfg.plugins[0].path, pluginRoot, "AC-X2 FAIL: 首个 plugin 路径应指向内置 agent-skills");
   // skills 现为动态:干净态 'all',有用户技能/停用时为 plugin 限定名白名单数组。两者皆合法。
   assert.ok(cfg.skills === "all" || Array.isArray(cfg.skills), "AC-X2 FAIL: skills 应为 'all' 或白名单数组");
-  assert.ok(BUILTIN_TOOLS.includes("Bash") && BUILTIN_TOOLS.includes("Write"), "AC-X2 FAIL: 内置工具定义需含 Bash/Write 供 skill 使用");
-  assert.ok(!ALLOWED_TOOLS.includes("Bash") && !ALLOWED_TOOLS.includes("Write"), "AC-X2 FAIL: Bash/Write 不得被 SDK 自动放行");
+  assert.ok(FINWORK_BUILTIN_TOOL_NAMES.includes("bash") && FINWORK_BUILTIN_TOOL_NAMES.includes("write"), "AC-X2 FAIL: Pi 内置工具定义需含 bash/write 供文件任务使用");
+  assert.ok(!ALLOWED_TOOLS.includes("bash") && !ALLOWED_TOOLS.includes("write"), "AC-X2 FAIL: Pi builtins 不属于领域自动放行目录");
 
   // ── AC-X3: recalc.py 缺文件时给结构化 JSON,不崩 ───────────────────
   const dir = mkdtempSync(path.join(tmpdir(), "finance-agent-skill-xlsx-"));

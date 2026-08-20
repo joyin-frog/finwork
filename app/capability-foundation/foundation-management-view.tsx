@@ -62,17 +62,7 @@ export function FoundationManagementView({ snapshot }: { snapshot: FoundationMan
           </p>
         </div>
 
-        <Surface level="panel" edge="hairline" shape="panel" pad="card">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-meta text-muted-foreground">当前写入权</p>
-              <p className="text-title font-medium">
-                {snapshot.rollout ? `${snapshot.rollout.mode} · ${snapshot.rollout.authority}` : "尚未初始化"}
-              </p>
-            </div>
-            <span className="text-caption text-muted-foreground">快照 {snapshot.generatedAt}</span>
-          </div>
-        </Surface>
+        <p className="text-caption text-muted-foreground">快照 {snapshot.generatedAt}</p>
 
         <div className="grid gap-4 md:grid-cols-2">
           <Section title="能力注册与可用性"><Counts values={snapshot.capabilities.totals} /></Section>

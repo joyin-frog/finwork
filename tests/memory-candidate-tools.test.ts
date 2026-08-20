@@ -1,16 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 export const memoryCandidateToolsTestPromise = (async () => {
   const root = mkdtempSync(path.join(tmpdir(), "finwork-memory-candidate-tools-"));
   const savedDb = process.env.FINANCE_AGENT_DB_PATH;
-  const savedMemory = process.env.FINANCE_AGENT_MEMORY_PATH;
-  const memoryPath = path.join(root, "memory.md");
   process.env.FINANCE_AGENT_DB_PATH = path.join(root, "finance-agent.db");
-  process.env.FINANCE_AGENT_MEMORY_PATH = memoryPath;
-  writeFileSync(memoryPath, "# 历史记忆\n- 不得被新工具修改\n", "utf8");
 
   try {
     const captured: Record<string, (args: Record<string, unknown>) => Promise<Record<string, unknown>>> = {};
@@ -46,14 +42,12 @@ export const memoryCandidateToolsTestPromise = (async () => {
       tenantId: "local",
       entityRefs: [],
       kinds: [],
+      queryText: "按部门拆分报表",
       maximumSensitivity: "confidential",
       minimumConfidence: 0,
       limit: 20,
       now: new Date().toISOString(),
     }), [], "MC-1 FAIL: unapproved tool candidate must not be retrieved");
-    assert.equal(readFileSync(memoryPath, "utf8"), "# 历史记忆\n- 不得被新工具修改\n",
-      "MC-1 FAIL: governed tool must not append to memory.md");
-
     const duplicate = await handler({ text: "所有报表都要按部门拆分", conversationId: 42 });
     const duplicateStructured = duplicate.structuredContent as typeof structured;
     assert.equal(duplicateStructured.duplicate, true, "MC-2 FAIL: repeated request should be idempotent");
@@ -70,15 +64,10 @@ export const memoryCandidateToolsTestPromise = (async () => {
     assert.equal(store.get(structured.candidateId), undefined, "MC-3 FAIL: deleted candidate still exists");
     assert.match(JSON.stringify(deletedStructured.deletions), /[a-f0-9]{64}/,
       "MC-3 FAIL: deletion proof missing");
-    assert.equal(readFileSync(memoryPath, "utf8"), "# 历史记忆\n- 不得被新工具修改\n",
-      "MC-3 FAIL: deletion must not rewrite legacy memory.md");
-
-    console.log("memory candidate tools: candidate-only, idempotency, deletion proof and no legacy write passed ✓");
+    console.log("memory candidate tools: candidate-only, idempotency and deletion proof passed ✓");
   } finally {
     if (savedDb === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
     else process.env.FINANCE_AGENT_DB_PATH = savedDb;
-    if (savedMemory === undefined) delete process.env.FINANCE_AGENT_MEMORY_PATH;
-    else process.env.FINANCE_AGENT_MEMORY_PATH = savedMemory;
     rmSync(root, { recursive: true, force: true });
   }
 })();

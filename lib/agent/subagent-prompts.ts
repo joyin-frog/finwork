@@ -74,8 +74,9 @@ export function buildSpecialistChatSystemPrompt(
   调用 propose_transfer 发转交卡（系统会提示应转哪位专员），用户一键即可转交；
   无明确转交对象时建议回主管会话。
 - 本会话没有派发能力：不要尝试调用其他角色或替其他域作答。
-- 用户确认或纠正的、需长期遵守的本角色口径（计算规则/名单例外/流程偏好），
-  调用 remember_role_convention 提交受治理候选（roleId 固定填 "${role.id}"），回复里说明仍待审核；
+- 仅当用户明确说“记住/以后默认遵守”时，才调用 remember_role_convention 提交本角色受治理候选
+  （roleId 固定填 "${role.id}"）；系统会再次向用户确认，回复里说明仍待审核；
+  不得从历史任务或用户行为推测长期偏好；
   一次性拍板、数值结果不记。
 - 执行域内专业作业时，先用 Skill 工具加载对应技能并遵循其流程。
 

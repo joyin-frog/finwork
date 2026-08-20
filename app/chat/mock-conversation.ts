@@ -22,9 +22,9 @@ const demoFiles = [
 
 // 一个回答内覆盖工具注册表，专门用于视觉调试：连续调用、重复调用、失败重试和结构化结果都放在同一条时间线上。
 const MOCK_ALL_TOOL_NAMES = [
-  "Read", "Glob", "Grep", "AskUserQuestion", "WebSearch", "WebFetch", "Monitor", "Write", "Edit", "MultiEdit", "Bash",
-  "mcp__finance_worker__run_python", "mcp__finance_worker__spawn_subagent", "mcp__finance_worker__search_knowledge", "mcp__finance_worker__query_knowledge",
-  "mcp__finance_worker__read_file", "mcp__finance_worker__read_document", "mcp__finance_worker__scan_slip_folder", "mcp__finance_worker__remember_convention",
+  "read", "grep", "find", "ls", "AskUserQuestion", "write", "edit", "bash",
+  "mcp__finance_worker__run_task_python", "mcp__finance_worker__spawn_subagent", "mcp__finance_worker__search_knowledge",
+  "mcp__finance_worker__read_document", "mcp__finance_worker__scan_slip_folder", "mcp__finance_worker__remember_convention",
   "mcp__finance_worker__remember_role_convention", "mcp__finance_worker__record_business_metrics", "mcp__finance_worker__generate_business_analysis",
   "mcp__finance_worker__calculate_payroll_batch", "mcp__finance_worker__confirm_payroll_period", "mcp__finance_worker__query_payroll_status",
   "mcp__finance_worker__diff_payroll_period", "mcp__finance_worker__export_payslips", "mcp__finance_worker__check_reimbursement_batch",
@@ -32,13 +32,12 @@ const MOCK_ALL_TOOL_NAMES = [
   "mcp__finance_worker__tax_calculator", "mcp__finance_worker__query_invoice_ledger", "mcp__finance_worker__query_receivables",
   "mcp__finance_worker__record_sales_invoices", "mcp__finance_worker__record_invoice_settlement", "mcp__finance_worker__query_sales_invoices",
   "mcp__kingdee_worker__query_kingdee_accounts", "mcp__kingdee_worker__export_kingdee_draft", "mcp__kingdee_worker__validate_kingdee_voucher",
-  "mcp__kingdee_worker__import_kingdee_accounts", "mcp__kingdee_worker__check_voucher_amount", "mcp__kingdee_worker__map_voucher_account",
-  "mcp__kingdee_worker__summarize_vouchers", "mcp__kingdee_worker__build_voucher_lines", "mcp__kingdee_worker__build_voucher_sheet",
+  "mcp__kingdee_worker__import_kingdee_accounts",
   "mcp__kingdee_worker__process_voucher_batch", "mcp__finance_worker__record_document_metadata", "mcp__finance_worker__update_company_profile",
   "mcp__finance_worker__finalize_deliverable", "mcp__finance_worker__emit_checklist", "mcp__finance_worker__run_filing_precheck_batch",
   "mcp__finance_worker__run_bank_recon_batch", "mcp__finance_worker__undo_last_write", "mcp__finance_worker__propose_transfer",
   // 重复调用用于观察聚合、重试和同类步骤的视觉表现。
-  "mcp__finance_worker__search_knowledge", "mcp__finance_worker__search_knowledge", "mcp__finance_worker__run_python",
+  "mcp__finance_worker__search_knowledge", "mcp__finance_worker__search_knowledge", "mcp__finance_worker__run_task_python",
 ];
 
 function buildAllToolTimeline(): StoredAgentEvent[] {

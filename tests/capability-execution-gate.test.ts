@@ -85,14 +85,9 @@ export const capabilityExecutionGateTestPromise = (async () => {
   gate = evaluateExecutionRequirements(grouped, readLedger.snapshot());
   assert.equal(gate.ok, true, "OR tool groups must accept one successful alternative");
 
-  assert.deepEqual(
-    capabilityIdsForTool("check-workbook-ties"),
-    [
-      "check_workbook_ties",
-      "finance-tool.check_workbook_ties",
-      "spreadsheet.read",
-      "spreadsheet.validate",
-    ],
+  assert.ok(
+    capabilityIdsForTool("finalize_deliverable").includes("spreadsheet.validate"),
+    "validation semantics belong to the delivery gate, not a model-facing checker",
   );
   assert.ok(
     capabilityIdsForTool("search_knowledge").includes("retrieval.search"),

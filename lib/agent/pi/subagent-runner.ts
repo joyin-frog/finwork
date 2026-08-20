@@ -52,11 +52,11 @@ export async function runPiSubagent(
 ): Promise<SubagentResult> {
   const startedAt = Date.now();
   const instanceId = randomUUID();
-  const runId = options.foundation
-    ? `sub-${options.foundation.runId}-${instanceId}`
+  const runId = options.runContext
+    ? `sub-${options.runContext.runId}-${instanceId}`
     : options.traceId ?? instanceId;
-  const foundation = options.foundation
-    ? { ...options.foundation, runId }
+  const runContext = options.runContext
+    ? { ...options.runContext, runId }
     : undefined;
   const safeLabel = task.label.replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
   const outputDir = path.join(options.parentOutputDir, "subagents", safeLabel);
@@ -71,16 +71,16 @@ export async function runPiSubagent(
   let bindingStarted = false;
   let boundCapabilityIds = ["agent.turn"];
   const bindCaseRun = (state: CaseRunBinding["state"], endedAt?: string) => {
-    if (!foundation) return;
+    if (!runContext) return;
     new BusinessCaseStore(getDb()).attachRun({
-      caseId: foundation.caseId,
+      caseId: runContext.caseId,
       runId,
       roleId: task.roleId,
       capabilityIds: boundCapabilityIds,
       state,
       startedAt: new Date(startedAt).toISOString(),
       ...(endedAt ? { endedAt } : {}),
-    }, foundation.principal, endedAt ? "子代理运行完成" : "子代理开始执行");
+    }, runContext.principal, endedAt ? "子代理运行完成" : "子代理开始执行");
     bindingStarted = true;
   };
   const emit = (event: AgentRuntimeEvent) => {
@@ -131,7 +131,10 @@ export async function runPiSubagent(
       effectivePeriod: options.memoryContext?.effectivePeriod
         ?? parseEffectivePeriodLabel(task.period),
     };
-    const memoryContext = resolveMemoryRuntimeContext({ explicit: explicitMemoryContext });
+    const memoryContext = resolveMemoryRuntimeContext({
+      explicit: explicitMemoryContext,
+      retrievalText: [task.label, task.instructions, task.businessObject ?? ""].join("\n"),
+    });
     const governedMemory = await loadGovernedPromptMemory({
       roleId: task.roleId,
       context: memoryContext,
@@ -156,7 +159,7 @@ export async function runPiSubagent(
       subagentExecutor: runPiSubagent,
       subagentParallelExecutor: runPiSubagentsParallel,
       memoryContext,
-      foundation,
+      runContext,
       modelOverride: options.modelOverride,
     };
     const allowed = new Set(resolveRoleAllowedTools(task.roleId));
@@ -178,8 +181,8 @@ export async function runPiSubagent(
       }),
       createFinanceCapabilityRuntime(definitions, {
         runId,
-        ...(foundation ? { caseId: foundation.caseId } : {}),
-        ...(foundation ? { foundation } : {}),
+        ...(runContext ? { caseId: runContext.caseId } : {}),
+        ...(runContext ? { runContext } : {}),
       }),
     );
 

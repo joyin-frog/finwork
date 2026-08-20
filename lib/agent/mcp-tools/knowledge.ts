@@ -1,4 +1,4 @@
-import { sanitizeDocFileName } from "@/lib/knowledge/named-mirror";
+import { sanitizeKnowledgeDocumentName } from "@/lib/knowledge/document-name";
 import { getKnowledgeDocumentById, listKnowledgeDocuments } from "@/lib/db/sqlite";
 import {
   getProductionRetrievalService,
@@ -29,12 +29,12 @@ function resolveDoc(fileName: string) {
   if (exact) return exact;
 
   // Fallback: compare request name against sanitized title (same transform as syncNamedMirror).
-  // Handles the case where the model calls read_file with the mirror file name it saw via rg
+  // Handles the case where the model asks search_knowledge to read the mirror file name it saw in results.
   // (e.g. "科目--新系统.txt") while the DB has file_name "科目--新系统.xlsx".
   const requestBase = fileName.replace(/\.txt$/i, "");
   return (
     docs.find(d => {
-      const sanitized = sanitizeDocFileName(d.title, d.id);
+      const sanitized = sanitizeKnowledgeDocumentName(d.title, d.id);
       return sanitized === requestBase || sanitized === fileName;
     }) ?? null
   );
@@ -68,39 +68,46 @@ export function createSearchKnowledgeTool(sdk: Sdk, options: KnowledgeToolOption
   const retrieval = options.getRetrievalService ?? getProductionRetrievalService;
   return sdk.tool(
     "search_knowledge",
-    "在知识库中执行受 ACL 约束的 BM25 关键词检索，适合政策、制度、文档内容、数字、专有名词和科目编码。可先把自然语言问题改写为 2-3 组制度术语再检索。每条结果都带不可变来源版本、定位与内容哈希；禁止把没有引用的内容当作知识库事实。闲聊、问候和纯计算不要调用。topK 最大 5。",
-    {
-      query: z.string().describe("关键词或字面字符串；可用 'A OR B' 表达多关键词"),
-      topK: z.number().int().min(1).default(3).describe("返回文件数，最大 5，超出自动取 5"),
-    },
-    async (args: { query: string; topK?: number }) => {
-      const topK = Math.min(args.topK ?? 3, 5);
-      try {
-        return knowledgeText(await governedSearch(args.query, topK, retrieval()));
-      } catch (err) {
-        return knowledgeText(`知识库检索失败：${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-  );
-}
-
-export function createQueryKnowledgeTool(sdk: Sdk, options: KnowledgeToolOptions = {}) {
-  const retrieval = options.getRetrievalService ?? getProductionRetrievalService;
-  return sdk.tool(
-    "query_knowledge",
     [
-      "在知识库中扩大候选范围做受 ACL 约束的深度检索；适合普通检索片段不足时继续钻取。",
-      "返回精确引用，不执行 shell 命令，也不允许绕过检索权限直接扫描文本镜像。",
+      "用受 ACL 约束的 BM25 检索或精读知识库，这是唯一的知识工具。",
+      "检索时传 query，普通取 3-5 条，片段不足时把 topK 提高到 20；每条结果都带不可变来源版本、定位与内容哈希。",
+      "需要继续阅读某份命中文档时传 fileName，并用 startLine/endLine 或 startChar/maxChars 分页；不要改用文件系统工具扫描知识库。",
     ].join("\n"),
     {
-      query: z.string().describe("需要继续钻取的问题或关键词"),
-      topK: z.number().int().min(1).max(20).default(10).describe("最多返回的引用片段数"),
+      query: z.string().optional().describe("检索关键词或字面字符串；可用 'A OR B' 表达多关键词"),
+      topK: z.number().int().min(1).max(20).default(3).describe("返回引用片段数；普通 3-5，深度检索最多 20"),
+      fileName: z.string().optional().describe("精读命中文档时传文件名或 docId 数字字符串"),
+      startLine: z.number().int().min(1).default(1).describe("精读起始行，1-based，默认 1"),
+      endLine: z.number().int().min(1).optional().describe("精读结束行；省略时最多读取 400 行"),
+      startChar: z.number().int().min(0).optional().describe("超长单行文档的起始字符偏移，0-based"),
+      maxChars: z.number().int().min(1).max(MAX_READ_CHARS).optional().describe("字符模式单次读取长度，最大 50000"),
     },
-    async (args: { query: string; topK?: number }) => {
+    async (args: {
+      query?: string;
+      topK?: number;
+      fileName?: string;
+      startLine?: number;
+      endLine?: number;
+      startChar?: number;
+      maxChars?: number;
+    }) => {
       try {
-        return knowledgeText(await governedSearch(args.query, args.topK ?? 10, retrieval()));
+        const service = retrieval();
+        if (args.fileName?.trim()) {
+          const doc = resolveDoc(args.fileName.trim());
+          if (!doc) return knowledgeText(`未找到 ${args.fileName}`);
+          await service.ensureKnowledgeDocumentsReady();
+          const source = service.readKnowledgeDocument(doc.id);
+          const rendered = args.startChar === undefined
+            ? renderKnowledgeRange(doc.file_name, source, args.startLine ?? 1, args.endLine)
+            : renderKnowledgeCharRange(doc.file_name, source, args.startChar, args.maxChars);
+          return knowledgeText(wrapExternalContext(rendered));
+        }
+        const query = args.query?.trim();
+        if (!query) return knowledgeText("query 与 fileName 至少提供一个。");
+        return knowledgeText(await governedSearch(query, args.topK ?? 3, service));
       } catch (err) {
-        return knowledgeText(`query_knowledge 失败：${err instanceof Error ? err.message : String(err)}`);
+        return knowledgeText(`知识库检索失败：${err instanceof Error ? err.message : String(err)}`);
       }
     }
   );
@@ -167,40 +174,4 @@ function renderKnowledgeCharRange(
     "",
     normalizedText.slice(startChar, endExclusive),
   ].join("\n") + continuation;
-}
-
-export function createReadFileTool(sdk: Sdk, options: KnowledgeToolOptions = {}) {
-  const retrieval = options.getRetrievalService ?? getProductionRetrievalService;
-  return sdk.tool(
-    "read_file",
-    "当检索片段不足时，分页精读知识库原文。普通文本用 startLine/endLine 按行读取；超长单行或压缩文本用 0-based startChar/maxChars 按字符读取。单次最多 1000 行或 50000 字符。仅用于知识库文件，不要用于会话附件或工作区文件。",
-    {
-      fileName: z.string().describe("文件名（如 '差旅报销制度.md'）或 docId 数字字符串"),
-      startLine: z.number().int().min(1).default(1).describe("起始行，1-based，默认 1"),
-      endLine: z.number().int().min(1).optional().describe("结束行，1-based；省略时读取最多 400 行"),
-      startChar: z.number().int().min(0).optional().describe("超长单行文件的起始字符偏移，0-based；设置后优先使用字符模式"),
-      maxChars: z.number().int().min(1).max(MAX_READ_CHARS).optional().describe("字符模式单次读取长度，最大 50000"),
-    },
-    async (args: {
-      fileName: string;
-      startLine?: number;
-      endLine?: number;
-      startChar?: number;
-      maxChars?: number;
-    }) => {
-      try {
-        const doc = resolveDoc(args.fileName);
-        if (!doc) return knowledgeText(`未找到 ${args.fileName}`);
-        const service = retrieval();
-        await service.ensureKnowledgeDocumentsReady();
-        const text = service.readKnowledgeDocument(doc.id);
-        const rendered = args.startChar === undefined
-          ? renderKnowledgeRange(doc.file_name, text, args.startLine ?? 1, args.endLine)
-          : renderKnowledgeCharRange(doc.file_name, text, args.startChar, args.maxChars);
-        return knowledgeText(wrapExternalContext(rendered));
-      } catch (err) {
-        return knowledgeText(`read_file 失败：${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-  );
 }

@@ -5,15 +5,10 @@ import { createRememberConventionTool } from "./conventions";
 import { createRememberRoleConventionTool } from "./role-conventions";
 import { createRecordBusinessMetricsTool } from "./business-metrics";
 import { createBusinessAnalysisTool } from "./business-analysis-tool";
-import { createSearchKnowledgeTool, createQueryKnowledgeTool, createReadFileTool } from "./knowledge";
+import { createSearchKnowledgeTool } from "./knowledge";
 import { createReadDocumentTool } from "./read-document";
 import { createPatchWorkbookTool } from "./patch-workbook";
 import { createInspectDocumentStructureTool, createPatchDocumentTool } from "./document-operations";
-import {
-  createCheckWorkbookTiesTool,
-  createDetectDataIssuesTool,
-  createMergeTablesTool,
-} from "./workbook-checks";
 import { createScanSlipFolderTool } from "./scan-slip-folder";
 import { createWorkspaceFileTools } from "./workspace-files";
 import { createRunTaskPythonTool } from "./run-task-python";
@@ -44,14 +39,12 @@ import type {
   SubagentParallelExecutor,
 } from "@/lib/agent/subagent-contracts";
 import type { MemoryRuntimeContext } from "@/lib/memory-v2/contracts";
-import type { AgentFoundationContext } from "@/lib/agent/contracts";
-
-type Sdk = SdkLike & { createSdkMcpServer: NonNullable<SdkLike["createSdkMcpServer"]> };
+import type { AgentRunContext } from "@/lib/agent/contracts";
 
 export type FinanceMcpServerOptions = {
-  /** CR-Q1：由宿主注入 TaskContract（R1 Query Pipeline 接线）；缺省则 finalize 拒绝声明。 */
+  /** CR-Q1：由宿主注入 DeliverySpec（R1 Query Pipeline 接线）；缺省则 finalize 拒绝声明。 */
   finalize?: FinalizeDeliverableToolOptions;
-  /** Runtime-owned subagent seams. Claude remains the legacy default. */
+  /** Runtime-owned subagent seams used by the Pi session. */
   subagentExecutor?: SubagentExecutor;
   subagentParallelExecutor?: SubagentParallelExecutor;
   /** Authoritative memory boundary inherited by every spawned worker. */
@@ -59,7 +52,7 @@ export type FinanceMcpServerOptions = {
   /** 本回合用户附件的只读根；供 read_document 使用。 */
   readDocumentAllowedRoots?: string[];
   /** Production-owned task/case/run identity inherited by nested execution. */
-  foundation?: AgentFoundationContext;
+  runContext?: AgentRunContext;
   /** Parent-owned model override inherited by all nested workers. */
   modelOverride?: string;
   workspaceRootIds?: string[];
@@ -94,12 +87,10 @@ function createFinanceWorkerTools(
         onSubagentEvent,
         serverOptions?.subagentExecutor,
         serverOptions?.memoryContext,
-        serverOptions?.foundation,
+        serverOptions?.runContext,
         serverOptions?.modelOverride,
       ),
       createSearchKnowledgeTool(sdk),
-      createQueryKnowledgeTool(sdk),
-      createReadFileTool(sdk),
       createReadDocumentTool(sdk, {
         allowedRoots: [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])],
       }),
@@ -127,18 +118,12 @@ function createFinanceWorkerTools(
         outputDir,
         allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
       }),
-      createCheckWorkbookTiesTool(sdk, {
-        outputDir,
-        allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
-      }),
-      createDetectDataIssuesTool(sdk),
-      createMergeTablesTool(sdk),
       createScanSlipFolderTool(sdk, [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])]),
       createRememberConventionTool(sdk),
       createRememberRoleConventionTool(sdk),
       createRecordBusinessMetricsTool(sdk),
       createBusinessAnalysisTool(sdk),
-      createResearchWebTool(sdk, serverOptions?.foundation),
+      createResearchWebTool(sdk, serverOptions?.runContext),
       ...createPayrollTools(sdk, outputDir),
       ...createReimbursementTools(sdk),
       ...createSalesInvoiceTools(sdk),
@@ -162,7 +147,7 @@ function createFinanceWorkerTools(
           ? {
               run: serverOptions.subagentParallelExecutor,
               memoryContext: serverOptions.memoryContext,
-              foundation: serverOptions.foundation,
+              runContext: serverOptions.runContext,
               modelOverride: serverOptions.modelOverride,
             }
           : undefined,
@@ -178,7 +163,7 @@ function createFinanceWorkerTools(
           ? {
               run: serverOptions.subagentParallelExecutor,
               memoryContext: serverOptions.memoryContext,
-              foundation: serverOptions.foundation,
+              runContext: serverOptions.runContext,
               modelOverride: serverOptions.modelOverride,
             }
           : undefined,
@@ -188,36 +173,6 @@ function createFinanceWorkerTools(
       // D2·刀8: 越权转交卡（safe，ALLOWED_TOOLS 静默放行）
     createProposeTransferTool(sdk, conversationId),
   ];
-}
-
-export async function createFinanceMcpServer(
-  sdk: Sdk,
-  outputDir: string,
-  traceId?: string,
-  conversationId?: string,
-  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
-  serverOptions?: FinanceMcpServerOptions,
-) {
-  return sdk.createSdkMcpServer({
-    name: "finance_worker",
-    version: "0.1.0",
-    tools: createFinanceWorkerTools(
-      sdk,
-      outputDir,
-      traceId,
-      conversationId,
-      onSubagentEvent,
-      serverOptions,
-    ),
-  });
-}
-
-export async function createKingdeeMcpServer(sdk: Sdk, outputDir?: string) {
-  return sdk.createSdkMcpServer({
-    name: "kingdee_worker",
-    version: "0.1.0",
-    tools: createKingdeeTools(sdk, outputDir),
-  });
 }
 
 /**
@@ -245,25 +200,4 @@ export function buildFinanceToolDefinitions(
   const kingdee = createFinanceToolCollector("kingdee_worker");
   createKingdeeTools(kingdee.sdk, outputDir);
   return [...finance.definitions, ...kingdee.definitions];
-}
-
-export async function buildFinanceMcpServers(
-  sdk: Sdk,
-  outputDir: string,
-  traceId?: string,
-  conversationId?: string,
-  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
-  serverOptions?: FinanceMcpServerOptions,
-) {
-  return {
-    finance_worker: await createFinanceMcpServer(
-      sdk,
-      outputDir,
-      traceId,
-      conversationId,
-      onSubagentEvent,
-      serverOptions,
-    ),
-    kingdee_worker: await createKingdeeMcpServer(sdk, outputDir),
-  };
 }

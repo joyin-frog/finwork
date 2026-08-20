@@ -8,31 +8,17 @@ export type ToolDef = {
 };
 
 export const TOOL_REGISTRY: ToolDef[] = [
-  // Built-in SDK tools
-  { name: "Read",             category: "builtin", riskLevel: "safe" },
-  { name: "Glob",             category: "builtin", riskLevel: "safe" },
-  { name: "Grep",             category: "builtin", riskLevel: "safe" },
-  { name: "AskUserQuestion",  category: "builtin", riskLevel: "safe" },
-  { name: "WebSearch",        category: "builtin", riskLevel: "safe" },
-  { name: "WebFetch",         category: "builtin", riskLevel: "safe" },
-  { name: "Monitor",          category: "builtin", riskLevel: "safe" },
-  { name: "Write",            category: "builtin", riskLevel: "medium" },
-  { name: "Edit",             category: "builtin", riskLevel: "medium" },
-  { name: "MultiEdit",        category: "builtin", riskLevel: "medium" },
-  { name: "Bash",             category: "builtin", riskLevel: "high" },
-  // Core MCP tools
+  // Pi builtins are constructed and scoped in pi/builtin-tools.ts and
+  // context-policy.ts. This registry is the single metadata source for the
+  // production finance catalog only.
   { name: "analyze_tabular",       category: "finance", riskLevel: "safe" },
   { name: "create_workbook",       category: "finance", riskLevel: "medium" },
   { name: "spawn_subagent",        category: "finance", riskLevel: "medium" },
   { name: "search_knowledge", category: "finance", riskLevel: "safe" },
-  { name: "query_knowledge",  category: "finance", riskLevel: "medium" },
-  { name: "read_file",        category: "finance", riskLevel: "safe" },
   { name: "read_document",     category: "finance", riskLevel: "safe" },
   { name: "list_workspace_files", category: "finance", riskLevel: "safe" },
   { name: "read_workspace_file", category: "finance", riskLevel: "safe" },
   { name: "patch_workspace_workbook", category: "finance", riskLevel: "medium" },
-  { name: "begin_workspace_change", category: "finance", riskLevel: "medium" },
-  { name: "review_workspace_change", category: "finance", riskLevel: "medium" },
   // Task-authored code runs without network, with task-scoped reads and output-only writes.
   { name: "run_task_python", category: "finance", riskLevel: "medium" },
   { name: "inspect_document_structure", category: "finance", riskLevel: "safe" },
@@ -41,9 +27,6 @@ export const TOOL_REGISTRY: ToolDef[] = [
   // the production finance catalog. Keep these in the registry so risk,
   // confirmation and renderer policy never fall back to implicit defaults.
   { name: "patch_workbook",       category: "finance", riskLevel: "medium" },
-  { name: "check_workbook_ties", category: "finance", riskLevel: "safe" },
-  { name: "detect_data_issues",  category: "finance", riskLevel: "safe" },
-  { name: "merge_labeled_tables", category: "finance", riskLevel: "safe" },
   { name: "scan_slip_folder",  category: "finance", riskLevel: "safe" },
   // 写入用户约定/角色口径:静默写入+对话内轻提示,记忆页可删(刀6 拍板去确认卡)
   { name: "remember_convention", category: "finance", riskLevel: "medium" },
@@ -78,12 +61,7 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "export_kingdee_draft",      category: "finance", riskLevel: "high" },
   { name: "validate_kingdee_voucher",  category: "finance", riskLevel: "medium" },
   { name: "import_kingdee_accounts",   category: "finance", riskLevel: "medium" },
-  // 单据→凭证:金额勾稽 / 科目映射 / 汇总(均只读,不写数据)
-  { name: "check_voucher_amount",      category: "finance", riskLevel: "safe" },
-  { name: "map_voucher_account",       category: "finance", riskLevel: "safe" },
-  { name: "summarize_vouchers",        category: "finance", riskLevel: "safe" },
-  { name: "build_voucher_lines",       category: "finance", riskLevel: "safe" },
-  { name: "build_voucher_sheet",       category: "finance", riskLevel: "safe" },
+  // 单据勾稽、科目映射、分录构造和汇总是 process_voucher_batch 的内部步骤。
   { name: "process_voucher_batch",     category: "finance", riskLevel: "safe" },
   { name: "export_voucher_list",       category: "finance", riskLevel: "high" },
   // P1 合同归纳:结构化 metadata 起草工具
@@ -104,34 +82,22 @@ export const TOOL_REGISTRY: ToolDef[] = [
   { name: "propose_transfer",          category: "finance", riskLevel: "safe" },
 ];
 
-// 确认门要拦截的工具：必须移出 allowedTools，否则 SDK 自动放行、canUseTool 不触发、确认门死。
-// 成员与 built-in.ALWAYS_CONFIRM_TOOLS 同步（confirm-gate-fix.test 守无漂移）。
-// 注意：不 import built-in（会循环依赖，built-in 已依赖本模块的 getToolRiskLevel）。
-// remember_role_convention（刀6）静默写入；remember_convention 仍挂确认门。
-const CONFIRM_REQUIRED_TOOL_NAMES = new Set<string>([
+/** Cross-task writes that always require explicit user confirmation. */
+export const ALWAYS_CONFIRM_TOOL_NAMES = new Set<string>([
   "remember_convention",
+  "remember_role_convention",
   "update_company_profile",
 ]);
 
 /**
- * 静态工具全集:迁移到 SDK 原生 skill 后,工具不再按 skill 收敛。
- * 模型可见全部已登记工具,由 skill 描述引导选用、高风险工具经确认门兜底(见 createRiskConfirmHook)。
- * 所有内置工具、高风险财务工具与 always-confirm 工具移出此列表，
- * 使其经 canUseTool → risk-confirm hook → 弹确认卡，而非被 SDK 自动放行。
- * 内置工具仍由 BUILTIN_TOOLS 提供定义，并通过 SDK 原生 PreToolUse 机制闸检查。
+ * 财务工具的免确认集合。模型实际能看到哪些工具由 context-policy.ts
+ * 按当前请求裁剪；这里不再承担工具曝光职责。
+ * 高风险和 always-confirm 工具必须离开该集合，确保执行时进入统一确认门。
+ * Pi 基础工具由 pi/tool-names.ts 与 builtin-tools.ts 独立管理。
  */
 export const ALLOWED_TOOLS: string[] = TOOL_REGISTRY
-  .filter((t) => t.category !== "builtin")
-  .filter((t) => !(t.riskLevel === "high" || CONFIRM_REQUIRED_TOOL_NAMES.has(t.name)))
+  .filter((t) => !(t.riskLevel === "high" || ALWAYS_CONFIRM_TOOL_NAMES.has(t.name)))
   .map((t) => t.name);
-
-/**
- * SDK 实际加载的内置工具定义集合 —— 只发 agent 真正用得到的内置工具,
- * 替代 `claude_code` 全预设(后者每回合还塞进 Task/TodoWrite/NotebookEdit/BashOutput
- * 等财务 agent 用不到的工具定义;网关无缓存→每回合重复付费)。与 ALLOWED_TOOLS 同源,
- * 不改变可调用能力,仅减少随每回合发送的工具定义体积(MCP 工具走 mcpServers,不在此列)。
- */
-export const BUILTIN_TOOLS: string[] = TOOL_REGISTRY.filter((t) => t.category === "builtin").map((t) => t.name);
 
 export function getToolRiskLevel(toolName: string): ToolRiskLevel {
   return TOOL_REGISTRY.find((t) => t.name === toolName)?.riskLevel ?? "medium";

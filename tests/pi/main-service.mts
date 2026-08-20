@@ -6,11 +6,40 @@ import { randomUUID } from "node:crypto";
 import {
   buildPiPrompt,
   canContinueReadOnlyTurnAfterProviderFailure,
+  classifyHarnessOwnedToolFailure,
   lastAssistantError,
   resolveResumableSession,
   throwIfLastAssistantProviderError,
   validatePiSessionLocator,
 } from "../../lib/agent/pi/agent-service.ts";
+
+assert.deepEqual(
+  classifyHarnessOwnedToolFailure({
+    type: "tool_completed",
+    toolName: "patch_workspace_workbook",
+    toolCallId: "stale-1",
+    isError: true,
+    content: "stale_base_version: old parent",
+  }),
+  {
+    toolName: "patch_workspace_workbook",
+    code: "stale_base_version",
+    message: "stale_base_version: old parent",
+    terminationReason: "session_stale",
+  },
+  "旧版本候选应交给 Harness 终止，不能进入模型 repair",
+);
+assert.equal(
+  classifyHarnessOwnedToolFailure({
+    type: "tool_completed",
+    toolName: "finalize_deliverable",
+    toolCallId: "business-1",
+    isError: true,
+    content: "CONSOLIDATION_BALANCE_FAILED",
+  }),
+  null,
+  "业务勾稽错误仍应允许模型修复",
+);
 
 const root = mkdtempSync(path.join(tmpdir(), "finwork-pi-main-service-"));
 const sessions = path.join(root, "sessions");
@@ -147,15 +176,15 @@ const xlsxPrompt = buildPiPrompt(
   }],
 );
 assert.match(xlsxPrompt.text, /先用 read 加载 xlsx Skill：.*agent-skills\/skills\/xlsx\/SKILL\.md/);
-assert.match(xlsxPrompt.text, /受管 assetId 表格.*`patch_workspace_workbook`/);
-assert.match(xlsxPrompt.text, /旧式路径附件.*`patch_workbook`/);
-assert.match(xlsxPrompt.text, /优先用 `create_workbook` \/ `patch_workspace_workbook`/);
-assert.match(xlsxPrompt.text, /通用工具不足.*反复 edit Python 脚本/);
-assert.match(xlsxPrompt.text, /read_workspace_file 获取任务内只读 taskPath/);
-assert.match(xlsxPrompt.text, /不能覆盖输入/);
-assert.match(xlsxPrompt.text, /不得用 openpyxl\/pandas 对用户现有工作簿做 load→save/);
-assert.match(xlsxPrompt.text, /begin_workspace_change.*planId/);
-assert.match(xlsxPrompt.text, /review_workspace_change\(planId=.*final=true\)/);
+assert.match(xlsxPrompt.text, /改动受管表格使用 `patch_workspace_workbook`/);
+assert.match(xlsxPrompt.text, /自动从唯一候选头继续/);
+assert.match(xlsxPrompt.text, /优先直接调用 `create_workbook` \/ `patch_workspace_workbook`/);
+assert.match(xlsxPrompt.text, /通用工具表达不了时再写任务脚本/);
+assert.match(xlsxPrompt.text, /`run_task_python`.*结构化编辑清单/);
+assert.match(xlsxPrompt.text, /版本链、变更计划、语义 diff 和复核证据由 Harness 自动维护/);
+assert.match(xlsxPrompt.text, /不得用 openpyxl\/pandas 打开再保存既有模板/);
+assert.doesNotMatch(xlsxPrompt.text, /begin_workspace_change.*planId/);
+assert.doesNotMatch(xlsxPrompt.text, /review_workspace_change\(planId=.*final=true\)/);
 assert.match(xlsxPrompt.text, /finalize_deliverable/);
 const xlsxReadOnlyPrompt = buildPiPrompt(
   [{ role: "user", content: "分析下这个报表" }],

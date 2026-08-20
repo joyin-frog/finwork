@@ -7,7 +7,7 @@
  * 设计要点：
  * - AgentRuntimeEvent 包含两类：① 新合同事件（后端从 AR2a 起发射）；
  *   ② 遗留兼容类型（前端历史 DB 事件读取 + reducer 翻译层使用，保持 API 兼容）。
- * - contractToLegacyEvents(envelope) 将合同 envelope 转换为 chat_agent_events 落库词表格式。
+ * - projectRuntimeEvent(envelope) 只生成聊天展示投影；envelope 仍是运行事实权威。
  * - createEmitter(runId, conversationId, instanceId?) 工厂内聚 eventId 计数与 ts 盖章。
  */
 
@@ -55,7 +55,7 @@ export type AgentRuntimeEvent =
   /** 本期只定义不发射（AR4/批跑进度用）。 */
   | { type: "tool_updated" }
   /** 工具调用完成（替代 tool_result 事件）。summary 来自 getToolSummary（子代理场景）。
-   *  子代理场景额外携带 label/roleId，供 contractToLegacyEvents 正确分组。 */
+   *  子代理场景额外携带 label/roleId，供聊天展示投影正确分组。 */
   | { type: "tool_completed"; toolName?: string; toolCallId?: string; content?: string; isError?: boolean; durationMs?: number; structured?: unknown; summary?: string; label?: string; roleId?: string }
   /** 上下文压缩完成（替代 system(compact_boundary)）。 */
   | { type: "compaction_completed"; preTokens?: number; postTokens?: number; trigger?: string }
@@ -139,9 +139,9 @@ export type AgentEventEnvelope = {
   event: AgentRuntimeEvent;
 };
 
-// ─── 遗留事件类型（落库词表）────────────────────────────────────────────────
+// ─── 聊天展示投影（不是运行事实权威）────────────────────────────────────────
 
-export type LegacyEvent = { type: "text"; content: string } | { type: string; [key: string]: unknown };
+export type ChatEventProjection = { type: "text"; content: string } | { type: string; [key: string]: unknown };
 
 // ─── Emitter 工厂 ────────────────────────────────────────────────────────────
 
@@ -194,7 +194,7 @@ export function createEmitter(
   };
 }
 
-// ─── contractToLegacyEvents（合同→落库词表映射）────────────────────────────
+// ─── Runtime event → chat projection ────────────────────────────────────────
 
 /**
  * 将单条 envelope 转换为 chat_agent_events 落库词表格式（零或多条）。
@@ -214,7 +214,7 @@ export function createEmitter(
  * - system_note               → [{type:"system", subtype, message}]
  * - 其余（run_started main、run_ended main、run_settled、title_updated 等） → []
  */
-export function contractToLegacyEvents(envelope: AgentEventEnvelope): LegacyEvent[] {
+export function projectRuntimeEvent(envelope: AgentEventEnvelope): ChatEventProjection[] {
   const { event, instanceId, toolCallId } = envelope;
   const isSubagent = instanceId !== null;
 

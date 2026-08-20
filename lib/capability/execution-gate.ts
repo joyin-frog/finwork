@@ -32,7 +32,6 @@ export type ExecutionGateDecision =
 
 export const TOOL_CAPABILITY_MAP: Readonly<Record<string, readonly string[]>> = {
   read: ["spreadsheet.read", "document.read", "filesystem.read"],
-  read_file: ["spreadsheet.read", "document.read", "filesystem.read"],
   read_document: ["spreadsheet.read", "document.read"],
   read_workspace_file: ["spreadsheet.read", "document.read", "filesystem.read"],
   inspect_document_structure: ["document.read", "document.inspect"],
@@ -41,13 +40,10 @@ export const TOOL_CAPABILITY_MAP: Readonly<Record<string, readonly string[]>> = 
   create_workbook: ["spreadsheet.write"],
   patch_workbook: ["spreadsheet.read", "spreadsheet.write"],
   patch_workspace_workbook: ["spreadsheet.read", "spreadsheet.write"],
-  review_workspace_change: ["spreadsheet.validate", "workspace.change-review"],
   run_task_python: ["sandboxed.code-execution", "filesystem.write"],
-  check_workbook_ties: ["spreadsheet.read", "spreadsheet.validate"],
   finalize_deliverable: ["spreadsheet.validate", "artifact.deliver"],
   search: ["retrieval.search"],
   search_knowledge: ["retrieval.search"],
-  query_knowledge: ["retrieval.search"],
   research_web: ["research.web"],
   web_search: ["research.web-search"],
   fetch_url: ["research.fetch"],

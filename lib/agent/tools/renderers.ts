@@ -21,17 +21,13 @@ export function skillLabel(id: string): string {
 }
 
 const summaries: Record<string, SummaryFn> = {
-  Read:       (i) => `读取 ${shortPath(str(i, "file_path"))}`,
-  Write:      (i) => `写入 ${shortPath(str(i, "file_path"))}`,
-  Edit:       (i) => `编辑 ${shortPath(str(i, "file_path"))}`,
-  MultiEdit:  (i) => `编辑 ${shortPath(str(i, "file_path"))}`,
-  Glob:       (i) => `查找文件 ${str(i, "pattern")}`,
-  Grep:       (i) => `搜索「${str(i, "pattern")}」`,
-  Bash:       (i) => bashSummary(i),
-  WebSearch:  (i) => `搜索「${str(i, "query")}」`,
-  WebFetch:   (i) => `获取 ${str(i, "url").slice(0, 60)}`,
-  Monitor:    () => "监控进程",
-  Skill:      (i) => { const n = str(i, "command") || str(i, "name") || str(i, "skill"); return n ? `调用【${skillLabel(n)}】技能` : "调用技能"; },
+  read:       (i) => `读取 ${shortPath(str(i, "path"))}`,
+  write:      (i) => `写入 ${shortPath(str(i, "path"))}`,
+  edit:       (i) => `编辑 ${shortPath(str(i, "path"))}`,
+  find:       (i) => `查找文件 ${str(i, "pattern")}`,
+  grep:       (i) => `搜索「${str(i, "pattern")}」`,
+  ls:         (i) => { const p = str(i, "path"); return p ? `查看目录 ${shortPath(p)}` : "查看目录"; },
+  bash:       (i) => bashSummary(i),
 
   AskUserQuestion: (i) => {
     const qs = (i as { questions?: Array<{ question?: string }> })?.questions;
@@ -50,12 +46,11 @@ const summaries: Record<string, SummaryFn> = {
   },
 
   // ─── 财务工具(finance_worker) ───
-  search_knowledge: (i) => { const q = str(i, "query"); return q ? `检索知识库：${q.slice(0, 24)}` : "检索知识库"; },
-  query_knowledge: (i) => {
+  search_knowledge: (i) => {
+    const file = str(i, "fileName");
     const query = str(i, "query");
-    return query ? `查询知识库：${query.slice(0, 32)}` : "查询知识库";
+    return file ? `精读知识库：${file}` : query ? `检索知识库：${query.slice(0, 24)}` : "检索知识库";
   },
-  read_file: (i) => { const f = str(i, "fileName"); return f ? `读取资料：${f}` : "读取资料"; },
   list_workspace_files: (i) => {
     const query = str(i, "query");
     return query ? `搜索已授权文件：${query.slice(0, 32)}` : "查看已授权文件";
@@ -64,14 +59,6 @@ const summaries: Record<string, SummaryFn> = {
   patch_workspace_workbook: (i) => {
     const output = str(i, "outputName");
     return output ? `更新工作簿：${output}` : "更新受管工作簿";
-  },
-  begin_workspace_change: (i) => {
-    const count = arrayLen(i, "targets");
-    return `冻结文件修改计划${count ? `（${count} 项）` : ""}`;
-  },
-  review_workspace_change: (i) => {
-    const candidate = str(i, "candidatePath").split(/[\\/]/).at(-1);
-    return candidate ? `复核文件变更：${candidate}` : "复核文件变更";
   },
   run_task_python: (i) => {
     const script = str(i, "scriptPath").split(/[\\/]/).at(-1);
@@ -102,16 +89,7 @@ const summaries: Record<string, SummaryFn> = {
     if (hasBudget || hasPrior) return "生成经营分析表(四能力×三基准)";
     return "生成经营分析表(偿债/盈利/营运/发展)";
   },
-  check_workbook_ties: () => "勾稽校验",
   patch_workbook: () => "更新工作簿",
-  detect_data_issues: (i) => {
-    const rows = arrayLen(i, "rows");
-    return `检查数据质量${rows ? `（${rows} 行）` : ""}`;
-  },
-  merge_labeled_tables: (i) => {
-    const sources = arrayLen(i, "sources");
-    return `合并科目表${sources ? `（${sources} 个来源）` : ""}`;
-  },
   spawn_subagent: (i) => {
     // 新参数 role(角色 id);历史会话事件里存的是旧参数 skill,保留兼容渲染
     const roleName = getRoleDefinition(str(i, "role"))?.name;
@@ -233,18 +211,6 @@ const summaries: Record<string, SummaryFn> = {
     const name = p ? p.split(/[/\\]/).pop() : "";
     return name ? `识别单据 ${name}` : "识别单据";
   },
-  check_voucher_amount: (i) => {
-    const total = num(i, "totalYuan");
-    return `核对金额${total != null ? ` ¥${total.toLocaleString("zh-CN")}` : "(大写/小写勾稽)"}`;
-  },
-  map_voucher_account: (i) => { const t = str(i, "text"); return t ? `匹配科目「${t.slice(0, 20)}」` : "匹配科目"; },
-  build_voucher_lines: (i) => {
-    const exp = arrayLen(i, "expenses");
-    const adv = num(i, "advanceYuan");
-    return `生成分录${exp ? `(${exp} 项费用)` : ""}${adv ? " · 含预借款冲销" : ""}`;
-  },
-  build_voucher_sheet: (i) => { const n = arrayLen(i, "vouchers"); return `生成对照清单${n ? `(${n} 张凭证)` : ""}`; },
-  summarize_vouchers: (i) => { const n = arrayLen(i, "results"); return `汇总凭证${n ? `(${n} 张)` : ""}`; },
   process_voucher_batch: (i) => { const n = arrayLen(i, "slips"); return `批量处理${n ? `${n} 笔业务` : "单据"}`; },
   export_voucher_list: (i) => { const n = arrayLen(i, "vouchers"); return `导出凭证清单${n ? `(${n} 笔)` : ""}`; },
 };

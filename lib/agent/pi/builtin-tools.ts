@@ -7,6 +7,16 @@ import { resolveLibreOffice } from "@/lib/runtime/libreoffice-resolver";
 import { getPythonBinDir, getPythonVenvRoot } from "@/lib/runtime/paths";
 import type { AgentQuestion } from "@/lib/agent/contracts";
 import { createPiAskUserQuestionTool } from "@/lib/agent/pi/ask-user-tool";
+import {
+  FINWORK_BUILTIN_TOOL_NAMES,
+  type FinworkBuiltinToolName,
+} from "@/lib/agent/pi/tool-names";
+export {
+  FINWORK_BUILTIN_TOOL_NAMES,
+  FINWORK_READ_TOOL_NAMES,
+  FINWORK_WRITE_TOOL_NAMES,
+  type FinworkBuiltinToolName,
+} from "@/lib/agent/pi/tool-names";
 
 /**
  * Finwork 自行构造的 Pi 会话工具：受控文件/shell 工具，以及存在交互通道时的提问工具。
@@ -34,19 +44,6 @@ export type FinworkBuiltinRoots = {
    */
   skillRoots?: string[];
 };
-
-/** 读类：只看不改，可及范围含技能目录。 */
-export const FINWORK_READ_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
-/** 写类：只能落在本回合输出目录。 */
-export const FINWORK_WRITE_TOOL_NAMES = ["write", "edit"] as const;
-
-export const FINWORK_BUILTIN_TOOL_NAMES = [
-  ...FINWORK_READ_TOOL_NAMES,
-  ...FINWORK_WRITE_TOOL_NAMES,
-  "bash",
-] as const;
-
-export type FinworkBuiltinToolName = (typeof FINWORK_BUILTIN_TOOL_NAMES)[number];
 
 export type FinworkBuiltinToolOptions = {
   resolveUserQuestion?: (question: AgentQuestion) => Promise<string>;

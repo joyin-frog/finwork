@@ -12,7 +12,7 @@ import {
   type DueDiligenceTopic,
 } from "@/lib/research";
 import { SecurityAuthorizer } from "@/lib/security";
-import type { AgentFoundationContext } from "@/lib/agent/contracts";
+import type { AgentRunContext } from "@/lib/agent/contracts";
 import type { SdkLike } from "./sdk-types";
 
 const PROVIDER_ID = "finwork-research-gateway";
@@ -55,7 +55,7 @@ function researchError(error: unknown) {
 
 export function createResearchWebTool(
   sdk: SdkLike,
-  foundation?: AgentFoundationContext,
+  runContext?: AgentRunContext,
 ) {
   return sdk.tool(
     "research_web",
@@ -95,9 +95,9 @@ export function createResearchWebTool(
       allowSensitivePersonalData?: boolean;
     }) => {
       try {
-        if (!foundation) throw new Error("research_foundation_context_required");
-        if (!foundation.security.allowExternalEgress) throw new Error("research_external_egress_not_authorized");
-        const allowedDomains = normalizeDomains(foundation.security.allowedDomains);
+        if (!runContext) throw new Error("research_run_context_required");
+        if (!runContext.security.allowExternalEgress) throw new Error("research_external_egress_not_authorized");
+        const allowedDomains = normalizeDomains(runContext.security.allowedDomains);
         if (allowedDomains.length === 0 || allowedDomains.some((domain) => !domainPattern.test(domain))) {
           throw new Error("research_allowed_domains_not_configured_or_invalid");
         }
@@ -113,12 +113,12 @@ export function createResearchWebTool(
               throw new Error(`research_domain_not_allowed:${domain}`);
             }
             authorizer.authorizeOrThrow({
-              principal: foundation.principal,
-              tenantId: foundation.tenantId,
-              caseId: foundation.caseId,
+              principal: runContext.principal,
+              tenantId: runContext.tenantId,
+              caseId: runContext.caseId,
               capabilityId: CAPABILITY_ID,
               action: "network",
-              classification: foundation.security.classification,
+              classification: runContext.security.classification,
               taints: [],
               destinationDomain: domain,
               now: new Date().toISOString(),
@@ -136,7 +136,7 @@ export function createResearchWebTool(
         const topics = args.topics ?? [...DUE_DILIGENCE_TOPICS];
         const report = await service.execute({
           id: randomUUID(),
-          caseId: foundation.caseId,
+          caseId: runContext.caseId,
           providerId: PROVIDER_ID,
           subject: {
             legalName: args.legalName,
@@ -161,8 +161,8 @@ export function createResearchWebTool(
             maxTotalRequests: (args.maxSources ?? 20) + 1,
           },
         }, {
-          principal: foundation.principal,
-          tenantId: foundation.tenantId,
+          principal: runContext.principal,
+          tenantId: runContext.tenantId,
           authorizer,
           capabilityId: CAPABILITY_ID,
         });

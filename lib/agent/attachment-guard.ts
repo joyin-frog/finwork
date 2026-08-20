@@ -15,7 +15,7 @@ function isInside(root: string, resolved: string): boolean {
 /**
  * 把一个 storagePath 解析成本会话目录内的**绝对路径**;越权 / 逃逸 / 无法锚定会话返回 null。
  * 合法两形:会话目录下的绝对路径(新上传)、会话目录相对路径(引用,如 upload/x、generate/x)。
- * 附件只承载会话文件(知识库走 search_knowledge/read_file 工具,不经此路径),故根目录只认会话目录 —— fail-closed。
+ * 附件只承载会话文件（知识库统一走 search_knowledge，不经此路径），故根目录只认会话目录 —— fail-closed。
  * conversationId 缺失(新会话首条消息还没建会话)时无法锚定会话目录 → null(拒绝带 storagePath 的附件)。
  */
 export function resolveInScopeAttachmentPath(

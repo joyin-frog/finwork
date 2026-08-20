@@ -1,5 +1,5 @@
 import type { AgentEvent, ChatAttachment, Conversation, FolderRef, GeneratedAttachment, Message, ModelTier, ReferencedFile, SkillRef } from "@/app/chat/chat-types";
-import { contractToLegacyEvents } from "@/lib/agent/runtime-events";
+import { projectRuntimeEvent } from "@/lib/agent/runtime-events";
 import type { AgentEventEnvelope } from "@/lib/agent/runtime-events";
 export { formatFolderPathLine, folderNameFromPath, splitFolderPathLines, FOLDER_PATH_LINE_PREFIX } from "@/app/chat/folder-path";
 
@@ -144,7 +144,7 @@ export type SSECallbacks = {
  *
  * AR2a 双模：
  *   - 旧帧（type: "chunk" / "agent_event" / "done" / "meta" 等）—— 保持不变；
- *   - 新帧（v:1 AgentEventEnvelope）—— 解包后经 contractToLegacyEvents 翻译，
+ *   - 新帧（v:1 AgentEventEnvelope）—— 解包后生成聊天展示投影，
  *     分发为 onChunk / onAgentEvent / onMeta / onTitle 回调。
  *     run_settled / run_ended 不在此处调 onDone（onDone 由旧 done 帧触发，向前兼容）。
  */
@@ -183,23 +183,23 @@ export async function dispatchSSEEvent(
     }
 
     // run_settled / turn_started / message_started / message_completed / queue_updated → 不在此分发
-    // 注意：run_ended 按 instanceId 分流（子代理 run_ended 不早退，落入 contractToLegacyEvents）
+    // 注意：run_ended 按 instanceId 分流（子代理 run_ended 不早退，进入聊天投影）
     if (event.type === "run_settled" || event.type === "turn_started" ||
         event.type === "message_started" || event.type === "message_completed" || event.type === "queue_updated") {
       return true; // consumed（onDone/onIncomplete 由旧帧触发）
     }
     // B1 修复：主对话 run_ended（instanceId=null）静默消耗；子代理 run_ended（instanceId 非空）
-    // 落入下方 contractToLegacyEvents，映射为 {type:"subagent", phase:"done"} 送达前端时间线。
+    // 落入下方投影，映射为 {type:"subagent", phase:"done"} 送达前端时间线。
     if (event.type === "run_ended" && instanceId == null) {
       return true;
     }
 
-    // 其余新合同事件经 contractToLegacyEvents 翻译后分发
-    const legacyEvents = contractToLegacyEvents(envelope);
-    for (const legacyEv of legacyEvents) {
-      callbacks.onAgentEvent(legacyEv as AgentEvent, instanceId);
+    // 其余运行事件生成只读聊天展示投影后分发。
+    const projectedEvents = projectRuntimeEvent(envelope);
+    for (const projectedEvent of projectedEvents) {
+      callbacks.onAgentEvent(projectedEvent as AgentEvent, instanceId);
     }
-    return legacyEvents.length > 0;
+    return projectedEvents.length > 0;
   }
 
   // ── 旧帧（向前兼容路径）────────────────────────────────────────────────────

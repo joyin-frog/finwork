@@ -24,12 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run check:package-managers
-      - name: npm compatibility smoke
-        run: npm run check:package-managers
       - run: pnpm run lint
       - run: pnpm run typecheck
-      - run: pnpm run eval:ar14:context
 
   build:
     if: inputs.run_build
@@ -51,7 +47,6 @@ jobs:
             nextcache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nextcache-${{ runner.os }}-
       - run: bash scripts/ci-cancel-aware.sh pnpm run build
-      - run: pnpm run eval:ar13:pi-only
 
   unit:
     if: inputs.run_unit
@@ -71,10 +66,8 @@ jobs:
           python -m venv workers/.venv
           workers/.venv/bin/python -m pip install --upgrade pip
           workers/.venv/bin/python -m pip install -r requirements.txt
-      # pnpm test 串起 test:pi、all.test.ts 与 production benchmark gates；
-      # 需要独立进程的 DB/env 测试不塞进 all.test.ts，见 package.json。
+      # 三个明确门：生产合同、Pi Agent 边界、Eval/Oracle 内核。
       - run: bash scripts/ci-cancel-aware.sh pnpm test
-      - run: bash scripts/ci-cancel-aware.sh pnpm run eval:golden:ci
 
   windows_smoke:
     if: inputs.run_windows_smoke
@@ -107,13 +100,11 @@ jobs:
       - run: pnpm run tauri:prepare
       - name: Validate packaged Microsoft MXC contract
         run: node scripts/windows-mxc-contract-smoke.mjs
-      - name: Pi-only packaged preflight
-        run: pnpm run eval:ar14:packaged
       # 校验 Rust 外壳在 Windows 能编译；动态 Python 的隔离边界由上面的官方 MXC runner 提供。
       - name: Cargo check (Windows shell)
         working-directory: src-tauri
         run: cargo check
-      # 启动组装好的 next-server，打一圈路由，扫描有无「漏 chunk / 平台二进制缺失 / stdio 编码」等致命签名。
+      # 启动组装好的 next-server，执行 Pi preflight 并打一圈路由，扫描有无致命签名。
       - name: Packaged runtime smoke
         run: node scripts/windows-smoke.mjs
 

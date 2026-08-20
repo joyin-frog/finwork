@@ -174,7 +174,7 @@ GitHub Actions 触发 `.github/workflows/release.yml`:
 1. **三个矩阵并行**:macOS arm64、macOS x64(Rosetta 交叉编译)、Windows x64
 2. **每个 macOS job**:
    - 导入 Developer ID Application 证书到临时 keychain
-   - `pnpm build && pnpm tauri:prepare`(含 pubkey 注入；npm 命令同样兼容)
+   - `pnpm build && pnpm tauri:prepare`（含 pubkey 注入）
    - tauri-action 调用 `tauri build` — 编译、打包、`codesign`、生成带签名的 `latest.json`
    - `xcrun notarytool submit --wait`(提交公证,等待 Apple 服务端完成)
    - `xcrun stapler staple`(钉入公证票据)

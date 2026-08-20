@@ -15,8 +15,6 @@ export type FoundationDiagnosticsSnapshot = {
   retrieval: { jobs: CountMap; chunks: number };
   resources: { workers: CountMap; cacheEntries: number; cacheBytes: number; cacheHits: number; latestMetricsAt: string | null };
   evaluation: { runs: CountMap; faults: CountMap; latestRunAt: string | null };
-  rollout: { epoch: number; mode: string; authority: string; reason: string; createdAt: string } | null;
-  shadow: { matched: number; mismatched: number; inconclusive: number };
   gc: { runs: CountMap; candidates: CountMap; latestRunAt: string | null };
 };
 
@@ -35,10 +33,6 @@ function latest(db: DatabaseSync, sql: string): string | null {
 
 /** Aggregated operational state only. Payload, prompt, document, and secret fields never leave their stores. */
 export function captureFoundationDiagnostics(db: DatabaseSync, now = new Date().toISOString()): FoundationDiagnosticsSnapshot {
-  const rollout = db.prepare(`
-    SELECT epoch,mode,authority,reason,created_at FROM capability_rollout_epochs
-    WHERE state='active' LIMIT 1
-  `).get() as { epoch: number; mode: string; authority: string; reason: string; created_at: string } | undefined;
   const cache = db.prepare(`
     SELECT COUNT(*) AS entries,COALESCE(SUM(size_bytes),0) AS bytes,COALESCE(SUM(hit_count),0) AS hits
     FROM incremental_cache_entries
@@ -89,12 +83,6 @@ export function captureFoundationDiagnostics(db: DatabaseSync, now = new Date().
       runs: grouped(db, "SELECT status AS key,COUNT(*) AS count FROM evaluation_runs GROUP BY status"),
       faults: grouped(db, "SELECT COALESCE(fault_domain,'none') AS key,COUNT(*) AS count FROM evaluation_runs GROUP BY COALESCE(fault_domain,'none')"),
       latestRunAt: latest(db, "SELECT MAX(started_at) AS value FROM evaluation_runs"),
-    },
-    rollout: rollout ? { epoch: rollout.epoch, mode: rollout.mode, authority: rollout.authority, reason: rollout.reason, createdAt: rollout.created_at } : null,
-    shadow: {
-      matched: scalar(db, "SELECT COUNT(*) AS value FROM capability_shadow_comparisons WHERE outcome='matched'"),
-      mismatched: scalar(db, "SELECT COUNT(*) AS value FROM capability_shadow_comparisons WHERE outcome='mismatched'"),
-      inconclusive: scalar(db, "SELECT COUNT(*) AS value FROM capability_shadow_comparisons WHERE outcome='inconclusive'"),
     },
     gc: {
       runs: grouped(db, "SELECT status AS key,COUNT(*) AS count FROM artifact_gc_runs GROUP BY status"),

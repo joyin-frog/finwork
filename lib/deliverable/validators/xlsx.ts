@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spreadsheetInspect, spreadsheetRecalc, spreadsheetRender } from "@/lib/runtime/spreadsheet-runtime";
+import { finworkArtifactRuntime } from "@/lib/runtime/artifact-runtime";
 import { sha256File } from "../hash";
 import { probeMimeConsistency } from "../mime";
 import type { ValidatorIssue, ValidatorResult } from "../types";
@@ -14,7 +14,7 @@ const FORMULA_ERRORS = ["#DIV/0!", "#REF!", "#VALUE!", "#NAME?", "#NULL!", "#NUM
 /**
  * Provider 能力缺失的错误码。
  *
- * 「没测成」不等于「测挂了」:本机没装 LibreOffice、artifact-tool 没配,都不说明
+ * 「没测成」不等于「测挂了」:本机没有可用的重算/渲染 Provider，并不说明
  * 工作簿有问题。2026-08-05 实测:HISTORY-001 交出一个 1143 条公式的工作簿,唯一
  * 阻断项是一张预览图没渲出来,结果 0 产物、确定性分 0——能验的四条断言也跟着废了。
  * 是否阻断由 ValidatorInput.recalcPolicy 决定：正式交付 required，普通诊断 best_effort。
@@ -22,17 +22,16 @@ const FORMULA_ERRORS = ["#DIV/0!", "#REF!", "#VALUE!", "#NAME?", "#NULL!", "#NUM
 const CAPABILITY_UNAVAILABLE_CODES = new Set([
   "recalc_unavailable",
   "render_unavailable",
-  "artifact_tool_unavailable",
 ]);
 type XlsxRuntime = {
-  inspect: typeof spreadsheetInspect;
-  recalc: typeof spreadsheetRecalc;
-  render: typeof spreadsheetRender;
+  inspect: typeof finworkArtifactRuntime.inspect;
+  recalc: typeof finworkArtifactRuntime.calculate;
+  render: typeof finworkArtifactRuntime.render;
 };
 const DEFAULT_RUNTIME: XlsxRuntime = {
-  inspect: spreadsheetInspect,
-  recalc: spreadsheetRecalc,
-  render: spreadsheetRender,
+  inspect: finworkArtifactRuntime.inspect,
+  recalc: finworkArtifactRuntime.calculate,
+  render: finworkArtifactRuntime.render,
 };
 
 /**

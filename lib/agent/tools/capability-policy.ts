@@ -39,17 +39,6 @@ const write = (
   idempotency: { mode: "none" },
 });
 
-const networkRead = (target: string): FinanceCapabilityPolicy => ({
-  operation: "read",
-  sideEffects: [{ kind: "network", target, reversible: true }],
-  requiredPermissions: [
-    { action: "read", resourceType: target, scope: "case" },
-    { action: "network", resourceType: "egress", scope: "approved_destination" },
-  ],
-  evidenceProduced: [{ type: "source", requiresLocator: true }],
-  idempotency: { mode: "none" },
-});
-
 const governedResearch = (target: string): FinanceCapabilityPolicy => ({
   operation: "write",
   sideEffects: [
@@ -75,24 +64,17 @@ export const FINANCE_CAPABILITY_POLICIES = {
   create_workbook: write("workbook"),
   spawn_subagent: compute("subagent"),
   search_knowledge: read("knowledge_index"),
-  query_knowledge: read("knowledge_index"),
-  read_file: read("file"),
   read_document: read("document"),
   list_workspace_files: read("workspace_manifest"),
   read_workspace_file: read("workspace_asset"),
   patch_workspace_workbook: write("workspace_workbook"),
-  begin_workspace_change: write("workspace_change_plan"),
-  review_workspace_change: write("workspace_change_evidence"),
   run_task_python: write("sandboxed_task_output"),
   inspect_document_structure: read("document_structure"),
   patch_document: write("document"),
   patch_workbook: write("workbook"),
-  check_workbook_ties: read("workbook"),
-  detect_data_issues: compute("data_quality"),
-  merge_labeled_tables: compute("labeled_tables"),
   scan_slip_folder: read("folder"),
   remember_convention: write("memory_candidate"),
-  remember_role_convention: write("role_memory_candidate"),
+  remember_role_convention: write("governed_memory_candidate"),
   record_business_metrics: write("business_metrics"),
   generate_business_analysis: compute("business_analysis"),
   research_web: governedResearch("public_research_source"),
@@ -118,11 +100,6 @@ export const FINANCE_CAPABILITY_POLICIES = {
   export_kingdee_draft: write("kingdee_draft", "delivery"),
   validate_kingdee_voucher: compute("kingdee_voucher"),
   import_kingdee_accounts: write("kingdee_account_cache"),
-  check_voucher_amount: compute("voucher"),
-  map_voucher_account: compute("voucher"),
-  summarize_vouchers: compute("voucher"),
-  build_voucher_lines: compute("voucher"),
-  build_voucher_sheet: write("voucher_workbook"),
   process_voucher_batch: write("voucher_batch"),
   export_voucher_list: write("voucher_artifact", "delivery"),
   record_document_metadata: write("document_metadata"),

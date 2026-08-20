@@ -26,7 +26,7 @@ const log = createLogger("pi-extension");
  * 就会重演 AR3-spike E2b 记录过的那一类绕过。分工因此是：
  *
  * - 内置工具（read/write/edit/bash）：入参是裸字符串，闸在这里。
- * - 财务工具（45 个）：闸留在 tool-adapter，在 Zod 之后。
+ * - 财务工具：闸留在 tool-adapter，在 Zod 之后。
  */
 
 export type FinworkExtensionContext = {
@@ -170,68 +170,6 @@ export function createFinworkExtension(context: FinworkExtensionContext): Inline
   return {
     name: "finwork-core",
     factory: (pi: ExtensionAPI) => {
-      // L7：把 Pi session tree 暴露为可审计的用户命令。Web Query 不依赖这些命令，
-      // 但 TUI/RPC 可复用同一套 session 文件做 checkpoint、分支和回溯。
-      pi.registerCommand("checkpoint", {
-        description: "给当前会话节点加复核 checkpoint 标签",
-        handler: async (args, ctx) => {
-          const label = args.trim();
-          if (!label) {
-            ctx.ui.notify("用法：/checkpoint <标签>", "warning");
-            return;
-          }
-          const leafId = ctx.sessionManager.getLeafId();
-          if (!leafId) {
-            ctx.ui.notify("当前会话没有可标记节点", "warning");
-            return;
-          }
-          pi.setLabel(leafId, label);
-          ctx.ui.notify(`已标记 checkpoint：${label}`);
-        },
-      });
-      pi.registerCommand("branch", {
-        description: "从指定 session 节点建立方案分支",
-        handler: async (args, ctx) => {
-          const entryId = args.trim();
-          if (!entryId) {
-            ctx.ui.notify("用法：/branch <节点 ID>", "warning");
-            return;
-          }
-          await ctx.fork(entryId, { position: "at" });
-        },
-      });
-      pi.registerCommand("return", {
-        description: "回到 session 树中的指定节点",
-        handler: async (args, ctx) => {
-          const entryId = args.trim();
-          if (!entryId) {
-            ctx.ui.notify("用法：/return <节点 ID>", "warning");
-            return;
-          }
-          await ctx.navigateTree(entryId, { summarize: true, label: "返回复核" });
-        },
-      });
-      // L9：工作流命令只负责提供稳定入口，具体业务仍由 Finwork 工具和确认闸执行。
-      pi.registerCommand("月结", {
-        description: "开始月结工作流",
-        handler: async (args, ctx) => {
-          const period = args.trim() || "当前期间";
-          pi.sendUserMessage(`请按月结工作流处理${period}：先检查期间与数据完整性，再列出风险和待人工确认事项。`);
-        },
-      });
-      pi.registerCommand("对账", {
-        description: "开始银行与账面核对工作流",
-        handler: async (args, ctx) => {
-          pi.sendUserMessage(`请按银行对账工作流处理${args.trim() || "当前上传的流水和账面数据"}。`);
-        },
-      });
-      pi.registerCommand("凭证", {
-        description: "开始凭证草稿工作流",
-        handler: async (args, ctx) => {
-          pi.sendUserMessage(`请按凭证草稿工作流处理${args.trim() || "当前单据"}，最终只生成草稿并保留人工确认点。`);
-        },
-      });
-
       pi.on("tool_call", async (event) => {
         const reason = evaluateBuiltinToolCall(event.toolName, event.input, context.roots);
         if (!reason) return undefined;

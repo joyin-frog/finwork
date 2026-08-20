@@ -5,7 +5,7 @@ import {
 } from "@/lib/agent/pi/agent-service";
 import type {
   AgentAttachment,
-  AgentFoundationContext,
+  AgentRunContext,
   AgentMessage,
   AgentModelUsage,
   AgentQuestion,
@@ -16,13 +16,13 @@ import { redact } from "@/lib/safety/pii";
 import type { runRouter } from "@/lib/agent/router";
 import {
   createEmitter,
-  contractToLegacyEvents,
+  projectRuntimeEvent,
   type AgentRuntimeEvent,
   type AgentEventEnvelope,
   type AgentEmitter,
 } from "@/lib/agent/runtime-events";
 import { persistRuntimeEnvelope, type RunPersistenceContext } from "@/lib/agent/run-event-persistence";
-import { deriveTaskContractForTurn, type TaskContract } from "@/lib/agent/run-contract";
+import { deriveDeliverySpecForTurn, type DeliverySpec } from "@/lib/agent/run-contract";
 import { prefetchRouterKnowledge } from "@/lib/agent/retrieval-prefetch";
 
 /**
@@ -51,9 +51,9 @@ export type AgentTurnParams = {
   conversationId?: number;
   runCounter?: { next: () => number };
   runPersist?: RunPersistenceContext;
-  taskContract?: TaskContract | null;
+  deliverySpec?: DeliverySpec | null;
   executionTier?: import("@/lib/settings/model-config").ExecutionTier | null;
-  foundation?: AgentFoundationContext;
+  runContext?: AgentRunContext;
   workPlan?: AgentWorkPlanSummary;
   onRuntimeEvent?: (event: AgentRuntimeEvent) => AgentRuntimeEvent[] | void;
   /** Caller-owned hard limits; benchmark execution uses the V3 contract budget. */
@@ -137,11 +137,11 @@ export async function runAgentTurn(
     }
 
     const envelope = emitter.wrap(filteredEvent);
-    for (const legacyEvent of contractToLegacyEvents(envelope)) {
-      if (legacyEvent.type === "text") {
-        coalesceTextIntoEvents(collector.collectedEvents, (legacyEvent as { content: string }).content);
+    for (const projectedEvent of projectRuntimeEvent(envelope)) {
+      if (projectedEvent.type === "text") {
+        coalesceTextIntoEvents(collector.collectedEvents, (projectedEvent as { content: string }).content);
       } else {
-        collector.collectedEvents.push(legacyEvent as { type: string; [key: string]: unknown });
+        collector.collectedEvents.push(projectedEvent as { type: string; [key: string]: unknown });
       }
     }
     if (params.runPersist) persistRuntimeEnvelope(envelope, params.runPersist);
@@ -168,14 +168,14 @@ export async function runAgentTurn(
     roleId: params.roleId,
     signal: params.signal,
     resolveUserQuestion: params.resolveUserQuestion,
-    taskContract: params.taskContract ?? deriveTaskContractForTurn({
+    deliverySpec: params.deliverySpec ?? deriveDeliverySpecForTurn({
       intent: routerResult.decision.intent,
       attachments,
       userMessage: [...agentMessages].reverse().find((message) => message.role === "user")?.content,
     }),
     executionTier: params.executionTier,
     intent: routerResult.decision.intent,
-    foundation: params.foundation,
+    runContext: params.runContext,
     workPlan: params.workPlan,
     emit: (event) => handleEmit(event, mainEmitter),
     onSubagentEvent: (event, instanceId) => {

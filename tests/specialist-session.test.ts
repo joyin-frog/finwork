@@ -157,7 +157,7 @@ export const specialistSessionTestPromise = (async () => {
   const newPage = read("app/chat/new/page.tsx");
   assert.ok(newPage.includes("role?: string") && newPage.includes("initialRole"), "SS-6 FAIL: /chat/new 应支持 role 参数并传 initialRole");
   const service = read("lib/agent/pi/agent-service.ts");
-  assert.ok(service.includes("resolveRoleAllowedTools(role.id)"), "SS-6 FAIL: Pi Service 应按角色收窄 allowedTools");
+  assert.ok(service.includes("resolveRoleScopeTools(role.id)"), "SS-6 FAIL: Pi Service 应按角色收窄工具并保留需确认的域内动作");
   assert.ok(service.includes("buildSpecialistChatSystemPrompt"), "SS-6 FAIL: Pi Service 应用专员系统提示");
   assert.ok(service.includes("createFinanceToolAuthorizer"), "SS-6 FAIL: Pi Service 应挂统一工具授权链");
   const stages = read("lib/agent/query-stages.ts");

@@ -13,7 +13,7 @@ import {
 import { partitionBenchmarkCase } from "../lib/evaluation/benchmarks/case-boundary.ts";
 import {
   createBenchmarkTaskContract,
-  createLegacyBenchmarkTaskContract,
+  createBenchmarkDeliverySpec,
 } from "../lib/evaluation/benchmarks/task-contract.ts";
 import {
   createProductionBenchmarkExecutor,
@@ -223,12 +223,12 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
         files: [{ logicalName: "input-only.csv", mediaType: "text/csv", upstreamUri: "input-only.csv" }],
       },
     });
-    let observedInputOnlyContract: FinworkAgentRequest["taskContract"];
+    let observedInputOnlyContract: FinworkAgentRequest["deliverySpec"];
     let observedInputOnlyAttachments = 0;
     const inputOnly = await executeCase(
       inputOnlyCase,
       successfulProvider("42", (request) => {
-        observedInputOnlyContract = request.taskContract;
+        observedInputOnlyContract = request.deliverySpec;
         observedInputOnlyAttachments = request.attachments?.length ?? 0;
       }),
       undefined,
@@ -244,11 +244,11 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     assert.equal(inputOnly.prediction.artifact, undefined);
     assert.equal(inputOnly.prediction.execution?.validation.delivery.required, false);
 
-    let observedBudget: FinworkAgentRequest["foundation"];
+    let observedBudget: FinworkAgentRequest["runContext"];
     const success = await executeCase(
       benchmarkCase("success"),
       successfulProvider("42", (request, options) => {
-        observedBudget = request.foundation;
+        observedBudget = request.runContext;
         assert.equal(options.hardTimeoutMs, 12_345);
       }),
     );
@@ -450,7 +450,7 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     const diagnosticFailure = await executeCase(benchmarkCase("safe-diagnostic"), async () => {
       throw new Error(`diagnostic detail includes ${settings.apiKey}`);
     });
-    assert.equal(diagnosticFailure.prediction.failure?.code, "foundation_agent_error");
+    assert.equal(diagnosticFailure.prediction.failure?.code, "delivery_agent_error");
     assert.match(String(diagnosticFailure.prediction.failure?.details.errorFingerprint), /^[a-f0-9]{64}$/);
     const persistedDiagnostic = getDb().prepare(`
       SELECT error_message FROM agent_traces WHERE trace_id = ?
@@ -614,7 +614,7 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
     );
     const artifactTask = createBenchmarkTaskContract(publicArtifactCase);
     assert.deepEqual(
-      createLegacyBenchmarkTaskContract(artifactTask.contract).requiredDeliverables,
+      createBenchmarkDeliverySpec(artifactTask.contract).requiredDeliverables,
       [{
         id: "benchmark-output",
         mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -624,7 +624,7 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
       "Pi and finalize_deliverable must receive the exact V3 output id",
     );
     const missingArtifact = await executeCase(artifactCase, async (request, options) => {
-      assert.equal(request.taskContract?.requiredDeliverables[0]?.id, "benchmark-output");
+      assert.equal(request.deliverySpec?.requiredDeliverables[0]?.id, "benchmark-output");
       request.emit?.({ type: "tool_started", toolName: "patch_workbook", toolCallId: "patch-artifact" });
       request.emit?.({ type: "tool_completed", toolCallId: "patch-artifact", isError: false });
       request.emit?.({ type: "tool_started", toolName: "finalize_deliverable", toolCallId: "finalize-artifact" });
@@ -632,7 +632,7 @@ export const productionBenchmarkExecutorTestPromise = (async () => {
       return successfulProvider("done")(request, options);
     });
     assert.equal(missingArtifact.prediction.artifact, undefined);
-    assert.equal(missingArtifact.prediction.failure?.code, "foundation_delivery_artifact_missing");
+    assert.equal(missingArtifact.prediction.failure?.code, "delivery_artifact_missing");
     assert.equal(missingArtifact.prediction.execution?.validation.delivery.passed, false);
     assert.equal(missingArtifact.prediction.metrics.tokens, 13, "post-turn contract failures must retain paid usage");
     const failedTurnMessages = getDb().prepare(`

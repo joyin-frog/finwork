@@ -114,6 +114,12 @@ export function getInstalledPythonDir() {
   return path.join(getAppDataDir(), "python-runtime");
 }
 
+/** Product-managed Office compatibility runtime. It is optional and never model-controlled. */
+export function getManagedLibreOfficeDir() {
+  return process.env.FINWORK_MANAGED_LIBREOFFICE_DIR
+    ?? path.join(getAppDataDir(), "runtimes", "libreoffice", "current");
+}
+
 /** 随安装包内嵌的 Python 归档(C 方案:打包带 tar,首启解压、免 GitHub 下载)。
  *  生产态 = next-server/workers/python-runtime.tar.gz(prepare-tauri 拷 workers/ 时带上,CI release 填充)。 */
 export function getBundledPythonArchive() {
@@ -175,16 +181,12 @@ export function getKnowledgeTextDir() {
   return process.env.FINANCE_AGENT_KNOWLEDGE_TEXT_DIR ?? path.join(getAppDataDir(), "knowledge-text");
 }
 
-export function getMemoryPath() {
-  return process.env.FINANCE_AGENT_MEMORY_PATH ?? path.join(getAppDataDir(), "memory.md");
-}
-
 export function getProfilePath() {
   return process.env.FINANCE_AGENT_PROFILE_PATH ?? path.join(getAppDataDir(), "profile.json");
 }
 
 /** 主 Agent 系统提示「静态前缀(A 段)」的用户可编辑覆盖文件;存在即优先于仓库默认与内置常量。
- *  跟 memory.md 一样放应用数据目录,打包后也能改、改完下条消息即生效(无需重新编译)。 */
+ *  放在应用数据目录,打包后也能改、改完下条消息即生效(无需重新编译)。 */
 export function getSystemPromptPath() {
   return process.env.FINANCE_AGENT_SYSTEM_PROMPT_PATH ?? path.join(getAppDataDir(), "system-prompt.md");
 }

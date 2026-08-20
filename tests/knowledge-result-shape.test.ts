@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createSearchKnowledgeTool, createQueryKnowledgeTool, createReadFileTool } from "../lib/agent/mcp-tools/knowledge.ts";
+import { createSearchKnowledgeTool } from "../lib/agent/mcp-tools/knowledge.ts";
 import type { ProductionRetrievalService } from "../lib/retrieval/production.ts";
 
 // 防回归:MCP 工具结果必须是 {content:[{type,text}]} object,不能是 string
@@ -26,8 +26,6 @@ export const knowledgeResultShapeTestPromise = (async () => {
   } as unknown as ProductionRetrievalService;
   const options = { getRetrievalService: () => service };
   createSearchKnowledgeTool(sdk, options);
-  createQueryKnowledgeTool(sdk, options);
-  createReadFileTool(sdk, options);
 
   function assertShape(r: unknown, label: string) {
     assert.ok(r && typeof r === "object" && !Array.isArray(r), `${label}: 应返回 object,不是 string/数组`);
@@ -38,10 +36,9 @@ export const knowledgeResultShapeTestPromise = (async () => {
     assert.equal(typeof first.text, "string", `${label}: content[0].text 是 string`);
   }
 
-  // 三个工具的错误/空路径都必须返回 object(不依赖真实数据,不存在的文件/查询即可触发)
-  assertShape(await handlers.get("read_file")!({ fileName: "__no_such_file_9999__" }), "read_file");
+  // 检索与精读共用同一个工具，两条路径都必须返回合法 MCP object。
   assertShape(await handlers.get("search_knowledge")!({ query: "__no_such_kw_9999__" }), "search_knowledge");
-  assertShape(await handlers.get("query_knowledge")!({ query: "__no_such_kw_9999__" }), "query_knowledge");
+  assertShape(await handlers.get("search_knowledge")!({ fileName: "__no_such_file_9999__" }), "search_knowledge(fileName)");
 
-  console.log("knowledge-result-shape: 三个知识库工具均返回合法 {content} object ✓");
+  console.log("knowledge-result-shape: unified search/read tool returns valid {content} objects ✓");
 })();

@@ -229,7 +229,7 @@ async function runMain(): Promise<void> {
   }
   const profile = BenchmarkProfileSchema.parse(requiredString(args, "profile"));
   const evaluationLayer = BenchmarkEvaluationLayerSchema.parse(
-    typeof args.get("layer") === "string" ? args.get("layer") : "mixed",
+    typeof args.get("layer") === "string" ? args.get("layer") : "agent",
   );
   if (evaluationLayer === "harness") throw new Error("use eval:benchmarks:harness for deterministic Harness evaluation");
   const fixedModel = typeof args.get("fixed-model") === "string" ? String(args.get("fixed-model")).trim() : undefined;
@@ -364,9 +364,7 @@ async function runMain(): Promise<void> {
       oracleArtifactsByCaseId: loaded.oracleArtifactsByCaseId,
       executor: evaluationLayer === "model"
         ? createDirectModelBenchmarkExecutor({ model: fixedModel! })
-        : createProductionBenchmarkExecutor(evaluationLayer === "agent"
-            ? { evaluationMode: "fixed-agent", fixedModel }
-            : {}),
+        : createProductionBenchmarkExecutor({ evaluationMode: "fixed-agent", fixedModel }),
       configuration,
       signal: abortController.signal,
       resumeResults,

@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
-import path from "node:path";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { cn } from "../lib/utils.ts";
 import { INDUSTRY_OPTIONS } from "../lib/profile/industry-options.ts";
-import { getRgPath } from "../lib/knowledge/rg-binary.ts";
 import { openFinanceDatabase, initializeFinanceDatabase } from "../lib/db/sqlite.ts";
 import { initializeSchema, addColumnIfMissing } from "../lib/db/schema.ts";
 
@@ -27,36 +23,6 @@ export const smallUtilsTestPromise = (async () => {
   assert.ok(Array.isArray(INDUSTRY_OPTIONS) && INDUSTRY_OPTIONS.length > 0, "行业预设应非空");
   assert.ok(INDUSTRY_OPTIONS.every((s) => typeof s === "string" && s.length > 0), "每项应为非空字符串");
   assert.equal(new Set(INDUSTRY_OPTIONS).size, INDUSTRY_OPTIONS.length, "行业预设不应有重复");
-
-  // ════ getRgPath():ripgrep 二进制解析优先级 ══════════════════════════
-  const origRg = process.env.FINANCE_AGENT_RG_PATH;
-  const origRoot = process.env.FINANCE_AGENT_PROJECT_ROOT;
-  const rgDir = mkdtempSync(path.join(tmpdir(), "finance-agent-rg-test-"));
-  try {
-    // 1) env 覆盖最高优先
-    process.env.FINANCE_AGENT_RG_PATH = "/custom/rg";
-    assert.equal(getRgPath(), "/custom/rg", "FINANCE_AGENT_RG_PATH 应最高优先");
-
-    // 2) 无 env、有打包 bin/<exe> → 用打包二进制
-    delete process.env.FINANCE_AGENT_RG_PATH;
-    process.env.FINANCE_AGENT_PROJECT_ROOT = rgDir;
-    const exe = process.platform === "win32" ? "rg.exe" : "rg";
-    mkdirSync(path.join(rgDir, "bin"), { recursive: true });
-    const bundled = path.join(rgDir, "bin", exe);
-    writeFileSync(bundled, "#!/bin/sh\n");
-    assert.equal(getRgPath(), bundled, "存在打包 bin/<exe> 时应优先用它");
-
-    // 3) 无 env、无打包 → 回落 @vscode/ripgrep 预编译路径(存在的真实文件)
-    process.env.FINANCE_AGENT_PROJECT_ROOT = path.join(rgDir, "empty");
-    const fallback = getRgPath();
-    assert.ok(fallback.includes("ripgrep"), "回落路径应来自 @vscode/ripgrep");
-  } finally {
-    if (origRg === undefined) delete process.env.FINANCE_AGENT_RG_PATH;
-    else process.env.FINANCE_AGENT_RG_PATH = origRg;
-    if (origRoot === undefined) delete process.env.FINANCE_AGENT_PROJECT_ROOT;
-    else process.env.FINANCE_AGENT_PROJECT_ROOT = origRoot;
-    rmSync(rgDir, { recursive: true, force: true });
-  }
 
   // ════ schema:initializeSchema 建表 + 幂等;addColumnIfMissing ════════
   {

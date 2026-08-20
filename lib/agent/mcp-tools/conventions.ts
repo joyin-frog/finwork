@@ -9,6 +9,7 @@ export function createRememberConventionTool(sdk: Sdk) {
     "remember_convention",
     [
       "新增、修改或取消跨对话长期生效的工作约定；本次会话口径、临时决定、结果和任务状态不要调用。",
+      "仅响应用户明确的“记住/以后/长期/默认”意图；不得根据历史任务、行为或模型推测创建候选。",
       "新增填 text；修改同时填旧原文 replaces 和新 text；纯取消只填 replaces。忠实转述，不扩写或追加否定条目。",
       "系统会向用户确认后提交受治理候选；候选经冲突检查、审批和验证后才会进入后续提示词。专员职责域口径改用 remember_role_convention。",
     ].join("\n"),

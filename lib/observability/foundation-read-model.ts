@@ -36,14 +36,8 @@ export function getFoundationManagementSnapshot(db: DatabaseSync) {
     GROUP BY c.case_id,c.task_id,c.run_id,c.state,c.plan_version,c.updated_at
     ORDER BY c.updated_at DESC LIMIT 100
   `).all();
-  const activeRollout = db.prepare(`
-    SELECT epoch,mode,authority,reason,created_at AS createdAt
-    FROM capability_rollout_epochs WHERE state='active' LIMIT 1
-  `).get() ?? null;
-
   return {
     generatedAt: new Date().toISOString(),
-    rollout: activeRollout,
     capabilities: {
       totals: grouped(db, "SELECT status AS key,COUNT(*) AS count FROM capability_definitions GROUP BY status"),
       items: capabilities,

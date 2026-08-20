@@ -57,7 +57,7 @@ export async function runMockAgent(
   // production without inventing a workbook deliverable.
   if (
     runOptions.attachments?.some((attachment) => /\.(?:xlsx|xlsm|xls|csv|tsv)$/i.test(attachment.name)) &&
-    runOptions.taskContract?.spreadsheetRequirement?.needsWrite === false
+    runOptions.deliverySpec?.spreadsheetRequirement?.needsWrite === false
   ) {
     await say("好的，我先读取并分析这份表格。");
     emitEvent({

@@ -15,6 +15,7 @@ import {
   type MemoryRetrievalQuery,
   type MemorySelection,
 } from "./contracts";
+import { evaluateMemoryRelevance } from "./relevance";
 
 type MemoryRow = {
   memory_id: string;
@@ -237,6 +238,9 @@ export class GovernedMemoryStore {
     const search = query.search?.replace(/\s+/g, " ").trim().toLocaleLowerCase() ?? "";
     return rows
       .map(parseRow)
+      .filter((memory) => query.tenantId ? memory.scope.tenantId === query.tenantId : true)
+      .filter((memory) => query.principalId ? memory.scope.principalId === query.principalId : true)
+      .filter((memory) => query.roleId ? memory.scope.roleId === query.roleId : true)
       .filter((memory) => statuses.size === 0 || statuses.has(memory.approvalStatus))
       .filter((memory) => kinds.size === 0 || kinds.has(memory.kind))
       .filter((memory) => !search || summarizeContent(memory.content).toLocaleLowerCase().includes(search))
@@ -485,11 +489,17 @@ export class GovernedMemoryStore {
       .filter((memory) => SENSITIVITY_RANK[memory.sensitivity] <= SENSITIVITY_RANK[query.maximumSensitivity])
       .filter((memory) => memory.entityRefs.length === 0 || memory.entityRefs.every((id) => entitySet.has(id)))
       .filter((memory) => !memory.effectivePeriod || (!!query.effectivePeriod && periodsOverlap(memory.effectivePeriod, query.effectivePeriod)))
-      .map((memory) => MemorySelectionSchema.parse({
+      .map((memory) => {
+        const summary = summarizeContent(memory.content);
+        return { memory, summary, relevance: evaluateMemoryRelevance(query.queryText, summary) };
+      })
+      .filter(({ relevance }) => relevance.relevant)
+      .map(({ memory, summary, relevance }) => MemorySelectionSchema.parse({
         memory,
-        summary: summarizeContent(memory.content),
+        summary,
         evidenceRefs: memory.sourceEvidenceRefs,
-        score: freshnessScore(memory, query.now),
+        score: Math.min(1, relevance.score * 0.85 + freshnessScore(memory, query.now) * 0.15),
+        selectionReason: `作用域匹配；主题词匹配：${relevance.matchedTerms.join("、")}`,
       }))
       .sort((left, right) => right.score - left.score || left.memory.id.localeCompare(right.memory.id))
       .slice(0, query.limit);
@@ -497,7 +507,7 @@ export class GovernedMemoryStore {
     const touch = this.db.prepare("UPDATE memory_records_v2 SET last_used_at = ? WHERE memory_id = ?");
     for (const item of selected) {
       touch.run(query.now, item.memory.id);
-      this.log(item.memory.id, query.principal, "selected", "governed retrieval", item.evidenceRefs, query.now);
+      this.log(item.memory.id, query.principal, "selected", item.selectionReason, item.evidenceRefs, query.now);
     }
     return selected;
   }

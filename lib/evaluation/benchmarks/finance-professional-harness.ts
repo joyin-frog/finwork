@@ -92,7 +92,7 @@ export async function validateFinanceProfessionalCorpus(
 }
 
 /**
- * Zero-Provider Phase 7 gate. The executor proves only the public TaskContract;
+ * Zero-Provider Phase 7 gate. The executor proves only the public DeliverySpec;
  * the evaluator callback owns private answers, business assertions and checks.
  */
 export async function runFinanceProfessionalHarnessSuite(input: {
@@ -118,7 +118,7 @@ export async function runFinanceProfessionalHarnessSuite(input: {
         layer: "harness",
         providerRequests: 0,
         corpusValidated: checked.has(executionCase.id),
-        taskContractVersion: context.taskContract.version,
+        evaluationSpecVersion: context.taskContract.version,
         inputArtifacts: context.taskContract.inputs.length,
         outputContracts: context.taskContract.expectedOutputs.length,
       },

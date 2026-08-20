@@ -1470,7 +1470,7 @@ def cmd_probe_spreadsheet():
 
 
 def cmd_probe_recalc():
-    """If LibreOffice executable given, recalc =SUM(A1:A2) and expect 3."""
+    """Real provider probe: recalc SUM(A1:A2)=3 and render the result to PDF."""
     if len(sys.argv) < 3:
         print(json.dumps({"ok": False, "error": "usage: probe-recalc <soffice>"}, ensure_ascii=False))
         return
@@ -1526,7 +1526,44 @@ def cmd_probe_recalc():
         rb = openpyxl.load_workbook(target, data_only=True)
         value = rb.active["A3"].value
         rb.close()
-        print(json.dumps({"ok": value == 3, "value": value}, ensure_ascii=False))
+
+        render_dir = td_path / "render"
+        render_dir.mkdir()
+        render_profile = td_path / "lo-render-profile"
+        render_profile.mkdir()
+        render_ok = False
+        render_error = None
+        try:
+            rendered = subprocess.run(
+                [
+                    soffice,
+                    "--headless",
+                    "--norestore",
+                    "--nolockcheck",
+                    f"-env:UserInstallation=file://{render_profile}",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    str(render_dir),
+                    str(target),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=90,
+                env={**os.environ, "SAL_USE_VCLPLUGIN": "svp"},
+            )
+            pdfs = list(render_dir.glob("*.pdf"))
+            render_ok = rendered.returncode == 0 and any(item.stat().st_size > 0 for item in pdfs)
+            if not render_ok:
+                render_error = rendered.stderr or rendered.stdout or "render_empty"
+        except subprocess.TimeoutExpired:
+            render_error = "render_timeout"
+        print(json.dumps({
+            "ok": value == 3,
+            "value": value,
+            "renderOk": render_ok,
+            "renderError": render_error,
+        }, ensure_ascii=False))
 
 
 def cmd_recalc_xlsx():

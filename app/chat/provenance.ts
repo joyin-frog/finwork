@@ -80,13 +80,9 @@ export function buildReimbursementProvenance(timeline: TimelineLike[]): Reimburs
         if (n) counts.push(`登记发票 ${n} 张进台账`);
         break;
       }
-      case "read_file": {
+      case "search_knowledge": {
         const f = str(input, "fileName");
         if (f) sources.push(`知识库文件《${f}》`);
-        break;
-      }
-      case "search_knowledge":
-      case "query_knowledge": {
         const q = str(input, "query");
         if (q) sources.push(`知识库检索「${q.slice(0, 30)}」`);
         break;

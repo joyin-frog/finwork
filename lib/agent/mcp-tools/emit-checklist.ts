@@ -6,7 +6,7 @@
  *   - 返回 structuredContent {kind:'artifact_checklist', artifactId, title, items}
  *   - 接线：safe/finance，无角色白名单（v1 主对话专用）
  *
- * conversationId 经 createFinanceMcpServer 既有参数拿到（参见 index.ts:22）。
+ * conversationId 由 production definition collector 注入。
  */
 
 import { z } from "zod/v4";

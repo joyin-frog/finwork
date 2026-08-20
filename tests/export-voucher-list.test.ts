@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 
 // C. export_voucher_list MCP 工具:三 sheet xlsx 生成 + 借贷平衡校验拒绝 + 维度校验
-// 通过 mockSdk 捕获 handler,直接调用;不依赖运行中的 MCP server。
+// 通过 mockSdk 捕获 handler，直接调用；不依赖运行中的 Agent session。
 
 // 与工具同源解析解释器(env 优先,回落 workers/.venv):裸 "python3" 在 CI 上没有 openpyxl
 import { getPythonPath } from "../lib/runtime/paths";
@@ -22,7 +22,7 @@ export const exportVoucherListTestPromise = (async () => {
     },
   };
 
-  // 用临时输出目录(经 createKingdeeTools 闭包注入,与生产 buildFinanceMcpServers 同路径)
+  // 用临时输出目录（经 createKingdeeTools 闭包注入，与生产 definition collector 同路径）
   const outputDir = path.join(os.tmpdir(), `evl-test-${Date.now()}`);
   mkdirSync(outputDir, { recursive: true });
 

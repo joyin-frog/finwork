@@ -40,7 +40,7 @@ import {
 import { readAgentSettings, type AgentSettings } from "@/lib/settings/agent-settings";
 import { getAppDataDir, getConversationFilesDir, getRunFileWorkspacePaths } from "@/lib/runtime/paths";
 import { wrapExternalContext } from "@/lib/agent/external-context";
-import { beginProductionTaskRun, type ProductionTaskSettlement } from "@/lib/task/production-runtime";
+import { beginDeliveryRun, type DeliveryRunSettlement } from "@/lib/task/production-runtime";
 import {
   classifyTransientProviderError,
   withTransientProviderRetry,
@@ -53,7 +53,7 @@ import {
   type BenchmarkExecutor,
   type BenchmarkPrediction,
 } from "./contracts";
-import { createLegacyBenchmarkTaskContract } from "./task-contract";
+import { createBenchmarkDeliverySpec } from "./task-contract";
 
 type RouterResult = Awaited<ReturnType<typeof runRouter>>;
 export interface ProductionBenchmarkExecutorOptions {
@@ -152,7 +152,7 @@ export async function executeProductionBenchmarkCase(
         routerPath: effectiveRouterResult.path,
         routerFailureHint: effectiveRouterResult.path === "fallback" ? effectiveRouterResult.decision.reasoning : null,
       });
-  const legacyContract = createLegacyBenchmarkTaskContract(context.taskContract);
+  const deliverySpec = createBenchmarkDeliverySpec(context.taskContract);
   const runPaths = getRunFileWorkspacePaths(traceId);
   const outputDir = runPaths.work;
   for (const directory of [runPaths.inputs, runPaths.work, runPaths.outputs]) {
@@ -179,19 +179,22 @@ export async function executeProductionBenchmarkCase(
     caseId: `benchmark-case-run:${traceId}`,
   };
 
-  const productionRun = beginProductionTaskRun({
+  const productionRun = beginDeliveryRun({
     db,
     traceId,
     conversationId,
     goal: productionTaskContract.goal,
     attachments: [],
-    legacyContract,
-    taskContract: productionTaskContract,
+    deliverySpec,
+    evaluationSpec: productionTaskContract,
     inputArtifacts: executionCase.inputs,
     principalId: "benchmark-runner",
     tenantId: "benchmark",
     casRoot,
   });
+  for (const event of productionRun.takePendingEvents()) {
+    persistRuntimeEnvelope(lifecycleEmitter.wrap(event), runPersist);
+  }
   const persistParams: PersistTurnParams = {
     conversationId,
     existingRuntimeSessionId: null,
@@ -234,9 +237,10 @@ export async function executeProductionBenchmarkCase(
           conversationId,
           modelOverride: resolvedModel?.modelId,
           runPersist,
-          taskContract: legacyContract,
+          deliverySpec,
           executionTier: resolvedModel?.executionTier ?? null,
-          foundation: productionRun.foundation,
+          runContext: productionRun.runContext,
+          workPlan: productionRun.plan,
           signal: context.signal,
           resolveUserQuestion: async () => {
             const error = new Error("headless benchmark requires a human decision");
@@ -286,17 +290,26 @@ export async function executeProductionBenchmarkCase(
       caseId: productionRun.caseId,
       traceId,
       assistantContent: result.content,
-      foundation: productionRun.foundation,
+      runContext: productionRun.runContext,
     });
+    for (const event of productionRun.completeExecution("Benchmark Agent 已形成最终结果")) {
+      persistRuntimeEnvelope(lifecycleEmitter.wrap(event), runPersist);
+    }
     productionRun.markValidating();
-    let settlement: ProductionTaskSettlement;
+    for (const event of productionRun.takePendingEvents()) {
+      persistRuntimeEnvelope(lifecycleEmitter.wrap(event), runPersist);
+    }
+    let settlement: DeliveryRunSettlement;
     try {
       settlement = productionRun.settle({
         // The supplied V3 benchmark contract is the authoritative completion
-        // boundary. The v1 contract exists only for Pi/finalize compatibility.
+        // boundary. DeliverySpec is the smaller Pi/finalize projection.
         outcome: "completed",
         assistantMessageId: persisted.messageId,
       });
+      for (const event of productionRun.takePendingEvents()) {
+        persistRuntimeEnvelope(lifecycleEmitter.wrap(event), runPersist);
+      }
     } catch (error) {
       settlement = productionRun.getSettlement() ?? productionRun.settle({ outcome: "error", message: "settlement failed" });
       throw attachSettlement(error, settlement);
@@ -316,8 +329,8 @@ export async function executeProductionBenchmarkCase(
   } catch (error) {
     const aborted = context.signal?.aborted || isAbortError(error);
     const diagnostic = safeBenchmarkDiagnostic(error, [settings.apiKey]);
-    let settlement: ProductionTaskSettlement | undefined =
-      (error as { __benchmarkSettlement?: ProductionTaskSettlement }).__benchmarkSettlement
+    let settlement: DeliveryRunSettlement | undefined =
+      (error as { __benchmarkSettlement?: DeliveryRunSettlement }).__benchmarkSettlement
       ?? productionRun.getSettlement()
       ?? undefined;
     if (!settlement) {
@@ -464,7 +477,7 @@ function persistInlineBenchmarkCitations(input: {
   caseId: string;
   traceId: string;
   assistantContent: string;
-  foundation: ReturnType<typeof beginProductionTaskRun>["foundation"];
+  runContext: ReturnType<typeof beginDeliveryRun>["runContext"];
 }): void {
   if (!input.executionCase.requirements.requiresCitations) return;
   const publicLocators = new Map<string, { locator: ReturnType<typeof DocumentLocatorSchema.parse>; quote: string }>();
@@ -517,12 +530,12 @@ function persistInlineBenchmarkCitations(input: {
     const createdAt = new Date().toISOString();
     const policyDecisionId = authorizeEvidenceWrite({
       authorizer,
-      principal: input.foundation.principal,
-      tenantId: input.foundation.tenantId,
+      principal: input.runContext.principal,
+      tenantId: input.runContext.tenantId,
       caseId: input.caseId,
       capabilityId: "agent.turn",
       artifactVersionId: artifact.versionId,
-      classification: input.foundation.security.classification,
+      classification: input.runContext.security.classification,
       now: createdAt,
     });
     const extraction = ledger.addEvidence(input.caseId, {
@@ -625,9 +638,9 @@ function isSideEffectFree(collector: AgentTurnCollector): boolean {
     );
 }
 
-function attachSettlement(error: unknown, settlement: ProductionTaskSettlement): Error {
+function attachSettlement(error: unknown, settlement: DeliveryRunSettlement): Error {
   const target = error instanceof Error ? error : new Error(String(error));
-  (target as Error & { __benchmarkSettlement?: ProductionTaskSettlement }).__benchmarkSettlement = settlement;
+  (target as Error & { __benchmarkSettlement?: DeliveryRunSettlement }).__benchmarkSettlement = settlement;
   return target;
 }
 
@@ -749,7 +762,7 @@ function assemblePersistedPrediction(input: {
   traceId: string;
   conversationId: number;
   caseId: string;
-  settlement?: ProductionTaskSettlement;
+  settlement?: DeliveryRunSettlement;
   attempts: number;
   fallbackResult?: AgentTurnResult;
   startedAt: number;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import type { TaskContract } from "../lib/agent/run-contract.ts";
+import type { DeliverySpec } from "../lib/agent/run-contract.ts";
 
 // 复用全套既有 mockSdk 模式:捕获 sdk.tool(name, desc, schema, handler) 注册的 handler。
 type Handler = (args: unknown) => Promise<{
@@ -39,7 +39,7 @@ export const mcpToolHandlersTestPromise = (async () => {
       writeFileSync(path.join(outputDir, "工资表.txt"), "payroll");
       writeFileSync(path.join(outputDir, "secret.txt"), "x");
 
-      const contract: TaskContract = {
+      const contract: DeliverySpec = {
         version: 1,
         taskKind: "text",
         requiredDeliverables: [
@@ -56,7 +56,7 @@ export const mcpToolHandlersTestPromise = (async () => {
       const { sdk, handlers } = capturingSdk();
       createFinalizeDeliverableTool(sdk, outputDir, {
         runId: "mcp-run-1",
-        taskContract: contract,
+        deliverySpec: contract,
         conversationFilesDir: conv,
       });
       const finalize = handlers.get("finalize_deliverable")!;
@@ -100,14 +100,14 @@ export const mcpToolHandlersTestPromise = (async () => {
       const r4 = await finalize({ files: [{ name: "   ", contractDeliverableId: "coa" }] });
       assert.ok(r4.isError, "无有效文件名应报错");
 
-      // 5) 缺 TaskContract → isError
+      // 5) 缺 DeliverySpec → isError
       const { sdk: sdk2, handlers: h2 } = capturingSdk();
       createFinalizeDeliverableTool(sdk2, outputDir, { runId: "x" });
       const r5 = await h2.get("finalize_deliverable")!({
         files: [{ name: "科目表.txt", contractDeliverableId: "coa" }],
       });
       assert.ok(r5.isError);
-      assert.equal(r5.structuredContent?.code, "missing_task_contract");
+      assert.equal(r5.structuredContent?.code, "missing_delivery_spec");
     }
 
     // ════ record_document_metadata ═══════════════════════════════════════

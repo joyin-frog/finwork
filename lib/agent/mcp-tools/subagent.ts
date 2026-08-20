@@ -7,7 +7,7 @@ import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 import type { SubagentExecutor } from "@/lib/agent/subagent-contracts";
 import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
 import type { MemoryRuntimeContext } from "@/lib/memory-v2/contracts";
-import type { AgentFoundationContext } from "@/lib/agent/contracts";
+import type { AgentRunContext } from "@/lib/agent/contracts";
 
 type Sdk = SdkLike;
 
@@ -19,7 +19,7 @@ export function createSpawnSubagentTool(
   onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
   subagentExecutor?: SubagentExecutor,
   memoryContext?: Partial<MemoryRuntimeContext> | null,
-  foundation?: AgentFoundationContext,
+  runContext?: AgentRunContext,
   modelOverride?: string,
 ) {
   // 从 ROLE_REGISTRY 按 available 过滤，再经 listDispatchableRoleIds 排除用户停用的角色
@@ -150,7 +150,7 @@ ${ROLE_CHEATSHEET}
             onEvent: onSubagentEvent,
             signal: execution?.signal,
             memoryContext,
-            foundation,
+            runContext,
             modelOverride,
           }
         );
@@ -180,7 +180,7 @@ ${ROLE_CHEATSHEET}
           onEvent: onSubagentEvent,
           signal: execution?.signal,
           memoryContext,
-          foundation,
+          runContext,
           modelOverride,
         }
       );

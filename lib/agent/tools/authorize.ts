@@ -1,12 +1,9 @@
 import { runAfterHooks, runBeforeHooks } from "@/lib/agent/hooks/chain";
 import {
   createAskUserQuestionHook,
-  createPathSafetyHook,
-  createReadGuardHook,
   createRiskConfirmHook,
   createRoleScopeHook,
   createStuckGuardHook,
-  createUnwiredToolHook,
 } from "@/lib/agent/hooks/built-in";
 import type { HookChain } from "@/lib/agent/hooks/types";
 import type { FinanceToolDefinition } from "@/lib/agent/tools/finance-definition";
@@ -37,15 +34,13 @@ export type FinanceToolAuthorization = ((
 
 /**
  * Runtime-neutral authorization entrypoint shared by Pi custom tools.
- * It deliberately reuses the frozen AS0 hook semantics during AS1.
+ * Pi builtins enforce their own path and sandbox policy. This chain only
+ * authorizes finance custom tools.
  */
 export function createFinanceToolAuthorizer(context: FinanceToolAuthorizationContext) {
   const chain: HookChain = [
-    createUnwiredToolHook(),
-    createReadGuardHook(),
     createStuckGuardHook(),
     createAskUserQuestionHook(),
-    createPathSafetyHook(),
     ...(context.roleId ? [createRoleScopeHook(context.roleId)] : []),
     createRiskConfirmHook(),
   ];

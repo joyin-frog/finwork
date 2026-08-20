@@ -2,6 +2,9 @@
 node_modules/
 node_modules
 .pnpm-store/
+/package-lock.json
+/npm-shrinkwrap.json
+/yarn.lock
 dist/
 src-tauri/target/
 src-tauri/resources/
@@ -27,6 +30,7 @@ data/*.db-shm
 data/*.db-wal
 data/local-settings.json
 .codegraph/
+graphify-out/
 tests/history-eval/real-fixtures/
 tests/history-eval/real-reports/
 real-fixtures/

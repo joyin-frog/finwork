@@ -341,7 +341,8 @@ async function execute(context: PreproductionScenarioContext): Promise<Preproduc
     const selectedMemory = memoryStore.retrieve({
       principal, tenantId: "evaluation", caseId: context.manifest.taskContract.caseId,
       entityRefs: [parameters.memory.entityRef], effectivePeriod: parameters.memory.effectivePeriod,
-      kinds: ["semantic"], maximumSensitivity: "confidential", minimumConfidence: 1, limit: 10, now,
+      kinds: ["semantic"], queryText: memorySummary,
+      maximumSensitivity: "confidential", minimumConfidence: 1, limit: 10, now,
     }).find((selection) => selection.memory.id === approved.id);
     if (!selectedMemory || selectedMemory.summary !== memorySummary) throw new Error("web_due_diligence_governed_memory_not_retrieved");
 

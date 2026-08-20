@@ -68,6 +68,7 @@ function query(overrides: Record<string, unknown> = {}) {
     entityRefs: ["entity-1"],
     effectivePeriod: { start: "2026-01-01", end: "2026-12-31" },
     kinds: [],
+    queryText: "taxRate",
     maximumSensitivity: "confidential" as const,
     minimumConfidence: 0,
     limit: 20,
@@ -302,7 +303,7 @@ export const memoryV2TestPromise = (async () => {
       at: "2026-01-06T00:00:00.000Z",
     });
     assert.equal(store.retrieve(query({ maximumSensitivity: "confidential" })).some((item) => item.memory.id === restricted.id), false);
-    assert.equal(store.retrieve(query({ maximumSensitivity: "restricted" })).some((item) => item.memory.id === restricted.id), true);
+    assert.equal(store.retrieve(query({ maximumSensitivity: "restricted", queryText: "bankAccount" })).some((item) => item.memory.id === restricted.id), true);
 
     const procedure = store.createCandidate(candidate("memory-procedure", { steps: ["read", "validate"] }, {
       kind: "procedural",
@@ -327,7 +328,7 @@ export const memoryV2TestPromise = (async () => {
     });
     assert.equal(retained.status, "retained");
     assert.equal(store.get(restricted.id)?.approvalStatus, "archived");
-    assert.equal(store.retrieve(query({ maximumSensitivity: "restricted" })).some((item) => item.memory.id === restricted.id), false);
+    assert.equal(store.retrieve(query({ maximumSensitivity: "restricted", queryText: "bankAccount" })).some((item) => item.memory.id === restricted.id), false);
     assert.equal(store.listAccessLog({ memoryId: restricted.id }).some((entry) => entry.action === "archived"), true);
     assert.deepEqual(store.listRetentionDecisions({ memoryIds: [restricted.id] }).map((decision) => ({
       memoryId: decision.memoryId,
@@ -345,7 +346,7 @@ export const memoryV2TestPromise = (async () => {
       "2026-08-09T01:30:00.000Z",
     );
     assert.equal(store.get(restricted.id)?.approvalStatus, "approved");
-    assert.equal(store.retrieve(query({ maximumSensitivity: "restricted" })).some((item) => item.memory.id === restricted.id), true);
+    assert.equal(store.retrieve(query({ maximumSensitivity: "restricted", queryText: "bankAccount" })).some((item) => item.memory.id === restricted.id), true);
 
     const deleted = store.requestDeletion({
       memoryId: "memory-new",

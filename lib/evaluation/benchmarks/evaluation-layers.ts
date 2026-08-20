@@ -30,7 +30,6 @@ export function caseBelongsToEvaluationLayer(
   layer: BenchmarkEvaluationLayer,
 ): boolean {
   const parsed = BenchmarkEvaluationLayerSchema.parse(layer);
-  if (parsed === "mixed") return true;
   const harnessOnly = benchmarkCase.tags.includes("layer:harness");
   if (parsed === "harness") return harnessOnly;
   if (harnessOnly) return false;

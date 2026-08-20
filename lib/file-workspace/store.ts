@@ -29,6 +29,19 @@ const SKIP_DIRS = new Set([".git", ".svn", "node_modules", ".next", "target", "_
 
 type BlobRecord = { blobId: string; sizeBytes: number };
 
+export class FileWorkspaceVersionError extends Error {
+  readonly code: "missing_base_version" | "stale_base_version" | "invalid_parent_version";
+
+  constructor(
+    code: FileWorkspaceVersionError["code"],
+    message: string,
+  ) {
+    super(message);
+    this.name = "FileWorkspaceVersionError";
+    this.code = code;
+  }
+}
+
 export class FileWorkspaceStore {
   readonly root: string;
   readonly chunksRoot: string;
@@ -59,7 +72,37 @@ export class FileWorkspaceStore {
     const sourceKind = input.sourceKind ?? "managed";
     const blob = this.putBlob(input.content, input.mediaType);
     const assetId = input.assetId ?? randomUUID();
-    const existing = this.db.prepare("SELECT asset_id FROM workspace_assets WHERE asset_id=?").get(assetId);
+    const existing = this.db.prepare(
+      "SELECT asset_id,current_version_id FROM workspace_assets WHERE asset_id=?",
+    ).get(assetId) as { asset_id: string; current_version_id: string | null } | undefined;
+    if (existing) {
+      if (!input.parentVersionId) {
+        throw new FileWorkspaceVersionError(
+          "missing_base_version",
+          `已有文件资产 ${assetId} 的新候选必须声明 parentVersionId`,
+        );
+      }
+      const parent = this.db.prepare(
+        "SELECT asset_id FROM workspace_asset_versions WHERE version_id=?",
+      ).get(input.parentVersionId) as { asset_id: string } | undefined;
+      if (!parent || parent.asset_id !== assetId) {
+        throw new FileWorkspaceVersionError(
+          "invalid_parent_version",
+          `父版本 ${input.parentVersionId} 不属于文件资产 ${assetId}`,
+        );
+      }
+      if ((input.makeCurrent ?? true) && existing.current_version_id !== input.parentVersionId) {
+        throw new FileWorkspaceVersionError(
+          "stale_base_version",
+          `stale_base_version: 当前版本为 ${existing.current_version_id ?? "none"}，不能从旧版本 ${input.parentVersionId} 重建`,
+        );
+      }
+    } else if (input.parentVersionId) {
+      throw new FileWorkspaceVersionError(
+        "invalid_parent_version",
+        "新文件资产不能引用其它资产的父版本",
+      );
+    }
     const versionNo = existing
       ? Number((this.db.prepare("SELECT COALESCE(MAX(version_no),0)+1 AS n FROM workspace_asset_versions WHERE asset_id=?").get(assetId) as { n: number }).n)
       : 1;

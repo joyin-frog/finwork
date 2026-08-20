@@ -1,5 +1,5 @@
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
-import type { AgentFoundationContext } from "@/lib/agent/contracts";
+import type { AgentRunContext } from "@/lib/agent/contracts";
 import type { ExecutionTier } from "@/lib/settings/model-config";
 
 export type SubagentTask = {
@@ -30,7 +30,7 @@ export type SubagentRunOptions = {
   conversationId?: string;
   traceId?: string;
   memoryContext?: Partial<import("@/lib/memory-v2/contracts").MemoryRuntimeContext> | null;
-  foundation?: AgentFoundationContext;
+  runContext?: AgentRunContext;
   onEvent?: (event: AgentRuntimeEvent, instanceId: string) => void;
 };
 

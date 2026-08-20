@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
+import { getManagedLibreOfficeDir, getProjectRoot } from "./paths";
 
 export type LibreOfficeResolveOk = {
   ok: true;
@@ -37,6 +38,25 @@ export type LibreOfficeResolverDeps = {
   readVersion?: (executable: string) => string | null;
   which?: (names: string[]) => string | null;
 };
+
+export function managedLibreOfficeCandidates(
+  platform: NodeJS.Platform = process.platform,
+  managedRoot = getManagedLibreOfficeDir(),
+  bundledRoot = path.join(getProjectRoot(), "runtimes", "libreoffice"),
+): string[] {
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const explicit = process.env.FINWORK_MANAGED_LIBREOFFICE_EXECUTABLE;
+  const roots = [managedRoot, bundledRoot];
+  const relative = platform === "win32"
+    ? [pathApi.join("program", "soffice.exe"), "soffice.exe"]
+    : platform === "darwin"
+      ? [pathApi.join("LibreOffice.app", "Contents", "MacOS", "soffice"), pathApi.join("program", "soffice"), "soffice"]
+      : [pathApi.join("program", "soffice"), "soffice"];
+  return [
+    ...(explicit ? [path.resolve(explicit)] : []),
+    ...roots.flatMap((root) => relative.map((candidate) => pathApi.join(root, candidate))),
+  ];
+}
 
 function defaultInstallHint(platform: NodeJS.Platform): string {
   if (platform === "darwin") {
@@ -121,7 +141,7 @@ export function resolveLibreOffice(deps: LibreOfficeResolverDeps = {}): LibreOff
   const pathEnv = deps.pathEnv ?? process.env.PATH ?? "";
   const exists = deps.exists ?? fs.existsSync;
   const readVersion = deps.readVersion ?? defaultReadVersion;
-  const managed = deps.managedCandidates ?? [];
+  const managed = deps.managedCandidates ?? managedLibreOfficeCandidates(platform);
   const which =
     deps.which ??
     ((names: string[]) => defaultWhich(names, pathEnv, exists));

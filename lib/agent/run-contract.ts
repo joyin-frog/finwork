@@ -1,7 +1,7 @@
 /**
  * CR-R0：持久 Run 共享合同 v2。
  *
- * 唯一导出位置：Run 状态、终止原因、TaskContract、CompletionEvidence、Checkpoint、
+ * 唯一导出位置：Run 状态、终止原因、DeliverySpec、CompletionEvidence、Checkpoint、
  * AR2a settled 映射。下游只能 import，不得复制 union。
  *
  * 本模块不实现 DB / RunManager / UI / validator。
@@ -165,7 +165,7 @@ export function buildSettledPayload(
   return error ? { type: "run_settled", outcome, error } : { type: "run_settled", outcome };
 }
 
-// ─── TaskContract ───────────────────────────────────────────────────────────
+// ─── DeliverySpec ───────────────────────────────────────────────────────────
 
 export type SpreadsheetRequirement = {
   needsLegacyXlsRead: boolean;
@@ -192,7 +192,7 @@ export type RequiredDeliverable = {
   qualityProfile: QualityProfile;
 };
 
-export type TaskContract = {
+export type DeliverySpec = {
   version: 1;
   taskKind: TaskKind;
   spreadsheetRequirement?: SpreadsheetRequirement;
@@ -208,14 +208,14 @@ const QUALITY_PROFILES: readonly QualityProfile[] = ["generic", "financial_conso
 const TASK_KINDS: readonly TaskKind[] = ["text", "spreadsheet", "financial_consolidation"];
 const ASSERTION_TYPES = ["cells_balance", "cash_reconcile", "cell_equals", "cell_is_formula"] as const;
 
-export type TaskContractValidation =
-  | { ok: true; contract: TaskContract }
+export type DeliverySpecValidation =
+  | { ok: true; contract: DeliverySpec }
   | { ok: false; errors: string[] };
 
-export function validateTaskContract(input: unknown): TaskContractValidation {
+export function validateDeliverySpec(input: unknown): DeliverySpecValidation {
   const errors: string[] = [];
   if (!input || typeof input !== "object") {
-    return { ok: false, errors: ["TaskContract must be an object"] };
+    return { ok: false, errors: ["DeliverySpec must be an object"] };
   }
   const raw = input as Record<string, unknown>;
   if (raw.version !== 1) errors.push("version must be 1");
@@ -295,7 +295,7 @@ export function validateTaskContract(input: unknown): TaskContractValidation {
   }
 
   if (errors.length) return { ok: false, errors };
-  return { ok: true, contract: raw as unknown as TaskContract };
+  return { ok: true, contract: raw as unknown as DeliverySpec };
 }
 
 // ─── CompletionEvidence ─────────────────────────────────────────────────────
@@ -354,7 +354,7 @@ export function validateCompletionEvidence(input: unknown): CompletionEvidenceVa
  * 不写 Run 状态；RunStore 是唯一写入者。
  */
 export function completionGateSatisfied(
-  contract: TaskContract,
+  contract: DeliverySpec,
   evidences: CompletionEvidence[],
 ): { ok: true } | { ok: false; missing: string[] } {
   const missing: string[] = [];
@@ -513,19 +513,19 @@ export function shouldInheritSpreadsheetAttachments(input: {
 }
 
 /**
- * 从本回合附件与 Router intent 冻结 TaskContract（CR-Q1 接线）。
+ * 从本回合附件与 Router intent 冻结 DeliverySpec（CR-Q1 接线）。
  * 模型 / finalize 不得覆盖。
  *
  * CR-R2 校准：仅有 complex_workflow intent、无表格附件时，不得强加 workbook 交付——
  * Router fallback 常把纯文本问答标成 complex，否则 CompletionGate 会把正常对话误判为验证失败。
  */
-export function deriveTaskContractForTurn(input: {
+export function deriveDeliverySpecForTurn(input: {
   intent?: string | null;
   attachments?: Array<{ name?: string; mimeType?: string }>;
   priorAttachments?: Array<{ name?: string; mimeType?: string }>;
   userMessage?: string | null;
   messages?: readonly TaskContextMessage[];
-}): TaskContract {
+}): DeliverySpec {
   const intent = (input.intent ?? "").trim();
   const currentAttachments = input.attachments ?? [];
   const inheritedAttachments = shouldInheritSpreadsheetAttachments(input)

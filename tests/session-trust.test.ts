@@ -28,7 +28,7 @@ import {
   revokeToolTrust,
   listTrustedTools,
 } from "../lib/agent/hooks/session-trust.ts";
-import { createRiskConfirmHook, createUnwiredToolHook } from "../lib/agent/hooks/built-in.ts";
+import { createRiskConfirmHook } from "../lib/agent/hooks/built-in.ts";
 import { runBeforeHooks } from "../lib/agent/hooks/chain.ts";
 
 // ── 工具常量 ──────────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ export const sessionTrustTestPromise = (async () => {
 
   // ── (b) risk-confirm 行为 ──────────────────────────────────────────────────
   const hook = createRiskConfirmHook();
-  const chain = [createUnwiredToolHook(), createRiskConfirmHook()];
+  const chain = [createRiskConfirmHook()];
 
   // run_python：默认放行，不弹卡、不调 resolver
   {
@@ -114,7 +114,7 @@ export const sessionTrustTestPromise = (async () => {
   }
 
   // ── (c) chain.ts：sentinel 写信任、普通确认不写、取消 deny（用仍需确认的工具）──
-  const sentinelChain = [createUnwiredToolHook(), createRiskConfirmHook()];
+  const sentinelChain = [createRiskConfirmHook()];
 
   // sentinel → allow + 写信任
   {

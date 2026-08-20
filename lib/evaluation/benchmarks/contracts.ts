@@ -440,7 +440,11 @@ export const BenchmarkProfileSchema = z.enum([
   "full",
 ]);
 export type BenchmarkProfile = z.infer<typeof BenchmarkProfileSchema>;
-export const BenchmarkEvaluationLayerSchema = z.enum(["mixed", "harness", "agent", "model"]);
+/**
+ * Execution views are intentionally disjoint. Outcome is scored by the shared
+ * private Oracle after every view; it is not a fourth executor or a mixed mode.
+ */
+export const BenchmarkEvaluationLayerSchema = z.enum(["harness", "agent", "model"]);
 export type BenchmarkEvaluationLayer = z.infer<typeof BenchmarkEvaluationLayerSchema>;
 
 export const RealBenchmarkRunConfigSchema = z

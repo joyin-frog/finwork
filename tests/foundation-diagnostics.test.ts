@@ -2,16 +2,13 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { runMigrations } from "../lib/db/migrations.ts";
 import { captureFoundationDiagnostics } from "../lib/observability/index.ts";
-import { CapabilityFoundationRollout } from "../lib/runtime/capability-foundation-rollout.ts";
 
 export const foundationDiagnosticsTestPromise = (async () => {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
   runMigrations(db, ":memory:", () => null);
   try {
-    new CapabilityFoundationRollout(db).ensureInitialized("diagnostics fixture");
     const snapshot = captureFoundationDiagnostics(db, "2026-08-09T00:00:00.000Z");
-    assert.equal(snapshot.rollout?.authority, "new");
     assert.equal(snapshot.artifacts.logicalBytes, 0);
     assert.equal(snapshot.retrieval.chunks, 0);
     assert.equal((db.prepare("SELECT COUNT(*) AS n FROM foundation_diagnostics").get() as { n: number }).n, 1);

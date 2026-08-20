@@ -854,7 +854,7 @@ export function listConfirmedMetaDocRows(db = getDb()): Array<{ id: number; file
   ).all() as Array<{ id: number; file_name: string; metadata: string; meta_status: string }>;
 }
 
-/** 检索可见的文档(排除已归档),供 ripgrep / 命名镜像使用 */
+/** 检索可见的文档（排除已归档），供 Retrieval v2 与知识工具使用。 */
 export function listActiveKnowledgeDocuments(db = getDb()): KnowledgeDocumentRow[] {
   return db.prepare("SELECT * FROM knowledge_documents WHERE archived = 0 ORDER BY updated_at DESC").all() as KnowledgeDocumentRow[];
 }

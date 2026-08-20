@@ -1,5 +1,5 @@
 import { TaskContractV3Schema, type TaskContractV3 } from "@/lib/task/contracts";
-import type { TaskContract } from "@/lib/agent/run-contract";
+import type { DeliverySpec } from "@/lib/agent/run-contract";
 import type { BenchmarkCapability, BenchmarkExecutionCase } from "./contracts";
 
 const SPREADSHEET_OUTPUT_MEDIA_TYPES = new Set([
@@ -16,12 +16,12 @@ function isSpreadsheetOutput(mediaType: string, logicalName: string): boolean {
 }
 
 /**
- * Pi and finalize_deliverable still consume TaskContract v1. Benchmark
- * execution derives that compatibility view from the explicit V3 output
+ * Pi and finalize_deliverable consume the compact DeliverySpec. Benchmark
+ * execution derives that view from the explicit V3 output
  * contract, never from input attachments: an input workbook does not imply
  * that the user requested a workbook deliverable.
  */
-export function createLegacyBenchmarkTaskContract(contract: TaskContractV3): TaskContract {
+export function createBenchmarkDeliverySpec(contract: TaskContractV3): DeliverySpec {
   const spreadsheetOutput = contract.expectedOutputs.some((output) =>
     isSpreadsheetOutput(output.mediaType, output.logicalName)
   );

@@ -86,10 +86,10 @@ Run 明文工作区默认保留 24 小时后回收。加密资产版本按引用
    - 沙箱类型
 4. 沙箱执行结束后比较工作目录快照。
 5. 每个新增或修改输出登记为受管输出版本，并记录 SHA-256、大小和逻辑路径。
-6. 首次输出形成 `base_version_id=NULL` 的出生变更集；同路径后续输出形成父子版本和语义 diff。
+6. 新文件首次输出形成 `base_version_id=NULL` 的出生变更集；修改既有受管工作簿时，`patch_workspace_workbook` 直接在原 asset 的唯一 run 分支头追加子版本，不再按 v2/v3 文件名创建 standalone asset。
 7. execution 以 completed 或 failed 收口；超时、配额、沙箱启动失败也不会残留 running。
 
-脚本在 `review_workspace_change` 中再次出现时，如果内容与已执行版本一致，不制造重复版本；内容发生变化才生成新脚本版本。
+脚本内容与已执行版本一致时不制造重复版本；内容发生变化才生成新脚本版本。工作簿的变更计划、diff 与 review 由 patch 工具在 Harness 内自动冻结，主 Agent 不再调用协议工具。
 
 固定 `workers/*.py` 是 Finwork 发布的受信应用代码，不等同于模型生成脚本。它们使用收窄环境变量和固定入口，但不进入动态脚本的 asset/version 链。
 
@@ -104,25 +104,35 @@ Run 明文工作区默认保留 24 小时后回收。加密资产版本按引用
 | 新文件 | 出生变更集、类型、大小和 SHA-256 |
 | 其他二进制 | 前后 SHA-256 与字节数 |
 
-既有受管 Excel 的完成链：
+既有受管 Excel 的模型可见完成链：
 
 ```text
 read_workspace_file
-→ begin_workspace_change
-→ 修改或运行脚本
-→ review_workspace_change(final=false)
-→ 按 pendingTargets 继续修正
-→ review_workspace_change(final=true)
+→ Write/Edit 任务脚本
+→ run_task_python（输出结构化 edits JSON）
+→ patch_workspace_workbook
+→ 按业务 Validator 结果继续修正
 → finalize_deliverable
 ```
 
-最终 review 必须引用修改前冻结的 `planId`，防止 Agent 在看到结果后删改目标来制造“已完成”。
+`patch_workspace_workbook` 自动完成：
+
+- 通过共享的 `resolveWorkspaceBranchHead` 选择当前 run 的唯一候选头；读取与 patch 不再各自猜测父版本。
+- 拒绝旧父版本和无效果 patch。
+- 从实际编辑清单生成内部变更计划。
+- 计算语义 diff，并将候选追加为原 asset 的子版本。
+- 淘汰上一 pending changeset，只保留一个权威 head。
+- 形成 finalize 所需的 review 证据。
+
+旧的 `begin_workspace_change`、`review_workspace_change` 模型协议已经删除。计划冻结、父版本选择、语义 diff 和复核证据都由 `patch_workspace_workbook` 内部完成。
+
+同一 `assetId + versionId` 在一个 Run 内只物化和解析一次；重复读取返回缓存结果。候选头更新后自动使用新版本缓存键，因此既不会重复解析旧文件，也不会读回原始上传件。
 
 ### 4.2 正式交付
 
 `finalize_deliverable` 负责：
 
-- 按 TaskContract 核对文件数量、ID、扩展名与 MIME。
+- 按 DeliverySpec 核对文件数量、ID、扩展名与 MIME。
 - 验证文件可打开性、正文或表格结构。
 - 按合同进行公式重算、错误扫描和必要渲染。
 - 以校验后 hash 复制不可变 `delivered/<runId>/` 副本。

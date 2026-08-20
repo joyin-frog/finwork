@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  BenchmarkEvaluationLayerSchema,
   BenchmarkPredictionSchema,
   NormalizedBenchmarkCaseSchema,
   type NormalizedBenchmarkCase,
@@ -49,6 +50,7 @@ function benchmarkCase(id: string, kind: "model" | "agent"): NormalizedBenchmark
 async function main(): Promise<void> {
 const modelCase = benchmarkCase("model", "model");
 const agentCase = benchmarkCase("agent", "agent");
+assert.equal(BenchmarkEvaluationLayerSchema.safeParse("mixed").success, false, "mixed executor must stay deleted");
 assert.deepEqual(selectCasesForEvaluationLayer([modelCase, agentCase], "model").map((item) => item.id), [modelCase.id]);
 assert.deepEqual(selectCasesForEvaluationLayer([modelCase, agentCase], "agent").map((item) => item.id), [agentCase.id]);
 const [preparedModelCase] = prepareCasesForEvaluationLayer([modelCase, agentCase], "model");

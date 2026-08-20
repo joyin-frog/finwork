@@ -1,6 +1,6 @@
 /**
  * Retrieval v2 MCP contract tests for lib/agent/mcp-tools/knowledge.ts:
- *  1. topK clamp: topK > 5 should not throw, should clamp to 5
+ *  1. topK contract: ordinary and deep retrieval share one entry with a governed cap of 20
  *  2. search_knowledge advertises governed hybrid retrieval and immutable citations
  *  3. sanitized file names still resolve, but content comes from ArtifactStore rather than text mirrors
  */
@@ -104,7 +104,7 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   });
 
   // ── Import tool creators (after env is set) ───────────────────────────────
-  const { createSearchKnowledgeTool, createReadFileTool } = await import(
+  const { createSearchKnowledgeTool } = await import(
     "../lib/agent/mcp-tools/knowledge.ts"
   );
   const retrievalOptions = { getRetrievalService: () => retrieval };
@@ -177,10 +177,10 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     );
 
     // Must mention topK cap
-    const mentionsTopKCap = desc.includes("5") && (desc.includes("最大") || desc.includes("超出") || desc.includes("clamp") || desc.includes("取 5"));
+    const mentionsTopKCap = desc.includes("20") && (desc.includes("最大") || desc.includes("最多") || desc.includes("提高到") || desc.includes("超出") || desc.includes("clamp"));
     assert.ok(
       mentionsTopKCap,
-      `Fix2 FAIL: description should state topK max is 5. Got: "${desc}"`
+      `Fix2 FAIL: description should state topK max is 20. Got: "${desc}"`
     );
 
     console.log("knowledge-mcp-fixes Fix2: description updated correctly ✓");
@@ -189,9 +189,9 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 3: resolveDoc fallback for a sanitized alias ─────────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk, retrievalOptions);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
-    const { handler } = tools.get("read_file")!;
+    const { handler } = tools.get("search_knowledge")!;
 
     // .txt alias resolves by normalized title; returned bytes come from ArtifactStore.
     const result = await handler({ fileName: "科目--新系统.txt" }) as { content: Array<{ text: string }> };
@@ -212,9 +212,9 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 3b: exact title match still works (regression guard) ─────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk, retrievalOptions);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
-    const { handler } = tools.get("read_file")!;
+    const { handler } = tools.get("search_knowledge")!;
 
     const result = await handler({ fileName: exactTitle }) as { content: Array<{ text: string }> };
     const text = result.content?.[0]?.text ?? "";
@@ -233,9 +233,9 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 3c: file_name exact match still works ────────────────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk, retrievalOptions);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
-    const { handler } = tools.get("read_file")!;
+    const { handler } = tools.get("search_knowledge")!;
 
     const result = await handler({ fileName: `${exactTitle}.txt` }) as { content: Array<{ text: string }> };
     const text = result.content?.[0]?.text ?? "";
@@ -270,8 +270,8 @@ export const knowledgeMcpFixesTestPromise = (async () => {
       category: "general",
     });
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk, retrievalOptions);
-    const result = await tools.get("read_file")!.handler({
+    createSearchKnowledgeTool(sdk, retrievalOptions);
+    const result = await tools.get("search_knowledge")!.handler({
       fileName: `${longTitle}.txt`,
       startLine: 401,
       endLine: 410,
@@ -307,12 +307,12 @@ export const knowledgeMcpFixesTestPromise = (async () => {
       category: "general",
     });
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk, retrievalOptions);
-    const first = await tools.get("read_file")!.handler({ fileName: `${giantTitle}.txt` }) as {
+    createSearchKnowledgeTool(sdk, retrievalOptions);
+    const first = await tools.get("search_knowledge")!.handler({ fileName: `${giantTitle}.txt` }) as {
       content: Array<{ text: string }>;
     };
     assert.match(first.content[0]?.text ?? "", /startChar=50000/);
-    const second = await tools.get("read_file")!.handler({
+    const second = await tools.get("search_knowledge")!.handler({
       fileName: `${giantTitle}.txt`,
       startChar: 50_000,
       maxChars: 10_000,

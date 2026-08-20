@@ -355,7 +355,7 @@ function ProfileTabView({ role, onToggled }: { role: RoleDetail; onToggled: () =
   );
 }
 
-type MemoryItem = { id: number; content: string; source: string | null; createdAt: string };
+type MemoryItem = { id: string; content: string; source: string | null; createdAt: string };
 
 function MemoryTabView({ roleId, roleName }: { roleId: string; roleName: string }) {
   const [rows, setRows] = useState<MemoryItem[] | null>(null);
@@ -400,7 +400,7 @@ function MemoryTabView({ roleId, roleName }: { roleId: string; roleName: string 
     }
   }
 
-  async function handleDelete(id: number) {
+  async function handleDelete(id: string) {
     const prev = rows;
     setRows((r) => r?.filter((m) => m.id !== id) ?? r); // 乐观删除
     try {
@@ -418,7 +418,7 @@ function MemoryTabView({ roleId, roleName }: { roleId: string; roleName: string 
         className="fa-toned rounded-md px-3 py-2 text-meta"
         style={{ "--tone": "var(--tone-analysis)" } as CSSProperties}
       >
-        独立记忆 · 仅「{roleName}」可见，不与其他角色共享。派活时会作为该角色的口径注入。
+        独立记忆 · 仅「{roleName}」可见。这里手动添加即表示明确批准，相关任务才会注入。
       </div>
 
       <div className="flex items-center gap-2">
@@ -477,7 +477,7 @@ function MemoryTabView({ roleId, roleName }: { roleId: string; roleName: string 
       )}
 
       <p className="text-meta text-muted-foreground">
-        对话中你确认或纠正的口径会自动沉淀到这里（对话里会提示「已记住这条口径」），也可手动添加。
+        对话里的长期口径先进入候选，不会自动生效；此处只展示已批准的角色记忆。
       </p>
     </AgentTabSurface>
   );

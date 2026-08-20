@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { createFinanceMcpServer } from "../lib/agent/mcp-tools/index.ts";
+import { buildFinanceToolDefinitions } from "../lib/agent/mcp-tools/index.ts";
 import { TOOL_REGISTRY, getToolRiskLevel } from "../lib/agent/tools/registry.ts";
 import { hasToolSummary } from "../lib/agent/tools/renderers.ts";
 
@@ -19,14 +19,8 @@ export const toolRegistryTestPromise = (async () => {
     assert.equal(getToolRiskLevel(name), risk, `T1 FAIL: ${name} 风险等级应为 ${risk}`);
   }
 
-  // ── T2: 工具真实注册进 finance_worker MCP server(不再是死代码)────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mockSdk: any = {
-    tool: (name: string) => ({ name }),
-    createSdkMcpServer: (cfg: { tools: Array<{ name: string }> }) => cfg
-  };
-  const server = (await createFinanceMcpServer(mockSdk, "/tmp")) as unknown as { tools: Array<{ name: string }> };
-  const serverToolNames = server.tools.map((t) => t.name);
+  // ── T2: 工具真实进入 Pi 使用的 production definitions ────────────────
+  const serverToolNames = buildFinanceToolDefinitions("/tmp").map((tool) => tool.id);
   for (const shortName of [
     "calculate_payroll_batch",
     "confirm_payroll_period",
@@ -35,23 +29,23 @@ export const toolRegistryTestPromise = (async () => {
     "read_expense_policy",
     "tax_calculator",
     "search_knowledge",
-    "query_knowledge",
-    "read_file",
     "undo_last_write",
     // WP13b: 销项发票三工具
     "record_sales_invoices",
     "record_invoice_settlement",
     "query_sales_invoices",
-    "review_workspace_change",
-    "begin_workspace_change",
     "run_task_python",
   ]) {
-    assert.ok(serverToolNames.includes(shortName), `T2 FAIL: ${shortName} 未注册进 finance_worker MCP server`);
+    assert.ok(serverToolNames.includes(shortName), `T2 FAIL: ${shortName} 未进入 production definitions`);
   }
-  // grep_docs 已被 query_knowledge 取代,不应再存在
-  assert.ok(!serverToolNames.includes("grep_docs"), "T2 FAIL: grep_docs 应已裁撤");
-  for (const t of TOOL_REGISTRY) {
-    assert.notEqual(t.name, "grep_docs", "T2 FAIL: TOOL_REGISTRY 仍含 grep_docs");
+  for (const removed of [
+    "grep_docs", "query_knowledge", "read_file", "begin_workspace_change", "review_workspace_change",
+    "check_workbook_ties", "detect_data_issues", "merge_labeled_tables",
+    "check_voucher_amount", "map_voucher_account", "summarize_vouchers",
+    "build_voucher_lines", "build_voucher_sheet",
+  ]) {
+    assert.ok(!serverToolNames.includes(removed), `T2 FAIL: ${removed} 应已裁撤或并入高层工具`);
+    assert.ok(!TOOL_REGISTRY.some((tool) => tool.name === removed), `T2 FAIL: TOOL_REGISTRY 仍含 ${removed}`);
   }
 
   // ── T3: 5 个业务 skill 已迁移为 agent-skills 下的 SKILL.md(SDK 原生加载,旧 config.json 已退役)──

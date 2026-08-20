@@ -2,13 +2,13 @@
  * role-conventions.test.ts — 角色口径治理候选（remember_role_convention）
  *
  * 覆盖：
- * - RC-1 工具只写 governed candidate，不写 legacy role_memory
+ * - RC-1 工具只写 governed candidate
  * - RC-2 角色隔离：payroll-officer 候选不进入 tax-officer 检索
  * - RC-3 未知 roleId → isError，不写库
  * - RC-4 去重：同角色同内容二次调用复用候选
- * - RC-5 成员契约：remember_role_convention 静默（ALLOWED、非 ALWAYS_CONFIRM）；
- *   remember_convention 仍挂确认门（非 ALLOWED、在 ALWAYS_CONFIRM）
+ * - RC-5 成员契约：两类跨会话记忆都必须经过确认门
  * - RC-6 对话流轻提示：getToolSummary 如实渲染「提交口径候选 + 角色名」
+ * - RC-7 角色设置页直接写入/删除已批准的 governed memory
  *
  * 运行：FINANCE_AGENT_MOCK_AGENT=1 SKIP_LLM=true node --import tsx tests/role-conventions.test.ts
  */
@@ -21,11 +21,16 @@ export const roleConventionsTestPromise = (async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "fa-role-conv-"));
   const dbPath = path.join(dir, "test.db");
   const savedDbPath = process.env.FINANCE_AGENT_DB_PATH;
+  const savedAppDataDir = process.env.FINANCE_AGENT_APP_DATA_DIR;
+  const savedSecretBackend = process.env.FINANCE_AGENT_SECRET_BACKEND;
+  const savedSecretFile = process.env.FINANCE_AGENT_SECRET_FILE;
   process.env.FINANCE_AGENT_DB_PATH = dbPath;
+  process.env.FINANCE_AGENT_APP_DATA_DIR = dir;
+  process.env.FINANCE_AGENT_SECRET_BACKEND = "file";
+  process.env.FINANCE_AGENT_SECRET_FILE = path.join(dir, "secrets.json");
 
   try {
     // getDb() 按 FINANCE_AGENT_DB_PATH 切换单例（参照 tests/chat-feedback.test.ts）
-    const { listRoleMemory } = await import("../lib/db/role-memory-store.ts");
     const { getDb } = await import("../lib/db/sqlite.ts");
     const { GovernedMemoryStore } = await import("../lib/memory-v2/index.ts");
 
@@ -44,12 +49,11 @@ export const roleConventionsTestPromise = (async () => {
     const handler = captured["remember_role_convention"];
     assert.ok(typeof handler === "function", "RC-1 FAIL: remember_role_convention handler 应注册");
 
-    // ── RC-1: 只提交候选，不污染 legacy role_memory ───────────────────────
+    // ── RC-1: 只提交 governed candidate ───────────────────────────────────
     const r1 = await handler({ roleId: "payroll-officer", text: "实习生按劳务报酬算个税", source: "6月算薪复核" });
     assert.ok(!r1.isError, `RC-1 FAIL: 合法写入不应报错: ${JSON.stringify(r1.content)}`);
     assert.match(r1.content[0].text, /提交口径候选/, "RC-1 FAIL: 返回文案必须说明只是候选");
     assert.match(r1.content[0].text, /审核.*通过前不会进入/, "RC-1 FAIL: 不得暗示候选已经生效");
-    assert.equal(listRoleMemory("payroll-officer").length, 0, "RC-1 FAIL: 不得继续写 legacy role_memory");
     const store = new GovernedMemoryStore(getDb());
     const candidateId = r1.structuredContent?.candidateId as string;
     const candidate = store.get(candidateId);
@@ -66,6 +70,7 @@ export const roleConventionsTestPromise = (async () => {
       roleId: "payroll-officer",
       entityRefs: [],
       kinds: [],
+      queryText: "实习生个税",
       maximumSensitivity: "confidential",
       minimumConfidence: 0,
       limit: 20,
@@ -96,16 +101,16 @@ export const roleConventionsTestPromise = (async () => {
       roleId: "payroll-officer",
     }).length, 1, "RC-4 FAIL: 相同内容不应重复落库");
 
-    // ── RC-5: 成员契约（角色口径静默；全局约定仍确认）────────────────────
+    // ── RC-5: 成员契约（所有跨会话记忆都确认）────────────────────────────
     const { ALLOWED_TOOLS } = await import("../lib/agent/tools/registry.ts");
     const { ALWAYS_CONFIRM_TOOLS } = await import("../lib/agent/hooks/built-in.ts");
     assert.ok(
-      ALLOWED_TOOLS.includes("remember_role_convention"),
-      "RC-5 FAIL: remember_role_convention 应在 ALLOWED_TOOLS（静默自动放行）"
+      !ALLOWED_TOOLS.includes("remember_role_convention"),
+      "RC-5 FAIL: remember_role_convention 不应静默自动放行"
     );
     assert.ok(
-      !ALWAYS_CONFIRM_TOOLS.has("remember_role_convention"),
-      "RC-5 FAIL: remember_role_convention 不应在 ALWAYS_CONFIRM_TOOLS"
+      ALWAYS_CONFIRM_TOOLS.has("remember_role_convention"),
+      "RC-5 FAIL: remember_role_convention 应在 ALWAYS_CONFIRM_TOOLS"
     );
     assert.ok(
       !ALLOWED_TOOLS.includes("remember_convention"),
@@ -126,10 +131,47 @@ export const roleConventionsTestPromise = (async () => {
     assert.match(summary, /提交口径候选/, "RC-6 FAIL: 摘要应含「提交口径候选」");
     assert.match(summary, /薪税/, "RC-6 FAIL: 摘要应含角色名（薪税）");
 
-    console.log("role-conventions: RC-1..RC-6 all passed ✓");
+    // ── RC-7: 设置页人工添加即明确批准，仍使用 governed store ────────────
+    const { NextRequest } = await import("next/server");
+    const roleMemoryRoute = await import("../app/api/agents/[roleId]/memory/route.ts");
+    const routeContext = { params: Promise.resolve({ roleId: "payroll-officer" }) };
+    const postResponse = await roleMemoryRoute.POST(new NextRequest(
+      "http://localhost/api/agents/payroll-officer/memory",
+      {
+        method: "POST",
+        headers: { origin: "http://localhost", "content-type": "application/json" },
+        body: JSON.stringify({ content: "工资表统一保留两位小数" }),
+      },
+    ), routeContext);
+    assert.equal(postResponse.status, 200, "RC-7 FAIL: 设置页添加记忆失败");
+    const postJson = await postResponse.json() as { data: { id: string } };
+    assert.equal(store.get(postJson.data.id)?.approvalStatus, "approved", "RC-7 FAIL: 设置页明确添加应直接批准");
+    assert.equal(store.get(postJson.data.id)?.scope.roleId, "payroll-officer", "RC-7 FAIL: 设置页记忆必须角色隔离");
+
+    const getResponse = await roleMemoryRoute.GET(new NextRequest(
+      "http://localhost/api/agents/payroll-officer/memory",
+    ), routeContext);
+    const getJson = await getResponse.json() as { data: { rows: Array<{ id: string; content: string }> } };
+    assert.deepEqual(getJson.data.rows.map((row) => row.content), ["工资表统一保留两位小数"],
+      "RC-7 FAIL: 设置页只能列出该角色已批准记忆");
+
+    const deleteResponse = await roleMemoryRoute.DELETE(new NextRequest(
+      `http://localhost/api/agents/payroll-officer/memory?id=${encodeURIComponent(postJson.data.id)}`,
+      { method: "DELETE", headers: { origin: "http://localhost" } },
+    ), routeContext);
+    assert.equal(deleteResponse.status, 200, "RC-7 FAIL: 设置页删除记忆失败");
+    assert.equal(store.get(postJson.data.id), undefined, "RC-7 FAIL: 删除后 governed memory 仍存在");
+
+    console.log("role-conventions: RC-1..RC-7 all passed ✓");
   } finally {
     if (savedDbPath === undefined) delete process.env.FINANCE_AGENT_DB_PATH;
     else process.env.FINANCE_AGENT_DB_PATH = savedDbPath;
+    if (savedAppDataDir === undefined) delete process.env.FINANCE_AGENT_APP_DATA_DIR;
+    else process.env.FINANCE_AGENT_APP_DATA_DIR = savedAppDataDir;
+    if (savedSecretBackend === undefined) delete process.env.FINANCE_AGENT_SECRET_BACKEND;
+    else process.env.FINANCE_AGENT_SECRET_BACKEND = savedSecretBackend;
+    if (savedSecretFile === undefined) delete process.env.FINANCE_AGENT_SECRET_FILE;
+    else process.env.FINANCE_AGENT_SECRET_FILE = savedSecretFile;
     rmSync(dir, { recursive: true, force: true });
   }
 })();

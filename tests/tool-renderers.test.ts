@@ -28,8 +28,8 @@ function main() {
   assert.ok(getToolSummary("calculate_payroll_batch", {}, "失败原因\n详情", true).startsWith("错误："));
 
   assert.equal(getToolSummary("analyze_tabular", { rows: [{}, {}], groupBy: ["department"] }), "整理表格数据（按 department 分组）：2 行");
-  assert.equal(getToolSummary("Bash", { command: "mkdir -p /tmp/report && ls /tmp/report" }), "准备输出目录并查看文件");
-  assert.equal(getToolSummary("Bash", "python3 -c 'print(1)'"), "执行 Python 脚本");
+  assert.equal(getToolSummary("bash", { command: "mkdir -p /tmp/report && ls /tmp/report" }), "准备输出目录并查看文件");
+  assert.equal(getToolSummary("bash", "python3 -c 'print(1)'"), "执行 Python 脚本");
   // 注:roleMode 不再驱动 UI(过程展示对所有人一致),原 AC9(daily/tech 显示策略)已移除。
 
   console.log("tool-renderers: all checks passed ✓");

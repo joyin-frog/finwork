@@ -203,5 +203,5 @@ export const financeProfessionalBenchmarkTestPromise = (async () => {
     maxCases: 29,
   }), /requires --max-cases 30/);
 
-  console.log("finance-agent-professional: 30/30 Layer 1 corpus, TaskContract, Oracle privacy, file contract and production validator gates PASS");
+  console.log("finance-agent-professional: 30/30 Layer 1 corpus, DeliverySpec, Oracle privacy, file contract and production validator gates PASS");
 })();

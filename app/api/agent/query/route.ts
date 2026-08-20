@@ -34,7 +34,7 @@ import {
   type RunPersistenceContext,
 } from "@/lib/agent/run-event-persistence";
 import {
-  deriveTaskContractForTurn,
+  deriveDeliverySpecForTurn,
   isTerminalRunStatus,
   shouldInheritSpreadsheetAttachments,
 } from "@/lib/agent/run-contract";
@@ -46,10 +46,8 @@ import {
 } from "@/lib/agent/run-abort-registry";
 import { decideSettleFromCompletionGate } from "@/lib/agent/completion-gate-settle";
 import { getAgentRun, updateAgentRunStatus } from "@/lib/db/run-store";
-import {
-  beginProductionTaskRun,
-  type ProductionTaskRun,
-} from "@/lib/task/production-runtime";
+import type { DeliveryRun } from "@/lib/task/production-runtime";
+import { prepareAgentRun } from "@/lib/agent/agent-run-service";
 import {
   runAgentTurn,
   type AgentTurnCollector,
@@ -117,7 +115,7 @@ export async function POST(request: Request) {
     routerFailureHint: routerResult.path === "fallback" ? routerResult.decision.reasoning : null,
   });
   const modelOverride = resolvedModel?.modelId ?? tierModelOverride;
-  let foundationTaskRun: ProductionTaskRun | undefined;
+  let deliveryRun: DeliveryRun | undefined;
 
   // --- Run agent ---
   try {
@@ -178,23 +176,24 @@ export async function POST(request: Request) {
       attachments,
       inheritPriorAttachments ? priorAttachments : [],
     );
-    const taskContract = deriveTaskContractForTurn({
+    const deliverySpec = deriveDeliverySpecForTurn({
       intent: routerResult.decision.intent,
       attachments,
       priorAttachments,
       userMessage: lastUserContent,
       messages: persistedMessages,
     });
-    foundationTaskRun = beginProductionTaskRun({
+    const preparedRun = prepareAgentRun({
       db: getDb(),
       traceId,
       conversationId,
       goal: lastUserContent,
       attachments: effectiveAttachments,
-      legacyContract: taskContract,
+      deliverySpec,
       roleId: sessionRoleId,
       intent: routerResult.decision.intent,
     });
+    deliveryRun = preparedRun.delivery;
     const turnParams: AgentTurnParams = {
       traceId, agentMessages, runtimeSessionId, existingRuntimeSessionId,
       attachments: effectiveAttachments, outputDir, routerResult, conversationId,
@@ -204,11 +203,11 @@ export async function POST(request: Request) {
       // 专员会话（E 刀）:以会话绑定的角色身份运行本回合
       roleId: sessionRoleId,
       runPersist,
-      taskContract,
+      deliverySpec,
       executionTier: resolvedModel?.executionTier ?? null,
-      foundation: foundationTaskRun.foundation,
-      workPlan: foundationTaskRun.plan,
-      onRuntimeEvent: (event) => foundationTaskRun?.recordRuntimeEvent(event),
+      runContext: preparedRun.context,
+      workPlan: preparedRun.plan,
+      onRuntimeEvent: (event) => deliveryRun?.recordRuntimeEvent(event),
     };
     const persistParams: PersistTurnParams = {
       conversationId, existingRuntimeSessionId, beforeGenerate, beforeWorking, outputDir,
@@ -219,7 +218,7 @@ export async function POST(request: Request) {
     if (useStreaming) {
       return createStreamingResponse({
         turnParams, persistParams, conversationId, traceId, startedAt,
-        requestSignal: request.signal, runPersist, foundationTaskRun, workspaceRootIds,
+        requestSignal: request.signal, runPersist, deliveryRun, workspaceRootIds,
       });
     }
 
@@ -228,7 +227,7 @@ export async function POST(request: Request) {
       const emitter = createEmitter(traceId, conversationId ?? null);
       const startedEnv = emitter.wrap({ type: "run_started", conversationId: conversationId ?? null });
       persistRuntimeEnvelope(startedEnv, runPersist);
-      for (const event of foundationTaskRun.takePendingEvents()) {
+      for (const event of deliveryRun?.takePendingEvents() ?? []) {
         persistRuntimeEnvelope(emitter.wrap(event), runPersist);
       }
       markRunRunning(runPersist, (e) => emitter.wrap(e));
@@ -239,20 +238,20 @@ export async function POST(request: Request) {
     await publishDeliveredFiles(traceId, conversationId, workspaceRootIds, generatedAttachments);
     {
       const emitter = createEmitter(traceId, conversationId ?? null);
-      for (const event of foundationTaskRun.completeExecution()) {
+      for (const event of deliveryRun?.completeExecution() ?? []) {
         persistRuntimeEnvelope(emitter.wrap(event), runPersist);
       }
-      foundationTaskRun.markValidating();
-      for (const event of foundationTaskRun.takePendingEvents()) {
+      deliveryRun?.markValidating();
+      for (const event of deliveryRun?.takePendingEvents() ?? []) {
         persistRuntimeEnvelope(emitter.wrap(event), runPersist);
       }
-      const gateDecision = decideSettleFromCompletionGate(traceId, turnParams.taskContract);
-      foundationTaskRun.settle({
+      const gateDecision = decideSettleFromCompletionGate(traceId, turnParams.deliverySpec);
+      deliveryRun?.settle({
         outcome: gateDecision.outcome,
         message: gateDecision.gateMessage,
         assistantMessageId: messageId,
       });
-      for (const event of foundationTaskRun.takePendingEvents()) {
+      for (const event of deliveryRun?.takePendingEvents() ?? []) {
         persistRuntimeEnvelope(emitter.wrap(event), runPersist);
       }
       const endedEnv = emitter.wrap({
@@ -285,7 +284,7 @@ export async function POST(request: Request) {
     if (failedRun && !isTerminalRunStatus(failedRun.status)) {
       updateAgentRunStatus(traceId, "failed", {
         terminationReason: /preflight/i.test(message) ? "dependency_missing" : "sdk_error",
-        errorCode: /preflight/i.test(message) ? "foundation_preflight_failed" : "agent_error",
+        errorCode: /preflight/i.test(message) ? "delivery_preflight_failed" : "agent_error",
         errorMessage: redact(message),
       });
     }
@@ -311,12 +310,12 @@ export async function POST(request: Request) {
       });
     }
     try {
-      foundationTaskRun?.settle({
+      deliveryRun?.settle({
         outcome: isAbort ? "aborted" : "error",
         message: redact(message),
       });
-    } catch (foundationError) {
-      log.error("foundation task error settlement failed", { traceId, error: foundationError });
+    } catch (deliveryError) {
+      log.error("delivery run error settlement failed", { traceId, error: deliveryError });
     }
     try {
       const emitter = createEmitter(traceId, conversationId ?? null);
@@ -341,7 +340,7 @@ function createStreamingResponse(params: {
   startedAt: number;
   requestSignal?: AbortSignal;
   runPersist: RunPersistenceContext;
-  foundationTaskRun: ProductionTaskRun;
+  deliveryRun?: DeliveryRun;
   workspaceRootIds: string[];
 }) {
   const {
@@ -352,7 +351,7 @@ function createStreamingResponse(params: {
     startedAt,
     requestSignal,
     runPersist,
-    foundationTaskRun,
+    deliveryRun,
     workspaceRootIds,
   } = params;
   const encoder = new TextEncoder();
@@ -399,7 +398,7 @@ function createStreamingResponse(params: {
       {
         const startedEnv = streamEmitter.wrap({ type: "run_started", conversationId: conversationId ?? null });
         emitAndPersist(startedEnv);
-        for (const event of foundationTaskRun.takePendingEvents()) {
+        for (const event of deliveryRun?.takePendingEvents() ?? []) {
           emitAndPersist(streamEmitter.wrap(event));
         }
         markRunRunning(runPersist, (e) => streamEmitter.wrap(e), enqueueEnvelope);
@@ -448,23 +447,23 @@ function createStreamingResponse(params: {
         collector.collectedEvents.push(...askEvents);
         const { messageId, generatedAttachments } = persistAgentTurn({ ...persistParams, result, collector });
         await publishDeliveredFiles(traceId, conversationId, workspaceRootIds, generatedAttachments);
-        for (const event of foundationTaskRun.completeExecution()) {
+        for (const event of deliveryRun?.completeExecution() ?? []) {
           emitAndPersist(streamEmitter.wrap(event));
         }
         writeSpan({ traceId, spanType: "stream", name: "SSE stream", startedAt, durationMs: Date.now() - startedAt });
 
         // CR-R2：CompletionGate —— 有交付合同则不得仅凭 agent 结束标 completed
-        foundationTaskRun.markValidating();
-        for (const event of foundationTaskRun.takePendingEvents()) {
+        deliveryRun?.markValidating();
+        for (const event of deliveryRun?.takePendingEvents() ?? []) {
           emitAndPersist(streamEmitter.wrap(event));
         }
-        const gateDecision = decideSettleFromCompletionGate(traceId, turnParams.taskContract);
-        foundationTaskRun.settle({
+        const gateDecision = decideSettleFromCompletionGate(traceId, turnParams.deliverySpec);
+        deliveryRun?.settle({
           outcome: gateDecision.outcome,
           message: gateDecision.gateMessage,
           assistantMessageId: messageId,
         });
-        for (const event of foundationTaskRun.takePendingEvents()) {
+        for (const event of deliveryRun?.takePendingEvents() ?? []) {
           emitAndPersist(streamEmitter.wrap(event));
         }
         settleRun(gateDecision.outcome, gateDecision.gateMessage ? { message: gateDecision.gateMessage } : undefined);
@@ -515,15 +514,15 @@ function createStreamingResponse(params: {
         const already = getAgentRun(traceId);
         const skipClientFrames = already && isTerminalRunStatus(already.status) && already.terminationReason === "user_stop";
         try {
-          foundationTaskRun.settle({
+          deliveryRun?.settle({
             outcome: isAbort ? "aborted" : "error",
             message: redact(msg),
           });
-          for (const event of foundationTaskRun.takePendingEvents()) {
+          for (const event of deliveryRun?.takePendingEvents() ?? []) {
             emitAndPersist(streamEmitter.wrap(event));
           }
-        } catch (foundationError) {
-          log.error("foundation task stream settlement failed", { traceId, error: foundationError });
+        } catch (deliveryError) {
+          log.error("delivery run stream settlement failed", { traceId, error: deliveryError });
         }
         if (collector) {
           collector.collectedEvents.push(...askEvents);

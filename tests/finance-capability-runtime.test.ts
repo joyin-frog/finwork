@@ -20,6 +20,15 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
   assertFinanceCapabilityPolicyCoverage();
   const productionDefinitions = buildFinanceToolDefinitions("/tmp/finwork-policy-catalog");
   assertFinanceCapabilityPolicyCatalog(productionDefinitions.map((definition) => definition.id));
+  assert.equal(productionDefinitions.length, 47, "收口后的生产领域工具目录应保持 47 个明确能力");
+  for (const removed of [
+    "query_knowledge", "read_file", "begin_workspace_change", "review_workspace_change",
+    "check_workbook_ties", "detect_data_issues", "merge_labeled_tables",
+    "check_voucher_amount", "map_voucher_account", "summarize_vouchers",
+    "build_voucher_lines", "build_voucher_sheet",
+  ]) {
+    assert.ok(!productionDefinitions.some((definition) => definition.id === removed), `${removed} 不得重新暴露给模型`);
+  }
   assert.throws(
     () => resolveFinanceCapabilityPolicy("unregistered_finance_tool"),
     /no explicit Capability policy/,
@@ -69,7 +78,7 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
       {
         runId: "runtime-test",
         caseId: "case-runtime-test",
-        foundation: {
+        runContext: {
           taskId: "task-runtime-test",
           caseId: "case-runtime-test",
           runId: "runtime-test",
@@ -118,12 +127,12 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
         ...runtime.context,
         runId: "runtime-network-denied",
         caseId: "case-runtime-network-denied",
-        foundation: {
-          ...runtime.context.foundation!,
+        runContext: {
+          ...runtime.context.runContext!,
           runId: "runtime-network-denied",
           caseId: "case-runtime-network-denied",
           security: {
-            ...runtime.context.foundation!.security,
+            ...runtime.context.runContext!.security,
             allowExternalEgress: false,
             allowedDomains: [],
           },
@@ -157,10 +166,9 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
     assert.ok(manifest?.validatorHandlers?.[manifest.validators[0]!.id]);
 
     const first = await runtime.execute(definition, { value: 1 });
-    assert.equal(calls, 1, "Foundation must invoke the shared handler exactly once");
+    assert.equal(calls, 1, "Tool executor must invoke the shared handler exactly once");
     assert.deepEqual(first, { content: [{ type: "text", text: "1" }] });
     assert.equal(count(db, "capability_attempts"), 1);
-    assert.equal(count(db, "capability_shadow_comparisons"), 0);
     assert.equal(
       (db.prepare("SELECT status FROM capability_attempts").get() as { status: string }).status,
       "succeeded",
@@ -175,7 +183,6 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
     assert.deepEqual(second, { content: [{ type: "text", text: "2" }] });
     assert.equal(calls, 2);
     assert.equal(count(db, "capability_attempts"), 2);
-    assert.throws(() => runtime.rollout.rollback("runtime rollback rehearsal"), /retired/);
 
     const sequence: string[] = [];
     const adapterRuntime: FinanceToolRuntime = {
@@ -197,7 +204,7 @@ export const financeCapabilityRuntimeTestPromise = (async () => {
   } finally {
     db.close();
   }
-  console.log("finance-capability-runtime: policy coverage, denied egress bootstrap, single authority, resources, adapter order passed ✓");
+  console.log("finance-capability-runtime: policy coverage, denied egress, single executor, resources, adapter order passed ✓");
 })();
 
 function count(db: DatabaseSync, table: string): number {

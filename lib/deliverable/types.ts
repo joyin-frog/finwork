@@ -1,9 +1,9 @@
 /**
  * CR-Q1：交付物质量门类型与 UI 数据合同。
- * CompletionEvidence / TaskContract 从 run-contract 导入，不复制。
+ * CompletionEvidence / DeliverySpec 从 run-contract 导入，不复制。
  */
 
-import type { CompletionEvidence, QualityProfile, TaskContract } from "@/lib/agent/run-contract";
+import type { CompletionEvidence, QualityProfile, DeliverySpec } from "@/lib/agent/run-contract";
 
 export type DeliverableStatus =
   | "working"
@@ -65,7 +65,7 @@ export type FinalizeContext = {
   outputDir: string;
   /** 会话文件根（含 generate/ delivered/）；缺省则由 outputDir 推导。 */
   conversationFilesDir?: string;
-  taskContract: TaskContract;
+  deliverySpec: DeliverySpec;
   /** 可选：正式附件挂到该 assistant message；缺省则只写 registry/evidence。 */
   messageId?: number;
   conversationId?: number;

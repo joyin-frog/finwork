@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 import type {
   AgentAttachment,
   AgentMessage,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/runtime/paths";
 import { readCompanyProfile } from "@/lib/profile/file-store";
 import { assertSpecialistRoleUsable } from "@/lib/agent/roles/availability";
-import { resolveRoleAllowedTools } from "@/lib/agent/roles/registry";
+import { resolveRoleScopeTools } from "@/lib/agent/roles/registry";
 import {
   buildSpecialistChatSystemPrompt,
   buildSpecialistDynamicSystemContext,
@@ -50,8 +51,8 @@ import { wrapExternalContext } from "@/lib/agent/external-context";
 import { buildDynamicSystemContext } from "@/lib/agent/system-prompt";
 import { decideSettleFromCompletionGate } from "@/lib/agent/completion-gate-settle";
 import {
-  deriveTaskContractForTurn,
-  type TaskContract,
+  deriveDeliverySpecForTurn,
+  type DeliverySpec,
 } from "@/lib/agent/run-contract";
 import {
   loadGovernedPromptMemory,
@@ -66,8 +67,10 @@ import {
   type ExecutionRequirement,
 } from "@/lib/capability/execution-gate";
 import { getDb } from "@/lib/db/sqlite";
+import { workspaceReviewGate } from "@/lib/file-workspace";
 import { workPlanPrompt } from "@/lib/task/work-plan";
 import { classifyTransientProviderError } from "@/lib/evaluation/transient-provider-retry";
+import { getSpreadsheetCapabilities, type SpreadsheetCapabilities } from "@/lib/runtime/spreadsheet-probe";
 
 export type PiAgentServiceOptions = {
   /** AR10 harness 可覆盖到临时目录；生产缺省固定为 Finwork app-data。 */
@@ -85,7 +88,7 @@ export type PiAgentServiceOptions = {
    */
   completionVerifier?: (input: {
     runId: string;
-    taskContract: TaskContract;
+    deliverySpec: DeliverySpec;
   }) => Promise<{
     ok: boolean;
     message?: string;
@@ -96,6 +99,12 @@ export type PiAgentServiceOptions = {
     ok: boolean;
     message?: string;
   };
+  /**
+   * A transient stream failure may be continued in the same persisted Pi
+   * session. Disabled by default for write tasks; controlled executors can opt
+   * in because the workspace version chain rejects duplicate/stale mutations.
+   */
+  maxTransientContinuationAttempts?: number;
   /** abort() 可能等待 SDK 的 waitForIdle；为清理设置独立上限。 */
   abortTimeoutMs?: number;
   /**
@@ -106,6 +115,79 @@ export type PiAgentServiceOptions = {
   /** Force every nested Pi worker onto the same model as the parent (used by isolated Agent evaluation). */
   nestedModelOverride?: string;
 };
+
+type HarnessOwnedToolFailure = {
+  toolName: string;
+  code: string;
+  message: string;
+  terminationReason: "dependency_missing" | "tool_error" | "session_stale";
+};
+
+export function classifyHarnessOwnedToolFailure(
+  event: Extract<AgentRuntimeEvent, { type: "tool_completed" }>,
+): HarnessOwnedToolFailure | null {
+  const payload = `${event.content ?? ""}\n${safeStringify(event.structured)}`;
+  if (/stale_base_version/i.test(payload)) {
+    return { toolName: event.toolName || "unknown_tool", code: "stale_base_version", message: event.content || "候选文件基于旧版本", terminationReason: "session_stale" };
+  }
+  const environment = payload.match(/(?:recalc_unavailable|render_unavailable|python_missing|spreadsheet_preflight_failed)/i)?.[0];
+  if (environment) {
+    return { toolName: event.toolName || "unknown_tool", code: environment.toLowerCase(), message: event.content || environment, terminationReason: "dependency_missing" };
+  }
+  const tool = payload.match(/(?:Invalid time value|artifact_diff_failed|commit_failed|validation_report_invalid|runtime_error)/i)?.[0];
+  if (tool) {
+    return { toolName: event.toolName || "unknown_tool", code: tool.toLowerCase().replace(/\s+/g, "_"), message: event.content || tool, terminationReason: "tool_error" };
+  }
+  return null;
+}
+
+function throwHarnessOwnedToolFailure(failure: HarnessOwnedToolFailure | null): void {
+  if (!failure) return;
+  const error = new Error(`${failure.code}: ${failure.message}`) as Error & {
+    code?: string;
+    __terminationReason?: string;
+    __repairStopReason?: FinworkAgentResult["repairStopReason"];
+  };
+  error.name = "HarnessError";
+  error.code = failure.code;
+  error.__terminationReason = failure.terminationReason;
+  error.__repairStopReason = "harness_handled";
+  throw error;
+}
+
+function safeStringify(value: unknown): string {
+  try { return JSON.stringify(value ?? {}); }
+  catch { return ""; }
+}
+
+let spreadsheetPreflightCache: { expiresAt: number; value: SpreadsheetCapabilities } | null = null;
+
+async function requireSpreadsheetRuntimePreflight(deliverySpec: DeliverySpec): Promise<void> {
+  const requirement = deliverySpec.spreadsheetRequirement;
+  if (!requirement?.needsRecalc && !requirement?.needsRender) return;
+  const now = Date.now();
+  const capabilities = spreadsheetPreflightCache && spreadsheetPreflightCache.expiresAt > now
+    ? spreadsheetPreflightCache.value
+    : await getSpreadsheetCapabilities();
+  spreadsheetPreflightCache = { expiresAt: now + 5 * 60_000, value: capabilities };
+  const failures = [
+    ...(requirement.needsRecalc && !capabilities.recalc.ok
+      ? [`recalc=${capabilities.recalc.errorCode ?? "probe_failed"}`]
+      : []),
+    ...(requirement.needsRender && !capabilities.render.ok
+      ? ["render=probe_failed"]
+      : []),
+  ];
+  if (!failures.length) return;
+  const error = new Error(`spreadsheet_preflight_failed: ${failures.join(", ")}`) as Error & {
+    code?: string;
+    __terminationReason?: string;
+  };
+  error.name = "PreflightError";
+  error.code = "spreadsheet_preflight_failed";
+  error.__terminationReason = "dependency_missing";
+  throw error;
+}
 
 function mergeExecutionRequirements(
   requirements: readonly ExecutionRequirement[],
@@ -163,31 +245,43 @@ export async function runPiAgent(
 
   // Query pipeline normally injects this contract. Direct runPiAgent callers must
   // get the same completion and governed-memory boundary.
-  const taskContract = request.taskContract ?? deriveTaskContractForTurn({
+  const deliverySpec = request.deliverySpec ?? deriveDeliverySpecForTurn({
     intent: request.intent,
     attachments: request.attachments,
     userMessage: [...request.messages].reverse().find((message) => message.role === "user")?.content,
   });
+  await requireSpreadsheetRuntimePreflight(deliverySpec);
   const executionRequirements = mergeExecutionRequirements([
     ...executionRequirementsForSpreadsheetTask({
-      hasSpreadsheet: taskContract.taskKind !== "text",
-      needsWrite: taskContract.spreadsheetRequirement?.needsWrite === true,
-      needsValidation: taskContract.requiredDeliverables.length > 0,
+      hasSpreadsheet: deliverySpec.taskKind !== "text",
+      needsWrite: deliverySpec.spreadsheetRequirement?.needsWrite === true,
+      needsValidation: deliverySpec.requiredDeliverables.length > 0,
     }),
+    ...(deliverySpec.taskKind === "financial_consolidation"
+      && deliverySpec.spreadsheetRequirement?.needsWrite === true
+      ? [{
+          id: "financial_model.task_script",
+          description: "用任务脚本生成复杂财务模型候选文件",
+          anyOf: ["sandboxed.code-execution"],
+        }]
+      : []),
     ...(serviceOptions.executionRequirements ?? []),
   ]);
   const needsWorkspaceChangeReview =
-    taskContract.spreadsheetRequirement?.needsWrite === true
+    deliverySpec.spreadsheetRequirement?.needsWrite === true
     && (request.attachments ?? []).some((attachment) =>
       Boolean(attachment.assetId) && (/\.(xlsx|xlsm|xls|csv|tsv)$/i.test(attachment.name) || /spreadsheet|excel|csv/i.test(attachment.mimeType)),
     );
   const executionLedger = new CapabilityExecutionLedger();
   executionLedger.seed("agent.turn");
   const contractCompletionRequired =
-    taskContract.requiredDeliverables.length > 0 || executionRequirements.length > 0;
+    deliverySpec.requiredDeliverables.length > 0 || executionRequirements.length > 0;
+  const latestUserRequest = [...request.messages].reverse()
+    .find((message) => message.role === "user")?.content ?? "";
   const memoryContext = resolveMemoryRuntimeContext({
     explicit: request.memoryContext,
-    taskContract,
+    deliverySpec,
+    retrievalText: latestUserRequest,
   });
   const governedMemory = await loadGovernedPromptMemory({
     roleId: role?.id,
@@ -218,13 +312,14 @@ export async function runPiAgent(
         outputDir,
         companyProfile: await readCompanyProfile().catch(() => ({})),
       };
-  const contextPolicy = role
-    ? null
-    : resolveAgentContextPolicy({
-        messages: request.messages,
-        attachments: request.attachments,
-        intent: request.intent,
-      });
+  const contextPolicy = resolveAgentContextPolicy({
+    messages: request.messages,
+    attachments: request.attachments,
+    intent: request.intent,
+    artifactWrite:
+      deliverySpec.spreadsheetRequirement?.needsWrite === true
+      || deliverySpec.requiredDeliverables.length > 0,
+  });
 
   const { modelRuntime, model, pricingKnown } = await createFinworkModelRuntime(settings, modelId);
   const { createAgentSession, SessionManager, SettingsManager } = await import(
@@ -301,7 +396,9 @@ export async function runPiAgent(
     contractCompletionRequired ? "max_rounds" : "not_required";
   let suppressProtocolRepairText = false;
   let protocolRepairFallbackContent: string | undefined;
+  const bufferDeliveryText = contractCompletionRequired;
   const mapper = new PiEventMapper();
+  let harnessOwnedToolFailure: HarnessOwnedToolFailure | null = null;
   const currentRunMessages: AgentSessionEvent[] = [];
   const operationAbort = new AbortController();
   let askUserQuestionCount = 0;
@@ -330,15 +427,21 @@ export async function runPiAgent(
       workspaceRootIds: request.workspaceRootIds,
       workspaceAssetIds: (request.attachments ?? []).flatMap((attachment) => attachment.assetId ? [attachment.assetId] : []),
       memoryContext,
-      foundation: request.foundation,
+      runContext: request.runContext,
       modelOverride: serviceOptions.nestedModelOverride,
-      ...(taskContract
-        ? { finalize: { taskContract, runId: request.requestId ?? request.traceId ?? "unknown" } }
+      ...(deliverySpec
+        ? {
+            finalize: {
+              deliverySpec,
+              runId: request.requestId ?? request.traceId ?? "unknown",
+              requireWorkspaceChangeReview: needsWorkspaceChangeReview,
+            },
+          }
         : {}),
     },
   );
   const allowed = role
-    ? new Set(resolveRoleAllowedTools(role.id))
+    ? new Set(resolveRoleScopeTools(role.id))
     : contextPolicy?.toolIds
       ? new Set(contextPolicy.toolIds)
       : null;
@@ -355,14 +458,24 @@ export async function runPiAgent(
       emit: request.emit,
     }),
     createFinanceCapabilityRuntime(enabledDefinitions, {
-      runId: request.foundation?.runId ?? request.requestId ?? request.traceId ?? randomUUID(),
-      ...(request.foundation ? { caseId: request.foundation.caseId } : {}),
-      ...(request.foundation ? { foundation: request.foundation } : {}),
+      runId: request.runContext?.runId ?? request.requestId ?? request.traceId ?? randomUUID(),
+      ...(request.runContext ? { caseId: request.runContext.caseId } : {}),
+      ...(request.runContext ? { runContext: request.runContext } : {}),
     }),
   );
-  const builtinTools = await createFinworkBuiltinTools(builtinRoots, {
+  const allowedBuiltins = contextPolicy?.builtinToolIds
+    ? new Set(contextPolicy.builtinToolIds)
+    : null;
+  const builtinTools = (await createFinworkBuiltinTools(builtinRoots, {
     resolveUserQuestion: emitQuestion,
-  });
+  })).filter((tool) => (
+    (!allowedBuiltins || allowedBuiltins.has(tool.name))
+    && !(
+      deliverySpec.taskKind === "financial_consolidation"
+      && deliverySpec.spreadsheetRequirement?.needsWrite === true
+      && tool.name === "bash"
+    )
+  ));
   const tools = [
     ...builtinTools,
     ...financeTools,
@@ -394,6 +507,23 @@ export async function runPiAgent(
       const mapped = mapper.map(event);
       for (const runtimeEvent of mapped.events) {
         executionLedger.record(runtimeEvent);
+        if (runtimeEvent.type === "tool_completed") {
+          if (runtimeEvent.isError) {
+            harnessOwnedToolFailure = classifyHarnessOwnedToolFailure(runtimeEvent)
+              ?? harnessOwnedToolFailure;
+          } else if (harnessOwnedToolFailure?.toolName === runtimeEvent.toolName) {
+            harnessOwnedToolFailure = null;
+          }
+        }
+        if (
+          bufferDeliveryText
+          && (runtimeEvent.type === "message_started"
+            || runtimeEvent.type === "message_delta"
+            || runtimeEvent.type === "message_completed")
+          && runtimeEvent.channel === "text"
+        ) {
+          continue;
+        }
         if (
           suppressProtocolRepairText &&
           runtimeEvent.type === "message_delta" &&
@@ -423,7 +553,7 @@ export async function runPiAgent(
           const prompt = buildPiPrompt(
             request.messages,
             request.attachments ?? [],
-            taskContract,
+            deliverySpec,
             request.workspaceRootIds,
             request.workPlan,
           );
@@ -439,15 +569,43 @@ export async function runPiAgent(
             try {
               await runProviderTurn(prompt.text, prompt.images);
             } catch (error) {
-              if (!canContinueReadOnlyTurnAfterProviderFailure(error, executionLedger.snapshot(), taskContract)) {
+              const readOnlyContinuation = canContinueReadOnlyTurnAfterProviderFailure(
+                error,
+                executionLedger.snapshot(),
+                deliverySpec,
+              );
+              const configuredWriteContinuations = Math.max(
+                0,
+                Math.min(3, serviceOptions.maxTransientContinuationAttempts ?? 0),
+              );
+              const continuationLimit = readOnlyContinuation ? 1 : configuredWriteContinuations;
+              if (!readOnlyContinuation && (
+                continuationLimit === 0
+                || !classifyTransientProviderError(error).retryable
+              )) {
                 throw error;
               }
-              await runProviderTurn([
-                "系统恢复：上一轮模型响应因临时传输故障中断。",
-                "当前任务是只读且幂等的；已成功完成的工具结果仍在本会话中。",
-                "请直接基于现有结果继续未完成的分析，不要重复已成功的只读工具调用；只有证据确实不足时才补充读取。",
-                "完成后给出完整最终答复。",
-              ].join("\n"));
+              let continuationError: unknown = error;
+              for (let attempt = 1; attempt <= continuationLimit; attempt += 1) {
+                try {
+                  await runProviderTurn([
+                    "系统恢复：上一轮模型响应因临时传输故障中断。",
+                    readOnlyContinuation
+                      ? "当前任务是只读且幂等的；已成功完成的工具结果仍在本会话中。"
+                      : "当前是受控文件任务；已成功的工具结果、脚本、候选文件与 candidateVersionId 仍在本会话和版本链中。",
+                    readOnlyContinuation
+                      ? "请直接基于现有结果继续未完成的分析，不要重复已成功的只读工具调用；只有证据确实不足时才补充读取。"
+                      : "请从中断点继续：不要重新执行已经成功的写入；先检查最近工具结果，后续 review 必须使用最新 candidateVersionId 作为 baseVersionId。",
+                    "完成剩余验证与正式交付。",
+                  ].join("\n"));
+                  continuationError = null;
+                  break;
+                } catch (nextError) {
+                  continuationError = nextError;
+                  if (!classifyTransientProviderError(nextError).retryable) throw nextError;
+                }
+              }
+              if (continuationError) throw continuationError;
             }
 
             // 模型偶尔会把需要用户决策的问题写进普通回复，导致 UI/Harness 无法
@@ -481,6 +639,8 @@ export async function runPiAgent(
               }
             }
 
+            throwHarnessOwnedToolFailure(harnessOwnedToolFailure);
+
             // 先确保最小可交付文件存在，再允许系统验证失败驱动 repair。
             // 没有文件时继续读资料/调用工具只会放大超时，且没有可评分证据。
             const minimumDeliverableCheck = serviceOptions.minimumDeliverableCheck;
@@ -496,6 +656,7 @@ export async function runPiAgent(
               );
               await awaitAbortable(session.waitForIdle(), operationAbort.signal);
               throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
+              throwHarnessOwnedToolFailure(harnessOwnedToolFailure);
               const afterMinimumCheck = minimumDeliverableCheck!();
               if (!afterMinimumCheck.ok) {
                 const error = new Error(
@@ -518,18 +679,18 @@ export async function runPiAgent(
               contractCompletionRequired || artifactWriteObserved();
             const completionDecision = async () => {
               // 独立保险：模型一旦成功写出文件，本回合就不再是“纯文本”。如果
-              // TaskContract 没声明交付物，禁止用 not_applicable 绕过 finalize。
+              // DeliverySpec 没声明交付物，禁止用 not_applicable 绕过 finalize。
               // 正常路径应由会话承接逻辑在模型运行前冻结正确合同；这里 fail closed。
-              if (artifactWriteObserved() && taskContract.requiredDeliverables.length === 0) {
+              if (artifactWriteObserved() && deliverySpec.requiredDeliverables.length === 0) {
                 return {
                   outcome: "error" as const,
                   qualityStatus: "failed" as const,
                   terminationReason: "validation_failed" as const,
-                  gateMessage: "检测到文件写入，但当前 TaskContract 未声明交付物；已拒绝把未验证文件标记为完成。",
+                  gateMessage: "检测到文件写入，但当前 DeliverySpec 未声明交付物；已拒绝把未验证文件标记为完成。",
                   diagnosticFingerprint: "artifact-write-without-delivery-contract",
                 };
               }
-              const base = decideSettleFromCompletionGate(runId, taskContract);
+              const base = decideSettleFromCompletionGate(runId, deliverySpec);
               if (base.outcome !== "completed") {
                 return base;
               }
@@ -551,14 +712,14 @@ export async function runPiAgent(
                   outcome: "error" as const,
                   qualityStatus: "failed" as const,
                   terminationReason: "validation_failed" as const,
-                  gateMessage: "受管表格写入尚未形成完整的后端变更证据。请先用 begin_workspace_change 冻结格子级目标，再对最终候选调用 review_workspace_change(planId=冻结计划, final=true)，并根据 pendingTargets 继续修正。",
+                  gateMessage: "受管表格写入尚未形成完整的后端变更证据。请对当前 assetId 调用 patch_workspace_workbook；Harness 会自动维护候选头、变更计划、语义 diff 和复核记录。",
                   diagnosticFingerprint: "workspace-change-review-missing",
                 };
               }
               if (!serviceOptions.completionVerifier) return base;
               const verificationTimeoutMs = serviceOptions.verificationTimeoutMs ?? 60_000;
               const taskVerification = await withTimeout(
-                serviceOptions.completionVerifier({ runId, taskContract }),
+                serviceOptions.completionVerifier({ runId, deliverySpec }),
                 verificationTimeoutMs,
                 {
                   ok: false,
@@ -581,7 +742,7 @@ export async function runPiAgent(
             };
             let previousFingerprint: string | undefined;
             const undeclaredArtifactWrite = () =>
-              artifactWriteObserved() && taskContract.requiredDeliverables.length === 0;
+              artifactWriteObserved() && deliverySpec.requiredDeliverables.length === 0;
             if (undeclaredArtifactWrite()) repairStopReason = "no_progress";
             while (
               runtimeCompletionRequired()
@@ -600,6 +761,10 @@ export async function runPiAgent(
                 repairStopReason = "no_progress";
                 break;
               }
+              if (gate.outcome === "error" && "repairableByModel" in gate && !gate.repairableByModel) {
+                repairStopReason = "harness_handled";
+                break;
+              }
               previousFingerprint = gate.diagnosticFingerprint;
               repairRounds += 1;
               await awaitAbortable(
@@ -608,7 +773,7 @@ export async function runPiAgent(
                     `系统验证发现本次任务尚未完成（第 ${repairRounds}/${maxRepairRounds} 次修复）。`,
                     gate.gateMessage,
                     "请成功调用门禁列出的受控工具并完成实际操作；失败调用不计入，不能只回复说明文字。",
-                    ...(taskContract.requiredDeliverables.length > 0 || artifactWriteObserved()
+                    ...(deliverySpec.requiredDeliverables.length > 0 || artifactWriteObserved()
                       ? [
                           "请按上述具体文件、位置和错误修复当前输出目录中的工作文件。",
                           "完成修复后必须再次调用 finalize_deliverable。",
@@ -621,6 +786,7 @@ export async function runPiAgent(
               );
               await awaitAbortable(session.waitForIdle(), operationAbort.signal);
               throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
+              throwHarnessOwnedToolFailure(harnessOwnedToolFailure);
             }
 
             const finalCompletionRequired = runtimeCompletionRequired();
@@ -628,7 +794,9 @@ export async function runPiAgent(
               ? await completionDecision()
               : { outcome: "completed" as const, qualityStatus: "not_applicable" as const };
             if (finalGate.outcome !== "completed") {
-              const stopNote = repairStopReason === "no_progress"
+              const stopNote = repairStopReason === "harness_handled"
+                ? "\nHarness 已将该问题归类为环境、工具或版本错误，不再调用模型重复修复。"
+                : repairStopReason === "no_progress"
                 ? "\n自动修复已停止：连续两次验证指纹相同，未检测到文件或错误变化。"
                 : repairRounds >= maxRepairRounds
                   ? `\n自动修复已停止：达到 ${maxRepairRounds} 轮上限。`
@@ -682,6 +850,12 @@ export async function runPiAgent(
       throw error;
     }
     throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
+    const finalContent = lastAssistantText(currentRunMessages);
+    if (bufferDeliveryText && finalContent) {
+      request.emit?.({ type: "message_started", channel: "text" });
+      request.emit?.({ type: "message_delta", channel: "text", delta: finalContent });
+      request.emit?.({ type: "message_completed", channel: "text", content: finalContent });
+    }
     return {
       mode: "agent",
       runtimeSessionId: session.sessionFile
@@ -804,18 +978,7 @@ export function historyBeforeCurrent(messages: AgentMessage[]): AgentMessage[] {
 
 function hasCompletedWorkspaceChangeReview(runId: string): boolean {
   try {
-    const rows = getDb().prepare(`
-      SELECT validation_json FROM file_changesets
-      WHERE run_id=? AND status IN ('pending','approved','applied')
-      ORDER BY created_at DESC
-    `).all(runId) as Array<{ validation_json: string }>;
-    return rows.some((row) => {
-      try {
-        const value = JSON.parse(row.validation_json) as { complete?: unknown; planId?: unknown };
-        return value.complete === true && typeof value.planId === "string" && /^[0-9a-f-]{36}$/i.test(value.planId);
-      }
-      catch { return false; }
-    });
+    return workspaceReviewGate(getDb(), runId).ok;
   } catch {
     return false;
   }
@@ -831,7 +994,7 @@ function hasCompletedWorkspaceChangeReview(runId: string): boolean {
 export function buildPiPrompt(
   messages: AgentMessage[],
   attachments: AgentAttachment[],
-  taskContract?: TaskContract | null,
+  deliverySpec?: DeliverySpec | null,
   workspaceRootIds: string[] = [],
   workPlan?: FinworkAgentRequest["workPlan"],
 ): { text: string; images: ImageContent[] } {
@@ -862,7 +1025,7 @@ export function buildPiPrompt(
       "SKILL.md",
     );
     const isFinancialStatementAnalysis =
-      taskContract?.spreadsheetRequirement?.needsWrite === false
+      deliverySpec?.spreadsheetRequirement?.needsWrite === false
       && /(?:财务|财报|报表|经营|利润|资产负债|现金流|偿债|盈利)/i.test(current);
     const businessAnalysisSkillPath = path.join(
       getBundledPluginRoot(),
@@ -878,23 +1041,24 @@ export function buildPiPrompt(
       "parse_statements.py",
     );
     parts.push(
-      taskContract == null || taskContract.spreadsheetRequirement?.needsWrite === true
+      deliverySpec == null || deliverySpec.spreadsheetRequirement?.needsWrite === true
         ? [
             `这是 Excel/表格写入任务。请先用 read 加载 xlsx Skill：${xlsxSkillPath}，并遵循其中的读写、公式和验证流程。`,
             // 这里曾写着「用 openpyxl 从附件加载后保存为新文件」——那是一次有损往返:
             // openpyxl 的 load→save 会清空整册公式缓存值(实测 2639 → 2)。模板型任务
             // 的三张报表全由公式驱动,缓存一没就全部读不出数,模型随后会写十几个脚本
             // 反复排查,直到超时(HISTORY-002 实测 27 个脚本、40 分钟、0 交付)。
-            "**改动受管 assetId 表格必须用 `patch_workspace_workbook`；只有旧式路径附件才用 `patch_workbook`。不得用 openpyxl/pandas 打开再保存。** 后者会清空整册公式的缓存值，模板里既有的公式将全部读不出结果，且含外部链接的数据无法恢复。这两个受控工具只重写你点名的单元格，其余原样保留。",
+            "**改动受管表格使用 `patch_workspace_workbook`。** 它自动从唯一候选头继续、记录内部版本/计划/diff/review；不要创建 v2/v3 文件链，不要管理 baseVersionId/candidateVersionId，也不要调用 begin/review 工具。不得用 openpyxl/pandas 打开再保存既有模板。",
             "附件里若提供了模板或工作底稿，**填它，不要另起炉灶重建一张同名表**：模板自带的公式就是计算逻辑，重建等于把它们全丢掉。",
-            "优先用 `create_workbook` / `patch_workspace_workbook` 完成常规表格操作；当通用工具不足以表达实际业务逻辑时，可以在本回合输出目录编写并反复 edit Python 脚本，但只能通过 `run_task_python` 执行，不能改用 Bash 或自行启动 Python。先调用 read_workspace_file 获取任务内只读 taskPath，理解文件后必须在修改前调用 begin_workspace_change 冻结格子级目标并保存 planId。脚本只能读取输入快照并写输出目录，不能覆盖输入。",
-            "动态脚本可以负责特殊清洗、识别、计算和候选文件生成，但不得用 openpyxl/pandas 对用户现有工作簿做 load→save 整册重写。若必须直接生成候选 XLSX，每轮都要调用 review_workspace_change，对照明确的 changePlan 查看格子级 diff 和 pendingTargets，再调整脚本。",
-            "最终候选必须再次调用 review_workspace_change(planId=上述冻结计划, final=true)；没有通过后端差异与计划完成检查的变更不能被描述为完成。之后再调用 finalize_deliverable。",
-            taskContract?.spreadsheetRequirement?.needsRecalc ||
-            taskContract?.spreadsheetRequirement?.needsRender
+            deliverySpec?.taskKind === "financial_consolidation"
+              ? "这是复杂财务模型任务：读取输入后编写可反复调整的任务脚本，让脚本输出结构化编辑清单 JSON；用 `run_task_python` 运行，再把清单一次传给 `patch_workspace_workbook`。业务错误时修改脚本并重复“运行 → patch”；环境、版本和重算错误交给 Harness，不要用模型猜。"
+              : "优先直接调用 `create_workbook` / `patch_workspace_workbook`；通用工具表达不了时再写任务脚本，由 `run_task_python` 执行并输出结构化编辑清单。",
+            "模型可见工作流只有：读取 → 写/改脚本 → 运行 → patch → 正式交付。版本链、变更计划、语义 diff 和复核证据由 Harness 自动维护。",
+            deliverySpec?.spreadsheetRequirement?.needsRecalc ||
+            deliverySpec?.spreadsheetRequirement?.needsRender
               ? "写入 XLSX 后，合同要求的重算与渲染由 `finalize_deliverable` 在沙箱外的受控运行时完成；不要在 Bash 中启动 soffice，也不要手工伪造公式缓存。先执行静态公式、关键输入值、结构和修改范围检查，再调用 finalize_deliverable；只有该工具明确返回 recalc_unavailable 才能报告重算阻塞。"
               : "",
-            "完成后必须检查输出文件，并调用 finalize_deliverable 正式交付。",
+            "完成后调用 finalize_deliverable；质量门失败时只按返回的业务问题继续修复，验证通过后停止。",
           ].filter(Boolean).join("\n")
         : [
             `这是 Excel/表格只读分析任务。请先用 read 加载 xlsx Skill：${xlsxSkillPath}，并遵循其中的读取与分析流程。`,
@@ -917,7 +1081,7 @@ export function buildPiPrompt(
         attachment.mimeType ===
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ) ||
-    taskContract?.requiredDeliverables.some(
+    deliverySpec?.requiredDeliverables.some(
       (deliverable) =>
         deliverable.mime ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -939,15 +1103,16 @@ export function buildPiPrompt(
       ].join("\n"),
     );
   }
-  if (taskContract?.requiredDeliverables.length) {
+  if (deliverySpec?.requiredDeliverables.length) {
     parts.push(
       [
         "本任务的交付合同由系统冻结，不能用说明文字代替文件：",
-        ...taskContract.requiredDeliverables.map(
+        ...deliverySpec.requiredDeliverables.map(
           (deliverable) =>
             `- contractDeliverableId=${deliverable.id}; MIME=${deliverable.mime}; 数量=${deliverable.count}; qualityProfile=${deliverable.qualityProfile}`,
         ),
         "请按上述 ID 生成最终文件，并在最后一次调用 finalize_deliverable 时逐一声明。",
+        "最终只输出一次正式结论，且只包含四部分：关键结果、校验状态、未覆盖事项、下载入口。不要复述内部修复提示、工具错误栈、协议判断或修复过程；中间候选不得写成面向用户的最终结论。",
       ].join("\n"),
     );
   }
@@ -1186,23 +1351,20 @@ export function throwIfLastAssistantProviderError(
 
 const READ_ONLY_PROVIDER_CONTINUATION_TOOLS = new Set([
   "read",
-  "read_file",
   "read_document",
   "list_workspace_files",
   "read_workspace_file",
   "analyze_tabular",
-  "check_workbook_ties",
-  "detect_data_issues",
   "generate_business_analysis",
 ]);
 
 export function canContinueReadOnlyTurnAfterProviderFailure(
   error: unknown,
   facts: readonly ExecutionFact[],
-  taskContract: TaskContract,
+  deliverySpec: DeliverySpec,
 ): boolean {
   if (!classifyTransientProviderError(error).retryable) return false;
-  if (taskContract.requiredDeliverables.length > 0 || taskContract.spreadsheetRequirement?.needsWrite === true) return false;
+  if (deliverySpec.requiredDeliverables.length > 0 || deliverySpec.spreadsheetRequirement?.needsWrite === true) return false;
   return facts.every((fact) =>
     fact.toolName === "system"
     || READ_ONLY_PROVIDER_CONTINUATION_TOOLS.has(fact.toolName.trim().toLowerCase().replace(/[\s-]+/g, "_"))

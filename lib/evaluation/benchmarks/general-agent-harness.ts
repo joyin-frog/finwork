@@ -38,8 +38,8 @@ async function runProbe(caseId: string): Promise<Array<{ id: string; passed: boo
   switch (caseId) {
     case "sandbox-01-read-transform-deliver": {
       const ledger = new CapabilityExecutionLedger();
-      ledger.record({ type: "tool_started", toolName: "read_file", toolCallId: "read" });
-      ledger.record({ type: "tool_completed", toolName: "read_file", toolCallId: "read", isError: false });
+      ledger.record({ type: "tool_started", toolName: "search_knowledge", toolCallId: "read" });
+      ledger.record({ type: "tool_completed", toolName: "search_knowledge", toolCallId: "read", isError: false });
       ledger.record({ type: "tool_started", toolName: "finalize_deliverable", toolCallId: "deliver" });
       ledger.record({ type: "tool_completed", toolName: "finalize_deliverable", toolCallId: "deliver", isError: false });
       const facts = ledger.snapshot();

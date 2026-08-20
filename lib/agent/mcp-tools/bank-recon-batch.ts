@@ -23,7 +23,7 @@ import type {
 } from "@/lib/agent/subagent-contracts";
 import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
 import type { MemoryRuntimeContext } from "@/lib/memory-v2/contracts";
-import type { AgentFoundationContext } from "@/lib/agent/contracts";
+import type { AgentRunContext } from "@/lib/agent/contracts";
 
 type Sdk = SdkLike;
 
@@ -37,7 +37,7 @@ export type BankReconBatchDeps = {
   fileExists?: (p: string) => boolean;
   /** Runtime-authoritative memory scope inherited by every batch child. */
   memoryContext?: Partial<MemoryRuntimeContext> | null;
-  foundation?: AgentFoundationContext;
+  runContext?: AgentRunContext;
   modelOverride?: string;
 };
 
@@ -168,7 +168,7 @@ export function createRunBankReconBatchTool(
         traceId,
         conversationId,
         memoryContext: deps?.memoryContext,
-        foundation: deps?.foundation,
+        runContext: deps?.runContext,
         modelOverride: deps?.modelOverride,
         onEvent: onSubagentEvent,
         signal: execution?.signal,

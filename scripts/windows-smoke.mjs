@@ -5,7 +5,7 @@
 // 在 mac 开发 / mock / Linux CI 默认 UTF-8 下都照不到 —— 只有「在目标平台跑真实组装产物」才暴露。
 // 详见项目记忆 windows-runtime-test-blindspot。本脚本平台无关(Windows CI 跑它逮真问题;本地也能跑验证逻辑)。
 //
-// 用法:node scripts/windows-smoke.mjs   (需先 pnpm build && pnpm tauri:prepare；npm 也兼容)
+// 用法:node scripts/windows-smoke.mjs   (需先 pnpm build && pnpm tauri:prepare)
 
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
@@ -59,6 +59,7 @@ async function main() {
       FINANCE_AGENT_BUNDLED_PLUGIN_DIR: path.join(serverDir, "agent-skills"),
       FINANCE_AGENT_APP_DATA_DIR: dataDir, // DB/日志落临时目录,不污染
       FINANCE_AGENT_MOCK_AGENT: "1", // 不需要真 key/模型:只验证路由加载与产物完整
+      FINANCE_AGENT_PI_PREFLIGHT: "1",
       PYTHONUTF8: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -92,6 +93,21 @@ async function main() {
   }
   if (!ready) fail("/api/health 90s 内未返回 200(next-server 没起来,通常是 standalone 漏 chunk)");
 
+  // 同一个打包进程完成 Pi ESM、资源加载器、受控目录和工具目录检查，避免再启动
+  // 第二个 next-server 执行 AR14 迁移期 smoke。
+  const preflightMatch = log.match(/\[pi-preflight\]\s+(\{[^\n]+\})/);
+  const preflight = preflightMatch ? JSON.parse(preflightMatch[1]) : null;
+  if (
+    !preflight
+    || preflight.serviceLoaded !== true
+    || preflight.piEsmLoaded !== true
+    || preflight.toolCount !== 47
+    || preflight.resourceLoaderLoaded !== true
+    || preflight.controlledSessionDir !== true
+  ) {
+    fail(`Pi packaged preflight 未通过：${JSON.stringify(preflight)}`);
+  }
+
   // 2) 打一圈端点,触发各路由模块加载(漏 chunk / 顶层 import 抛错会在此现形并落日志)。
   const hit = async (method, p, body) => {
     try {
@@ -113,7 +129,7 @@ async function main() {
   const hits = FATAL.filter((sig) => log.includes(sig));
   if (hits.length) fail(`检测到打包产物致命错误签名:${hits.join(" | ")}`);
 
-  console.log(`[windows-smoke] PASS — next-server 在 ${process.platform} 起得来、关键路由加载无致命错误。`);
+  console.log(`[windows-smoke] PASS — next-server、Pi preflight 与关键路由在 ${process.platform} 均通过。`);
   cleanup();
   process.exit(0);
 }

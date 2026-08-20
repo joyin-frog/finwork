@@ -43,6 +43,21 @@ export async function semanticDiffFiles(beforePath: string, afterPath: string): 
   };
 }
 
+/** Single authority for the latest candidate on a run-local asset branch. */
+export function resolveWorkspaceBranchHead(input: {
+  db: DatabaseSync;
+  store: FileWorkspaceStore;
+  runId: string;
+  assetId: string;
+}): string {
+  const latest = input.db.prepare(`
+    SELECT candidate_version_id FROM file_changesets
+    WHERE run_id=? AND asset_id=?
+    ORDER BY created_at DESC,rowid DESC LIMIT 1
+  `).get(input.runId, input.assetId) as { candidate_version_id: string } | undefined;
+  return latest?.candidate_version_id ?? input.store.getAsset(input.assetId).versionId;
+}
+
 export async function createFileChangeSet(input: {
   db: DatabaseSync;
   store: FileWorkspaceStore;
@@ -51,11 +66,21 @@ export async function createFileChangeSet(input: {
   candidatePath: string;
   validation: Record<string, unknown>;
   diff?: SemanticDiff;
+  /** Agent 声称本轮候选基于的版本；与 run 分支头不一致时拒绝。 */
+  baseVersionId?: string;
 }): Promise<{ changesetId: string; diff: SemanticDiff; candidateVersionId: string }> {
   const base = input.store.getAsset(input.assetId);
+  const branchHeadVersionId = resolveWorkspaceBranchHead(input);
+  if (input.baseVersionId && input.baseVersionId !== branchHeadVersionId) {
+    const error = new Error(
+      `stale_base_version: 当前候选分支头为 ${branchHeadVersionId}，不能从旧版本 ${input.baseVersionId} 重建`,
+    ) as Error & { code?: string };
+    error.code = "stale_base_version";
+    throw error;
+  }
   const baselineDir = path.join(path.dirname(input.candidatePath), ".finwork-diff-baseline");
   try {
-    const baselinePath = input.store.materializeVersion(base.versionId, baselineDir, base.name);
+    const baselinePath = input.store.materializeVersion(branchHeadVersionId, baselineDir, base.name);
     const diff = input.diff ?? await semanticDiffFiles(baselinePath, input.candidatePath);
     const candidate = input.store.ingestManagedBuffer({
       assetId: base.assetId,
@@ -63,7 +88,7 @@ export async function createFileChangeSet(input: {
       mediaType: base.mediaType,
       content: await readFile(input.candidatePath),
       sourceKind: "managed",
-      parentVersionId: base.versionId,
+      parentVersionId: branchHeadVersionId,
       makeCurrent: false,
     });
     input.store.linkTaskFile(input.runId, base.assetId, base.versionId, "baseline");
@@ -74,7 +99,7 @@ export async function createFileChangeSet(input: {
         (changeset_id,run_id,asset_id,base_version_id,candidate_version_id,diff_kind,diff_json,validation_json,status,created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?)
     `).run(
-      changesetId, input.runId, input.assetId, base.versionId, candidate.versionId,
+      changesetId, input.runId, input.assetId, branchHeadVersionId, candidate.versionId,
       diff.kind, JSON.stringify(diff), JSON.stringify(input.validation), "pending", new Date().toISOString(),
     );
     return { changesetId, diff, candidateVersionId: candidate.versionId };
@@ -164,13 +189,33 @@ export function evaluateWorkspaceChangePlan(
   for (const item of raw?.changed ?? []) changes.set(item.address, { before: item.before, after: item.after });
 
   for (const target of targets) {
-    if (!target.sheet || !target.cell) {
-      pending.push({ ...target, reason: "缺少 sheet/cell，无法确定性核对" });
+    // Plans are authored by the model and can contain a contradictory
+    // mustChange=true on an invariant such as "保持原公式不变".  Preserve the
+    // user's semantic intent: invariant targets prove that no diff exists.
+    const invariantIntent = /保持.{0,20}不变|(?:保持|保留|维持)(?:\s*ok|原|未修改)|不(?:要|得|应)修改|禁止修改|原样保留/.test(
+      target.description,
+    );
+    const mustChange = invariantIntent ? false : (target.mustChange ?? true);
+    if (!target.sheet) {
+      pending.push({ ...target, reason: "缺少 sheet，无法确定性核对" });
+      continue;
+    }
+    if (!target.cell) {
+      const sheetPrefix = `${target.sheet}!`;
+      const sheetChanged = [...changes.keys()].some((address) => address.startsWith(sheetPrefix));
+      if (mustChange !== sheetChanged) {
+        pending.push({
+          ...target,
+          address: target.sheet,
+          reason: mustChange ? "目标工作表没有发生单元格变化" : "要求保持不变的工作表发生了变化",
+        });
+      } else {
+        completed.push({ ...target, address: target.sheet });
+      }
       continue;
     }
     const address = `${target.sheet}!${target.cell.toUpperCase()}`;
     const change = changes.get(address);
-    const mustChange = target.mustChange ?? true;
     if (mustChange && !change) {
       pending.push({ ...target, address, reason: "目标单元格没有发生变化" });
       continue;
@@ -179,10 +224,26 @@ export function evaluateWorkspaceChangePlan(
       pending.push({ ...target, address, reason: "要求保持不变的单元格发生了变化" });
       continue;
     }
-    const actual = change?.after;
-    if (Object.hasOwn(target, "expectedValue") && stableJson(actual?.value) !== stableJson(target.expectedValue)) {
-      pending.push({ ...target, address, reason: `结果值不符：实际为 ${displayValue(actual?.value)}` });
+    if (!mustChange) {
+      completed.push({ ...target, address });
       continue;
+    }
+    const actual = change?.after;
+    if (Object.hasOwn(target, "expectedValue") && !cellValuesEquivalent(actual?.value, target.expectedValue)) {
+      // Agent freezes the plan before calculation.  A cell whose formula is
+      // preserved but whose cached result changed is a derived outcome, not a
+      // direct edit target; do not force the workbook to match an early model
+      // estimate.  Financial/delivery validators remain the authority for the
+      // derived result.  Direct input cells still fail closed on a mismatch.
+      const preservedDerivedFormula = Boolean(
+        change?.before?.formula
+        && actual?.formula
+        && change.before.formula === actual.formula,
+      );
+      if (!preservedDerivedFormula) {
+        pending.push({ ...target, address, reason: `结果值不符：实际为 ${displayValue(actual?.value)}` });
+        continue;
+      }
     }
     if (target.expectedFormula != null) {
       const expected = target.expectedFormula.replace(/^=/, "");
@@ -268,13 +329,35 @@ async function textSemanticDiff(beforePath: string, afterPath: string, extension
 }
 
 function normalizeCellValue(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) {
+    // ExcelJS 会把越界/损坏的 Excel 日期解析成 Invalid Date。直接调用
+    // toISOString() 会让整次复核以 RangeError("Invalid time value") 崩掉；
+    // 无效日期本身仍应作为可比较、可报告的单元格值保留下来。
+    return Number.isFinite(value.getTime())
+      ? value.toISOString()
+      : { kind: "invalid_excel_date", value: "Invalid Date" };
+  }
   if (Buffer.isBuffer(value)) return { bytesSha256: digest(value) };
   return JSON.parse(stableJson(value));
 }
 
 function stableJson(value: unknown): string {
   return JSON.stringify(sortValue(value));
+}
+
+function cellValuesEquivalent(actual: unknown, expected: unknown): boolean {
+  if (stableJson(actual) === stableJson(expected)) return true;
+  if (
+    (typeof actual === "number" || typeof actual === "string")
+    && (typeof expected === "number" || typeof expected === "string")
+  ) {
+    const left = typeof actual === "number" ? actual : Number(actual.replace(/,/g, "").trim());
+    const right = typeof expected === "number" ? expected : Number(expected.replace(/,/g, "").trim());
+    if (Number.isFinite(left) && Number.isFinite(right)) {
+      return Math.abs(left - right) <= Math.max(1e-9, Math.max(Math.abs(left), Math.abs(right)) * 1e-12);
+    }
+  }
+  return false;
 }
 
 function sortValue(value: unknown): unknown {

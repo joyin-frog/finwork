@@ -93,15 +93,6 @@ export const createWorkbookTestPromise = (async () => {
     ], { encoding: "utf8" }).trim();
     assert.equal(chartProbe, "2", "openpyxl must recognize both native charts");
 
-    const checkTies = definitions.find((item) => item.name === "check_workbook_ties");
-    assert.ok(checkTies);
-    const mismatchedTie = await checkTies.handler({
-      filePath: firstPath,
-      checks: [{ label: "预算=实际", left: ["汇总!B2"], right: ["汇总!C2"], tolerance: 0.01 }],
-    }) as ToolResult;
-    assert.equal(mismatchedTie.isError, true, "mismatched tie must be a failed validation fact");
-    assert.match(mismatchedTie.content?.[0]?.text ?? "", /不平 1/);
-
     const firstBytes = await readFile(firstPath);
     const second = await definition.handler(args) as ToolResult;
     const secondPath = second.structuredContent?.filePath;

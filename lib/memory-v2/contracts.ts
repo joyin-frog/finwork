@@ -73,6 +73,8 @@ export const MemoryRetrievalQuerySchema = z
     entityRefs: z.array(IdentifierSchema).default([]),
     effectivePeriod: PeriodRefSchema.optional(),
     kinds: z.array(MemoryRecordV2BaseSchema.shape.kind).default([]),
+    /** Current task text used only to prove topical relevance. Empty means select nothing. */
+    queryText: z.string().trim().max(20_000).default(""),
     maximumSensitivity: DataClassificationSchema.default("confidential"),
     minimumConfidence: z.number().min(0).max(1).default(0),
     limit: z.number().int().positive().max(100).default(20),
@@ -87,6 +89,7 @@ export const MemorySelectionSchema = z
     summary: z.string().trim().min(1).max(2000),
     evidenceRefs: z.array(IdentifierSchema).min(1),
     score: z.number().min(0).max(1),
+    selectionReason: z.string().trim().min(1).max(500),
   })
   .strict();
 export type MemorySelection = z.infer<typeof MemorySelectionSchema>;
@@ -119,6 +122,8 @@ export const MemoryRuntimeContextSchema = z
     caseId: IdentifierSchema.optional(),
     entityRefs: z.array(IdentifierSchema).default([]),
     effectivePeriod: PeriodRefSchema.optional(),
+    /** Latest user request or delegated task. It is never persisted as memory. */
+    retrievalText: z.string().trim().max(20_000).default(""),
     maximumSensitivity: DataClassificationSchema.default("confidential"),
   })
   .strict();

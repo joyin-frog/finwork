@@ -1,13 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import { sha256Json } from "@/lib/capability/hash";
-import type { TaskContract } from "@/lib/agent/run-contract";
+import type { DeliverySpec } from "@/lib/agent/run-contract";
 import { getDb } from "@/lib/db/sqlite";
 import {
   MemoryRuntimeContextSchema,
   type MemoryRuntimeContext,
   type MemorySelection,
 } from "./contracts";
-import { migrateLegacyMemoryCandidates } from "./migration";
 import { GovernedMemoryStore } from "./store";
 
 export type GovernedPromptMemory = {
@@ -47,22 +46,24 @@ export function parseEffectivePeriodLabel(label: string | undefined): MemoryRunt
 
 export function resolveMemoryRuntimeContext(input: {
   explicit?: Partial<MemoryRuntimeContext> | null;
-  taskContract?: TaskContract | null;
+  deliverySpec?: DeliverySpec | null;
+  retrievalText?: string | null;
 }): MemoryRuntimeContext {
-  const company = input.taskContract?.expectationSnapshot.company?.trim();
+  const company = input.deliverySpec?.expectationSnapshot.company?.trim();
   return MemoryRuntimeContextSchema.parse({
     tenantId: input.explicit?.tenantId ?? "local",
     principalId: input.explicit?.principalId ?? "local-user",
     caseId: input.explicit?.caseId,
     entityRefs: input.explicit?.entityRefs ?? (company ? [companyEntityRef(company)] : []),
     effectivePeriod: input.explicit?.effectivePeriod
-      ?? parseEffectivePeriodLabel(input.taskContract?.expectationSnapshot.period),
+      ?? parseEffectivePeriodLabel(input.deliverySpec?.expectationSnapshot.period),
+    retrievalText: input.retrievalText ?? input.explicit?.retrievalText ?? "",
     maximumSensitivity: input.explicit?.maximumSensitivity ?? "confidential",
   });
 }
 
 function renderSelection(selection: MemorySelection): string {
-  return `${selection.summary} [证据:${selection.evidenceRefs.join(",")}]`;
+  return `${selection.summary} [采用原因:${selection.selectionReason};证据:${selection.evidenceRefs.join(",")}]`;
 }
 
 export async function loadGovernedPromptMemory(options: {
@@ -70,15 +71,10 @@ export async function loadGovernedPromptMemory(options: {
   context: MemoryRuntimeContext;
   db?: DatabaseSync;
   now?: Date;
-  migrateLegacy?: boolean;
-  memoryPath?: string;
 }): Promise<GovernedPromptMemory> {
   const db = options.db ?? getDb();
   const now = (options.now ?? new Date()).toISOString();
   try {
-    if (options.migrateLegacy !== false) {
-      await migrateLegacyMemoryCandidates({ db, memoryPath: options.memoryPath, at: now });
-    }
     const store = new GovernedMemoryStore(db);
     const selections = store.retrieve({
       principal: {
@@ -92,9 +88,10 @@ export async function loadGovernedPromptMemory(options: {
       entityRefs: options.context.entityRefs,
       effectivePeriod: options.context.effectivePeriod,
       kinds: [],
+      queryText: options.context.retrievalText,
       maximumSensitivity: options.context.maximumSensitivity,
       minimumConfidence: 0,
-      limit: 20,
+      limit: 5,
       now,
     });
     const roleMemories = selections.map(renderSelection);
