@@ -4,7 +4,7 @@
 // 低拟人红线：无头像、无性格文案、无第一人称；唯一的「人味」是中文岗位名。
 // prefers-reduced-motion: fa-team-enter 只在 globals.css @media(no-preference) 内定义，降级时直接出现。
 //
-// agent-team-board 收敛：页脚"查看全部"改为"查看看板"→ /agents（团队看板页）。
+// 团队入口：页脚跳转到智能体目录。
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -210,7 +210,7 @@ export function TeamPanel({ team }: { team: TeamRoleItem[] }) {
       </div>
       <div className="pt-1 border-t border-border">
         <Link href="/agents" className="text-meta text-muted-foreground hover:text-foreground transition-colors">
-          查看看板 →
+          查看智能体 →
         </Link>
       </div>
     </Surface>

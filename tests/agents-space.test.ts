@@ -271,17 +271,28 @@ export const agentsSpaceTestPromise = (async () => {
       "T4 FAIL: agents 页应含文案「尚未启用」（available:false 弱化态）"
     );
 
-    // 4d：「派活」入口（现落在角色卡右下角）
+    // 4d：角色卡保留直接对话入口，派活入口已按当前产品方向移除
     assert.ok(
-      agentsFeatureSrc.includes("派活"),
-      "T4 FAIL: agents 页应含「派活」入口"
+      agentsFeatureSrc.includes("对话"),
+      "T4 FAIL: agents 页应含「对话」入口"
     );
     assert.ok(
-      agentsFeatureSrc.includes("ComputerUserIcon"),
-      "T4 FAIL: 派活入口应统一 ComputerUserIcon（ui-conventions）"
+      !agentsFeatureSrc.includes("派活") && !agentsFeatureSrc.includes("ComputerUserIcon"),
+      "T4 FAIL: agents 页不应再保留「派活」入口"
     );
 
-    // 4e：单一事实源守卫——app/agents/ 下不得硬编码任何角色名
+    // 4e：待复核状态也应进入待拍板逻辑，卡片可键盘操作
+    assert.ok(
+      pageSrc.includes("reviewPending") && pageSrc.includes("待拍板"),
+      "T4 FAIL: agents 页应将 reviewPending 纳入待拍板状态"
+    );
+    const cardSrc = src("app/agents/agent-card.tsx");
+    assert.ok(
+      cardSrc.includes('role="button"') && cardSrc.includes('e.key === " "'),
+      "T4 FAIL: 智能体卡片应支持按钮语义及 Space 键操作"
+    );
+
+    // 4f：单一事实源守卫——app/agents/ 下不得硬编码任何角色名
     // 检查 page.tsx 本身（子组件由 glob 覆盖）
     const FORBIDDEN_ROLE_NAMES = ["记账专员", "薪税专员", "税务专员", "资金专员", "往来专员", "经营分析师"];
     for (const roleName of FORBIDDEN_ROLE_NAMES) {
@@ -291,7 +302,7 @@ export const agentsSpaceTestPromise = (async () => {
       );
     }
 
-    // 4f：含「停在确认门/待拍板」前置逻辑（blockedReason 或等价文案，现落在角色卡/等你拍板区）
+    // 4g：含「停在确认门/待拍板」前置逻辑（blockedReason 或等价文案，现落在角色卡/等你拍板区）
     assert.ok(
       agentsFeatureSrc.includes("blocked") ||
       agentsFeatureSrc.includes("blockedReason") ||
@@ -300,7 +311,7 @@ export const agentsSpaceTestPromise = (async () => {
       "T4 FAIL: agents 页应含「停在确认门/待拍板」前置逻辑（blockedReason 字段或文案）"
     );
 
-    // 4g：「查看全部」台账入口（触发 /api/agents/dispatches 分页）
+    // 4h：「查看全部」台账入口（触发 /api/agents/dispatches 分页）
     assert.ok(
       pageSrc.includes("查看全部") ||
       pageSrc.includes("/api/agents/dispatches"),
@@ -309,7 +320,7 @@ export const agentsSpaceTestPromise = (async () => {
 
     console.log("agents-space T4: app/agents/page.tsx 源码契约 ✓");
 
-    // 4h：单一事实源守卫——扫描 app/agents/ 目录下所有 .tsx/.ts 文件
+    // 4i：单一事实源守卫——扫描 app/agents/ 目录下所有 .tsx/.ts 文件
     // 用 Node.js 递归读 app/agents/ 目录（只需检查文件存在后读取）
     const { readdirSync } = await import("node:fs");
     function grepDir(dir: string, searchStrings: string[]): { file: string; match: string }[] {
@@ -349,7 +360,7 @@ export const agentsSpaceTestPromise = (async () => {
     }
   }
 
-  // ─── T5：app/cockpit/team-panel.tsx「查看全部 →」链接 /agents ──────────────────
+  // ─── T5：app/cockpit/team-panel.tsx「查看智能体 →」链接 /agents ────────────────
   {
     assert.ok(
       exists("app/cockpit/team-panel.tsx"),
@@ -358,25 +369,25 @@ export const agentsSpaceTestPromise = (async () => {
 
     const tpSrc = src("app/cockpit/team-panel.tsx");
 
-    // 5a：卡底含「查看全部」链接文案
+    // 5a：卡底含「查看智能体」链接文案
     assert.ok(
-      tpSrc.includes("查看全部"),
-      "T5 FAIL: app/cockpit/team-panel.tsx 应在卡底含「查看全部 →」文案"
+      tpSrc.includes("查看智能体"),
+      "T5 FAIL: app/cockpit/team-panel.tsx 应在卡底含「查看智能体 →」文案"
     );
 
     // 5b：href 指向 /agents
     assert.ok(
       tpSrc.includes("/agents"),
-      "T5 FAIL: app/cockpit/team-panel.tsx 应含 href=\"/agents\"（查看全部链接）"
+      "T5 FAIL: app/cockpit/team-panel.tsx 应含 href=\"/agents\"（查看智能体链接）"
     );
 
     // 5c：是 <a> 链接或 <Link>（Next.js Link）
     assert.ok(
       tpSrc.includes("<a") || tpSrc.includes("<Link") || tpSrc.includes("href"),
-      "T5 FAIL: app/cockpit/team-panel.tsx「查看全部」应是可点击链接（<a> 或 <Link>）"
+      "T5 FAIL: app/cockpit/team-panel.tsx「查看智能体」应是可点击链接（<a> 或 <Link>）"
     );
 
-    console.log("agents-space T5: team-panel.tsx「查看全部 →」链接 /agents ✓");
+    console.log("agents-space T5: team-panel.tsx「查看智能体 →」链接 /agents ✓");
   }
 
   console.log("agents-space: all T1–T5 done（上面任何 FAIL 即为红 → 等待实现者实现后才绿）");

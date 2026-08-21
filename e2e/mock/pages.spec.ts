@@ -38,7 +38,22 @@ test("设置-个性化渲染画像与记忆", async ({ page }) => {
   await page.goto("/config?tab=personalization", { waitUntil: "domcontentloaded" });
   await dismissGate(page);
   await expect(page.getByText("公司画像", { exact: true })).toBeVisible();
-  await expect(page.getByPlaceholder(/还没有|规矩|加载中/)).toBeVisible();
+  await expect(page.getByPlaceholder("上海市松江区")).toBeVisible();
+  await assertNoCrash(page);
+});
+
+test("设置弹窗 [modal] - 从侧栏打开并可关闭", async ({ page }) => {
+  await page.goto("/cockpit", { waitUntil: "domcontentloaded" });
+  await dismissGate(page);
+  await page.getByRole("link", { name: "设置", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "设置" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "关闭设置" })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "关闭设置" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/cockpit$/);
   await assertNoCrash(page);
 });
 

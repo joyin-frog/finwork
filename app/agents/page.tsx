@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { LayoutAlignRightIcon } from "@hugeicons/core-free-icons";
+import { Add01Icon, LayoutAlignRightIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
@@ -11,10 +12,8 @@ import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { AgentCard } from "./agent-card";
 import { AgentDetailDrawer } from "./agent-detail-drawer";
 import { AttentionPanel } from "./attention-panel";
-import { TaskBoardView } from "./task-board";
-import { partitionRoles, type RoleCard } from "@/lib/domain/agent-board";
+import type { RoleCard } from "@/lib/domain/agent-board";
 import type { AttentionItem } from "@/lib/domain/attention";
-import type { TaskBoard } from "@/lib/domain/task-board";
 import type { DispatchRow } from "@/lib/db/dispatch-store";
 
 // ─── Types (mirrors /api/agents response) ──────────────────────────────────
@@ -36,6 +35,7 @@ type AgentRosterItem = {
   lastSummary?: string | null;
   status?: string | null;
   blockedReason?: string | null;
+  reviewPending?: boolean;
   conversationId?: string | null;
   invoiceStats?: InvoiceStats;
 };
@@ -43,10 +43,8 @@ type AgentRosterItem = {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
-  const [view, setView] = useState<"team" | "board">("team");
   const [roster, setRoster] = useState<AgentRosterItem[] | null>(null);
   const [attention, setAttention] = useState<AttentionItem[]>([]);
-  const [board, setBoard] = useState<TaskBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -69,7 +67,6 @@ export default function AgentsPage() {
       if (json.ok) {
         setRoster(json.data.roster);
         setAttention(json.data.attention ?? []);
-        setBoard(json.data.board ?? null);
       } else {
         setError(json.error || "加载失败");
       }
@@ -145,22 +142,30 @@ export default function AgentsPage() {
     toggle();
   }, [toggle]);
 
-  // 分组（partition）
-  const { active, rest } = roster
-    ? partitionRoles(roster)
-    : { active: [], rest: [] };
+  // 卡片首页按当前状态排序：进行中/待拍板的角色优先，其余角色保持注册表顺序。
+  const cards: RoleCard[] = roster
+    ? [...roster]
+        .map((item) => ({
+          ...item,
+          isActive: item.status === "running" || Boolean(item.blockedReason) || item.reviewPending === true,
+        }))
+        .sort((a, b) => Number(b.isActive) - Number(a.isActive))
+    : [];
 
   const selectedCard: RoleCard | null =
     selectedRoleId
-      ? ([...active, ...rest].find((c) => c.roleId === selectedRoleId) ?? null)
+      ? (cards.find((c) => c.roleId === selectedRoleId) ?? null)
       : null;
 
-  function renderCardGroup(cards: RoleCard[], compact: boolean) {
-    return cards.map((card) => (
+  const runningCount = roster?.filter((item) => item.status === "running").length ?? 0;
+  const pendingCount = roster?.filter((item) => Boolean(item.blockedReason) || item.reviewPending === true).length ?? 0;
+  const enabledCount = roster?.filter((item) => item.available && !item.userDisabled).length ?? 0;
+
+  function renderCardGroup(items: RoleCard[]) {
+    return items.map((card) => (
       <AgentCard
         key={card.roleId}
         card={card}
-        compact={compact}
         selected={selectedRoleId === card.roleId}
         onClick={() => void handleSelectRole(card.roleId)}
         onToggled={fetchRoster}
@@ -185,32 +190,9 @@ export default function AgentsPage() {
             <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
               <DragHandle />
               <SidebarToggle />
-              {/* 分段切换：团队 ｜ 本月任务（state 版，不改 URL） */}
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setView("team")}
-                  className={[
-                    "text-title transition-colors whitespace-nowrap bg-transparent border-none p-0 cursor-pointer",
-                    view === "team" ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
-                >
-                  团队
-                </button>
-                <span className="text-title font-normal text-muted-foreground/40 select-none">｜</span>
-                <button
-                  type="button"
-                  onClick={() => setView("board")}
-                  className={[
-                    "text-title transition-colors whitespace-nowrap bg-transparent border-none p-0 cursor-pointer",
-                    view === "board" ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
-                >
-                  本月任务
-                </button>
-              </div>
+              <h1 className="text-title font-semibold">智能体</h1>
               {/* 预览已收起且仍有选中角色 → 顶栏显示「展开预览」重开 */}
-              {collapsed && selectedRoleId && view === "team" && (
+              {collapsed && selectedRoleId && (
                 <button
                   type="button"
                   // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
@@ -237,37 +219,47 @@ export default function AgentsPage() {
               <div className="flex items-center justify-center py-16 text-body text-muted-foreground">
                 加载中…
               </div>
-            ) : view === "board" ? (
-              board ? (
-                <TaskBoardView board={board} />
-              ) : (
-                <div className="flex items-center justify-center py-16 text-body text-muted-foreground">
-                  看板数据不可用
-                </div>
-              )
             ) : (
               <>
-                {/* 等你拍板区 */}
+                <section className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <h1 className="text-display font-semibold">智能体</h1>
+                    <p className="mt-1 text-body text-muted-foreground">管理你的财务专员，查看状态并进入专属对话。</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled
+                    title="自定义智能体将在后续版本开放"
+                    aria-label="新增智能体（后续版本开放）"
+                  >
+                    <HugeiconsIcon icon={Add01Icon} size={15} />
+                    新增智能体
+                  </Button>
+                </section>
+
+                <div className="flex items-center gap-2 flex-wrap" aria-label="智能体状态汇总">
+                  <Surface level="page" edge="hairline" shape="pill" className="text-meta px-2.5 py-1">
+                    {roster?.length ?? 0} 个智能体
+                  </Surface>
+                  <Surface level="page" edge="hairline" shape="pill" className="text-meta px-2.5 py-1">
+                    <span className="text-primary">{runningCount}</span> 进行中
+                  </Surface>
+                  <Surface level="page" edge="hairline" shape="pill" className="text-meta px-2.5 py-1">
+                    <span style={{ color: "var(--tone-notice)" }}>{pendingCount}</span> 待拍板
+                  </Surface>
+                  <Surface level="page" edge="hairline" shape="pill" className="text-meta px-2.5 py-1">
+                    {enabledCount} 个已启用
+                  </Surface>
+                </div>
+
                 <AttentionPanel items={attention} />
 
-                {/* 在忙·待拍板组 */}
-                {active.length > 0 && (
+                {cards.length > 0 && (
                   <section className="flex flex-col gap-2">
-                    <h2 className="text-title font-semibold">在忙 · 待拍板</h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {renderCardGroup(active, false)}
-                    </div>
-                  </section>
-                )}
-
-                {/* 其他角色组（含尚未启用/已停用的弱化卡） */}
-                {rest.length > 0 && (
-                  <section className="flex flex-col gap-2">
-                    {active.length > 0 && (
-                      <h2 className="text-title font-semibold text-muted-foreground">其他</h2>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {renderCardGroup(rest, active.length > 0)}
+                    <h2 className="text-title font-semibold">全部智能体</h2>
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+                      {renderCardGroup(cards)}
                     </div>
                   </section>
                 )}

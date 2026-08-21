@@ -31,6 +31,7 @@ export type RosterItem = {
   lastSummary?: string | null;
   status?: string | null;
   blockedReason?: string | null;
+  reviewPending?: boolean;
   conversationId?: string | null;
 };
 
@@ -58,7 +59,8 @@ export function partitionRoles(roster: RosterItem[]): PartitionResult {
   for (const item of roster) {
     const isActive =
       item.status === "running" ||
-      (item.blockedReason != null && item.blockedReason !== "");
+      (item.blockedReason != null && item.blockedReason !== "") ||
+      item.reviewPending === true;
     const card: RoleCard = { ...item, isActive };
 
     if (isActive) {

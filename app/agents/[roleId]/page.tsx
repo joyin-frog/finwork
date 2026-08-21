@@ -31,7 +31,6 @@ import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
-import { useNavState } from "@/app/shared/nav-state";
 import { AgentTabSurface } from "@/app/agents/agent-tab-surface";
 import { ROLE_LABELS } from "@/lib/domain/role-ui";
 import { relativeTime } from "@/lib/utils/relative-time";
@@ -70,7 +69,6 @@ export default function AgentWorkspacePage() {
   const params = useParams();
   const roleId = typeof params.roleId === "string" ? params.roleId : Array.isArray(params.roleId) ? params.roleId[0] : "";
 
-  const { fetchAgentRoster } = useNavState();
   const [role, setRole] = useState<RoleDetail | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -204,7 +202,7 @@ export default function AgentWorkspacePage() {
             <ConversationsTabView roleId={role.roleId} />
           </TabsContent>
           <TabsContent value="profile" className="min-h-0 overflow-auto p-page">
-            <ProfileTabView key={role.roleId} role={role} onToggled={fetchAgentRoster} />
+            <ProfileTabView key={role.roleId} role={role} />
           </TabsContent>
         </>
       )}
@@ -227,7 +225,7 @@ export default function AgentWorkspacePage() {
   );
 }
 
-function ProfileTabView({ role, onToggled }: { role: RoleDetail; onToggled: () => void }) {
+function ProfileTabView({ role }: { role: RoleDetail }) {
   const [toggling, setToggling] = useState(false);
   // 乐观本地态：点开关即时翻转（/api/agents GET 可能被缓存，refetch 不保证即时反映）。
   const [disabledOverride, setDisabledOverride] = useState<boolean | null>(null);
@@ -248,7 +246,6 @@ function ProfileTabView({ role, onToggled }: { role: RoleDetail; onToggled: () =
         body: JSON.stringify({ roleId: role.roleId, disabled: next }),
       });
       if (!res.ok) throw new Error(String(res.status));
-      onToggled(); // 刷新侧栏（置灰/恢复）
     } catch {
       setDisabledOverride(!next); // 回滚
       toast.error("切换失败，请检查网络后重试");

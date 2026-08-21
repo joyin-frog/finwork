@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { toast, Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,6 +15,7 @@ import { useNavState } from "@/app/shared/nav-state";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { resolvedTheme } = useTheme();
   useDetectPlatform();
   const { collapsed } = useNavState();
@@ -51,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           action: {
             label: "去设置",
             onClick: () => {
-              window.location.href = "/config?tab=about";
+              router.push("/config?tab=about");
             },
           },
         });
@@ -59,7 +60,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         // best-effort,失败静默
       }
     })();
-  }, []);
+  }, [router]);
 
   // 全局客户端错误监听(§16.1):一次性挂载,fire-and-forget,失败静默,不造成错误循环。
   useEffect(() => {

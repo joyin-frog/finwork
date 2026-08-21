@@ -331,56 +331,6 @@ export function listRecentDispatchActivity(limit = 10): RecentDispatchActivityRo
 }
 
 /**
- * 按 period 精确匹配查调度史（started_at DESC, id DESC），NULL period 行不出现。
- * 供本月任务看板使用。
- */
-export function listDispatchesForPeriod(period: string): DispatchRow[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id, role_id, label, summary, status, blocked_reason, conversation_id, started_at, ended_at,
-              task_template_id, business_object, period, review_status, files, instructions
-       FROM subagent_dispatches
-       WHERE period = ?
-       ORDER BY started_at DESC, id DESC`
-    )
-    .all(period) as Array<{
-      id: number;
-      role_id: string;
-      label: string | null;
-      summary: string | null;
-      status: string;
-      blocked_reason: string | null;
-      conversation_id: string | null;
-      started_at: string | null;
-      ended_at: string | null;
-      task_template_id: string | null;
-      business_object: string | null;
-      period: string | null;
-      review_status: string | null;
-      files: string | null;
-      instructions: string | null;
-    }>;
-  return rows.map((r) => ({
-    id: Number(r.id),
-    roleId: r.role_id,
-    label: r.label ?? null,
-    summary: r.summary ?? null,
-    status: r.status,
-    blockedReason: r.blocked_reason ?? null,
-    conversationId: r.conversation_id ?? null,
-    startedAt: r.started_at ?? null,
-    endedAt: r.ended_at ?? null,
-    taskTemplateId: r.task_template_id ?? null,
-    businessObject: r.business_object ?? null,
-    period: r.period ?? null,
-    reviewStatus: r.review_status ?? null,
-    files: parseFiles(r.files),
-    instructions: r.instructions ?? null,
-  }));
-}
-
-/**
  * 查 blocked_reason 非空且 ended_at 在 sinceDays 天内的行(「停在门前的活」)。
  * sinceDays 默认 7。
  */
