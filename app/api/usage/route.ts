@@ -13,9 +13,8 @@ export const GET = withApiError(async function GET() {
   const usage = getUsageStatus({
     now: Date.now(),
     roles: {
-      routerModel: settings?.routerModel ?? "",
-      mainModel: settings?.mainModel ?? "",
-      subagentModel: settings?.subagentModel ?? "",
+      fastModel: settings?.fastModel ?? "",
+      reasoningModel: settings?.reasoningModel ?? "",
     },
     persist: false, // 展示路径只读,不重锚/不落库
   });

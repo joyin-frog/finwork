@@ -1,0 +1,13 @@
+[
+  {
+    "id": "synthetic-finqa-1",
+    "pre_text": ["A synthetic company reported revenue of 120 and expenses of 80."],
+    "post_text": ["All amounts are in millions."],
+    "table": [["Metric", "Value"], ["Revenue", "120"], ["Expenses", "80"]],
+    "qa": {
+      "question": "What is profit?",
+      "answer": "40",
+      "program": "subtract(120, 80)"
+    }
+  }
+]

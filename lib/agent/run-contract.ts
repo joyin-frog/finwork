@@ -1,7 +1,7 @@
 /**
  * CR-R0：持久 Run 共享合同 v2。
  *
- * 唯一导出位置：Run 状态、终止原因、TaskContract、CompletionEvidence、Checkpoint、
+ * 唯一导出位置：Run 状态、终止原因、DeliverySpec、CompletionEvidence、Checkpoint、
  * AR2a settled 映射。下游只能 import，不得复制 union。
  *
  * 本模块不实现 DB / RunManager / UI / validator。
@@ -165,7 +165,7 @@ export function buildSettledPayload(
   return error ? { type: "run_settled", outcome, error } : { type: "run_settled", outcome };
 }
 
-// ─── TaskContract ───────────────────────────────────────────────────────────
+// ─── DeliverySpec ───────────────────────────────────────────────────────────
 
 export type SpreadsheetRequirement = {
   needsLegacyXlsRead: boolean;
@@ -192,7 +192,7 @@ export type RequiredDeliverable = {
   qualityProfile: QualityProfile;
 };
 
-export type TaskContract = {
+export type DeliverySpec = {
   version: 1;
   taskKind: TaskKind;
   spreadsheetRequirement?: SpreadsheetRequirement;
@@ -208,14 +208,14 @@ const QUALITY_PROFILES: readonly QualityProfile[] = ["generic", "financial_conso
 const TASK_KINDS: readonly TaskKind[] = ["text", "spreadsheet", "financial_consolidation"];
 const ASSERTION_TYPES = ["cells_balance", "cash_reconcile", "cell_equals", "cell_is_formula"] as const;
 
-export type TaskContractValidation =
-  | { ok: true; contract: TaskContract }
+export type DeliverySpecValidation =
+  | { ok: true; contract: DeliverySpec }
   | { ok: false; errors: string[] };
 
-export function validateTaskContract(input: unknown): TaskContractValidation {
+export function validateDeliverySpec(input: unknown): DeliverySpecValidation {
   const errors: string[] = [];
   if (!input || typeof input !== "object") {
-    return { ok: false, errors: ["TaskContract must be an object"] };
+    return { ok: false, errors: ["DeliverySpec must be an object"] };
   }
   const raw = input as Record<string, unknown>;
   if (raw.version !== 1) errors.push("version must be 1");
@@ -223,9 +223,18 @@ export function validateTaskContract(input: unknown): TaskContractValidation {
     errors.push("unknown taskKind");
   }
   const taskKind = String(raw.taskKind) as TaskKind;
+  const spreadsheetRequirement =
+    raw.spreadsheetRequirement && typeof raw.spreadsheetRequirement === "object" && !Array.isArray(raw.spreadsheetRequirement)
+      ? raw.spreadsheetRequirement as Record<string, unknown>
+      : null;
+  const isReadOnlySpreadsheet =
+    taskKind === "spreadsheet" &&
+    spreadsheetRequirement?.needsWrite === false &&
+    spreadsheetRequirement?.needsRecalc === false &&
+    spreadsheetRequirement?.needsRender === false;
   if (!Array.isArray(raw.requiredDeliverables)) {
     errors.push("requiredDeliverables must be an array");
-  } else if (raw.requiredDeliverables.length === 0 && taskKind !== "text") {
+  } else if (raw.requiredDeliverables.length === 0 && taskKind !== "text" && !isReadOnlySpreadsheet) {
     errors.push("requiredDeliverables must be a non-empty array");
   } else {
     for (const [i, d] of raw.requiredDeliverables.entries()) {
@@ -286,7 +295,7 @@ export function validateTaskContract(input: unknown): TaskContractValidation {
   }
 
   if (errors.length) return { ok: false, errors };
-  return { ok: true, contract: raw as unknown as TaskContract };
+  return { ok: true, contract: raw as unknown as DeliverySpec };
 }
 
 // ─── CompletionEvidence ─────────────────────────────────────────────────────
@@ -345,7 +354,7 @@ export function validateCompletionEvidence(input: unknown): CompletionEvidenceVa
  * 不写 Run 状态；RunStore 是唯一写入者。
  */
 export function completionGateSatisfied(
-  contract: TaskContract,
+  contract: DeliverySpec,
   evidences: CompletionEvidence[],
 ): { ok: true } | { ok: false; missing: string[] } {
   const missing: string[] = [];
@@ -410,18 +419,119 @@ export function validateRunCheckpoint(input: unknown): CheckpointValidation {
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /**
- * 从本回合附件与 Router intent 冻结 TaskContract（CR-Q1 接线）。
+ * 附件类型只能说明需要“读表”，不能证明用户要求“交付一份新表”。
+ * 修改现有表的动作本身足够明确；创建类动作还必须同时指向表格产物，避免
+ * “分析并生成文字报告”被错误冻结成 workbook 合同。
+ */
+export function spreadsheetOutputRequested(userMessage: string): boolean {
+  const message = userMessage.trim().toLowerCase();
+  if (!message) return false;
+
+  if (/(?:为什么|为何).{0,30}(?:不能|无法).{0,30}(?:excel|工作簿|表格|公式|图表|插入|生成)/i.test(message)) {
+    return false;
+  }
+
+  const mutatesSpreadsheet =
+    /(?:修改|编辑|更新|补充|填写|填充|写入|录入|修复|调整|格式化|删除|新增|添加|插入|替换|清洗|去重|合并|拆分|排序|加一列|加一行|加公式|改公式)/.test(message) ||
+    /\b(?:modify|edit|update|fill|write|repair|fix|format|delete|remove|add|insert|replace|clean|deduplicate|merge|split|sort)\b/i.test(message);
+  if (mutatesSpreadsheet) return true;
+
+  // “你生成的 Excel 没有公式”是在评价已有文件，不是重新授权生成一份文件。
+  // 真正的续做授权由下方的会话承接逻辑识别，不能只因为同时出现“生成”和
+  // “Excel”就把抱怨冻结成新交付合同。
+  if (/(?:你|刚才|之前|已经|已)(?:刚才|之前)?(?:生成|创建|制作|导出)(?:的|了)/.test(message)) {
+    return false;
+  }
+
+  const createsArtifact =
+    /(?:生成|创建|制作|产出|导出|另存|保存为|转换为|做成|做一份|做一版|create|generate|build|make|export|save as|convert to)/i.test(message);
+  const namesSpreadsheet =
+    /(?:\.xlsx\b|\.xlsm\b|\.xls\b|\.csv\b|excel|电子表格|工作簿|表格|报表文件)/i.test(message);
+  return createsArtifact && namesSpreadsheet;
+}
+
+type TaskContextMessage = { role: "user" | "assistant"; content: string };
+
+function isAffirmativeContinuation(message: string): boolean {
+  return /^(?:好|好的|可以|行|没问题|确认|同意|就这样|按这个来|开始|继续|做吧|生成吧)[。！!，,\s]*$/i.test(message.trim());
+}
+
+function assistantOfferedSpreadsheetDelivery(message: string): boolean {
+  const normalized = message.toLowerCase();
+  const spreadsheet = /(?:\.xlsx\b|excel|电子表格|工作簿|表格文件|公式化分析)/i.test(normalized);
+  const offer = /(?:可以|我来|我会|下一步|如果你|若你|重做|修正|生成|创建|制作|导出)/i.test(normalized);
+  return spreadsheet && offer;
+}
+
+function recentContextBeforeCurrent(
+  messages: readonly TaskContextMessage[],
+  currentMessage: string,
+): TaskContextMessage[] {
+  const copy = [...messages];
+  const last = copy.at(-1);
+  if (last?.role === "user" && last.content.trim() === currentMessage.trim()) copy.pop();
+  return copy.slice(-8);
+}
+
+function latestMessageByRole(
+  messages: readonly TaskContextMessage[],
+  role: TaskContextMessage["role"],
+): TaskContextMessage | undefined {
+  return messages.slice().reverse().find((message) => message.role === role);
+}
+
+/**
+ * “好 / 可以”不是一个新任务；它承接上一轮已经明确提出或由 Agent 提议的
+ * 表格交付。这里只继承交付意图，不把任意历史 Excel 附件永久黏在后续闲聊上。
+ */
+export function spreadsheetOutputRequestedInContext(input: {
+  userMessage?: string | null;
+  messages?: readonly TaskContextMessage[];
+}): boolean {
+  const current = input.userMessage?.trim() ?? "";
+  if (spreadsheetOutputRequested(current)) return true;
+  if (!isAffirmativeContinuation(current)) return false;
+
+  const recent = recentContextBeforeCurrent(input.messages ?? [], current);
+  const latestAssistant = latestMessageByRole(recent, "assistant");
+  if (latestAssistant) return assistantOfferedSpreadsheetDelivery(latestAssistant.content);
+  const latestUser = latestMessageByRole(recent, "user");
+  return latestUser ? spreadsheetOutputRequested(latestUser.content) : false;
+}
+
+/** 当前回合是否需要把同一会话较早上传的表格恢复为任务输入。 */
+export function shouldInheritSpreadsheetAttachments(input: {
+  userMessage?: string | null;
+  messages?: readonly TaskContextMessage[];
+}): boolean {
+  const current = input.userMessage?.trim() ?? "";
+  if (spreadsheetOutputRequestedInContext(input)) return true;
+  if (/(?:\.xlsx\b|\.xlsm\b|\.xls\b|\.csv\b|excel|电子表格|工作簿|公式|图表|报表)/i.test(current)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 从本回合附件与 Router intent 冻结 DeliverySpec（CR-Q1 接线）。
  * 模型 / finalize 不得覆盖。
  *
  * CR-R2 校准：仅有 complex_workflow intent、无表格附件时，不得强加 workbook 交付——
  * Router fallback 常把纯文本问答标成 complex，否则 CompletionGate 会把正常对话误判为验证失败。
  */
-export function deriveTaskContractForTurn(input: {
+export function deriveDeliverySpecForTurn(input: {
   intent?: string | null;
   attachments?: Array<{ name?: string; mimeType?: string }>;
-}): TaskContract {
+  priorAttachments?: Array<{ name?: string; mimeType?: string }>;
+  userMessage?: string | null;
+  messages?: readonly TaskContextMessage[];
+}): DeliverySpec {
   const intent = (input.intent ?? "").trim();
-  const attachments = input.attachments ?? [];
+  const currentAttachments = input.attachments ?? [];
+  const inheritedAttachments = shouldInheritSpreadsheetAttachments(input)
+    ? (input.priorAttachments ?? [])
+    : [];
+  const attachments = [...currentAttachments, ...inheritedAttachments];
   const names = attachments.map((a) => (a.name ?? "").toLowerCase());
   const mimes = attachments.map((a) => (a.mimeType ?? "").toLowerCase());
 
@@ -432,12 +542,40 @@ export function deriveTaskContractForTurn(input: {
     hasLegacyXls ||
     names.some((n) => /\.(xlsx|xlsm|csv)$/i.test(n)) ||
     mimes.some((m) => /spreadsheet|excel|csv/i.test(m));
-  const complex = intent === "complex_workflow";
+  // Router 的 complex_workflow 只表示“需要多步 Agent”，不等于财务合并。
+  // 只有用户语义明确出现合并/抵消时才启用 financial_consolidation 质量档；
+  // 未提供 userMessage 的低层旧调用保留原行为。
+  const contextText = [
+    input.userMessage ?? "",
+    ...(input.messages ?? []).slice(-8).map((message) => message.content),
+  ].join(" ");
+  const complex = input.userMessage == null
+    ? intent === "complex_workflow"
+    : /(?:合并报表|财务合并|合并抵消|抵消分录|consolidat)/i.test(contextText);
 
   if (!hasSpreadsheet) {
     return {
       version: 1,
       taskKind: "text",
+      requiredDeliverables: [],
+      expectationSnapshot: {},
+    };
+  }
+
+  // 生产调用方会提供当前用户消息。未提供时保留旧行为，避免低层调用方在
+  // 没有任务语义的情况下被静默降级；一旦有消息，默认只读，只有明确的
+  // 表格创建/修改指令才冻结 workbook 交付。
+  if (input.userMessage != null && !spreadsheetOutputRequestedInContext(input)) {
+    return {
+      version: 1,
+      taskKind: "spreadsheet",
+      spreadsheetRequirement: {
+        needsLegacyXlsRead: hasLegacyXls,
+        needsWrite: false,
+        needsRecalc: false,
+        needsRender: false,
+        needsMacroPreservation: false,
+      },
       requiredDeliverables: [],
       expectationSnapshot: {},
     };

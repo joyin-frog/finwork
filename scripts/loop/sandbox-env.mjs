@@ -37,12 +37,10 @@ export async function prepareSandbox({ reset = false } = {}) {
   if (!agent.apiKey || !String(agent.apiKey).trim()) {
     throw new Error(`真实设置里没有 apiKey:${realPath}`);
   }
-  // 测试用模型覆盖(只改沙箱副本,不动真实设置):换更强模型验证 complex 等是否模型上限。
-  // routerModel 保持不变(意图分类用快模型即可)。
+  // 测试用模型覆盖(只改沙箱副本,不动真实设置):让 fast/reasoning 使用同一模型做上限验证。
   if (process.env.FINANCE_AGENT_TEST_MODEL) {
-    agent.model = process.env.FINANCE_AGENT_TEST_MODEL;
-    agent.mainModel = process.env.FINANCE_AGENT_TEST_MODEL;
-    agent.subagentModel = process.env.FINANCE_AGENT_TEST_MODEL;
+    agent.fastModel = process.env.FINANCE_AGENT_TEST_MODEL;
+    agent.reasoningModel = process.env.FINANCE_AGENT_TEST_MODEL;
   }
   await fs.writeFile(
     path.join(SANDBOX_DIR, "local-settings.json"),

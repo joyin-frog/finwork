@@ -2,6 +2,7 @@ import type { PreviewFileSelection } from "@/app/shared/file-preview-page";
 import type { PreviewableConversationFile } from "@/app/chat/chat-file-browser";
 
 type DraftAttachmentLike = {
+  assetId?: string;
   name: string;
   mimeType: string;
   size: number;
@@ -10,6 +11,8 @@ type DraftAttachmentLike = {
 };
 
 type DisplayFileLike = {
+  id?: string | number;
+  assetId?: string;
   name: string;
   mimeType: string;
   sizeBytes: number;
@@ -19,6 +22,7 @@ type DisplayFileLike = {
 };
 
 type ReferencedFileLike = {
+  id?: string;
   name: string;
   mimeType: string;
   sizeBytes: number;
@@ -41,6 +45,15 @@ export function previewSelectionFromConversationFile(
 }
 
 export function previewSelectionFromDraftAttachment(file: DraftAttachmentLike): PreviewFileSelection {
+  if (file.assetId) {
+    return {
+      kind: "workspace",
+      assetId: file.assetId,
+      name: file.name,
+      mimeType: file.mimeType,
+      sizeBytes: file.size,
+    };
+  }
   return {
     kind: "draft",
     name: file.name,
@@ -58,6 +71,7 @@ export function previewSelectionFromReferencedFile(
   return {
     kind: "conversation",
     conversationId,
+    attachmentId: file.id,
     storagePath: file.storagePath,
     name: file.name,
     mimeType: file.mimeType,
@@ -69,10 +83,14 @@ export function previewSelectionFromDisplayFile(
   file: DisplayFileLike,
   conversationId: number | null
 ): PreviewFileSelection | null {
+  if (file.assetId) {
+    return { kind: "workspace", assetId: file.assetId, name: file.name, mimeType: file.mimeType, sizeBytes: file.sizeBytes };
+  }
   if (file.storagePath && conversationId) {
     return {
       kind: "conversation",
       conversationId,
+      attachmentId: file.id?.toString(),
       storagePath: file.storagePath,
       name: file.name,
       mimeType: file.mimeType,

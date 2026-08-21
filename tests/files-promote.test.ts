@@ -34,6 +34,7 @@ export const filesPromoteTestPromise = (async () => {
   process.env.FINANCE_AGENT_KNOWLEDGE_DIR = path.join(appData, "knowledge");
   process.env.FINANCE_AGENT_KNOWLEDGE_TEXT_DIR = path.join(appData, "knowledge-text");
 
+  let restoreRetrievalService: (() => void) | undefined;
   try {
     const { countKnowledgeDocumentsByStoragePath, getDb } = await import("../lib/db/sqlite.ts");
     const {
@@ -48,7 +49,15 @@ export const filesPromoteTestPromise = (async () => {
     const { POST: filesLibraryPost } = await import("../app/api/files-library/route.ts");
     const { POST: knowledgeUploadPost } = await import("../app/api/knowledge/documents/route.ts");
     const { DELETE: knowledgeDelete } = await import("../app/api/knowledge/documents/[id]/route.ts");
+    const {
+      createProductionRetrievalService,
+      installProductionRetrievalService,
+    } = await import("../lib/retrieval/production.ts");
     const db = getDb();
+    restoreRetrievalService = installProductionRetrievalService(createProductionRetrievalService({
+      db,
+      casRoot: path.join(appData, "artifacts", "cas"),
+    }));
 
     const conversationId = 201;
     const conversationDir = path.join(appData, "files", String(conversationId));
@@ -107,7 +116,11 @@ export const filesPromoteTestPromise = (async () => {
       content: "这是一份生命周期测试附件，内容足够用于解析并验证知识库副本所有权。",
     });
     const lifecyclePromote = await promote("attach:promote-lifecycle");
-    assert.equal(lifecyclePromote.response.status, 200, "T1: promote route 应成功");
+    assert.equal(
+      lifecyclePromote.response.status,
+      200,
+      `T1: promote route 应成功；实际错误：${lifecyclePromote.body.error ?? "unknown"}`,
+    );
     assert.equal(lifecyclePromote.body.ok, true);
     assert.equal(typeof lifecyclePromote.body.documentId, "number");
     const lifecycleId = lifecyclePromote.body.documentId!;
@@ -295,6 +308,7 @@ export const filesPromoteTestPromise = (async () => {
 
     console.log("files-promote: route ownership lifecycle, historical safety, and same-name update ✓");
   } finally {
+    restoreRetrievalService?.();
     restoreEnv("FINANCE_AGENT_DB_PATH", savedEnv.FINANCE_AGENT_DB_PATH);
     restoreEnv("FINANCE_AGENT_APP_DATA_DIR", savedEnv.FINANCE_AGENT_APP_DATA_DIR);
     restoreEnv("FINANCE_AGENT_KNOWLEDGE_DIR", savedEnv.FINANCE_AGENT_KNOWLEDGE_DIR);

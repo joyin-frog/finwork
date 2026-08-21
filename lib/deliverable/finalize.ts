@@ -1,5 +1,5 @@
 /**
- * CR-Q1 finalize 编排：TaskContract 驱动校验 → 不可变 delivered/ → CompletionEvidence。
+ * CR-Q1 finalize 编排：DeliverySpec 驱动校验 → 不可变 delivered/ → CompletionEvidence。
  * 绝不写 Run completed（CompletionGate / RunStore 归属 R1）。
  */
 
@@ -11,7 +11,7 @@ import {
   validateCompletionEvidence,
   type CompletionEvidence,
   type RequiredDeliverable,
-  type TaskContract,
+  type DeliverySpec,
 } from "@/lib/agent/run-contract";
 import { sha256File } from "./hash";
 import { copyToDeliveredImmutable } from "./immutable-copy";
@@ -64,8 +64,8 @@ export async function finalizeDeliverables(
       ? (store as unknown as CompletionEvidenceSink)
       : fallback);
 
-  if (!ctx.taskContract) {
-    return { ok: false, code: "missing_task_contract", error: "TaskContract 未接线，无法 finalize" };
+  if (!ctx.deliverySpec) {
+    return { ok: false, code: "missing_delivery_spec", error: "DeliverySpec 未接线，无法 finalize" };
   }
   if (!ctx.runId?.trim()) {
     return { ok: false, code: "missing_run_id", error: "runId 缺失" };
@@ -77,7 +77,7 @@ export async function finalizeDeliverables(
   }
 
   // 未知 contractDeliverableId 立即失败
-  const byId = new Map(ctx.taskContract.requiredDeliverables.map((d) => [d.id, d]));
+  const byId = new Map(ctx.deliverySpec.requiredDeliverables.map((d) => [d.id, d]));
   for (const f of normalized) {
     if (!byId.has(f.contractDeliverableId)) {
       return {
@@ -128,7 +128,7 @@ export async function finalizeDeliverables(
   // sink 在 commitDelivered 时已含本次；若 sink===store 且 commit 已 submit，list 已包含
   // 去重：用 reportId
   const allEvidence = dedupeEvidence([...prior, ...evidences]);
-  const gate = completionGateSatisfied(ctx.taskContract, allEvidence);
+  const gate = completionGateSatisfied(ctx.deliverySpec, allEvidence);
 
   // marker：供 cleanupUnfinalizedFiles（只清 generate/ 中间件）
   const declaredNames = succeeded.map((s) => s.name);
@@ -197,7 +197,7 @@ async function finalizeOneFile(args: {
   store.upsert(record);
 
   const validator = selectValidator(req.mime, req.qualityProfile);
-  const sheetReq = ctx.taskContract.spreadsheetRequirement;
+  const sheetReq = ctx.deliverySpec.spreadsheetRequirement;
   const report = await validator.validate({
     filePath: workingPath,
     fileName: record.fileName,
@@ -205,8 +205,13 @@ async function finalizeOneFile(args: {
     qualityProfile: req.qualityProfile,
     expectedSha256: workingSha,
     needsRecalc: sheetReq?.needsRecalc,
+    recalcPolicy:
+      sheetReq?.needsRecalc === true || req.qualityProfile === "financial_consolidation"
+        ? "required"
+        : "best_effort",
     needsRender: sheetReq?.needsRender,
     requireFormulaCache: sheetReq?.needsRecalc === true,
+    expectationSnapshot: ctx.deliverySpec.expectationSnapshot,
   });
 
   record.validatorId = report.validatorId;
@@ -377,7 +382,7 @@ function dedupeEvidence(list: CompletionEvidence[]): CompletionEvidence[] {
 
 /** 测试/诊断：合同是否把某 id 标为 required */
 export function requiredDeliverable(
-  contract: TaskContract,
+  contract: DeliverySpec,
   id: string
 ): RequiredDeliverable | undefined {
   return contract.requiredDeliverables.find((d) => d.id === id);

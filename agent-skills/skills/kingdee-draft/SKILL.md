@@ -41,7 +41,7 @@ description: "用于把单据、报销或薪资数据整理为金蝶凭证草稿
 - 传第 3 步的 `mappings`;科目表工具内部自动读
 - 工具一次返回:每张的金额勾稽结果 + 科目映射 + 多行分录(含预借款冲销) + **汇总统计** + **对照清单行**
 
-> ⚠️ **不要**对每张单据分别调 check_voucher_amount / map_voucher_account / build_voucher_lines——那是几十次 LLM 往返会超时。用 process_voucher_batch 一次搞定。单张零散核对时才用那些细粒度工具。
+> 金额勾稽、科目映射、分录构造和汇总都是 `process_voucher_batch` 的内部确定性步骤，不再作为独立工具暴露给模型。
 > 餐饮费默认记差旅费,仅明确宴请客户才记业务招待费(6602.06)。
 > 若结果带 notice(在用示例表):先让用户 `import_kingdee_accounts` 导入真表再继续。
 
@@ -73,8 +73,8 @@ description: "用于把单据、报销或薪资数据整理为金蝶凭证草稿
 已有审批后的结构化数据时,跳过 1–2,直接从第 3 步起走。
 
 ## 硬性要求
-- 科目编码必须经 `map_voucher_account`/`query_kingdee_accounts` 验证存在,不凭记忆编造
-- 金额一律走 `check_voucher_amount` 勾稽,不心算大写、不自行认定被遮数字
+- 科目编码必须由 `process_voucher_batch` 根据导入科目表验证存在；需要查表时用 `query_kingdee_accounts`，不凭记忆编造
+- 金额一律由 `process_voucher_batch` 内部勾稽，不心算大写、不自行认定被遮数字
 - 借贷必须平衡(totalDebit === totalCredit)
 - 换公司提示:重导科目表 + 换对照表文件 + 改公司名,避免旧科目码串味
 

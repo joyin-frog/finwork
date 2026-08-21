@@ -134,7 +134,7 @@ async function main() {
     (b) => b?.ok ? true : `upload not ok: ${JSON.stringify(b)?.slice(0, 120)}`);
   await expect2xx("knowledge: list", "GET", "/api/knowledge/documents", {}, (b) =>
     (b?.data?.documents?.length ?? 0) >= 1 ? true : "no documents listed");
-  // verbatim term must hit — proves ingest→text-mirror→ripgrep pipeline is wired
+  // verbatim term must hit — proves ingest → Retrieval v2 → BM25 is wired
   const srch = await expect2xx("knowledge: search (verbatim)", "POST", "/api/knowledge/search", { json: { query: "招待费" } },
     (b) => (b?.data?.files?.length ?? 0) >= 1 ? true : `verbatim '招待费' returned ${b?.data?.files?.length ?? 0} files`);
   metrics.knowledgeHits = srch.body?.data?.files?.length ?? 0;
@@ -144,11 +144,9 @@ async function main() {
   // P3:0 命中时分词 OR 兜底 → "招待费上限" 应召回含"招待费"的文档
   rec("knowledge: search (non-verbatim, P3 兜底)", metrics.knowledgeNonVerbatimHits >= 1, `files=${metrics.knowledgeNonVerbatimHits}(分词OR兜底)`);
 
-  // ─── Section D: memory read/write ────────────────────────────────────
-  const memText = `# 测试记忆\n- 公司简称：ztooo\n- 写入时间：${new Date().toISOString()}\n`;
-  await expect2xx("memory: write (PUT)", "PUT", "/api/memory", { json: { content: memText } }, (b) => b?.ok ? true : "PUT not ok");
-  await expect2xx("memory: read (GET)", "GET", "/api/memory", {}, (b) =>
-    b?.data?.content?.includes("ztooo") ? true : "read-back mismatch");
+  // ─── Section D: governed memory read boundary ────────────────────────
+  await expect2xx("memory: governed list", "GET", "/api/memory/governed?limit=1", {}, (b) =>
+    b?.ok ? true : "governed memory unavailable");
 
   // ─── Section E: feedback + concurrency (shared-resource safety) ──────
   if (assistantMsgId) {
@@ -163,11 +161,6 @@ async function main() {
   } else {
     rec("feedback: upsert", false, "no assistant messageId captured");
   }
-  // concurrent memory writes — shared file path
-  const memRace = await Promise.all(Array.from({ length: 6 }, (_, i) =>
-    http("PUT", "/api/memory", { json: { content: `# 并发写 ${i}\n` } }).then((r) => r.status).catch(() => 0)));
-  rec("memory: concurrent writes (6x)", memRace.every((s) => s < 500), `statuses=${memRace.join(",")}`);
-
   // ─── Section F: observability correlation ────────────────────────────
   const traces = await expect2xx("observability: traces", "GET", "/api/observability/traces", {}, (b) => {
     const arr = b?.data?.traces || b?.traces || b?.data || [];

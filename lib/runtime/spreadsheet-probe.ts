@@ -246,7 +246,7 @@ export async function getSpreadsheetCapabilities(deps: ProbeDeps = {}): Promise<
         [workerPath, "probe-recalc", lo.executable],
         { timeout: 120_000 }
       );
-      const parsed = JSON.parse(recalcOut) as { ok?: boolean; value?: number; error?: string };
+      const parsed = JSON.parse(recalcOut) as { ok?: boolean; value?: number; renderOk?: boolean; renderError?: string; error?: string };
       if (parsed.ok && parsed.value === 3) {
         recalc = {
           ok: true,
@@ -254,7 +254,16 @@ export async function getSpreadsheetCapabilities(deps: ProbeDeps = {}): Promise<
           executable: lo.executable,
           version: lo.version,
         };
-        render = { ok: true, provider: lo.provider };
+        render = parsed.renderOk
+          ? { ok: true, provider: lo.provider }
+          : { ok: false, provider: lo.provider };
+        if (!parsed.renderOk) {
+          problems.push({
+            code: "render_probe_failed",
+            severity: "warning",
+            remediation: "install_libreoffice",
+          });
+        }
       } else {
         recalc = {
           ok: false,

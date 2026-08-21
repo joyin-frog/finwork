@@ -140,8 +140,7 @@ export function dupont(params: {
   netProfit: number;
   revenue: number;
   avgTotalAssets: number;
-  totalAssets: number;     // 期末总资产(用于权益乘数)
-  equity: number;          // 期末净资产
+  avgEquity: number;       // 平均净资产；与直接 ROE 使用同一期间口径
 }): DupontResult {
   const nm = netMargin(params.netProfit, params.revenue);
   if (!nm.ok) return { ok: false, reason: `净利率不可算:${nm.reason}` };
@@ -149,7 +148,7 @@ export function dupont(params: {
   const tat = totalAssetTurnover(params.revenue, params.avgTotalAssets);
   if (!tat.ok) return { ok: false, reason: `总资产周转率不可算:${tat.reason}` };
 
-  const em = equityMultiplier(params.totalAssets, params.equity);
+  const em = equityMultiplier(params.avgTotalAssets, params.avgEquity);
   if (!em.ok) return { ok: false, reason: `权益乘数不可算:${em.reason}` };
 
   return {

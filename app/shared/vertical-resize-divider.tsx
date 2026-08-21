@@ -17,8 +17,8 @@ export function VerticalResizeDivider({ className, ...props }: VerticalResizeDiv
   return (
     <div
       className={cn(
-        "w-1 shrink-0 self-stretch cursor-col-resize bg-transparent outline-none",
-        "focus-visible:bg-primary/15",
+        "w-1 shrink-0 self-stretch cursor-col-resize bg-transparent outline-none transition-colors",
+        "hover:bg-background focus-visible:bg-background",
         className,
       )}
       role="separator"

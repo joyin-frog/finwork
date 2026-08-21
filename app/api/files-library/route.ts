@@ -22,7 +22,8 @@ import {
   getKnowledgeDocumentByHash,
 } from "@/lib/db/sqlite";
 import { analyzeConversationDuplicates, cleanupConversationDuplicates } from "@/lib/maintenance/dedup";
-import { getConversationFilesDir } from "@/lib/runtime/paths";
+import { getConversationFilesDir, getRunFileWorkspaceDir } from "@/lib/runtime/paths";
+import { getFileWorkspaceStore } from "@/lib/file-workspace";
 import { ingestDocument } from "@/lib/knowledge/pipeline";
 import { acquireKnowledgeIngestLease, computeFileHash, knowledgeStoragePath, writeUploadedFile } from "@/lib/knowledge/storage";
 import type { ListFilesOptions } from "@/lib/db/sqlite";
@@ -34,11 +35,11 @@ export async function GET(request: Request) {
     // 下载文件字节(供「添加到对话」用):本机读盘返回给本地 webview,不外发(红线7);落审计(红线8)
     const downloadId = url.searchParams.get("download");
     if (downloadId) {
-      const abs = resolveFilePath(downloadId);
+      const abs = await resolveFilePath(downloadId);
       if (!abs) return NextResponse.json({ ok: false, error: "文件不存在" }, { status: 404 });
       const buf = await readFile(abs);
       const fileName = path.basename(abs);
-      insertAuditLog("file_download", { fileId: downloadId, path: abs, at: new Date().toISOString() });
+      insertAuditLog("file_download", { fileId: downloadId, local: true, at: new Date().toISOString() });
       return new NextResponse(new Uint8Array(buf), {
         headers: {
           "content-type": guessMimeByExt(path.extname(fileName)),
@@ -114,7 +115,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "reveal") {
-      const absPath = resolveFilePath(fileId);
+      const absPath = await resolveFilePath(fileId);
       if (!absPath) return NextResponse.json({ ok: false, error: "文件不存在" }, { status: 404 });
       await revealInFileManager(absPath);
       insertAuditLog("file_reveal", { fileId, path: absPath, at: new Date().toISOString() });
@@ -126,7 +127,7 @@ export async function POST(request: Request) {
       if (!destPath || !path.isAbsolute(destPath)) {
         return NextResponse.json({ ok: false, error: "destPath 必须是绝对路径" }, { status: 400 });
       }
-      const srcPath = resolveFilePath(fileId);
+      const srcPath = await resolveFilePath(fileId);
       if (!srcPath) return NextResponse.json({ ok: false, error: "源文件不存在" }, { status: 404 });
       await mkdir(path.dirname(destPath), { recursive: true });
       await copyFile(srcPath, destPath);
@@ -137,11 +138,11 @@ export async function POST(request: Request) {
     if (action === "promote") {
       // 红线 7: 全本地, 不外发; 红线 8: 落审计
       // 只允许 upload / generated 类型(kind != knowledge)
-      if (!fileId.startsWith("attach:") && !fileId.startsWith("lib:")) {
+      if (!fileId.startsWith("attach:") && !fileId.startsWith("lib:") && !fileId.startsWith("asset:")) {
         return NextResponse.json({ ok: false, error: "只能对上传/生成文件执行加入知识库操作" }, { status: 400 });
       }
 
-      const absPath = resolveFilePath(fileId);
+      const absPath = await resolveFilePath(fileId);
       if (!absPath) return NextResponse.json({ ok: false, error: "文件不存在" }, { status: 404 });
 
       // 读文件，先检查 content_hash 去重
@@ -202,7 +203,7 @@ export async function POST(request: Request) {
 /**
  * 根据 fileId 前缀解析文件绝对路径。
  */
-function resolveFilePath(fileId: string): string | null {
+async function resolveFilePath(fileId: string): Promise<string | null> {
   const { getDb } = require("@/lib/db/sqlite") as typeof import("@/lib/db/sqlite");
   const nodePath = require("node:path") as typeof import("node:path");
   const db = getDb();
@@ -217,12 +218,20 @@ function resolveFilePath(fileId: string): string | null {
   if (fileId.startsWith("attach:")) {
     const id = fileId.slice(7);
     const row = db.prepare(`
-      SELECT a.storage_path, m.conversation_id
+      SELECT a.storage_path, a.asset_version_id, a.file_name, m.conversation_id
       FROM chat_attachments a
       LEFT JOIN chat_messages m ON a.message_id = m.id
       WHERE a.id = ?
-    `).get(id) as { storage_path: string; conversation_id: number | null } | undefined;
+    `).get(id) as { storage_path: string; asset_version_id: string | null; file_name: string; conversation_id: number | null } | undefined;
     if (!row) return null;
+    if (row.asset_version_id) {
+      const store = await getFileWorkspaceStore();
+      return store.materializeVersion(
+        row.asset_version_id,
+        path.join(getRunFileWorkspaceDir("preview"), "library"),
+        row.file_name,
+      );
+    }
     if (row.conversation_id) {
       const abs = nodePath.join(getConversationFilesDir(row.conversation_id), row.storage_path);
       return existsSync(abs) ? abs : null;
@@ -235,6 +244,19 @@ function resolveFilePath(fileId: string): string | null {
     const row = db.prepare("SELECT storage_path FROM knowledge_documents WHERE id = ?").get(id) as { storage_path: string } | undefined;
     if (!row || !row.storage_path) return null;
     return existsSync(row.storage_path) ? row.storage_path : null;
+  }
+
+  if (fileId.startsWith("asset:")) {
+    const assetId = fileId.slice(6);
+    const row = db.prepare(`
+      SELECT a.current_version_id,a.display_name FROM workspace_assets a
+      WHERE a.asset_id=? AND a.lifecycle_status='active'
+    `).get(assetId) as { current_version_id: string | null; display_name: string } | undefined;
+    if (!row?.current_version_id) return null;
+    const store = await getFileWorkspaceStore();
+    const asset = store.getAsset(assetId);
+    const version = asset.blobId ? asset : store.snapshotAsset(assetId);
+    return store.materializeVersion(version.versionId, path.join(getRunFileWorkspaceDir("preview"), "library"), row.display_name);
   }
 
   return null;

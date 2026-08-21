@@ -1,0 +1,8 @@
+[
+  {
+    "task_id": "synthetic-finagentbench-1",
+    "task": "Calculate the synthetic portfolio return and report the result.",
+    "expected_answer": "8%",
+    "success_criteria": ["portfolio return calculated", "result reported"]
+  }
+]

@@ -24,8 +24,8 @@ description: "用于已进入知识库的合同、订单、发票或账单要点
 | 文档类型 | 提炼策略 |
 |---|---|
 | Excel 订单/台账 | `run_python` + pandas 按表头取数：金额列、日期列、对方列，零模型 |
-| PDF 合同/协议 | 先用 `query_knowledge` ripgrep 定位「付款」「金额」「甲方」「乙方」「到期」段，只把命中段送模型，不发全文 |
-| Word (.docx) | `read_file` 取全文或 ripgrep 定位关键段，再提炼 |
+| PDF 合同/协议 | 用 `search_knowledge` 定位「付款」「金额」「甲方」「乙方」「到期」段，必要时用同一工具分页精读，不发全文 |
+| Word (.docx) | 用 `search_knowledge` 检索并按 `fileName` 分页精读关键段 |
 | 图片发票 | `run_python` pdfplumber 或 OCR 提取文字，再结构化 |
 | 水电/物业账单 | 通常只有金额/日期，其余留空 |
 
@@ -47,7 +47,7 @@ fields        每类卡片附加字段（如订单号、项目名、是否交付
 
 1. 确认触发：用户上传了合同/订单/发票/票据，且已有知识库 documentId。
 2. 按文档类型选策略（见上表）。
-3. 定位关键段：优先用 `query_knowledge`（rg 命令）而非发全文给模型。
+3. 定位关键段：先用 `search_knowledge(query=...)` 检索；片段不足时继续用 `search_knowledge(fileName=..., startLine=...)` 精读。
 4. 提炼字段：拿不准的 **必须留 null**，不猜不估。
 5. 调用 `record_document_metadata` 写 draft（传 documentId + metadata）。
 6. 回复用户：「已提炼×××要点，写入草稿。请在知识库→文档目录确认后生效。」列出提炼到的字段，标注哪些未找到。

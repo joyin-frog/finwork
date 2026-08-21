@@ -65,7 +65,7 @@ export function GlobalSearchDialog({
         {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
         <DialogPrimitive.Content
           data-slot="dialog-content"
-          className={cn("fixed top-[18%] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border-2 border-border bg-popover text-body text-popover-foreground outline-none", !instant && "duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95")}
+          className={cn("fixed top-[18%] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg -translate-x-1/2 overflow-hidden rounded-xl border-2 border-border bg-popover text-body text-popover-foreground outline-none", !instant && "duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95")}
         >
           <DialogPrimitive.Title className="sr-only">搜索</DialogPrimitive.Title>
           {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
@@ -110,11 +110,7 @@ export function GlobalSearchDialog({
                       value={`file-${f.kind}-${f.id}-${f.title}`}
                       className="text-body"
                       onSelect={() => {
-                        if (f.kind === "knowledge") {
-                          router.push("/knowledge?doc=" + encodeURIComponent(f.id));
-                        } else {
-                          router.push("/files?file=" + encodeURIComponent(f.id));
-                        }
+                        if (f.kind === "knowledge") router.push("/knowledge?doc=" + encodeURIComponent(f.id));
                         onOpenChange(false);
                       }}
                     >

@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Add01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { filterByCategory, filterSkills } from "@/app/skills/file-tree";
-import { IconButton, api, SKILL_NAME_RE } from "@/app/skills/skills-shared";
+import { api, SKILL_NAME_RE } from "@/app/skills/skills-shared";
 import type { SkillSummary } from "@/app/skills/skills-shared";
 import { SkillCard } from "@/app/skills/skill-card";
 import { useShortcutEvent } from "@/app/shared/global-shortcuts";
@@ -17,8 +16,6 @@ import { PageSearchBar } from "@/app/shared/page-search-dialog";
 import { FilterChipGroup } from "@/app/shared/filter-chip-group";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
-import { ShortcutHint } from "@/app/shared/shortcut-hint";
-import { cn } from "@/lib/utils";
 
 type Category = "all" | "finance" | "file-tool" | "user";
 
@@ -53,28 +50,18 @@ export function SkillsManager() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
+      <header className="app-page-header no-divider relative flex items-center gap-3 pr-5 h-11 shrink-0">
         <DragHandle />
         <SidebarToggle />
-        <h1 className="text-title font-semibold">技能</h1>
         <div className="ml-auto flex items-center gap-2 shrink-0">
-          <ShortcutHint label="搜索" combo="mod+f">
-            <button
-              type="button"
-              // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-              className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", query && "bg-accent text-foreground")}
-              onClick={() => setSearchOpen(true)}
-              aria-label="搜索技能"
-            >
-              <HugeiconsIcon icon={Search01Icon} size={16} />
-            </button>
-          </ShortcutHint>
-          <IconButton
-            icon={Add01Icon}
-            label="新建技能"
+          <Button
+            type="button"
+            size="sm"
             onClick={() => setCreating(true)}
-            active={creating}
-          />
+            aria-pressed={creating}
+          >
+            创建
+          </Button>
         </div>
       </header>
 
@@ -89,34 +76,49 @@ export function SkillsManager() {
         />
       ) : (
         <>
-          <PageSearchBar
-            open={searchOpen}
-            onOpenChange={(open) => { setSearchOpen(open); if (!open) setQuery(""); }}
-            value={query}
-            onValueChange={setQuery}
-            placeholder="搜索技能"
-            label="技能"
-          />
-          <FilterChipGroup
-            value={category}
-            options={chips.map(({ key, label }) => ({ value: key, label }))}
-            onValueChange={setCategory}
-            ariaLabel="技能分类"
-          />
-
-          {/* 卡片网格 */}
-          <div className="flex-1 overflow-auto">
-            {skills.length === 0 ? (
-              <p className="px-4 py-6 text-meta text-muted-foreground">加载中…</p>
-            ) : filtered.length === 0 ? (
-              <p className="px-4 py-6 text-meta text-muted-foreground">无匹配技能</p>
-            ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-4">
-                {filtered.map((s) => (
-                  <SkillCard key={s.name} skill={s} />
-                ))}
+          <div className="flex min-h-0 flex-1 w-full flex-col">
+            {/* 标题说明与搜索栏固定在滚动区上方,内容滚动时搜索栏保持可见。 */}
+            <div className="w-full max-w-[800px] mx-auto shrink-0">
+              <div className="px-4 pt-5 pb-2">
+                <h1 className="text-display font-semibold">技能</h1>
+                <p className="mt-1 text-body text-muted-foreground">通过任务专用技能扩展专员的能力。</p>
               </div>
-            )}
+              <PageSearchBar
+                open={searchOpen}
+                onOpenChange={(open) => { setSearchOpen(open); if (!open) setQuery(""); }}
+                value={query}
+                onValueChange={setQuery}
+                placeholder="搜索技能"
+                label="技能"
+                alwaysVisible
+                className="border-b-0 px-4"
+              />
+            </div>
+
+            {/* 卡片网格 */}
+            <div className="flex-1 overflow-auto">
+              <div className="w-full max-w-[800px] mx-auto">
+              <div className="w-full">
+                <FilterChipGroup
+                  value={category}
+                  options={chips.map(({ key, label }) => ({ value: key, label }))}
+                  onValueChange={setCategory}
+                  ariaLabel="技能分类"
+                />
+              </div>
+              {skills.length === 0 ? (
+                <p className="px-4 py-6 text-meta text-muted-foreground">加载中…</p>
+              ) : filtered.length === 0 ? (
+                <p className="px-4 py-6 text-meta text-muted-foreground">无匹配技能</p>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-4">
+                  {filtered.map((s) => (
+                    <SkillCard key={s.name} skill={s} />
+                  ))}
+                </div>
+              )}
+              </div>
+            </div>
           </div>
         </>
       )}
@@ -165,7 +167,8 @@ function NewSkillForm({
   }
 
   return (
-    <div className="h-full overflow-auto px-6 py-5 max-w-2xl">
+    <div className="h-full w-full overflow-auto">
+      <div className="w-full max-w-[800px] mx-auto px-6 py-5">
       <h2 className="text-title font-semibold mb-4">新建技能</h2>
       <div className="flex flex-col gap-4">
         <label className="flex flex-col gap-1">
@@ -185,6 +188,7 @@ function NewSkillForm({
           <Button onClick={() => void submit()} disabled={!name || !!nameErr || busy}>创建</Button>
           <Button variant="ghost" onClick={onCancel}>取消</Button>
         </div>
+      </div>
       </div>
     </div>
   );

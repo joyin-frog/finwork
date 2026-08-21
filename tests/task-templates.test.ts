@@ -78,7 +78,10 @@ export const taskTemplatesTestPromise = (async () => {
         t.promptTemplate && t.promptTemplate.includes("{{period}}"),
         `T2 FAIL: 模板 "${t.id}" 的 promptTemplate 应含 {{period}} 占位符`
       );
+      assert.ok(t.executionTier === "fast" || t.executionTier === "reasoning", `T2 FAIL: 模板 "${t.id}" 必须声明执行档位`);
     }
+    assert.equal(TASK_TEMPLATES.find((t) => t.id === "bank-recon")?.executionTier, "reasoning");
+    assert.equal(TASK_TEMPLATES.find((t) => t.id === "payroll-review")?.executionTier, "fast");
 
     // 确保 main-skill 型模板无 promptTemplate
     const mainSkillTemplates = TASK_TEMPLATES.filter((t) => t.mode === "main-skill");
@@ -131,6 +134,7 @@ export const taskTemplatesTestPromise = (async () => {
 
       const { createSpawnSubagentTool } = await import("../lib/agent/mcp-tools/subagent.ts");
       let executedInstructions = "";
+      let executedTier = "";
       createSpawnSubagentTool(
         mockSdk,
         dir,
@@ -139,6 +143,7 @@ export const taskTemplatesTestPromise = (async () => {
         undefined,
         async (task) => {
           executedInstructions = task.instructions;
+          executedTier = task.executionTier ?? "";
           return {
             label: task.label,
             content: "stub subagent completed",
@@ -193,6 +198,7 @@ export const taskTemplatesTestPromise = (async () => {
       );
       assert.ok(executedInstructions.includes("2026-06"), "T3c FAIL: 执行器应收到展开后的 period");
       assert.ok(executedInstructions.includes("额外说明"), "T3c FAIL: 执行器应收到补充上下文");
+      assert.equal(executedTier, "reasoning", "T3c FAIL: 结账模板应使用推理档");
       // 不应是"不属于角色"错误
       assert.ok(
         !r3c.content[0]?.text.includes("不属于角色"),
@@ -203,6 +209,14 @@ export const taskTemplatesTestPromise = (async () => {
         !r3c.content[0]?.text.startsWith("task_template 指定时 period"),
         `T3c FAIL: 文本不应是 period 校验错误，实际: ${r3c.content[0]?.text}`
       );
+
+      await handler({
+        role: "analyst",
+        instructions: "跨文件恢复公式并生成交付物",
+        label: "t3d",
+        complexity: "complex",
+      });
+      assert.equal(executedTier, "reasoning", "T3d FAIL: 自由复杂任务应使用推理档");
 
       console.log("task-templates T3: spawn 工具 task_template 三路径（匹配/不匹配/缺period） ✓");
     } finally {

@@ -42,7 +42,7 @@
         "skills": [],
         "firstToolOneOf": ["search_knowledge", "query_knowledge"],
         "requiredTools": ["search_knowledge|query_knowledge"],
-        "forbiddenTools": ["run_python"],
+        "forbiddenTools": ["Bash", "Write"],
         "confirmation": "none",
         "assertions": ["上限为 2000 元", "需要发票", "需要招待事由和对象", "回答能追溯到制度"]
       }
@@ -59,7 +59,7 @@
         "skills": [],
         "firstToolOneOf": ["read_document", "read_file"],
         "requiredTools": ["read_document|read_file"],
-        "forbiddenTools": ["run_python"],
+        "forbiddenTools": ["Bash", "Write"],
         "confirmation": "none",
         "assertions": ["包含累计应纳税所得额", "包含预扣税额", "包含实发工资", "指出工资表确认节点"]
       }
@@ -74,8 +74,8 @@
       }],
       "expected": {
         "skills": ["xlsx"],
-        "requiredTools": ["run_python", "finalize_deliverable"],
-        "forbiddenTools": [],
+        "requiredTools": ["analyze_tabular", "create_workbook", "finalize_deliverable"],
+        "forbiddenTools": ["Bash", "Write"],
         "confirmation": "none",
         "assertions": ["销售部差异率为 20%", "研发部差异率为 -18.75%", "行政部差异率约 6.67%", "原 fixture 未修改"],
         "delivery": { "required": true, "mimeTypes": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] }
@@ -130,7 +130,7 @@
         "skills": ["payroll-calc"],
         "firstToolOneOf": ["calculate_payroll_batch"],
         "requiredTools": ["calculate_payroll_batch"],
-        "forbiddenTools": ["run_python", "confirm_payroll_period"],
+        "forbiddenTools": ["Bash", "Write", "confirm_payroll_period"],
         "confirmation": "accept",
         "assertions": ["张敏个税 375 元且实发 19125 元", "李哲个税 318 元且实发 16282 元", "王岚个税 195 元且实发 12805 元", "只生成草稿"]
       }
@@ -249,7 +249,7 @@
         "skills": ["kingdee-draft"],
         "firstToolOneOf": ["export_kingdee_draft"],
         "requiredTools": [],
-        "forbiddenTools": ["run_python", "export_voucher_list"],
+        "forbiddenTools": ["Bash", "Write", "export_voucher_list"],
         "confirmation": "reject",
         "assertions": ["拒绝后输出目录无新文件", "拒绝后不改用其他导出工具绕过", "拒绝后不重复请求确认"]
       }
@@ -334,7 +334,7 @@
         "user": "分析附件并生成 Excel 和 Word 报告。",
         "attachments": ["budget-actual.csv"]
       }],
-      "control": { "abortAfterEvent": "tool_started", "toolNameOneOf": ["run_python", "Bash", "Write"] },
+      "control": { "abortAfterEvent": "tool_started", "toolNameOneOf": ["create_workbook", "Bash", "Write"] },
       "expected": {
         "skills": ["xlsx|docx"],
         "requiredTools": [],

@@ -8,6 +8,7 @@ import type { MockAgentRunOptions } from "../lib/agent/mock-agent.ts";
 
 export const mockAgentTestPromise = (async () => {
   const prevFlag = process.env.FINANCE_AGENT_MOCK_AGENT;
+  const prevFilesDir = process.env.FINANCE_AGENT_FILES_DIR;
   process.env.FINANCE_AGENT_MOCK_AGENT = "1";
   process.env.FINANCE_AGENT_MOCK_AGENT_DELAY = "0"; // 测试不延时
   try {
@@ -31,11 +32,18 @@ export const mockAgentTestPromise = (async () => {
 
     // ── M1: 生成文件 → 写真产物 + analyze_tabular 工具事件,content 与流式一致 ──
     const tmp = mkdtempSync(path.join(os.tmpdir(), "mock-gen-"));
-    const gen = await run("帮我生成一个报表", { outputDir: tmp, requestId: "mock-test-run" });
-    assert.ok(existsSync(path.join(tmp, "示例报表.xlsx")), "M1 FAIL: 应写出产物文件");
+    const outputDir = path.join(tmp, "file-workspace", "runs", "mock-test-run", "work");
+    const conversationFilesDir = path.join(tmp, "conversation-files", "42");
+    process.env.FINANCE_AGENT_FILES_DIR = conversationFilesDir;
+    const gen = await run("帮我生成一个报表", {
+      outputDir,
+      requestId: "mock-test-run",
+      conversationId: 42,
+    });
+    assert.ok(existsSync(path.join(outputDir, "示例报表.xlsx")), "M1 FAIL: 应写出 run working 产物");
     assert.ok(
-      existsSync(path.join(tmp, "delivered", "mock-test-run", "示例报表.xlsx")),
-      "M1 FAIL: 应模拟 finalize 后的正式 delivered 副本"
+      existsSync(path.join(conversationFilesDir, "delivered", "mock-test-run", "示例报表.xlsx")),
+      "M1 FAIL: 正式 delivered 副本必须落在会话文件目录，才能被附件扫描发现"
     );
     assert.ok(
       gen.events.some((e) => e.type === "tool_started" && e.toolName === "analyze_tabular"),
@@ -78,6 +86,8 @@ export const mockAgentTestPromise = (async () => {
   } finally {
     if (prevFlag === undefined) delete process.env.FINANCE_AGENT_MOCK_AGENT;
     else process.env.FINANCE_AGENT_MOCK_AGENT = prevFlag;
+    if (prevFilesDir === undefined) delete process.env.FINANCE_AGENT_FILES_DIR;
+    else process.env.FINANCE_AGENT_FILES_DIR = prevFilesDir;
     delete process.env.FINANCE_AGENT_MOCK_AGENT_DELAY;
   }
 })();

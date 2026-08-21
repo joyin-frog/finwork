@@ -177,10 +177,10 @@ export function OpenableFileRow({
         {bordered ? (
           <span className="min-w-0 flex-1 flex flex-col gap-0.5">
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-small text-foreground">{name}</span>
+              <span className="truncate text-small text-foreground dark:text-foreground">{name}</span>
               {qualityState ? <AttachmentQualityBadge state={qualityState} /> : null}
             </span>
-            <span className="truncate text-caption text-muted-foreground">
+            <span className="truncate text-caption text-muted-foreground dark:text-muted-foreground/80">
               {getFileTypeLabel(mimeType, name, sizeBytes)}
               {voucherChips ? (
                 <span className="ml-1.5">
@@ -205,7 +205,7 @@ export function OpenableFileRow({
       {showOpenWith ? (
         <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="shrink-0 gap-1 text-muted-foreground" disabled={disabled}>
+            <Button variant="ghost" size="sm" className="shrink-0 gap-1 text-muted-foreground dark:text-foreground" disabled={disabled}>
               打开方式
               <HugeiconsIcon icon={ArrowDown01Icon} className="size-3.5" />
             </Button>

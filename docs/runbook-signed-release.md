@@ -37,16 +37,16 @@
 ### 1.1 安装 Tauri CLI
 
 ```bash
-npm install -g @tauri-apps/cli
+pnpm add -g @tauri-apps/cli
 # 或使用项目本地 CLI:
-npx tauri --version
+pnpm exec tauri --version
 ```
 
 ### 1.2 生成密钥对
 
 ```bash
 # 生成到 ~/.tauri/ 目录(不在项目目录内,防止误提交)
-npm run tauri signer generate -- -w ~/.tauri/finance-agent.key
+pnpm tauri signer generate -- -w ~/.tauri/finance-agent.key
 ```
 
 交互式提示设置密码短语(passphrase),**记住它**。命令输出两个文件:
@@ -174,7 +174,7 @@ GitHub Actions 触发 `.github/workflows/release.yml`:
 1. **三个矩阵并行**:macOS arm64、macOS x64(Rosetta 交叉编译)、Windows x64
 2. **每个 macOS job**:
    - 导入 Developer ID Application 证书到临时 keychain
-   - `npm run build && npm run tauri:prepare`(含 pubkey 注入)
+   - `pnpm build && pnpm tauri:prepare`（含 pubkey 注入）
    - tauri-action 调用 `tauri build` — 编译、打包、`codesign`、生成带签名的 `latest.json`
    - `xcrun notarytool submit --wait`(提交公证,等待 Apple 服务端完成)
    - `xcrun stapler staple`(钉入公证票据)

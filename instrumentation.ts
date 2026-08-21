@@ -9,6 +9,20 @@ export async function register() {
     } catch (err) {
       console.warn("[flags] init from DB failed, using defaults", err);
     }
+    // 生产能力目录是启动期权威数据：不能依赖某次 Agent 运行或管理页 GET
+    // 顺便注册，否则新版本会长期展示旧目录。同步失败必须阻断启动，禁止静默降级。
+    const [{ buildFinanceToolDefinitions }, { synchronizeFinanceCapabilityCatalog }, { getAppDataDir }, path] = await Promise.all([
+      import("@/lib/agent/mcp-tools"),
+      import("@/lib/agent/tools/capability-runtime"),
+      import("@/lib/runtime/paths"),
+      import("node:path"),
+    ]);
+    const catalog = synchronizeFinanceCapabilityCatalog(
+      buildFinanceToolDefinitions(path.join(getAppDataDir(), "capability-catalog")),
+    );
+    console.log(
+      `[capability-catalog] available=${catalog.available} deprecated=${catalog.deprecated.length}`,
+    );
     try {
       const { scheduleRetentionCycle } = await import("@/lib/maintenance/retention");
       scheduleRetentionCycle();

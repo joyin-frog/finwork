@@ -153,7 +153,7 @@ function ShortcutsHelpDialog({
         {/* eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则 */}
         <DialogPrimitive.Content
           data-slot="dialog-content"
-          className={cn("fixed top-[18%] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border-2 border-border bg-popover text-popover-foreground outline-none", !instant && "duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95")}
+          className={cn("fixed top-[18%] left-1/2 z-50 w-full max-w-[calc(100%-2rem)] sm:max-w-lg -translate-x-1/2 overflow-hidden rounded-xl border-2 border-border bg-popover text-popover-foreground outline-none", !instant && "duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95")}
         >
           {/* 标题行 + 关闭按钮(右侧竖直居中),下方横线分隔 */}
           <div className="flex items-center gap-2 border-b border-border px-4 py-3">

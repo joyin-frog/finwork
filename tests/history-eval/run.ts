@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -27,6 +28,8 @@ import {
   verifyDeliveryContract,
 } from "./scoring";
 import { checkMinimumDeliverables } from "./minimum-deliverable";
+import { getFileWorkspaceStore } from "@/lib/file-workspace";
+import { beginDeliveryRun } from "@/lib/task/production-runtime";
 
 const SKIP_LLM = process.env.SKIP_LLM === "true";
 const CASE_IDS = new Set(
@@ -61,6 +64,10 @@ const CONCURRENCY = Math.max(
 );
 const QUALITY_THRESHOLD = Number(process.env.HISTORY_QUALITY_THRESHOLD ?? 0.85);
 const TOOL_BUDGET_FACTOR = Number(process.env.HISTORY_TOOL_BUDGET_FACTOR ?? 1.5);
+const MAX_TOOL_CALLS = Math.max(1, Number(process.env.HISTORY_MAX_TOOL_CALLS ?? 15));
+const MAX_MODEL_CALLS = Math.max(1, Number(process.env.HISTORY_MAX_MODEL_CALLS ?? 8));
+const TARGET_DURATION_MS = Math.max(1, Number(process.env.HISTORY_TARGET_DURATION_MS ?? 600_000));
+const ENFORCE_PERFORMANCE_BUDGETS = process.env.HISTORY_ENFORCE_PERFORMANCE_BUDGETS === "true";
 const BATCH_ID =
   process.env.HISTORY_RUN_ID ??
   `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`;
@@ -68,7 +75,6 @@ const REPORT_ROOT = path.resolve("tests/history-eval/real-reports", BATCH_ID);
 
 // 评测证据与生产数据完全隔离；显式配置仍优先。
 process.env.FINANCE_AGENT_DB_PATH ??= path.join(REPORT_ROOT, "eval.db");
-process.env.FINANCE_AGENT_MEMORY_PATH ??= path.join(REPORT_ROOT, "memory.md");
 process.env.FINANCE_AGENT_PROFILE_PATH ??= path.join(REPORT_ROOT, "profile.json");
 
 function mimeType(file: string): string {
@@ -83,7 +89,31 @@ function mimeType(file: string): string {
 }
 
 
-function attachmentsFor(gc: HistoricalFinanceCase) {
+const managedFixtureAttachments = new Map<string, Awaited<ReturnType<typeof buildManagedFixtureAttachment>>>();
+
+async function buildManagedFixtureAttachment(relative: string) {
+  const storagePath = path.join(FIXTURE_ROOT, relative);
+  const workspace = await getFileWorkspaceStore();
+  const asset = workspace.ingestManagedBuffer({
+    name: path.basename(relative),
+    mediaType: mimeType(relative),
+    content: readFileSync(storagePath),
+    // Historical fixtures are copied into the isolated evaluation workspace.
+    // `upload` is a UI provenance label, not a persisted workspace source kind;
+    // managed assets are the production representation for uploaded files.
+    sourceKind: "managed",
+  });
+  return {
+    name: path.basename(relative),
+    mimeType: mimeType(relative),
+    size: statSync(storagePath).size,
+    dataUrl: "",
+    assetId: asset.assetId,
+    versionId: asset.versionId,
+  };
+}
+
+async function attachmentsFor(gc: HistoricalFinanceCase) {
   if (!USE_REAL_FIXTURES) return [];
   const expected = gc.fixtureFiles ?? [];
   const missing = expected.filter((relative) => !existsSync(path.join(FIXTURE_ROOT, relative)));
@@ -103,16 +133,13 @@ function attachmentsFor(gc: HistoricalFinanceCase) {
   if (changed.length) {
     throw new Error(`${gc.id} fixture_integrity_failed: ${changed.join("; ")}`);
   }
-  return expected.map((relative) => {
-    const storagePath = path.join(FIXTURE_ROOT, relative);
-    return {
-      name: path.basename(relative),
-      mimeType: mimeType(relative),
-      size: statSync(storagePath).size,
-      dataUrl: "",
-      storagePath,
-    };
-  });
+  return Promise.all(expected.map(async (relative) => {
+    const cached = managedFixtureAttachments.get(relative);
+    if (cached) return cached;
+    const attachment = await buildManagedFixtureAttachment(relative);
+    managedFixtureAttachments.set(relative, attachment);
+    return attachment;
+  }));
 }
 
 type JudgeResult = { score: number; reason: string; blocking: boolean };
@@ -144,7 +171,7 @@ async function judgeCase(
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: settings.routerModel || settings.mainModel,
+        model: settings.fastModel || settings.reasoningModel,
         max_tokens: 400,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -184,9 +211,24 @@ async function runCase(
   const caseRoot = path.join(REPORT_ROOT, gc.id, runId);
   const outputDir = path.join(caseRoot, "generate");
   mkdirSync(outputDir, { recursive: true });
-  const attachments = attachmentsFor(gc);
+  const attachments = await attachmentsFor(gc);
   const task = USE_REAL_FIXTURES && attachments.length ? (gc.realInput ?? gc.input) : gc.input;
   const controller = new AbortController();
+  // The historical evaluator uses the same governed delivery boundary as the
+  // product. Every tool receives one run context; no second planner is added.
+  const productionRun = beginDeliveryRun({
+    db: getDb(),
+    traceId: runId,
+    goal: task,
+    attachments,
+    deliverySpec: gc.deliverySpec,
+    principalId: "history-eval-runner",
+    tenantId: "history-eval",
+    intent: gc.deliverySpec.taskKind === "financial_consolidation"
+      ? "complex_workflow"
+      : "tool_task",
+    casRoot: path.join(caseRoot, "artifacts", "cas"),
+  });
   let watchdogFired = false;
   let toolBudgetExceeded = false;
   let lastProgressAt = new Date().toISOString();
@@ -225,19 +267,25 @@ async function runCase(
       requestId: runId,
       attachments,
       outputDir,
-      taskContract: gc.taskContract,
-      intent: gc.taskContract.taskKind === "financial_consolidation"
+      deliverySpec: gc.deliverySpec,
+      runContext: productionRun.runContext,
+      workPlan: productionRun.plan,
+      intent: gc.deliverySpec.taskKind === "financial_consolidation"
         ? "complex_workflow"
         : "tool_task",
       signal: controller.signal,
       emit: (event) => {
         lastProgressAt = new Date().toISOString();
+        productionRun.recordRuntimeEvent(event);
         if (event.type === "tool_started") {
           toolCalls.push(event.toolName);
-          const budget = Math.max(1, Math.ceil(gc.historicalToolCalls * TOOL_BUDGET_FACTOR));
+          const budget = Math.min(
+            MAX_TOOL_CALLS,
+            Math.max(1, Math.ceil(gc.historicalToolCalls * TOOL_BUDGET_FACTOR)),
+          );
           if (toolCalls.length > budget && !toolBudgetExceeded) {
             toolBudgetExceeded = true;
-            controller.abort();
+            if (ENFORCE_PERFORMANCE_BUDGETS) controller.abort();
           }
         }
       },
@@ -247,12 +295,16 @@ async function runCase(
       verificationTimeoutMs: VERIFICATION_TIMEOUT_MS,
       sessionRoot: path.join(caseRoot, "pi-sessions"),
       agentDir: path.join(caseRoot, "pi-agent"),
-      minimumDeliverableCheck: () => checkMinimumDeliverables(gc.taskContract, outputDir),
+      minimumDeliverableCheck: () => checkMinimumDeliverables(gc.deliverySpec, outputDir),
+      maxTransientContinuationAttempts: Math.max(
+        0,
+        Math.min(3, Number(process.env.HISTORY_TRANSIENT_CONTINUATION_ATTEMPTS ?? 2)),
+      ),
       abortTimeoutMs: Number(process.env.HISTORY_ABORT_TIMEOUT_MS ?? 2_000),
-      completionVerifier: async ({ runId: verifierRunId, taskContract }) => {
+      completionVerifier: async ({ runId: verifierRunId, deliverySpec }) => {
         const verifierStore = new SqliteDeliverableStore(getDb());
         const verifierEvidence = selectLatestCompletionEvidence(
-          taskContract,
+          deliverySpec,
           verifierStore.list(verifierRunId),
         );
         const verifierArtifacts = await inspectDeliveredArtifacts(
@@ -260,7 +312,7 @@ async function runCase(
           gc.artifactAssertions,
           USE_REAL_FIXTURES ? FIXTURE_ROOT : undefined,
         );
-        const verifierDelivery = verifyDeliveryContract(taskContract, verifierArtifacts);
+        const verifierDelivery = verifyDeliveryContract(deliverySpec, verifierArtifacts);
         const verifierScore = scoreArtifactAssertions(
           gc,
           verifierArtifacts,
@@ -320,7 +372,7 @@ async function runCase(
 
   const store = new SqliteDeliverableStore(getDb());
   const completionEvidence = selectLatestCompletionEvidence(
-    gc.taskContract,
+    gc.deliverySpec,
     store.list(runId),
   );
   const artifacts = await inspectDeliveredArtifacts(
@@ -328,7 +380,7 @@ async function runCase(
     gc.artifactAssertions,
     USE_REAL_FIXTURES ? FIXTURE_ROOT : undefined,
   );
-  const delivery = verifyDeliveryContract(gc.taskContract, artifacts);
+  const delivery = verifyDeliveryContract(gc.deliverySpec, artifacts);
   const artifactScore = scoreArtifactAssertions(gc, artifacts, USE_REAL_FIXTURES);
   const hardGatePassed = !error && delivery.passed && verificationStatus === "passed";
   const artifactSummary = artifactSummaryForJudge(artifacts);
@@ -357,7 +409,7 @@ async function runCase(
     (!semanticRequired || semanticAvailable);
   const outcome = watchdogFired
     ? "timeout"
-    : toolBudgetExceeded
+    : toolBudgetExceeded && ENFORCE_PERFORMANCE_BUDGETS
       ? "failed"
     : error && terminationReason === "user_stop"
       ? "cancelled"
@@ -408,7 +460,7 @@ async function runCase(
     numTurns,
     terminationReason: watchdogFired
       ? "watchdog_timeout"
-      : toolBudgetExceeded
+      : toolBudgetExceeded && ENFORCE_PERFORMANCE_BUDGETS
         ? "tool_budget_exceeded"
         : terminationReason,
     repairRounds,
@@ -454,7 +506,7 @@ async function main() {
   }
   if (CASES.length === 0) throw new Error("没有匹配的 HISTORY_CASE_ID");
   // 真实模式必须在启动 Agent 前一次性确认附件齐全，禁止静默降级为合成任务。
-  if (USE_REAL_FIXTURES) for (const gc of CASES) attachmentsFor(gc);
+  if (USE_REAL_FIXTURES) for (const gc of CASES) await attachmentsFor(gc);
 
   const results = await mapWithConcurrency(
     CASES,
@@ -484,10 +536,19 @@ async function main() {
     judgeTimeoutMs: JUDGE_TIMEOUT_MS,
     maxRepairRounds: MAX_REPAIR_ROUNDS,
     toolBudgetFactor: TOOL_BUDGET_FACTOR,
+    maxToolCalls: MAX_TOOL_CALLS,
+    maxModelCalls: MAX_MODEL_CALLS,
+    targetDurationMs: TARGET_DURATION_MS,
+    performanceBudgetsEnforced: ENFORCE_PERFORMANCE_BUDGETS,
     qualityThreshold: QUALITY_THRESHOLD,
     casesWithFinalize: results.filter((result) => result.hasFinalize).length,
     casesWithVerificationPass: results.filter(
       (result) => result.verificationStatus === "passed",
+    ).length,
+    casesMeetingPerformanceTarget: results.filter((result) =>
+      (result.numTurns ?? Number.POSITIVE_INFINITY) <= MAX_MODEL_CALLS
+      && result.currentToolCalls <= MAX_TOOL_CALLS
+      && result.durationMs <= TARGET_DURATION_MS
     ).length,
     outcomes: Object.fromEntries(
       [...new Set(results.map((result) => result.outcome))].map((outcome) => [

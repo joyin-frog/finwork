@@ -18,7 +18,7 @@ import path from "node:path";
 const cwd = process.cwd();
 const nodeModulesPath = path.join(cwd, "node_modules");
 
-/** 直接依赖会被 npm 提到 node_modules 顶层;scoped 名字要按 / 拆开再拼,兼容 Windows。 */
+/** 直接依赖会被 pnpm 链接到 node_modules 顶层；scoped 名字要按 / 拆开再拼，兼容 Windows。 */
 function installedManifest(nodeModulesDir, name) {
   const manifest = path.join(nodeModulesDir, ...name.split("/"), "package.json");
   if (!existsSync(manifest)) return null;
@@ -37,7 +37,7 @@ function readRequiredDeps(dir) {
 
 /**
  * 校验一棵 node_modules 是否满足本 worktree 的 package.json。
- * 缺包一定报;版本只在「精确锁定」(如 pi 三包的 0.82.1)时报漂移——范围声明交给 npm 自己判。
+ * 缺包一定报；版本只在「精确锁定」(如 pi 三包的 0.82.1)时报漂移——范围声明交给 pnpm 判定。
  */
 function findProblems(nodeModulesDir, required) {
   const missing = [];
@@ -68,7 +68,7 @@ function fail(nodeModulesDir, { missing, drifted }, linked) {
   console.error("  本 worktree 与主检出的依赖不同(常见于改了 package.json 的分支)。");
   console.error("  修复：在本 worktree 里做一次独立安装——");
   console.error("    rm node_modules   # 只删软链，不动主检出那棵树");
-  console.error("    npm install");
+  console.error("    pnpm install");
   process.exit(1);
 }
 

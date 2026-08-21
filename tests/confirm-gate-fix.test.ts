@@ -7,7 +7,8 @@
  * 对应 spec: docs/spec/spec-confirm-gate-fix.md §1 成功标准
  */
 import assert from "node:assert/strict";
-import { ALLOWED_TOOLS, BUILTIN_TOOLS, TOOL_REGISTRY } from "../lib/agent/tools/registry.ts";
+import { ALLOWED_TOOLS, TOOL_REGISTRY } from "../lib/agent/tools/registry.ts";
+import { FINWORK_BUILTIN_TOOL_NAMES } from "../lib/agent/pi/tool-names.ts";
 import { ALWAYS_CONFIRM_TOOLS } from "../lib/agent/hooks/built-in.ts";
 import { resolveRoleAllowedTools } from "../lib/agent/roles/registry.ts";
 
@@ -20,6 +21,7 @@ export const confirmGateFixTestPromise = (async () => {
     "confirm_payroll_period",
     "export_kingdee_draft",
     "remember_convention",
+    "remember_role_convention",
     "update_company_profile",
   ];
   for (const name of mustExclude) {
@@ -29,7 +31,7 @@ export const confirmGateFixTestPromise = (async () => {
     );
   }
 
-  for (const name of BUILTIN_TOOLS) {
+  for (const name of FINWORK_BUILTIN_TOOL_NAMES) {
     assert.ok(
       !allowedSet.has(name),
       `CGF-1b FAIL: 内置工具 "${name}" 不应在 ALLOWED_TOOLS 中（必须经过原生 PreToolUse 机制闸）`
@@ -40,8 +42,6 @@ export const confirmGateFixTestPromise = (async () => {
   const mustInclude = [
     "query_payroll_status",
     "diff_payroll_period",
-    // 角色口径（刀6）静默写入；全局约定仍挂确认门（见 mustExclude / ALWAYS_CONFIRM）
-    "remember_role_convention",
   ];
   for (const name of mustInclude) {
     assert.ok(

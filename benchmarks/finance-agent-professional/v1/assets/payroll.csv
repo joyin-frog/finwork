@@ -1,0 +1,4 @@
+employee_id,department,base_salary,bonus,employee_social,tax,net_pay,employer_social
+E001,Finance,12000,2000,1800,1000,11200,2500
+E002,Operations,10000,1000,1500,700,8800,2100
+E003,Sales,15000,3000,2200,1600,14200,3000

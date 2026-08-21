@@ -29,6 +29,7 @@ async function main() {
   process.env.FINANCE_AGENT_APP_DATA_DIR = `/tmp/finance-agent-smoke-app-data-${process.pid}`;
   process.env.FINANCE_AGENT_SETTINGS_PATH = `/tmp/finance-agent-smoke-settings-${process.pid}.json`;
   process.env.FINANCE_AGENT_DB_PATH = `/tmp/finance-agent-smoke-${process.pid}.db`;
+  process.env.FINANCE_AGENT_FILE_KEY_BACKEND = "file";
 
   assert.equal(getAppDataDir(), process.env.FINANCE_AGENT_APP_DATA_DIR);
   assert.equal(getDatabasePath(), process.env.FINANCE_AGENT_DB_PATH);
@@ -175,17 +176,16 @@ wb.save("${xlsxPath}")
   const publicSettings = toPublicAgentSettings({
     apiUrl: "https://api.anthropic.com",
     apiKey: "sk-ant-test-1234567890",
-    model: "claude-sonnet-4-5",
     companyName: "",
     agentName: "小财",
-    routerModel: "",
-    subagentModel: "",
-    mainModel: "",
+    fastModel: "gpt-mini",
+    reasoningModel: "gpt-reasoning",
     roleMode: "tech",
   });
   assert.equal(publicSettings.apiKeyConfigured, true);
   assert.equal(publicSettings.apiKeyPreview, "sk-a...7890");
-  assert.equal(publicSettings.model, "claude-sonnet-4-5");
+  assert.equal(publicSettings.fastModel, "gpt-mini");
+  assert.equal(publicSettings.reasoningModel, "gpt-reasoning");
 
   const agentResult = await runPiAgent({ messages: [{ role: "user", content: "测试未配置时回退" }] });
   assert.equal(agentResult.mode, "mock");
@@ -229,21 +229,31 @@ wb.save("${xlsxPath}")
   assert.ok(streamText.includes('"conversationId"'), `stream should include conversation id, got ${streamText}`);
 
   // Multipart upload test — send real FormData without manual boundary
-  const xlsxBuffer = Buffer.from("test content");
-  const multipartForm = new FormData();
-  multipartForm.append("messages", JSON.stringify([{ role: "user", content: "分析附件表格" }]));
-  multipartForm.append("files", new Blob([xlsxBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "test_upload.xlsx");
+  // The read-only spreadsheet contract now correctly requires a successful
+  // read_document fact. Use the deterministic mock agent for this transport
+  // smoke instead of relying on the no-key fallback, which executes no tools.
+  const savedMockAgent = process.env.FINANCE_AGENT_MOCK_AGENT;
+  process.env.FINANCE_AGENT_MOCK_AGENT = "1";
+  try {
+    const xlsxBuffer = Buffer.from("test content");
+    const multipartForm = new FormData();
+    multipartForm.append("messages", JSON.stringify([{ role: "user", content: "分析附件表格" }]));
+    multipartForm.append("files", new Blob([xlsxBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "test_upload.xlsx");
 
-  const multipartRequest = new Request("http://finance-agent.local/api/agent/query?stream=false", {
-    method: "POST",
-    body: multipartForm
-  });
-  const multipartResponse = await postAgentQuery(multipartRequest);
-  assert.equal(multipartResponse.status, 200);
-  const multipartJson = (await multipartResponse.json()) as {
-    data: { conversationId: number; conversation: { title: string } };
-  };
-  assert.ok(multipartJson.data.conversationId > 0);
+    const multipartRequest = new Request("http://finance-agent.local/api/agent/query?stream=false", {
+      method: "POST",
+      body: multipartForm
+    });
+    const multipartResponse = await postAgentQuery(multipartRequest);
+    assert.equal(multipartResponse.status, 200);
+    const multipartJson = (await multipartResponse.json()) as {
+      data: { conversationId: number; conversation: { title: string } };
+    };
+    assert.ok(multipartJson.data.conversationId > 0);
+  } finally {
+    if (savedMockAgent === undefined) delete process.env.FINANCE_AGENT_MOCK_AGENT;
+    else process.env.FINANCE_AGENT_MOCK_AGENT = savedMockAgent;
+  }
 
   await testKingdeeMcpIntegration();
 

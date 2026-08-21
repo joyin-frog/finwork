@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchKnowledge } from "@/lib/knowledge/rg-search";
+import { getProductionRetrievalService } from "@/lib/retrieval/production";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
 
     const topK = typeof body.topK === "number" && body.topK > 0 ? body.topK : 20;
 
-    const result = await searchKnowledge({ query, topK });
+    const result = await getProductionRetrievalService().searchForKnowledgeApi(query, topK);
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

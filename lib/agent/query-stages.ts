@@ -8,9 +8,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { uniqueFilePath } from "@/lib/files/unique-name";
 import { isEnabled } from "@/lib/runtime/flags";
 import type { AgentAttachment, AgentMessage } from "@/lib/agent/contracts";
 import { sanitizeAttachments } from "@/lib/agent/attachment-guard";
@@ -21,9 +20,11 @@ import {
   getMessageAttachments,
   insertChatAttachment,
   insertChatMessage,
+  insertChatMessageWorkspaceRoots,
 } from "@/lib/db/sqlite";
-import { getConversationFilesDir } from "@/lib/runtime/paths";
-import { snapshotGeneratedFiles } from "@/lib/chat/generated-files";
+import { getConversationFilesDir, getRunFileWorkspaceDir, getRunFileWorkspacePaths } from "@/lib/runtime/paths";
+import { getFileWorkspaceStore } from "@/lib/file-workspace";
+import { snapshotGeneratedFiles, snapshotWorkingFiles } from "@/lib/chat/generated-files";
 import { matchTrivialMessage, normalizeTier, resolveModelByTier, runRouter } from "@/lib/agent/router";
 import { specialistRoleUsabilityIssue } from "@/lib/agent/roles/availability";
 import { injectSkillHint } from "@/lib/agent/skill-hint";
@@ -69,6 +70,7 @@ export type ParseOutput = ParseInput & {
   requestSignal: AbortSignal | undefined;
   /** 专员会话（E 刀）：客户端请求的角色 id（已校验存在），仅在创建新会话时生效。 */
   roleParam: string | undefined;
+  workspaceRootIds: string[];
 };
 
 export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
@@ -80,6 +82,7 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
   let referencedSkills: string[] = [];
   let modelTier: string | undefined;
   let roleParam: string | undefined;
+  let workspaceRootIds: string[] = [];
 
   try {
     const contentType = request.headers.get("content-type") ?? "";
@@ -91,14 +94,16 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
       referencedSkills = parsed.referencedSkills;
       modelTier = parsed.modelTier;
       roleParam = parsed.roleParam;
+      workspaceRootIds = parsed.workspaceRootIds;
     } else {
-      const parsed = await parseJsonRequest(request);
+      const parsed = await parseJsonRequest(request, traceId);
       messages = parsed.messages;
       conversationId = parsed.conversationId;
       attachments = parsed.attachments;
       referencedSkills = parsed.referencedSkills;
       modelTier = parsed.modelTier;
       roleParam = parsed.roleParam;
+      workspaceRootIds = parsed.workspaceRootIds;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -112,7 +117,7 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
   // 安全护栏:客户端提交的 attachments.storagePath 完全可控,会被拼进 agent 提示("路径: …")
   // 且 Read/read_document 无路径限制 —— 不校验就能诱导 agent 读任意文件。丢弃逃逸出会话目录的附件。
   {
-    const { kept, dropped } = sanitizeAttachments(attachments, conversationId);
+    const { kept, dropped } = sanitizeAttachments(attachments, conversationId, [getRunFileWorkspaceDir(traceId)]);
     if (dropped.length) {
       log.warn("dropped out-of-scope attachments", { traceId, count: dropped.length, names: dropped.map((a) => a.name) });
       attachments = kept;
@@ -136,6 +141,7 @@ export const parseStage: Stage<ParseInput, ParseOutput> = async (ctx) => {
     useStreaming,
     requestSignal: request.signal,
     roleParam,
+    workspaceRootIds,
   };
 };
 
@@ -150,6 +156,7 @@ export type SessionOutput = SessionInput & {
   agentMessages: AgentMessage[];
   outputDir: string | undefined;
   beforeGenerate: Set<string>;
+  beforeWorking: Set<string>;
   modelOverride: string | undefined;
   /** 专员会话（E 刀）：本会话绑定的角色 id（服务端以 DB 行为准）；NULL = 主管会话。 */
   sessionRoleId: string | null;
@@ -206,12 +213,16 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
       db.exec("BEGIN");
       try {
         const messageId = insertChatMessage(conversationId, "user", lastUserContent);
+        insertChatMessageWorkspaceRoots(messageId, ctx.workspaceRootIds);
         for (const att of attachments) {
-          if (att.storagePath && conversationId) {
+          if ((att.storagePath || att.assetId) && conversationId) {
             insertChatAttachment({
               id: randomUUID(), messageId,
               fileName: att.name, mimeType: att.mimeType, sizeBytes: att.size,
-              storagePath: path.relative(getConversationFilesDir(conversationId), att.storagePath), role: "user"
+              storagePath: att.assetId ? logicalAssetPath(att.assetId, att.name) : path.relative(getConversationFilesDir(conversationId), att.storagePath!),
+              assetId: att.assetId ?? null,
+              assetVersionId: att.versionId ?? null,
+              role: "user"
             });
           }
         }
@@ -222,11 +233,12 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
       }
     }
     if (skipInsert && dedupMessageId !== undefined) {
+      insertChatMessageWorkspaceRoots(dedupMessageId, ctx.workspaceRootIds);
       // 去重命中但新附件仍需落库：防止附件成为 DB 孤儿文件（Plan 045）
       const existing = getMessageAttachments(dedupMessageId);
       const toInsert = attachments.filter(
         (att) =>
-          att.storagePath &&
+          (att.storagePath || att.assetId) &&
           conversationId &&
           !existing.some((e) => e.fileName === att.name && e.sizeBytes === att.size)
       );
@@ -235,11 +247,14 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
         db.exec("BEGIN");
         try {
           for (const att of toInsert) {
-            if (att.storagePath && conversationId) {
+            if ((att.storagePath || att.assetId) && conversationId) {
               insertChatAttachment({
                 id: randomUUID(), messageId: dedupMessageId,
                 fileName: att.name, mimeType: att.mimeType, sizeBytes: att.size,
-                storagePath: path.relative(getConversationFilesDir(conversationId), att.storagePath), role: "user"
+                storagePath: att.assetId ? logicalAssetPath(att.assetId, att.name) : path.relative(getConversationFilesDir(conversationId), att.storagePath!),
+                assetId: att.assetId ?? null,
+                assetVersionId: att.versionId ?? null,
+                role: "user"
               });
             }
           }
@@ -269,9 +284,15 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
 
   // 用户引用的技能 → 注入"优先使用这些技能"提示(只改发给 agent 的副本,不污染已落库原文)。
   const agentMessages = injectSkillHint(messages, referencedSkills); // 裁剪职责下沉到 adapter（pickPromptMessages）
-  const outputDir = conversationId ? path.join(getConversationFilesDir(conversationId), "generate") : undefined;
-  if (outputDir) mkdirSync(outputDir, { recursive: true });
+  const runPaths = getRunFileWorkspacePaths(traceId);
+  const outputDir = conversationId ? runPaths.work : undefined;
+  if (outputDir) {
+    for (const dir of [runPaths.inputs, runPaths.work, runPaths.outputs]) {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+  }
   const beforeGenerate = snapshotGeneratedFiles(conversationId);
+  const beforeWorking = snapshotWorkingFiles(outputDir);
   const modelOverride = resolveModelByTier(normalizeTier(modelTier), settings);
 
   return {
@@ -282,6 +303,7 @@ export const sessionStage: Stage<SessionInput, SessionOutput> = async (ctx) => {
     agentMessages,
     outputDir,
     beforeGenerate,
+    beforeWorking,
     modelOverride,
     sessionRoleId: conversation?.roleId ?? null,
   };
@@ -301,9 +323,8 @@ export const quotaStage: Stage<QuotaInput, QuotaOutput> = async (ctx) => {
     const usage = getUsageStatus({
       now: Date.now(),
       roles: {
-        routerModel: "routerModel" in settings ? settings.routerModel : "",
-        mainModel: "mainModel" in settings ? settings.mainModel : "",
-        subagentModel: settings.subagentModel ?? "",
+        fastModel: settings.fastModel ?? "",
+        reasoningModel: settings.reasoningModel ?? "",
       },
       // 放行即把(过期则重锚的)窗口起点写回,使紧随其后的本回合 trace 落在窗口内。
       // 命中拦截时窗口必为活动态,重锚为 no-op,落库无副作用。
@@ -363,7 +384,7 @@ export const routerStage: Stage<RouterInput, RouterOutput> = async (ctx) => {
   if (ctx.sessionRoleId) {
     const routerResult = {
       path: "main" as const,
-      decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: `specialist session (${ctx.sessionRoleId})` },
+      decision: { needsRag: false, directAnswer: undefined as string | undefined, intent: "complex_workflow" as const, reasoning: `specialist session (${ctx.sessionRoleId})` },
       latencyMs: 0,
     };
     log.info("router skipped (specialist session)", { traceId, roleId: ctx.sessionRoleId });
@@ -377,7 +398,7 @@ export const routerStage: Stage<RouterInput, RouterOutput> = async (ctx) => {
     ? await runRouter(lastUserContent, messages, traceId, { runtimeSessionId: existingRuntimeSessionId, conversationId })
     : localTrivial
       ? { path: "cheap" as const, decision: localTrivial, latencyMs: 0 }
-      : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, mainModelTier: "main" as const, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
+      : { path: "main" as const, decision: { needsRag: false, directAnswer: undefined as string | undefined, intent: "complex_workflow" as const, reasoning: isEnabled("ROUTER_ENABLED") ? "empty message" : "router disabled" }, latencyMs: 0 };
   log.info("router", { traceId, path: routerResult.path, intent: routerResult.decision.intent, latencyMs: routerResult.latencyMs });
 
   const { writeSpan } = await import("@/lib/observability/spans");
@@ -422,17 +443,29 @@ function generateShortTitle(text: string): string {
 // ─── Request parsing helpers (copied from route.ts) ─────────────────────────
 // Needed by parseStage. Kept here to make parseStage self-contained.
 
-const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+const ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024; // 与前端一致；大批文件走文件夹索引，不塞提示词
 
-function saveAttachmentBuffer(conversationId: number, fileName: string, buffer: Buffer): string {
+async function saveAttachmentBuffer(traceId: string, fileName: string, mimeType: string, buffer: Buffer): Promise<AgentAttachment> {
   if (buffer.length > ATTACHMENT_MAX_BYTES) {
     throw new AttachmentTooLargeError(buffer.length, ATTACHMENT_MAX_BYTES);
   }
-  const uploadDir = path.join(getConversationFilesDir(conversationId), "upload");
-  mkdirSync(uploadDir, { recursive: true });
-  const filePath = uniqueFilePath(uploadDir, fileName);
-  writeFileSync(filePath, buffer);
-  return filePath;
+  const store = await getFileWorkspaceStore();
+  const asset = store.ingestManagedBuffer({
+    name: fileName,
+    mediaType: mimeType || guessMimeType(fileName),
+    content: buffer,
+    batchId: traceId,
+  });
+  const storagePath = store.materializeVersion(asset.versionId, path.join(getRunFileWorkspaceDir(traceId), "inputs"), asset.name);
+  return {
+    assetId: asset.assetId,
+    versionId: asset.versionId,
+    name: asset.name,
+    mimeType: asset.mediaType,
+    size: asset.sizeBytes,
+    dataUrl: "",
+    storagePath,
+  };
 }
 
 async function parseMultipartRequest(request: Request, traceId: string) {
@@ -453,27 +486,28 @@ async function parseMultipartRequest(request: Request, traceId: string) {
     if (conversationId) {
       for (const file of uploadedFiles) {
         const buffer = Buffer.from(await file.arrayBuffer());
-        const filePath = saveAttachmentBuffer(conversationId, file.name, buffer);
-        const storedName = path.basename(filePath);
-        attachments.push({ name: storedName, mimeType: file.type || guessMimeType(storedName), size: buffer.length, dataUrl: `data:${file.type || "application/octet-stream"};base64,${buffer.toString("base64")}`, storagePath: filePath });
+        attachments.push(await saveAttachmentBuffer(traceId, file.name, file.type, buffer));
       }
     }
   }
 
   const refJson = formData.get("referencedAttachments") as string | null;
   if (refJson) { try { attachments.push(...(JSON.parse(refJson) as AgentAttachment[])); } catch { /* ok */ } }
+  const managedJson = formData.get("managedAttachments") as string | null;
+  if (managedJson) { try { attachments.push(...(JSON.parse(managedJson) as AgentAttachment[])); } catch { /* ok */ } }
 
   let referencedSkills: string[] = [];
   const skillsJson = formData.get("referencedSkills") as string | null;
   if (skillsJson) { try { referencedSkills = JSON.parse(skillsJson) as string[]; } catch { /* ok */ } }
   const modelTier = (formData.get("modelTier") as string | null) ?? undefined;
+  const workspaceRootIds = parseWorkspaceRootIds(formData.get("workspaceRootIds") as string | null);
 
-  return { messages, conversationId, attachments, referencedSkills, modelTier, roleParam };
+  return { messages, conversationId, attachments, referencedSkills, modelTier, roleParam, workspaceRootIds };
 }
 
-async function parseJsonRequest(request: Request) {
+async function parseJsonRequest(request: Request, traceId: string) {
   const { createChatConversation: createConv } = await import("@/lib/db/sqlite");
-  const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[]; referencedSkills?: string[]; modelTier?: string; role?: string };
+  const body = (await request.json()) as { conversationId?: number; messages?: AgentMessage[]; prompt?: string; attachments?: AgentAttachment[]; referencedSkills?: string[]; modelTier?: string; role?: string; workspaceRootIds?: string[] };
   let conversationId = body.conversationId;
   const roleParam = parseRoleParam(body.role);
   const rawAttachments = body.attachments ?? [];
@@ -495,15 +529,27 @@ async function parseJsonRequest(request: Request) {
           const title = lastUser?.content?.trim() ? generateShortTitle(lastUser.content.trim()) : "新对话";
           conversationId = createConv(title, requireUsableRoleId(roleParam));
         }
-        const filePath = saveAttachmentBuffer(conversationId, att.name, buffer);
-        attachments.push({ ...att, storagePath: filePath, size: buffer.length });
+        attachments.push(await saveAttachmentBuffer(traceId, att.name, att.mimeType, buffer));
         continue;
       }
     }
     attachments.push(att);
   }
 
-  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId, attachments, referencedSkills: body.referencedSkills ?? [], modelTier: body.modelTier, roleParam };
+  return { messages: body.messages ?? [{ role: "user" as const, content: body.prompt ?? "" }], conversationId, attachments, referencedSkills: body.referencedSkills ?? [], modelTier: body.modelTier, roleParam, workspaceRootIds: parseWorkspaceRootIds(body.workspaceRootIds) };
+}
+
+function logicalAssetPath(assetId: string, name: string): string {
+  return `asset/${assetId}/${encodeURIComponent(path.basename(name))}`;
+}
+
+function parseWorkspaceRootIds(raw: string | string[] | null | undefined): string[] {
+  let values: unknown = raw;
+  if (typeof raw === "string") {
+    try { values = JSON.parse(raw); } catch { return []; }
+  }
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values.filter((value): value is string => typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value)))].slice(0, 20);
 }
 
 function guessMimeType(fileName: string): string {

@@ -78,15 +78,13 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
           const s = (await (await fetch("/api/settings/agent")).json()) as {
             data?: {
               apiUrl?: string;
-              mainModel?: string;
-              routerModel?: string;
-              subagentModel?: string;
-              model?: string;
+              fastModel?: string;
+              reasoningModel?: string;
             };
           };
           setApiUrl(s.data?.apiUrl || "https://api.anthropic.com");
-          const reasoning = s.data?.mainModel || s.data?.model || "";
-          const fast = s.data?.routerModel || s.data?.subagentModel || s.data?.model || "";
+          const reasoning = s.data?.reasoningModel || "";
+          const fast = s.data?.fastModel || "";
           setReasoningModel(reasoning);
           setFastModel(fast);
         } catch { setApiUrl("https://api.anthropic.com"); }
@@ -236,8 +234,8 @@ export function FirstRunGate({ children }: { children: React.ReactNode }) {
               <div className="flex flex-col gap-2 pl-7">
                 <Input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="API URL，如 https://api.anthropic.com" />
                 <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="API Key（sk-...）" />
-                <Input value={fastModel} onChange={(e) => setFastModel(e.target.value)} placeholder="快速模型（Router / 子代理）" />
-                <Input value={reasoningModel} onChange={(e) => setReasoningModel(e.target.value)} placeholder="推理模型（复杂任务）" />
+                <Input value={fastModel} onChange={(e) => setFastModel(e.target.value)} placeholder="快速模型（路由 / 默认对话）" />
+                <Input value={reasoningModel} onChange={(e) => setReasoningModel(e.target.value)} placeholder="推理模型（深度思考 / 复杂子任务）" />
                 {fastModel.trim() && reasoningModel.trim() && fastModel.trim() === reasoningModel.trim() && (
                   <p className="text-meta text-muted-foreground">当前没有实际模型分层（快速与推理相同）。</p>
                 )}

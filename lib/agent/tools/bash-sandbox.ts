@@ -43,28 +43,55 @@ export function isBashSandboxAvailable(): boolean {
  * 这一点是实测确认的，不是照文档推的。
  */
 export function buildBashSandboxProfile(roots: BashSandboxRoots): string {
-  const readRoot = canonical(roots.readRoot);
-  const readRoots = [...new Set((roots.readRoots ?? []).map(canonical).filter((root) => root !== readRoot))];
-  const writeRoot = canonical(roots.writeRoot);
-  const home = canonical(os.homedir());
+  const readRoots = [...new Set([
+    ...sandboxPathVariants(roots.readRoot),
+    ...(roots.readRoots ?? []).flatMap(sandboxPathVariants),
+  ])];
+  const writeRoots = sandboxPathVariants(roots.writeRoot);
+  const taskRoots = [...new Set([...readRoots, ...writeRoots])];
+  const taskAncestors = [...new Set(taskRoots.flatMap(pathAncestors))];
+  const systemReadRoots = [
+    "/System",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/Library/Apple",
+    "/Library/Fonts",
+    // Development/runtime installations. These are read-only system package
+    // prefixes, not user document roots; Homebrew Python links dylibs here.
+    "/opt/homebrew",
+    "/opt/local",
+    "/private/var/db/timezone",
+  ].filter(existsSync).map(canonical);
   return [
     "(version 1)",
     "(deny default)",
     // 进程与信号：不放开则连管道都起不来。
     "(allow process-exec process-fork signal sysctl-read)",
-    // 系统路径可读，否则任何命令都无法加载动态库。
-    "(allow file-read*)",
-    // 家目录整体不可读——真账本、.ssh、Documents 都在这里。
-    `(deny file-read* (subpath ${sbplString(home)}))`,
-    // 会话目录重新放开（覆盖上一条），含用户本次上传的附件。
-    `(allow file-read* (subpath ${sbplString(readRoot)}))`,
+    // 只开放命令、动态库、字体和时区所需的系统根。不能先 allow file-read*，
+    // 否则 /Volumes、其它用户目录和任意挂载盘都会绕过任务文件边界。
+    // sh/Python 启动时会读取根目录项本身；literal 只放行 `/`，不会放行其子树。
+    '(allow file-read-data (literal "/"))',
+    '(allow file-read* (literal "/private/var/select/sh"))',
+    ...systemReadRoots.map((root) => `(allow file-read* (subpath ${sbplString(root)}))`),
+    '(allow file-read* (literal "/dev/null") (literal "/dev/urandom") (literal "/dev/random")',
+    '                  (literal "/dev/stdin") (literal "/dev/stdout") (literal "/dev/stderr")',
+    '                  (literal "/dev/tty"))',
+    // Sandbox path filters still need metadata access to every parent directory
+    // in order to traverse into an allowed leaf. This permits stat/traversal,
+    // not listing or reading sibling files.
+    ...taskAncestors.map((root) => `(allow file-read-metadata (literal ${sbplString(root)}))`),
+    // 会话输入、技能/运行时根和输出目录按白名单只读开放。
     ...readRoots.map((root) => `(allow file-read* (subpath ${sbplString(root)}))`),
+    ...writeRoots.map((root) => `(allow file-read* (subpath ${sbplString(root)}))`),
     // 标准设备：不放开则 `>/dev/null`、管道、tty 交互全断。
     '(allow file-write-data (literal "/dev/null") (literal "/dev/stdout") (literal "/dev/stderr")',
     '                       (literal "/dev/dtracehelper") (literal "/dev/tty"))',
     '(allow file-ioctl (literal "/dev/tty") (literal "/dev/dtracehelper"))',
     // 唯一可写区：本回合输出目录。
-    `(allow file-write* (subpath ${sbplString(writeRoot)}))`,
+    ...writeRoots.map((root) => `(allow file-write* (subpath ${sbplString(root)}))`),
+    // 动态任务代码没有隐式联网权限；联网必须走受控宿主工具。
+    "(deny network*)",
   ].join("\n");
 }
 
@@ -101,4 +128,27 @@ function canonical(target: string): string {
   } catch {
     return path.resolve(target);
   }
+}
+
+/** Seatbelt does not treat macOS' public `/var` and `/tmp` aliases as the same path. */
+function sandboxPathVariants(target: string): string[] {
+  const resolved = canonical(target);
+  if (resolved === "/private/var" || resolved.startsWith("/private/var/")) {
+    return [resolved, resolved.slice("/private".length)];
+  }
+  if (resolved === "/private/tmp" || resolved.startsWith("/private/tmp/")) {
+    return [resolved, resolved.slice("/private".length)];
+  }
+  return [resolved];
+}
+
+function pathAncestors(target: string): string[] {
+  const ancestors: string[] = [];
+  let current = path.dirname(target);
+  while (current !== path.dirname(current)) {
+    ancestors.push(current);
+    current = path.dirname(current);
+  }
+  ancestors.push(current);
+  return ancestors;
 }

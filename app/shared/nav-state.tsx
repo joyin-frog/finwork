@@ -4,9 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { toast } from "sonner";
 import { ROLE_LABELS } from "@/lib/domain/role-ui";
 
-export const MIN_NAV_WIDTH = 180;
-export const MAX_NAV_WIDTH = 360;
-export const DEFAULT_NAV_WIDTH = 216;
+export const MIN_NAV_WIDTH = 220;
+export const MAX_NAV_WIDTH = 500;
+export const DEFAULT_NAV_WIDTH = 250;
 
 type ConversationSummary = {
   id: number;
@@ -31,7 +31,7 @@ export type AgentRosterLite = {
   reviewPending: boolean;
 };
 
-export type PageKind = "cockpit" | "chat-new" | "agents" | "knowledge" | "files" | "skills" | "config";
+export type PageKind = "cockpit" | "chat-new" | "agents" | "knowledge" | "skills" | "config";
 
 export type PageTab = {
   kind: "page";
@@ -81,7 +81,6 @@ const PAGE_ROUTE_META: Array<{ prefix: string; pageKind: PageKind; title: string
   { prefix: "/cockpit", pageKind: "cockpit", title: "总览" },
   { prefix: "/agents", pageKind: "agents", title: "智能体" },
   { prefix: "/knowledge", pageKind: "knowledge", title: "知识库" },
-  { prefix: "/files", pageKind: "files", title: "文件" },
   { prefix: "/skills", pageKind: "skills", title: "技能" },
   { prefix: "/config", pageKind: "config", title: "设置" },
 ];
@@ -389,7 +388,11 @@ export function NavStateProvider({ children }: { children: React.ReactNode }) {
       if (stored) {
         const parsed = Number(stored);
         if (Number.isFinite(parsed)) {
-          setNavWidthState(Math.max(MIN_NAV_WIDTH, Math.min(MAX_NAV_WIDTH, parsed)));
+          const normalized = parsed < MIN_NAV_WIDTH
+            ? DEFAULT_NAV_WIDTH
+            : Math.min(MAX_NAV_WIDTH, parsed);
+          setNavWidthState(normalized);
+          localStorage.setItem("nav:width", String(normalized));
         }
       }
     } catch {

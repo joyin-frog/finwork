@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Clock01Icon,
-  ChevronRightIcon,
+  ArrowDown01Icon,
+  ArrowRight01Icon,
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "@hugeicons/core-free-icons";
@@ -358,7 +359,7 @@ export function AssistantTurn({
             <span className={cn("min-w-0 truncate text-body", isActive ? "shimmer shimmer-color-primary text-muted-foreground" : "text-muted-foreground")}>
               {isActive ? "正在处理" : processedLabel}
             </span>
-            <HugeiconsIcon icon={ChevronRightIcon} size={15} className="details-chevron shrink-0 transition-transform" />
+            <HugeiconsIcon icon={processOpen ? ArrowDown01Icon : ArrowRight01Icon} size={15} className="shrink-0" />
           </summary>
           {/* 折叠态不挂载过程段子元素:<details open=false> 只视觉隐藏、React 仍会 mount 全部,
               重会话(数千事件)由此一次性渲染卡顿。改为展开时才渲染,打开会话瞬时、点开再挂载。
@@ -444,10 +445,10 @@ export function AssistantTurn({
       {/* 答案正文:占位态(还没产出)不渲染;answerText=最后一段无工具的 text。
           无最终回答时若 timeline 已有过程 text,不回退 message.content(那是各段 join(""),会粘成一坨)。 */}
       {(() => {
-        // 用量超限:走与 TurnError 同一个全宽 Callout(warn),视觉与其它提示统一,不再是裸红字。
+        // 用量超限:提示卡收窄到消息列约 2/3，避免把短提示铺满整行。
         if (usageBlockedMessage) {
           return (
-            <Callout variant="warn" className="w-full">
+            <Callout variant="warn" className="w-2/3 min-w-[280px] max-w-full">
               <span className="whitespace-pre-wrap">{usageBlockedMessage}</span>
             </Callout>
           );

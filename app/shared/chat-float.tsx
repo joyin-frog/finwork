@@ -14,9 +14,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MessageCircle, ArrowExpand01Icon, Cancel01Icon, CornerDownLeftIcon } from "@hugeicons/core-free-icons";
-import { MarkdownMessage } from "@/app/chat/markdown-message";
 import { useChatStream, isFinished } from "@/app/shared/chat-stream";
 import type { StartTurnParams } from "@/app/shared/chat-stream";
 import type { DisplayFile, Message } from "@/app/chat/chat-types";
@@ -27,6 +27,13 @@ import { Textarea } from "@/components/ui/textarea";
 // ─── 空数组常量（MarkdownMessage 不需要文件列表时的占位） ────────────────────
 const EMPTY_FILES: DisplayFile[] = [];
 function noop() {}
+
+// Markdown 渲染链包含 remark/rehype/highlight，仅在浮窗实际出现消息时加载。
+// ChatFloat 挂在全局布局，静态引入会把这条重链带到所有页面。
+const MarkdownMessage = dynamic(
+  () => import("@/app/chat/markdown-message").then((mod) => mod.MarkdownMessage),
+  { ssr: false },
+);
 
 // ─── ChatFloat ───────────────────────────────────────────────────────────────
 
@@ -171,7 +178,7 @@ export function ChatFloat() {
           role="dialog"
           aria-modal="false"
           aria-label="对话浮窗"
-          className="fixed bottom-20 right-5 z-50 flex flex-col w-[400px] h-[560px] bg-card overflow-hidden"
+          className="fixed bottom-20 right-5 z-50 flex flex-col w-[400px] h-[560px] bg-background overflow-hidden"
         >
           {/* 标题栏 */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
@@ -247,7 +254,7 @@ export function ChatFloat() {
           </div>
 
           {/* 输入区 */}
-          <div className="shrink-0 border-t border-border px-3 py-2">
+          <div className="shrink-0 px-3 py-2">
             <div className="relative">
               <Textarea
                 ref={textareaRef}
@@ -261,19 +268,19 @@ export function ChatFloat() {
                 }}
                 placeholder="有什么财务问题？"
                 rows={2}
-                className="w-full resize-none pr-8 text-body"
+                className="w-full resize-none bg-input pr-8 text-body"
                 aria-label="对话输入"
               />
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-xs"
+                size="icon"
                 aria-label="发送"
                 disabled={!draft.trim() || isStreaming}
                 onClick={handleSend}
                 className="absolute bottom-1.5 right-1.5 text-muted-foreground/60 hover:text-foreground"
               >
-                <HugeiconsIcon icon={CornerDownLeftIcon} size={14} />
+                <HugeiconsIcon icon={CornerDownLeftIcon} size={16} />
               </Button>
             </div>
           </div>

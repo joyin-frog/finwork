@@ -241,7 +241,7 @@
       <text class="label-sub"   x="402" y="166" text-anchor="middle">消息流 · Agent 时间线 · 文件栏</text>
     </g>
 
-    <g class="module" data-tip="知识库：双栏布局，本地文件上传、向量检索、预览、自动分类。Agent 检索增强（RAG）入口。">
+    <g class="module" data-tip="知识库：双栏布局，本地文件上传、BM25 关键词检索、预览、自动分类。Agent 检索增强（RAG）入口。">
       <rect x="532" y="108" width="200" height="86" rx="12" ry="12"
             fill="var(--fe-soft)" stroke="var(--fe)" stroke-width="1.5"/>
       <text class="label-title" x="632" y="146" text-anchor="middle" fill="var(--fe-ink)">/knowledge 知识库</text>
@@ -291,12 +291,12 @@
       <text class="label-sub"   x="402" y="466" text-anchor="middle">conversation 文件栈</text>
     </g>
 
-    <g class="module" data-tip="知识库 API：documents CRUD、按 id 取文件、search 检索（向量 + BM25 + 重排）。">
+    <g class="module" data-tip="知识库 API：documents CRUD、按 id 取文件、search 检索（BM25 + 标题加权 + 结构上下文）。">
       <rect x="532" y="392" width="200" height="92" rx="12" ry="12"
             fill="var(--be-soft)" stroke="var(--be)" stroke-width="1.5"/>
       <text class="label-title" x="632" y="428" text-anchor="middle" fill="var(--be-ink)">/api/knowledge/*</text>
       <text class="label-sub"   x="632" y="448" text-anchor="middle">documents · search</text>
-      <text class="label-sub"   x="632" y="466" text-anchor="middle">向量 + BM25 + 重排</text>
+      <text class="label-sub"   x="632" y="466" text-anchor="middle">BM25 · 标题加权 · 引用</text>
     </g>
 
     <g class="module" data-tip="驾驶舱 + 分析 API：/api/cockpit/summary 聚合 KPI；/api/analysis/summary 财务分析摘要。绕过 LLM 直接走规则。">
@@ -422,12 +422,12 @@
       <text class="label-sub"   x="232" y="966" text-anchor="middle">kingdee-draft</text>
     </g>
 
-    <g class="module" data-tip="知识库 Pipeline：lib/knowledge/。parsers → chunker → embedding (bge-small-zh-v1.5) → 向量+BM25 检索 → reranker → 自动分类。给 Agent 提供 RAG 上下文。">
+    <g class="module" data-tip="知识库 Pipeline：lib/knowledge/。parsers → chunker → BM25 词法索引 → ACL 过滤 → 结构上下文 → 不可变引用。给 Agent 提供 RAG 上下文。">
       <rect x="412" y="876" width="360" height="108" rx="12" ry="12"
             fill="var(--agent-soft)" stroke="var(--agent)" stroke-width="1.5"/>
       <text class="label-title" x="592" y="908" text-anchor="middle" fill="var(--agent-ink)">Knowledge Pipeline (lib/knowledge/)</text>
-      <text class="label-sub"   x="592" y="930" text-anchor="middle">parsers · chunker · embedding</text>
-      <text class="label-sub"   x="592" y="948" text-anchor="middle">vector-store · reranker · retriever</text>
+      <text class="label-sub"   x="592" y="930" text-anchor="middle">parsers · chunker · BM25</text>
+      <text class="label-sub"   x="592" y="948" text-anchor="middle">FTS5 · ACL · citation</text>
       <text class="label-sub"   x="592" y="966" text-anchor="middle">category · auto-extractor</text>
     </g>
 
@@ -456,14 +456,14 @@
       <text class="label-sub"   x="182" y="1180" text-anchor="middle">finance-agent.db (WAL)</text>
     </g>
 
-    <g class="module" data-tip="向量索引：@xenova/transformers 加载 bge-small-zh-v1.5 (中文优化)，本地索引文件。models/Xenova/bge-small-zh-v1.5。">
+    <g class="module" data-tip="BM25 词法索引：SQLite FTS5 本地执行，中英文确定性分词，无模型文件、无网络依赖。">
       <rect x="312" y="1068" width="220" height="128" rx="12" ry="12"
             fill="var(--data-soft)" stroke="var(--data)" stroke-width="1.5"/>
-      <text class="label-title" x="422" y="1106" text-anchor="middle" fill="var(--data-ink)">Vector Index</text>
-      <text class="label-sub"   x="422" y="1126" text-anchor="middle">bge-small-zh-v1.5</text>
-      <text class="label-sub"   x="422" y="1144" text-anchor="middle">@xenova/transformers</text>
-      <text class="label-sub"   x="422" y="1162" text-anchor="middle">本地索引</text>
-      <text class="label-sub"   x="422" y="1180" text-anchor="middle">models/Xenova/</text>
+      <text class="label-title" x="422" y="1106" text-anchor="middle" fill="var(--data-ink)">BM25 Index</text>
+      <text class="label-sub"   x="422" y="1126" text-anchor="middle">SQLite FTS5</text>
+      <text class="label-sub"   x="422" y="1144" text-anchor="middle">中英文词项索引</text>
+      <text class="label-sub"   x="422" y="1162" text-anchor="middle">本地·无模型</text>
+      <text class="label-sub"   x="422" y="1180" text-anchor="middle">ACL · versioned</text>
     </g>
 
     <g class="module" data-tip="文件存储：每个 conversation 一目录，存放上传与生成的 Excel/PDF/CSV。路径由 lib/runtime/paths.ts 在 AppDataDir 下解析。">
@@ -589,7 +589,7 @@
       <path d="M 540,984 L 230,1068" marker-end="url(#arrow)"/>
     </g>
     <g class="edge-label">
-      <text x="520" y="1024" text-anchor="middle">embedding 写入</text>
+      <text x="520" y="1024" text-anchor="middle">BM25 词项写入</text>
       <text x="340" y="1044" text-anchor="middle">SQL · 元数据</text>
     </g>
 
@@ -636,7 +636,7 @@
     2) Harness 通过 <code>system-prompt + skills + hooks + allowed-tools</code> 给 Agent 装上世界观和护栏：路径沙箱、风险确认、AskUserQuestion 转写、耗时打点都在 hooks 链里。<br/>
     3) Router 先用 Haiku 做轻量分类，再交给主模型跑完整 turn；长上下文用 <code>session_id + resume</code> 续接；子任务用 Subagent Runner 隔离上下文窗口。<br/>
     4) 跨会话事实用 Memory Store 自动抽取 → SQLite → 下次 prompt 回灌。<br/>
-    5) 一切默认本机：SQLite、文件、向量索引、Python worker 都跑在 Tauri 进程里；外网出口只有 Claude API 与金蝶 API（WS sidecar 已移除，2026-07-07，功能由 HTTP+SSE 主路径覆盖）。
+    5) 一切默认本机：SQLite、文件、BM25 词法索引、Python worker 都跑在 Tauri 进程里；知识检索不下载、不加载 Embedding 模型。
   </footer>
 
 </div>

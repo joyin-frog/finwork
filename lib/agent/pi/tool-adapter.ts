@@ -3,6 +3,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "@earendil-works/pi-ai";
 import type { FinanceToolDefinition } from "@/lib/agent/tools/finance-definition";
 import type { FinanceToolAuthorization } from "@/lib/agent/tools/authorize";
+import type { FinanceToolRuntime } from "@/lib/agent/tools/capability-runtime";
 
 type LegacyToolResult = {
   content?: Array<{ type?: string; text?: string; data?: string; mimeType?: string }>;
@@ -20,6 +21,7 @@ type LegacyToolResult = {
 export function createPiFinanceTools(
   definitions: FinanceToolDefinition[],
   authorize: FinanceToolAuthorization,
+  runtime?: FinanceToolRuntime,
 ): ToolDefinition[] {
   return definitions.map((definition) => ({
     name: definition.id,
@@ -35,7 +37,9 @@ export function createPiFinanceTools(
       const startedAt = Date.now();
       let raw: unknown;
       try {
-        raw = await definition.handler(args, { signal });
+        raw = runtime
+          ? await runtime.execute(definition, args, signal)
+          : await definition.handler(args, { signal });
       } catch (error) {
         await authorize.after(
           definition,

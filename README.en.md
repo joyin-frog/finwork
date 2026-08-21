@@ -22,11 +22,11 @@ Data is stored locally in a dedicated data directory; see the platform-specific 
 
 ## Run from source
 
-Source development requires Node.js 22+. Desktop development also requires Rust and the platform C toolchain.
+Source development requires Node.js 22+ and pnpm 11. Desktop development also requires Rust and the platform C toolchain. This repository uses pnpm only, with `pnpm-lock.yaml` as the sole dependency lockfile.
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). The first-run guide installs the required Python components and helps configure an API key and model. Without an API key, the interface remains available in local mock mode.
@@ -34,8 +34,8 @@ Open [http://localhost:3000](http://localhost:3000). The first-run guide install
 Desktop development and builds:
 
 ```bash
-npm run tauri:dev
-npm run tauri:build
+pnpm tauri:dev
+pnpm tauri:build
 ```
 
 ## Data locations

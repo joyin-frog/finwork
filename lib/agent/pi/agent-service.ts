@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 import type {
   AgentAttachment,
   AgentMessage,
@@ -18,14 +19,11 @@ import {
   getPiAgentDir,
   getPiSessionDir,
   getProjectRoot,
+  getRunFileWorkspaceDir,
 } from "@/lib/runtime/paths";
-import { ensureConventionsMigrated } from "@/lib/memory/migrate-conventions";
-import { readMemoryMarkdown } from "@/lib/memory/file-store";
 import { readCompanyProfile } from "@/lib/profile/file-store";
-import { listRecentNegativeReasons } from "@/lib/db/sqlite";
 import { assertSpecialistRoleUsable } from "@/lib/agent/roles/availability";
-import { getRoleMemoryForPrompt } from "@/lib/db/role-memory-store";
-import { resolveRoleAllowedTools } from "@/lib/agent/roles/registry";
+import { resolveRoleScopeTools } from "@/lib/agent/roles/registry";
 import {
   buildSpecialistChatSystemPrompt,
   buildSpecialistDynamicSystemContext,
@@ -33,6 +31,7 @@ import {
 import { buildFinanceToolDefinitions } from "@/lib/agent/mcp-tools";
 import { createFinanceToolAuthorizer } from "@/lib/agent/tools/authorize";
 import { createPiFinanceTools } from "@/lib/agent/pi/tool-adapter";
+import { createFinanceCapabilityRuntime } from "@/lib/agent/tools/capability-runtime";
 import { createFinworkModelRuntime } from "@/lib/agent/pi/provider";
 import { createFinworkPiResourceLoader, resolveFinworkSkillRoots } from "@/lib/agent/pi/resource-loader";
 import { PiEventMapper } from "@/lib/agent/pi/event-mapper";
@@ -52,9 +51,26 @@ import { wrapExternalContext } from "@/lib/agent/external-context";
 import { buildDynamicSystemContext } from "@/lib/agent/system-prompt";
 import { decideSettleFromCompletionGate } from "@/lib/agent/completion-gate-settle";
 import {
-  deriveTaskContractForTurn,
-  type TaskContract,
+  deriveDeliverySpecForTurn,
+  type DeliverySpec,
 } from "@/lib/agent/run-contract";
+import {
+  loadGovernedPromptMemory,
+  resolveMemoryRuntimeContext,
+} from "@/lib/memory-v2/prompt";
+import {
+  CapabilityExecutionLedger,
+  evaluateExecutionRequirements,
+  executionRequirementsForSpreadsheetTask,
+  hasSuccessfulArtifactWrite,
+  type ExecutionFact,
+  type ExecutionRequirement,
+} from "@/lib/capability/execution-gate";
+import { getDb } from "@/lib/db/sqlite";
+import { workspaceReviewGate } from "@/lib/file-workspace";
+import { workPlanPrompt } from "@/lib/task/work-plan";
+import { classifyTransientProviderError } from "@/lib/evaluation/transient-provider-retry";
+import { getSpreadsheetCapabilities, type SpreadsheetCapabilities } from "@/lib/runtime/spreadsheet-probe";
 
 export type PiAgentServiceOptions = {
   /** AR10 harness 可覆盖到临时目录；生产缺省固定为 Finwork app-data。 */
@@ -72,7 +88,7 @@ export type PiAgentServiceOptions = {
    */
   completionVerifier?: (input: {
     runId: string;
-    taskContract: TaskContract;
+    deliverySpec: DeliverySpec;
   }) => Promise<{
     ok: boolean;
     message?: string;
@@ -83,9 +99,114 @@ export type PiAgentServiceOptions = {
     ok: boolean;
     message?: string;
   };
+  /**
+   * A transient stream failure may be continued in the same persisted Pi
+   * session. Disabled by default for write tasks; controlled executors can opt
+   * in because the workspace version chain rejects duplicate/stale mutations.
+   */
+  maxTransientContinuationAttempts?: number;
   /** abort() 可能等待 SDK 的 waitForIdle；为清理设置独立上限。 */
   abortTimeoutMs?: number;
+  /**
+   * 受控评测或业务工作流追加的执行合同。门禁只接受成功的 tool_completed 事实，
+   * 不接受模型文字、tool_started 或失败调用代替真实执行。
+   */
+  executionRequirements?: ExecutionRequirement[];
+  /** Force every nested Pi worker onto the same model as the parent (used by isolated Agent evaluation). */
+  nestedModelOverride?: string;
 };
+
+type HarnessOwnedToolFailure = {
+  toolName: string;
+  code: string;
+  message: string;
+  terminationReason: "dependency_missing" | "tool_error" | "session_stale";
+};
+
+export function classifyHarnessOwnedToolFailure(
+  event: Extract<AgentRuntimeEvent, { type: "tool_completed" }>,
+): HarnessOwnedToolFailure | null {
+  const payload = `${event.content ?? ""}\n${safeStringify(event.structured)}`;
+  if (/stale_base_version/i.test(payload)) {
+    return { toolName: event.toolName || "unknown_tool", code: "stale_base_version", message: event.content || "候选文件基于旧版本", terminationReason: "session_stale" };
+  }
+  const environment = payload.match(/(?:recalc_unavailable|render_unavailable|python_missing|spreadsheet_preflight_failed)/i)?.[0];
+  if (environment) {
+    return { toolName: event.toolName || "unknown_tool", code: environment.toLowerCase(), message: event.content || environment, terminationReason: "dependency_missing" };
+  }
+  const tool = payload.match(/(?:Invalid time value|artifact_diff_failed|commit_failed|validation_report_invalid|runtime_error)/i)?.[0];
+  if (tool) {
+    return { toolName: event.toolName || "unknown_tool", code: tool.toLowerCase().replace(/\s+/g, "_"), message: event.content || tool, terminationReason: "tool_error" };
+  }
+  return null;
+}
+
+function throwHarnessOwnedToolFailure(failure: HarnessOwnedToolFailure | null): void {
+  if (!failure) return;
+  const error = new Error(`${failure.code}: ${failure.message}`) as Error & {
+    code?: string;
+    __terminationReason?: string;
+    __repairStopReason?: FinworkAgentResult["repairStopReason"];
+  };
+  error.name = "HarnessError";
+  error.code = failure.code;
+  error.__terminationReason = failure.terminationReason;
+  error.__repairStopReason = "harness_handled";
+  throw error;
+}
+
+function safeStringify(value: unknown): string {
+  try { return JSON.stringify(value ?? {}); }
+  catch { return ""; }
+}
+
+let spreadsheetPreflightCache: { expiresAt: number; value: SpreadsheetCapabilities } | null = null;
+
+async function requireSpreadsheetRuntimePreflight(deliverySpec: DeliverySpec): Promise<void> {
+  const requirement = deliverySpec.spreadsheetRequirement;
+  if (!requirement?.needsRecalc && !requirement?.needsRender) return;
+  const now = Date.now();
+  const capabilities = spreadsheetPreflightCache && spreadsheetPreflightCache.expiresAt > now
+    ? spreadsheetPreflightCache.value
+    : await getSpreadsheetCapabilities();
+  spreadsheetPreflightCache = { expiresAt: now + 5 * 60_000, value: capabilities };
+  const failures = [
+    ...(requirement.needsRecalc && !capabilities.recalc.ok
+      ? [`recalc=${capabilities.recalc.errorCode ?? "probe_failed"}`]
+      : []),
+    ...(requirement.needsRender && !capabilities.render.ok
+      ? ["render=probe_failed"]
+      : []),
+  ];
+  if (!failures.length) return;
+  const error = new Error(`spreadsheet_preflight_failed: ${failures.join(", ")}`) as Error & {
+    code?: string;
+    __terminationReason?: string;
+  };
+  error.name = "PreflightError";
+  error.code = "spreadsheet_preflight_failed";
+  error.__terminationReason = "dependency_missing";
+  throw error;
+}
+
+function mergeExecutionRequirements(
+  requirements: readonly ExecutionRequirement[],
+): ExecutionRequirement[] {
+  const unique = new Map<string, ExecutionRequirement>();
+  for (const requirement of requirements) {
+    const anyOf = [...new Set(requirement.anyOf.map((item) => item.trim()).filter(Boolean))].sort();
+    if (!anyOf.length) continue;
+    const normalized = {
+      ...requirement,
+      id: requirement.id.trim(),
+      anyOf,
+      minimumCount: Math.max(1, requirement.minimumCount ?? 1),
+    };
+    const key = `${normalized.id}|${normalized.anyOf.join("|")}|${normalized.minimumCount}`;
+    unique.set(key, normalized);
+  }
+  return [...unique.values()];
+}
 
 /**
  * Pi-only Finwork Agent Service.
@@ -102,7 +223,7 @@ export async function runPiAgent(
   if (isMockAgentEnabled()) {
     return runMockAgent(request.messages, request);
   }
-  const modelId = (request.modelOverride || settings.mainModel || "").trim();
+  const modelId = (request.modelOverride || settings.fastModel || "").trim();
   if (!settings.apiKey.trim() || !modelId) {
     return {
       mode: "mock",
@@ -122,38 +243,82 @@ export async function runPiAgent(
   );
   mkdirSync(outputDir, { recursive: true });
 
-  const roleMemories = role ? safeRoleMemories(role.id) : [];
+  // Query pipeline normally injects this contract. Direct runPiAgent callers must
+  // get the same completion and governed-memory boundary.
+  const deliverySpec = request.deliverySpec ?? deriveDeliverySpecForTurn({
+    intent: request.intent,
+    attachments: request.attachments,
+    userMessage: [...request.messages].reverse().find((message) => message.role === "user")?.content,
+  });
+  await requireSpreadsheetRuntimePreflight(deliverySpec);
+  const executionRequirements = mergeExecutionRequirements([
+    ...executionRequirementsForSpreadsheetTask({
+      hasSpreadsheet: deliverySpec.taskKind !== "text",
+      needsWrite: deliverySpec.spreadsheetRequirement?.needsWrite === true,
+      needsValidation: deliverySpec.requiredDeliverables.length > 0,
+    }),
+    ...(deliverySpec.taskKind === "financial_consolidation"
+      && deliverySpec.spreadsheetRequirement?.needsWrite === true
+      ? [{
+          id: "financial_model.task_script",
+          description: "用任务脚本生成复杂财务模型候选文件",
+          anyOf: ["sandboxed.code-execution"],
+        }]
+      : []),
+    ...(serviceOptions.executionRequirements ?? []),
+  ]);
+  const needsWorkspaceChangeReview =
+    deliverySpec.spreadsheetRequirement?.needsWrite === true
+    && (request.attachments ?? []).some((attachment) =>
+      Boolean(attachment.assetId) && (/\.(xlsx|xlsm|xls|csv|tsv)$/i.test(attachment.name) || /spreadsheet|excel|csv/i.test(attachment.mimeType)),
+    );
+  const executionLedger = new CapabilityExecutionLedger();
+  executionLedger.seed("agent.turn");
+  const contractCompletionRequired =
+    deliverySpec.requiredDeliverables.length > 0 || executionRequirements.length > 0;
+  const latestUserRequest = [...request.messages].reverse()
+    .find((message) => message.role === "user")?.content ?? "";
+  const memoryContext = resolveMemoryRuntimeContext({
+    explicit: request.memoryContext,
+    deliverySpec,
+    retrievalText: latestUserRequest,
+  });
+  const governedMemory = await loadGovernedPromptMemory({
+    roleId: role?.id,
+    context: memoryContext,
+  });
+  if (governedMemory.status === "degraded") {
+    console.warn("[pi-agent] governed memory unavailable; legacy fallback forbidden:", governedMemory.reason);
+  }
+
+  // Static role prompt must not freeze request-scoped memory. Governed summaries
+  // are injected only through the dynamic external-context section below.
   const systemPrompt = role
-    ? buildSpecialistChatSystemPrompt(role, roleMemories, outputDir)
+    ? buildSpecialistChatSystemPrompt(role, [], outputDir)
     : undefined;
-  const memoryMarkdown = await readMemoryMarkdown();
-  if (!role) await ensureConventionsMigrated().catch(() => undefined);
   const roleDynamicSystemContext = role
-    ? () => buildSpecialistDynamicSystemContext(memoryMarkdown, roleMemories, outputDir)
+    ? () => buildSpecialistDynamicSystemContext(
+        governedMemory.markdown,
+        [],
+        outputDir,
+      )
     : undefined;
   const promptContext = role
     ? undefined
     : {
         identity: { companyName: settings.companyName, agentName: settings.agentName },
-        memoryMarkdown,
+        memoryMarkdown: governedMemory.markdown,
         roleMode: settings.roleMode,
-        recentNegativeFeedback: safeRecentNegativeReasons(),
         outputDir,
         companyProfile: await readCompanyProfile().catch(() => ({})),
       };
-  const contextPolicy = role
-    ? null
-    : resolveAgentContextPolicy({
-        messages: request.messages,
-        attachments: request.attachments,
-        intent: request.intent,
-      });
-
-  // Query pipeline 会预先注入合同；直接调用 runPiAgent（评测、CLI、测试）也必须有同样的
-  // 完成语义，否则模型可以在生成工作文件后直接 stop，绕过质量门。
-  const taskContract = request.taskContract ?? deriveTaskContractForTurn({
-    intent: request.intent,
+  const contextPolicy = resolveAgentContextPolicy({
+    messages: request.messages,
     attachments: request.attachments,
+    intent: request.intent,
+    artifactWrite:
+      deliverySpec.spreadsheetRequirement?.needsWrite === true
+      || deliverySpec.requiredDeliverables.length > 0,
   });
 
   const { modelRuntime, model, pricingKnown } = await createFinworkModelRuntime(settings, modelId);
@@ -172,13 +337,14 @@ export async function runPiAgent(
     readRoot: path.dirname(outputDir),
     // 附件可能位于会话目录之外（历史评测就是这种布局）。只加入附件所在目录的
     // 只读权限；写权限仍严格限制在本回合 outputDir。
-    readRoots: [...new Set(
-      (request.attachments ?? [])
+    readRoots: [...new Set([
+      path.join(getRunFileWorkspaceDir(request.traceId ?? request.requestId ?? "broker"), "inputs"),
+      ...(request.attachments ?? [])
         .map((attachment) => attachment.storagePath)
         .filter((storagePath): storagePath is string => Boolean(storagePath))
         .map((storagePath) => path.dirname(path.resolve(storagePath)))
         .filter((root) => root !== path.dirname(outputDir)),
-    )],
+    ])],
     skillRoots,
   };
   // 恢复判定要在装扩展之前算：L3b 的历史回放只在「没有可恢复 session」时才注入。
@@ -224,12 +390,31 @@ export async function runPiAgent(
   let liveHandle: LiveSessionHandle | null = null;
   let timedOut = false;
   let externallyAborted = request.signal?.aborted === true;
+  let humanDecisionError: Error | null = null;
   let repairRounds = 0;
   let repairStopReason: FinworkAgentResult["repairStopReason"] =
-    taskContract.requiredDeliverables.length ? "max_rounds" : "not_required";
+    contractCompletionRequired ? "max_rounds" : "not_required";
+  let suppressProtocolRepairText = false;
+  let protocolRepairFallbackContent: string | undefined;
+  const bufferDeliveryText = contractCompletionRequired;
   const mapper = new PiEventMapper();
+  let harnessOwnedToolFailure: HarnessOwnedToolFailure | null = null;
   const currentRunMessages: AgentSessionEvent[] = [];
-  const emitQuestion = wrapQuestionResolver(request.resolveUserQuestion, request.emit);
+  const operationAbort = new AbortController();
+  let askUserQuestionCount = 0;
+  const emitQuestion = wrapQuestionResolver(
+    request.resolveUserQuestion,
+    (event) => {
+      if (event.type === "ask_user") askUserQuestionCount += 1;
+      request.emit?.(event);
+    },
+    (error) => {
+      if (!(error instanceof Error) || error.name !== "HumanDecisionRequiredError") return;
+      humanDecisionError = error;
+      operationAbort.abort(error);
+      void abortSessionWithDeadline(session, serviceOptions.abortTimeoutMs ?? 2_000);
+    },
+  );
   const definitions = buildFinanceToolDefinitions(
     outputDir,
     request.traceId ?? request.requestId,
@@ -239,18 +424,32 @@ export async function runPiAgent(
       subagentExecutor: runPiSubagent,
       subagentParallelExecutor: runPiSubagentsParallel,
       readDocumentAllowedRoots: builtinRoots.readRoots,
-      ...(taskContract
-        ? { finalize: { taskContract, runId: request.requestId ?? request.traceId ?? "unknown" } }
+      workspaceRootIds: request.workspaceRootIds,
+      workspaceAssetIds: (request.attachments ?? []).flatMap((attachment) => attachment.assetId ? [attachment.assetId] : []),
+      memoryContext,
+      runContext: request.runContext,
+      modelOverride: serviceOptions.nestedModelOverride,
+      ...(deliverySpec
+        ? {
+            finalize: {
+              deliverySpec,
+              runId: request.requestId ?? request.traceId ?? "unknown",
+              requireWorkspaceChangeReview: needsWorkspaceChangeReview,
+            },
+          }
         : {}),
     },
   );
   const allowed = role
-    ? new Set(resolveRoleAllowedTools(role.id))
+    ? new Set(resolveRoleScopeTools(role.id))
     : contextPolicy?.toolIds
       ? new Set(contextPolicy.toolIds)
       : null;
+  const enabledDefinitions = allowed
+    ? definitions.filter((definition) => allowed.has(definition.id))
+    : definitions;
   const financeTools = createPiFinanceTools(
-    allowed ? definitions.filter((definition) => allowed.has(definition.id)) : definitions,
+    enabledDefinitions,
     createFinanceToolAuthorizer({
       outputDir,
       roleId: role?.id,
@@ -258,8 +457,25 @@ export async function runPiAgent(
       resolveUserQuestion: emitQuestion,
       emit: request.emit,
     }),
+    createFinanceCapabilityRuntime(enabledDefinitions, {
+      runId: request.runContext?.runId ?? request.requestId ?? request.traceId ?? randomUUID(),
+      ...(request.runContext ? { caseId: request.runContext.caseId } : {}),
+      ...(request.runContext ? { runContext: request.runContext } : {}),
+    }),
   );
-  const builtinTools = await createFinworkBuiltinTools(builtinRoots);
+  const allowedBuiltins = contextPolicy?.builtinToolIds
+    ? new Set(contextPolicy.builtinToolIds)
+    : null;
+  const builtinTools = (await createFinworkBuiltinTools(builtinRoots, {
+    resolveUserQuestion: emitQuestion,
+  })).filter((tool) => (
+    (!allowedBuiltins || allowedBuiltins.has(tool.name))
+    && !(
+      deliverySpec.taskKind === "financial_consolidation"
+      && deliverySpec.spreadsheetRequirement?.needsWrite === true
+      && tool.name === "bash"
+    )
+  ));
   const tools = [
     ...builtinTools,
     ...financeTools,
@@ -290,11 +506,35 @@ export async function runPiAgent(
       currentRunMessages.push(event);
       const mapped = mapper.map(event);
       for (const runtimeEvent of mapped.events) {
+        executionLedger.record(runtimeEvent);
+        if (runtimeEvent.type === "tool_completed") {
+          if (runtimeEvent.isError) {
+            harnessOwnedToolFailure = classifyHarnessOwnedToolFailure(runtimeEvent)
+              ?? harnessOwnedToolFailure;
+          } else if (harnessOwnedToolFailure?.toolName === runtimeEvent.toolName) {
+            harnessOwnedToolFailure = null;
+          }
+        }
+        if (
+          bufferDeliveryText
+          && (runtimeEvent.type === "message_started"
+            || runtimeEvent.type === "message_delta"
+            || runtimeEvent.type === "message_completed")
+          && runtimeEvent.channel === "text"
+        ) {
+          continue;
+        }
+        if (
+          suppressProtocolRepairText &&
+          runtimeEvent.type === "message_delta" &&
+          runtimeEvent.channel === "text"
+        ) {
+          continue;
+        }
         if (!isQueryOwnedLifecycleEvent(runtimeEvent.type)) request.emit?.(runtimeEvent);
       }
     });
 
-    const operationAbort = new AbortController();
     const abortSession = () => {
       externallyAborted = true;
       operationAbort.abort();
@@ -313,14 +553,93 @@ export async function runPiAgent(
           const prompt = buildPiPrompt(
             request.messages,
             request.attachments ?? [],
-            taskContract,
+            deliverySpec,
+            request.workspaceRootIds,
+            request.workPlan,
           );
           try {
-            await awaitAbortable(
-              session.prompt(prompt.text, { images: prompt.images }),
-              operationAbort.signal,
-            );
-            await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+            const runProviderTurn = async (text: string, images?: ImageContent[]) => {
+              await awaitAbortable(
+                session!.prompt(text, images ? { images } : undefined),
+                operationAbort.signal,
+              );
+              await awaitAbortable(session!.waitForIdle(), operationAbort.signal);
+              throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
+            };
+            try {
+              await runProviderTurn(prompt.text, prompt.images);
+            } catch (error) {
+              const readOnlyContinuation = canContinueReadOnlyTurnAfterProviderFailure(
+                error,
+                executionLedger.snapshot(),
+                deliverySpec,
+              );
+              const configuredWriteContinuations = Math.max(
+                0,
+                Math.min(3, serviceOptions.maxTransientContinuationAttempts ?? 0),
+              );
+              const continuationLimit = readOnlyContinuation ? 1 : configuredWriteContinuations;
+              if (!readOnlyContinuation && (
+                continuationLimit === 0
+                || !classifyTransientProviderError(error).retryable
+              )) {
+                throw error;
+              }
+              let continuationError: unknown = error;
+              for (let attempt = 1; attempt <= continuationLimit; attempt += 1) {
+                try {
+                  await runProviderTurn([
+                    "系统恢复：上一轮模型响应因临时传输故障中断。",
+                    readOnlyContinuation
+                      ? "当前任务是只读且幂等的；已成功完成的工具结果仍在本会话中。"
+                      : "当前是受控文件任务；已成功的工具结果、脚本、候选文件与 candidateVersionId 仍在本会话和版本链中。",
+                    readOnlyContinuation
+                      ? "请直接基于现有结果继续未完成的分析，不要重复已成功的只读工具调用；只有证据确实不足时才补充读取。"
+                      : "请从中断点继续：不要重新执行已经成功的写入；先检查最近工具结果，后续 review 必须使用最新 candidateVersionId 作为 baseVersionId。",
+                    "完成剩余验证与正式交付。",
+                  ].join("\n"));
+                  continuationError = null;
+                  break;
+                } catch (nextError) {
+                  continuationError = nextError;
+                  if (!classifyTransientProviderError(nextError).retryable) throw nextError;
+                }
+              }
+              if (continuationError) throw continuationError;
+            }
+
+            // 模型偶尔会把需要用户决策的问题写进普通回复，导致 UI/Harness 无法
+            // 区分“已完成”和“等待输入”。仅做一次协议修复，要求它改用结构化工具。
+            if (
+              emitQuestion
+              && askUserQuestionCount === 0
+              && needsStructuredQuestionRepair(lastAssistantText(currentRunMessages))
+            ) {
+              const repairDraft = lastAssistantText(currentRunMessages);
+              suppressProtocolRepairText = true;
+              try {
+                await awaitAbortable(
+                  session.prompt([
+                    "系统交互协议修复：你刚才在普通回复中请求用户补充信息或作出决定。",
+                    "只有该输入是完成当前任务不可缺少的阻塞项时，才调用 AskUserQuestion。",
+                    "若只是已完成任务后的可选延伸服务，不要调用工具，也不要输出任何协议判断或内部规则说明。",
+                    "确认是阻塞项时，必须立即调用 AskUserQuestion，不要再次只用普通文字提问。",
+                    "问题选项只能来自用户已提供的信息或已检索证据；缺失值不得编造具体日期、主体、金额或其它候选值。",
+                    "没有有依据的候选项时，使用自由输入问题或中性选项。",
+                  ].join("\n")),
+                  operationAbort.signal,
+                );
+                await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+                throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
+              } finally {
+                suppressProtocolRepairText = false;
+              }
+              if (askUserQuestionCount === 0) {
+                protocolRepairFallbackContent = repairDraft;
+              }
+            }
+
+            throwHarnessOwnedToolFailure(harnessOwnedToolFailure);
 
             // 先确保最小可交付文件存在，再允许系统验证失败驱动 repair。
             // 没有文件时继续读资料/调用工具只会放大超时，且没有可评分证据。
@@ -336,6 +655,8 @@ export async function runPiAgent(
                 operationAbort.signal,
               );
               await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+              throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
+              throwHarnessOwnedToolFailure(harnessOwnedToolFailure);
               const afterMinimumCheck = minimumDeliverableCheck!();
               if (!afterMinimumCheck.ok) {
                 const error = new Error(
@@ -353,14 +674,52 @@ export async function runPiAgent(
             // 在没有通过证据时把验证结果反馈给同一个 session，驱动有限次修复。
             const runId = request.requestId ?? request.traceId ?? "unknown";
             const maxRepairRounds = Math.max(0, Math.min(5, serviceOptions.maxRepairRounds ?? 2));
+            const artifactWriteObserved = () => hasSuccessfulArtifactWrite(executionLedger.snapshot());
+            const runtimeCompletionRequired = () =>
+              contractCompletionRequired || artifactWriteObserved();
             const completionDecision = async () => {
-              const base = decideSettleFromCompletionGate(runId, taskContract);
-              if (base.outcome !== "completed" || !serviceOptions.completionVerifier) {
+              // 独立保险：模型一旦成功写出文件，本回合就不再是“纯文本”。如果
+              // DeliverySpec 没声明交付物，禁止用 not_applicable 绕过 finalize。
+              // 正常路径应由会话承接逻辑在模型运行前冻结正确合同；这里 fail closed。
+              if (artifactWriteObserved() && deliverySpec.requiredDeliverables.length === 0) {
+                return {
+                  outcome: "error" as const,
+                  qualityStatus: "failed" as const,
+                  terminationReason: "validation_failed" as const,
+                  gateMessage: "检测到文件写入，但当前 DeliverySpec 未声明交付物；已拒绝把未验证文件标记为完成。",
+                  diagnosticFingerprint: "artifact-write-without-delivery-contract",
+                };
+              }
+              const base = decideSettleFromCompletionGate(runId, deliverySpec);
+              if (base.outcome !== "completed") {
                 return base;
               }
+              const executionGate = evaluateExecutionRequirements(
+                executionRequirements,
+                executionLedger.snapshot(),
+              );
+              if (!executionGate.ok) {
+                return {
+                  outcome: "error" as const,
+                  qualityStatus: "failed" as const,
+                  terminationReason: "validation_failed" as const,
+                  gateMessage: executionGate.message,
+                  diagnosticFingerprint: executionGate.diagnosticFingerprint,
+                };
+              }
+              if (needsWorkspaceChangeReview && !hasCompletedWorkspaceChangeReview(runId)) {
+                return {
+                  outcome: "error" as const,
+                  qualityStatus: "failed" as const,
+                  terminationReason: "validation_failed" as const,
+                  gateMessage: "受管表格写入尚未形成完整的后端变更证据。请对当前 assetId 调用 patch_workspace_workbook；Harness 会自动维护候选头、变更计划、语义 diff 和复核记录。",
+                  diagnosticFingerprint: "workspace-change-review-missing",
+                };
+              }
+              if (!serviceOptions.completionVerifier) return base;
               const verificationTimeoutMs = serviceOptions.verificationTimeoutMs ?? 60_000;
               const taskVerification = await withTimeout(
-                serviceOptions.completionVerifier({ runId, taskContract }),
+                serviceOptions.completionVerifier({ runId, deliverySpec }),
                 verificationTimeoutMs,
                 {
                   ok: false,
@@ -382,7 +741,14 @@ export async function runPiAgent(
               };
             };
             let previousFingerprint: string | undefined;
-            while (taskContract.requiredDeliverables.length > 0 && repairRounds < maxRepairRounds) {
+            const undeclaredArtifactWrite = () =>
+              artifactWriteObserved() && deliverySpec.requiredDeliverables.length === 0;
+            if (undeclaredArtifactWrite()) repairStopReason = "no_progress";
+            while (
+              runtimeCompletionRequired()
+              && !undeclaredArtifactWrite()
+              && repairRounds < maxRepairRounds
+            ) {
               const gate = await completionDecision();
               if (gate.outcome === "completed") {
                 repairStopReason = "completed";
@@ -395,6 +761,10 @@ export async function runPiAgent(
                 repairStopReason = "no_progress";
                 break;
               }
+              if (gate.outcome === "error" && "repairableByModel" in gate && !gate.repairableByModel) {
+                repairStopReason = "harness_handled";
+                break;
+              }
               previousFingerprint = gate.diagnosticFingerprint;
               repairRounds += 1;
               await awaitAbortable(
@@ -402,21 +772,31 @@ export async function runPiAgent(
                   [
                     `系统验证发现本次任务尚未完成（第 ${repairRounds}/${maxRepairRounds} 次修复）。`,
                     gate.gateMessage,
-                    "请按上述具体文件、位置和错误修复当前输出目录中的工作文件。",
-                    "完成修复后必须再次调用 finalize_deliverable；不要只回复说明文字。",
+                    "请成功调用门禁列出的受控工具并完成实际操作；失败调用不计入，不能只回复说明文字。",
+                    ...(deliverySpec.requiredDeliverables.length > 0 || artifactWriteObserved()
+                      ? [
+                          "请按上述具体文件、位置和错误修复当前输出目录中的工作文件。",
+                          "完成修复后必须再次调用 finalize_deliverable。",
+                        ]
+                      : []),
                     "如果缺少必要输入或无法安全判断，请明确说明阻塞原因，不要猜测数字。",
                   ].join("\n"),
                 ),
                 operationAbort.signal,
               );
               await awaitAbortable(session.waitForIdle(), operationAbort.signal);
+              throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
+              throwHarnessOwnedToolFailure(harnessOwnedToolFailure);
             }
 
-            const finalGate = taskContract.requiredDeliverables.length
+            const finalCompletionRequired = runtimeCompletionRequired();
+            const finalGate = finalCompletionRequired
               ? await completionDecision()
               : { outcome: "completed" as const, qualityStatus: "not_applicable" as const };
             if (finalGate.outcome !== "completed") {
-              const stopNote = repairStopReason === "no_progress"
+              const stopNote = repairStopReason === "harness_handled"
+                ? "\nHarness 已将该问题归类为环境、工具或版本错误，不再调用模型重复修复。"
+                : repairStopReason === "no_progress"
                 ? "\n自动修复已停止：连续两次验证指纹相同，未检测到文件或错误变化。"
                 : repairRounds >= maxRepairRounds
                   ? `\n自动修复已停止：达到 ${maxRepairRounds} 轮上限。`
@@ -435,13 +815,26 @@ export async function runPiAgent(
               meta.__terminationReason = "validation_failed";
               throw error;
             }
-            repairStopReason = taskContract.requiredDeliverables.length
+            repairStopReason = finalCompletionRequired
               ? "completed"
               : "not_required";
           } catch (error) {
             // Pi 版本可能让 abort() 使 prompt reject，也可能正常 resolve。
             // 两种形态都统一在下方转成 Finwork AbortError/TimeoutError。
-            if (!timedOut && !externallyAborted) throw error;
+            if (humanDecisionError) {
+              attachPiAccounting(humanDecisionError, currentRunMessages, modelId, pricingKnown);
+              throw humanDecisionError;
+            }
+            if (!timedOut && !externallyAborted) {
+              // Validation/minimum-deliverable failures happen after one or more
+              // paid provider turns. Preserve that accounting on the thrown
+              // error so the persistence layer and benchmark budget cannot
+              // mistake a charged failure for a zero-token run.
+              if (error && typeof error === "object") {
+                attachPiAccounting(error, currentRunMessages, modelId, pricingKnown);
+              }
+              throw error;
+            }
           }
         }
     } finally {
@@ -453,23 +846,22 @@ export async function runPiAgent(
     if (timedOut || externallyAborted) {
       const error = new Error(timedOut ? "Pi Agent 执行超时" : "Pi Agent 执行已取消");
       error.name = timedOut ? "TimeoutError" : "AbortError";
-      (error as { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage =
-        accounting.modelUsage;
+      attachPiAccounting(error, currentRunMessages, modelId, pricingKnown, accounting);
       throw error;
     }
-    const assistantError = lastAssistantError(currentRunMessages);
-    if (assistantError) {
-      const error = new Error(assistantError);
-      (error as { __modelUsage?: Record<string, AgentModelUsage> }).__modelUsage =
-        accounting.modelUsage;
-      throw error;
+    throwIfLastAssistantProviderError(currentRunMessages, modelId, pricingKnown);
+    const finalContent = lastAssistantText(currentRunMessages);
+    if (bufferDeliveryText && finalContent) {
+      request.emit?.({ type: "message_started", channel: "text" });
+      request.emit?.({ type: "message_delta", channel: "text", delta: finalContent });
+      request.emit?.({ type: "message_completed", channel: "text", content: finalContent });
     }
     return {
       mode: "agent",
       runtimeSessionId: session.sessionFile
         ? validatePiSessionLocator(session.sessionFile, sessionRoot)
         : null,
-      content: lastAssistantText(currentRunMessages) || "Pi Agent 已执行，但没有返回文本结果。",
+      content: protocolRepairFallbackContent || lastAssistantText(currentRunMessages) || "Pi Agent 已执行，但没有返回文本结果。",
       usage: accounting.usage,
       modelUsage: accounting.modelUsage,
       totalCostUsd: accounting.totalCostUsd,
@@ -478,7 +870,10 @@ export async function runPiAgent(
       terminationReason: accounting.stopReason,
       repairRounds,
       repairStopReason,
-      verificationStatus: taskContract.requiredDeliverables.length ? "passed" : "not_applicable",
+      verificationStatus:
+        contractCompletionRequired || hasSuccessfulArtifactWrite(executionLedger.snapshot())
+          ? "passed"
+          : "not_applicable",
     };
   } finally {
     liveHandle?.release();
@@ -581,6 +976,14 @@ export function historyBeforeCurrent(messages: AgentMessage[]): AgentMessage[] {
   return messages.slice(0, Math.max(0, messages.lastIndexOf(lastUser)));
 }
 
+function hasCompletedWorkspaceChangeReview(runId: string): boolean {
+  try {
+    return workspaceReviewGate(getDb(), runId).ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 提示词只承载**当前**这条用户消息与附件。
  *
@@ -591,11 +994,24 @@ export function historyBeforeCurrent(messages: AgentMessage[]): AgentMessage[] {
 export function buildPiPrompt(
   messages: AgentMessage[],
   attachments: AgentAttachment[],
-  taskContract?: TaskContract | null,
+  deliverySpec?: DeliverySpec | null,
+  workspaceRootIds: string[] = [],
+  workPlan?: FinworkAgentRequest["workPlan"],
 ): { text: string; images: ImageContent[] } {
   const lastUser = [...messages].reverse().find((message) => message.role === "user");
   const current = lastUser?.content ?? messages.at(-1)?.content ?? "";
   const parts = [current];
+  if (workPlan) {
+    parts.push(
+      workPlanPrompt(workPlan),
+      "任务进度由结构化 WorkPlan 和工具事件展示。不要在工具调用之间输出‘开始读取’‘继续处理’‘进入分析’等过程旁白；完成工具工作后一次性给出干净、可独立阅读的最终答复。",
+    );
+  }
+  if (workspaceRootIds.length) {
+    parts.push(
+      `用户已为本回合授权 ${workspaceRootIds.length} 个文件夹。不要猜测或请求主机路径；先调用 list_workspace_files 搜索 manifest，再对需要的 assetId 调用 read_workspace_file。文件很多时只读取与任务有关的子集。`,
+    );
+  }
   const hasSpreadsheet = attachments.some(
     (attachment) =>
       /\.(xlsx|xlsm|xls|csv|tsv)$/i.test(attachment.name) ||
@@ -608,23 +1024,54 @@ export function buildPiPrompt(
       "xlsx",
       "SKILL.md",
     );
+    const isFinancialStatementAnalysis =
+      deliverySpec?.spreadsheetRequirement?.needsWrite === false
+      && /(?:财务|财报|报表|经营|利润|资产负债|现金流|偿债|盈利)/i.test(current);
+    const businessAnalysisSkillPath = path.join(
+      getBundledPluginRoot(),
+      "skills",
+      "business-analysis",
+      "SKILL.md",
+    );
+    const businessAnalysisParserPath = path.join(
+      getBundledPluginRoot(),
+      "skills",
+      "business-analysis",
+      "scripts",
+      "parse_statements.py",
+    );
     parts.push(
-      [
-        `这是 Excel/表格任务。请先用 read 加载 xlsx Skill：${xlsxSkillPath}，并遵循其中的读写、公式和验证流程。`,
-        // 这里曾写着「用 openpyxl 从附件加载后保存为新文件」——那是一次有损往返:
-        // openpyxl 的 load→save 会清空整册公式缓存值(实测 2639 → 2)。模板型任务
-        // 的三张报表全由公式驱动,缓存一没就全部读不出数,模型随后会写十几个脚本
-        // 反复排查,直到超时(HISTORY-002 实测 27 个脚本、40 分钟、0 交付)。
-        "**改动用户上传的表格（含填写模板、工作底稿）必须用 `patch_workbook` 工具，不得用 openpyxl/pandas 打开再保存。** 后者会清空整册公式的缓存值，模板里既有的公式将全部读不出结果，且含外部链接的数据无法恢复。`patch_workbook` 只重写你点名的单元格，其余原样保留，并会自动为新写入的公式补算结果。",
-        "附件里若提供了模板或工作底稿，**填它，不要另起炉灶重建一张同名表**：模板自带的公式就是计算逻辑，重建等于把它们全丢掉。",
-        "只有**新建空白表格**才用受限 bash 调用 Python/openpyxl/pandas；bash 当前目录就是本次会话输出目录，使用相对目标路径。不要执行 find /、find ~ 或全盘搜索，直接使用提示词提供的附件绝对路径读取。附件在沙箱中只读：确需复制文件时使用 shutil.copyfile 并把输出 chmod 为 0o600，不要用 shutil.copy/copy2（会把沙箱只读权限一并带过去）。",
-        "生成脚本较长时，先用 write 创建短骨架，再用多次 edit 分段补充；不要把整个大脚本塞进一次 write，以免模型输出上限截断工具参数。",
-        taskContract?.spreadsheetRequirement?.needsRecalc ||
-        taskContract?.spreadsheetRequirement?.needsRender
-          ? "写入 XLSX 不依赖 LibreOffice：先用 openpyxl/pandas 正常保存候选文件。合同要求的 LibreOffice 重算/渲染由 finalize_deliverable 在沙箱外的受控运行时自动完成；不要在 bash 中自行启动 soffice，也不要手工模拟整套 Excel 公式缓存。你仍需先做静态公式、关键输入值、结构和修改范围检查，然后立即调用 finalize_deliverable；只有该工具明确返回 recalc_unavailable 才能报告重算阻塞。"
-          : "",
-        "完成后必须检查输出文件，并调用 finalize_deliverable 正式交付。",
-      ].filter(Boolean).join("\n"),
+      deliverySpec == null || deliverySpec.spreadsheetRequirement?.needsWrite === true
+        ? [
+            `这是 Excel/表格写入任务。请先用 read 加载 xlsx Skill：${xlsxSkillPath}，并遵循其中的读写、公式和验证流程。`,
+            // 这里曾写着「用 openpyxl 从附件加载后保存为新文件」——那是一次有损往返:
+            // openpyxl 的 load→save 会清空整册公式缓存值(实测 2639 → 2)。模板型任务
+            // 的三张报表全由公式驱动,缓存一没就全部读不出数,模型随后会写十几个脚本
+            // 反复排查,直到超时(HISTORY-002 实测 27 个脚本、40 分钟、0 交付)。
+            "**改动受管表格使用 `patch_workspace_workbook`。** 它自动从唯一候选头继续、记录内部版本/计划/diff/review；不要创建 v2/v3 文件链，不要管理 baseVersionId/candidateVersionId，也不要调用 begin/review 工具。不得用 openpyxl/pandas 打开再保存既有模板。",
+            "附件里若提供了模板或工作底稿，**填它，不要另起炉灶重建一张同名表**：模板自带的公式就是计算逻辑，重建等于把它们全丢掉。",
+            deliverySpec?.taskKind === "financial_consolidation"
+              ? "这是复杂财务模型任务：读取输入后编写可反复调整的任务脚本，让脚本输出结构化编辑清单 JSON；用 `run_task_python` 运行，再把清单一次传给 `patch_workspace_workbook`。业务错误时修改脚本并重复“运行 → patch”；环境、版本和重算错误交给 Harness，不要用模型猜。"
+              : "优先直接调用 `create_workbook` / `patch_workspace_workbook`；通用工具表达不了时再写任务脚本，由 `run_task_python` 执行并输出结构化编辑清单。",
+            "模型可见工作流只有：读取 → 写/改脚本 → 运行 → patch → 正式交付。版本链、变更计划、语义 diff 和复核证据由 Harness 自动维护。",
+            deliverySpec?.spreadsheetRequirement?.needsRecalc ||
+            deliverySpec?.spreadsheetRequirement?.needsRender
+              ? "写入 XLSX 后，合同要求的重算与渲染由 `finalize_deliverable` 在沙箱外的受控运行时完成；不要在 Bash 中启动 soffice，也不要手工伪造公式缓存。先执行静态公式、关键输入值、结构和修改范围检查，再调用 finalize_deliverable；只有该工具明确返回 recalc_unavailable 才能报告重算阻塞。"
+              : "",
+            "完成后调用 finalize_deliverable；质量门失败时只按返回的业务问题继续修复，验证通过后停止。",
+          ].filter(Boolean).join("\n")
+        : [
+            `这是 Excel/表格只读分析任务。请先用 read 加载 xlsx Skill：${xlsxSkillPath}，并遵循其中的读取与分析流程。`,
+            isFinancialStatementAnalysis
+              ? `这看起来是财务报表分析。读取工作簿并确认包含资产负债表、利润表或现金流量表后，必须再用 read 加载经营分析 Skill：${businessAnalysisSkillPath}。标准三表必须使用固定解析器 ${businessAnalysisParserPath}：把它原样复制到本回合输出目录，通过 run_task_python 在任务沙箱执行，再把 canonical 数字和 sourceCells 传给 generate_business_analysis；不要临场手抄整套报表或自行编写另一套解析器。`
+              : "",
+            "受管 assetId 附件用 read_workspace_file；只有旧式路径附件才用 read_document。读取并理解工作簿后，再基于数据直接回答。",
+            "系统冻结的当前合同不要求创建、修改或交付文件，这一约束优先于 Skill 的默认交付约定：不要调用 create_workbook、patch_workbook 或 finalize_deliverable，也不要把分析范围擅自缩成某一张工作表。",
+            "分析多表财务报表时，应交叉核对资产负债表、利润表和现金流量表，优先给出关键指标、跨表勾稽、异常与需要核查的原因。",
+            isFinancialStatementAnalysis
+              ? "会小企利润表中管理费用下的‘其中：研究费用’只是管理费用明细且已包含在管理费用内：不得把它改称独立研发费用、不得重复计入，也不得仅凭该科目推断企业处于研发投入阶段。只有报表明确单列‘研发费用’时才按独立研发费用分析。"
+              : "",
+          ].filter(Boolean).join("\n"),
     );
   }
   const needsDocx =
@@ -634,7 +1081,7 @@ export function buildPiPrompt(
         attachment.mimeType ===
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ) ||
-    taskContract?.requiredDeliverables.some(
+    deliverySpec?.requiredDeliverables.some(
       (deliverable) =>
         deliverable.mime ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -650,24 +1097,35 @@ export function buildPiPrompt(
       [
         `这是 Word/DOCX 任务。请先用 read 加载 docx Skill：${docxSkillPath}，并遵循其中的读取、编辑、验证和渲染流程。`,
         "只修改本次会话输出目录中的副本，不要覆盖用户上传的原始文档。",
-        "产品 Python Runtime 已预装 python-docx；优先用它生成 DOCX。不要运行 npm install/pip install，也不要因为全局 docx-js 不存在而停止。",
+        "产品 Python Runtime 已预装 python-docx；需要脚本时把 .py 写入本回合输出目录并用 `run_task_python` 执行。不要改用 Bash、自行启动 Python、运行 npm install/pip install，或因为全局 docx-js 不存在而停止。",
+        "任务脚本只允许读取已授权输入并写本次输出目录，默认无网络、不能启动子进程。不要在脚本中运行 validate.py、soffice 或自建外部临时目录；DOCX 的可打开性、正文和正式交付验证由 finalize_deliverable 在受控运行时完成。文件生成后直接调用该工具，并以它的返回结果为准。",
         "正文或生成脚本较长时，先用 write 创建短骨架，再用多次 edit 分段补充，避免单个超长工具调用因模型输出上限被截断。",
       ].join("\n"),
     );
   }
-  if (taskContract?.requiredDeliverables.length) {
+  if (deliverySpec?.requiredDeliverables.length) {
     parts.push(
       [
         "本任务的交付合同由系统冻结，不能用说明文字代替文件：",
-        ...taskContract.requiredDeliverables.map(
+        ...deliverySpec.requiredDeliverables.map(
           (deliverable) =>
             `- contractDeliverableId=${deliverable.id}; MIME=${deliverable.mime}; 数量=${deliverable.count}; qualityProfile=${deliverable.qualityProfile}`,
         ),
         "请按上述 ID 生成最终文件，并在最后一次调用 finalize_deliverable 时逐一声明。",
+        "最终只输出一次正式结论，且只包含四部分：关键结果、校验状态、未覆盖事项、下载入口。不要复述内部修复提示、工具错误栈、协议判断或修复过程；中间候选不得写成面向用户的最终结论。",
       ].join("\n"),
     );
   }
-  const local = attachments.filter((attachment) => attachment.storagePath);
+  const brokerAssets = attachments.filter((attachment) => attachment.assetId);
+  if (brokerAssets.length) {
+    const visible = brokerAssets.slice(0, 20);
+    parts.push(
+      `用户随本回合提供了 ${brokerAssets.length} 个受管文件。不要使用或输出主机路径；先调用 list_workspace_files 按名称筛选，再调用 read_workspace_file(assetId)。` +
+      (visible.length ? "\n当前 manifest 前 20 项：\n" + visible.map((attachment) => `- ${attachment.name}; assetId=${attachment.assetId}`).join("\n") : "") +
+      (brokerAssets.length > visible.length ? `\n另有 ${brokerAssets.length - visible.length} 项未展开，必须按需搜索，不能把全部文件塞进上下文。` : ""),
+    );
+  }
+  const local = attachments.filter((attachment) => attachment.storagePath && !attachment.assetId);
   const inlinedLocal = local.flatMap((attachment) => {
     const content = readSmallTextAttachment(attachment);
     return content == null ? [] : [{ attachment, content }];
@@ -713,7 +1171,7 @@ export function buildPiPrompt(
 }
 
 function readSmallTextAttachment(attachment: AgentAttachment): string | null {
-  if (!attachment.storagePath || attachment.size > 60_000) return null;
+  if (attachment.assetId || !attachment.storagePath || attachment.size > 60_000) return null;
   const extension = path.extname(attachment.name).toLowerCase();
   const textual =
     attachment.mimeType.startsWith("text/") ||
@@ -726,18 +1184,52 @@ function readSmallTextAttachment(attachment: AgentAttachment): string | null {
   }
 }
 
-function wrapQuestionResolver(
+export function wrapQuestionResolver(
   resolver: ((question: AgentQuestion) => Promise<string>) | undefined,
   emit: FinworkAgentRequest["emit"],
+  onResolverError?: (error: unknown) => void,
 ): ((question: AgentQuestion) => Promise<string>) | undefined {
   if (!resolver) return undefined;
   return async (question) => {
     const questionId = randomUUID();
     emit?.({ type: "ask_user", questionId, question });
-    const answer = await resolver(question);
-    emit?.({ type: "ask_user_answered", questionId, answer });
-    return answer;
+    try {
+      const answer = await resolver(question);
+      emit?.({ type: "ask_user_answered", questionId, answer });
+      return answer;
+    } catch (error) {
+      onResolverError?.(error);
+      throw error;
+    }
   };
+}
+
+/**
+ * 只捕获明显处于“等待用户输入/决策”状态的普通文本，避免把一般性的建议误改成提问。
+ */
+export function needsStructuredQuestionRepair(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  const requiredDecision = /(?:冲突|权威版本|范围变化|写入前)[\s\S]{0,500}(?:请确认|请选择)|(?:请确认|请选择)[\s\S]{0,160}(?:权威版本|采用哪份|修改原始)/;
+  if (requiredDecision.test(normalized)) return true;
+  const terminalAnswer = /拒绝|不会执行|不予执行|不得执行|不能(?:输出|披露|发送|删除|标记|导出)|无法(?:据此|宣布|判断)|证据不足|没有足够证据|不可信/.test(normalized);
+  if (terminalAnswer) return false;
+  const optionalContinuation =
+    /如果你愿意|如有需要|如需(?:进一步|继续)?[，,]?(?:我|还)?可以|可选(?:延伸|服务)/.test(normalized);
+  const hardBlock =
+    /缺少|冲突|无法继续|不能继续|必须(?:先|由用户)|否则.{0,24}无法|在.{0,24}前.{0,12}请确认/.test(normalized);
+  if (optionalContinuation && !hardBlock) return false;
+  if (/请明确确认|在[^。！？!?\n]{0,24}前[^。！？!?\n]{0,12}请确认/.test(normalized)) {
+    return true;
+  }
+  if (/(?:^|[。！？!?\n])\s*(?:请补充|请提供|请选择|请确认|请明确)/m.test(normalized)) {
+    return true;
+  }
+  const blocked = /不会|无法|不能|暂不|待[^。！？!?\n]{0,20}确认|如需|若要/;
+  const decision = /确认|选择|提供|补充|明确|解除[^。！？!?\n]{0,8}(?:约束|限制)/;
+  return normalized
+    .split(/[。！？!?\n]+/)
+    .some((clause) => blocked.test(clause) && decision.test(clause));
 }
 
 function collectPiAccounting(
@@ -793,6 +1285,21 @@ function collectPiAccounting(
   };
 }
 
+function attachPiAccounting(
+  error: object,
+  events: AgentSessionEvent[],
+  modelId: string,
+  pricingKnown: boolean,
+  accounting = collectPiAccounting(events, modelId, pricingKnown),
+): void {
+  const carrier = error as {
+    __modelUsage?: Record<string, AgentModelUsage>;
+    __numTurns?: number;
+  };
+  carrier.__modelUsage = accounting.modelUsage;
+  carrier.__numTurns = accounting.numTurns;
+}
+
 function lastAssistantText(events: AgentSessionEvent[]): string {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
@@ -819,25 +1326,53 @@ export function lastAssistantError(events: AgentSessionEvent[]): string | undefi
   return undefined;
 }
 
+/**
+ * Provider failures are terminal for the current turn. They must be surfaced
+ * before completion/minimum-deliverable repair, otherwise a zero-token auth or
+ * endpoint failure is misreported as a model capability/validation failure and
+ * the benchmark keeps spending cases against an unavailable dependency.
+ */
+export function throwIfLastAssistantProviderError(
+  events: AgentSessionEvent[],
+  modelId: string,
+  pricingKnown: boolean,
+): void {
+  const assistantError = lastAssistantError(events);
+  if (!assistantError) return;
+  const error = new Error(assistantError) as Error & {
+    code?: string;
+    __modelUsage?: Record<string, AgentModelUsage>;
+    __numTurns?: number;
+  };
+  error.code = "PROVIDER_RESPONSE_ERROR";
+  attachPiAccounting(error, events, modelId, pricingKnown);
+  throw error;
+}
+
+const READ_ONLY_PROVIDER_CONTINUATION_TOOLS = new Set([
+  "read",
+  "read_document",
+  "list_workspace_files",
+  "read_workspace_file",
+  "analyze_tabular",
+  "generate_business_analysis",
+]);
+
+export function canContinueReadOnlyTurnAfterProviderFailure(
+  error: unknown,
+  facts: readonly ExecutionFact[],
+  deliverySpec: DeliverySpec,
+): boolean {
+  if (!classifyTransientProviderError(error).retryable) return false;
+  if (deliverySpec.requiredDeliverables.length > 0 || deliverySpec.spreadsheetRequirement?.needsWrite === true) return false;
+  return facts.every((fact) =>
+    fact.toolName === "system"
+    || READ_ONLY_PROVIDER_CONTINUATION_TOOLS.has(fact.toolName.trim().toLowerCase().replace(/[\s-]+/g, "_"))
+  );
+}
+
 function isQueryOwnedLifecycleEvent(type: string): boolean {
   return type === "run_started" || type === "run_ended" || type === "run_settled";
-}
-
-function safeRoleMemories(roleId: string): string[] {
-  try {
-    return getRoleMemoryForPrompt(roleId);
-  } catch {
-    return [];
-  }
-}
-
-function safeRecentNegativeReasons(): string[] | undefined {
-  try {
-    const reasons = listRecentNegativeReasons(7, 5);
-    return reasons.length ? reasons : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function isPiImage(mimeType: string): mimeType is ImageContent["mimeType"] {

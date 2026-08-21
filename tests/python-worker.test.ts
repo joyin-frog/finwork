@@ -74,6 +74,39 @@ export const pythonWorkerTestPromise = (async () => {
     assert.ok(!selfcheck.missing.includes("xlrd"));
   }
 
+  // Styled empty cells must not inflate extraction or inspection dimensions.
+  {
+    const dir = mkdtempSync(path.join(tmpdir(), "fa-xlsx-ghost-range-"));
+    try {
+      const xlsx = path.join(dir, "ghost-range.xlsx");
+      execFileSync(pythonPath, ["-c", [
+        "import openpyxl, sys",
+        "from openpyxl.styles import PatternFill",
+        "wb = openpyxl.Workbook()",
+        "ws = wb.active",
+        "ws.title = '利润表'",
+        "ws.append(['项目', '本年累计', '本月'])",
+        "ws.append(['营业收入', 55379467.47, 24724842.68])",
+        "ws['XFD72'].fill = PatternFill('solid', fgColor='FFFFFF')",
+        "wb.save(sys.argv[1])",
+      ].join("\n"), xlsx]);
+
+      const text = execFileSync(pythonPath, [workerPath, "extract-text", xlsx], { encoding: "utf-8" });
+      assert.ok(text.includes("营业收入"));
+      assert.ok(text.includes("| Excel行 | A | B | C |"), "XLSX extraction must expose physical row and column coordinates");
+      assert.ok(text.includes("| 2 | 营业收入 |"), "XLSX extraction must identify the real Excel row number");
+      assert.ok(text.length < 1_000, `styled empty range must be trimmed, got ${text.length} chars`);
+
+      const inspected = JSON.parse(
+        execFileSync(pythonPath, [workerPath, "inspect-excel", xlsx], { encoding: "utf-8" })
+      ) as { sheets: Array<{ rows: number; columns: number }> };
+      assert.equal(inspected.sheets[0]?.rows, 2);
+      assert.equal(inspected.sheets[0]?.columns, 3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   // Negative: openpyxl cannot open .xls — documents why routing matters
   {
     const xls = path.join(process.cwd(), "tests", "fixtures", "spreadsheet", "legacy-input.xls");

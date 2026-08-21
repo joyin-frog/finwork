@@ -12,12 +12,13 @@ export const runContractTestPromise = (async () => {
     nextRunStatus,
     buildSettledPayload,
     buildRunStateChanged,
-    validateTaskContract,
+    validateDeliverySpec,
     validateCompletionEvidence,
     completionGateSatisfied,
     validateRunCheckpoint,
     assertNotTerminationReason,
-    deriveTaskContractForTurn,
+    deriveDeliverySpecForTurn,
+    spreadsheetOutputRequested,
   } = await import("../lib/agent/run-contract.ts");
 
   // AR2a settled 三值映射
@@ -61,8 +62,8 @@ export const runContractTestPromise = (async () => {
 
   assert.throws(() => assertNotTerminationReason("client_disconnected"));
 
-  // TaskContract
-  const badEmpty = validateTaskContract({
+  // DeliverySpec
+  const badEmpty = validateDeliverySpec({
     version: 1,
     taskKind: "spreadsheet",
     requiredDeliverables: [],
@@ -70,7 +71,7 @@ export const runContractTestPromise = (async () => {
   });
   assert.equal(badEmpty.ok, false);
 
-  const textEmpty = validateTaskContract({
+  const textEmpty = validateDeliverySpec({
     version: 1,
     taskKind: "text",
     requiredDeliverables: [],
@@ -78,7 +79,7 @@ export const runContractTestPromise = (async () => {
   });
   assert.equal(textEmpty.ok, true);
 
-  const badProfile = validateTaskContract({
+  const badProfile = validateDeliverySpec({
     version: 1,
     taskKind: "spreadsheet",
     requiredDeliverables: [{ id: "d1", mime: "xlsx", count: 1, qualityProfile: "other" }],
@@ -86,7 +87,7 @@ export const runContractTestPromise = (async () => {
   });
   assert.equal(badProfile.ok, false);
 
-  const good = validateTaskContract({
+  const good = validateDeliverySpec({
     version: 1,
     taskKind: "financial_consolidation",
     spreadsheetRequirement: {
@@ -160,14 +161,14 @@ export const runContractTestPromise = (async () => {
   });
   assert.equal(okCp.ok, true);
 
-  // deriveTaskContractForTurn
+  // deriveDeliverySpecForTurn
   {
-    const text = deriveTaskContractForTurn({ intent: "direct", attachments: [] });
+    const text = deriveDeliverySpecForTurn({ intent: "direct", attachments: [] });
     assert.equal(text.taskKind, "text");
     assert.equal(text.requiredDeliverables.length, 0);
-    assert.equal(validateTaskContract(text).ok, true);
+    assert.equal(validateDeliverySpec(text).ok, true);
 
-    const sheet = deriveTaskContractForTurn({
+    const sheet = deriveDeliverySpecForTurn({
       intent: "tool_use",
       attachments: [{ name: "a.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
     });
@@ -175,9 +176,104 @@ export const runContractTestPromise = (async () => {
     assert.equal(sheet.requiredDeliverables[0]?.id, "workbook");
     assert.equal(sheet.requiredDeliverables[0]?.qualityProfile, "generic");
     assert.equal(sheet.spreadsheetRequirement?.needsRecalc, false);
-    assert.equal(validateTaskContract(sheet).ok, true);
+    assert.equal(validateDeliverySpec(sheet).ok, true);
 
-    const complex = deriveTaskContractForTurn({
+    const readOnlyAnalysis = deriveDeliverySpecForTurn({
+      intent: "complex_workflow",
+      attachments: [{ name: "财务报表.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
+      userMessage: "分析下这个报表",
+    });
+    assert.equal(readOnlyAnalysis.taskKind, "spreadsheet");
+    assert.equal(readOnlyAnalysis.spreadsheetRequirement?.needsWrite, false);
+    assert.equal(readOnlyAnalysis.spreadsheetRequirement?.needsRecalc, false);
+    assert.equal(readOnlyAnalysis.requiredDeliverables.length, 0);
+    assert.equal(validateDeliverySpec(readOnlyAnalysis).ok, true);
+
+    const requestedWorkbook = deriveDeliverySpecForTurn({
+      intent: "complex_workflow",
+      attachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "分析后生成一份 Excel 分析表",
+    });
+    assert.equal(requestedWorkbook.taskKind, "spreadsheet");
+    assert.equal(requestedWorkbook.spreadsheetRequirement?.needsWrite, true);
+    assert.equal(requestedWorkbook.requiredDeliverables[0]?.id, "workbook");
+
+    assert.equal(spreadsheetOutputRequested("可以做成 Excel 么"), true);
+    assert.equal(spreadsheetOutputRequested("你生成的 Excel 都没有公式"), false);
+
+    const acceptedWorkbookContinuation = deriveDeliverySpecForTurn({
+      intent: "complex_workflow",
+      attachments: [],
+      priorAttachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "好",
+      messages: [
+        { role: "user", content: "可以做成Excel么，里面有数据，也可以做成条状图和饼图" },
+        { role: "assistant", content: "可以，我可以直接生成带图表的 Excel 工作簿。" },
+        { role: "user", content: "好" },
+      ],
+    });
+    assert.equal(acceptedWorkbookContinuation.taskKind, "spreadsheet");
+    assert.equal(acceptedWorkbookContinuation.spreadsheetRequirement?.needsWrite, true);
+    assert.equal(acceptedWorkbookContinuation.requiredDeliverables.length, 1);
+
+    const generatedWorkbookQuestion = deriveDeliverySpecForTurn({
+      intent: "complex_workflow",
+      attachments: [],
+      priorAttachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "你为什么不能插入图表？",
+      messages: [{ role: "user", content: "你为什么不能插入图表？" }],
+    });
+    assert.equal(generatedWorkbookQuestion.taskKind, "spreadsheet");
+    assert.equal(generatedWorkbookQuestion.spreadsheetRequirement?.needsWrite, false);
+    assert.equal(generatedWorkbookQuestion.requiredDeliverables.length, 0);
+
+    const acceptedFormulaRepair = deriveDeliverySpecForTurn({
+      intent: "complex_workflow",
+      attachments: [],
+      priorAttachments: [{ name: "财务报表.xlsx" }, { name: "管理层分析.xlsx" }],
+      userMessage: "可以",
+      messages: [
+        { role: "user", content: "你生成的Excel都没有公式，我不敢置信" },
+        { role: "assistant", content: "我可以直接重做一版公式化分析 Excel。" },
+        { role: "user", content: "可以" },
+      ],
+    });
+    assert.equal(acceptedFormulaRepair.spreadsheetRequirement?.needsWrite, true);
+    assert.equal(acceptedFormulaRepair.requiredDeliverables.length, 1);
+
+    const staleWorkbookOffer = deriveDeliverySpecForTurn({
+      intent: "direct",
+      attachments: [],
+      priorAttachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "好",
+      messages: [
+        { role: "assistant", content: "我可以生成一份 Excel 分析表。" },
+        { role: "user", content: "先解释一下亏损原因。" },
+        { role: "assistant", content: "需要我再展开说明销售费用吗？" },
+        { role: "user", content: "好" },
+      ],
+    });
+    assert.equal(staleWorkbookOffer.taskKind, "text");
+    assert.equal(staleWorkbookOffer.requiredDeliverables.length, 0);
+
+    const requestedTextReport = deriveDeliverySpecForTurn({
+      intent: "complex_workflow",
+      attachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "分析并生成一份文字报告",
+    });
+    assert.equal(requestedTextReport.taskKind, "spreadsheet");
+    assert.equal(requestedTextReport.spreadsheetRequirement?.needsWrite, false);
+    assert.equal(requestedTextReport.requiredDeliverables.length, 0);
+
+    const requestedEdit = deriveDeliverySpecForTurn({
+      intent: "tool_use",
+      attachments: [{ name: "财务报表.xlsx" }],
+      userMessage: "把错误公式修复一下",
+    });
+    assert.equal(requestedEdit.spreadsheetRequirement?.needsWrite, true);
+    assert.equal(requestedEdit.requiredDeliverables.length, 1);
+
+    const complex = deriveDeliverySpecForTurn({
       intent: "complex_workflow",
       attachments: [{ name: "legacy.xls" }],
     });
@@ -185,10 +281,10 @@ export const runContractTestPromise = (async () => {
     assert.equal(complex.spreadsheetRequirement?.needsLegacyXlsRead, true);
     assert.equal(complex.spreadsheetRequirement?.needsRecalc, true);
     assert.equal(complex.requiredDeliverables[0]?.qualityProfile, "financial_consolidation");
-    assert.equal(validateTaskContract(complex).ok, true);
+    assert.equal(validateDeliverySpec(complex).ok, true);
 
     // CR-R2：无表格附件时，complex intent 也不得强加 workbook
-    const complexTextOnly = deriveTaskContractForTurn({
+    const complexTextOnly = deriveDeliverySpecForTurn({
       intent: "complex_workflow",
       attachments: [],
     });
@@ -197,7 +293,7 @@ export const runContractTestPromise = (async () => {
   }
 
   // runtime-events：run_state_changed 不进 chat_agent_events；settled 三值不变
-  const { contractToLegacyEvents, createEmitter } = await import("../lib/agent/runtime-events.ts");
+  const { projectRuntimeEvent, createEmitter } = await import("../lib/agent/runtime-events.ts");
   const emitter = createEmitter("trace-r0", 1);
   const stateEnv = emitter.wrap({
     type: "run_state_changed",
@@ -205,11 +301,11 @@ export const runContractTestPromise = (async () => {
     to: "paused",
     trigger: "recoverable_guard",
   });
-  assert.deepEqual(contractToLegacyEvents(stateEnv), []);
+  assert.deepEqual(projectRuntimeEvent(stateEnv), []);
 
   for (const outcome of ["completed", "aborted", "error"] as const) {
     const settled = emitter.wrap({ type: "run_settled", outcome });
-    assert.deepEqual(contractToLegacyEvents(settled), []);
+    assert.deepEqual(projectRuntimeEvent(settled), []);
     assert.equal(settled.event.type, "run_settled");
     if (settled.event.type === "run_settled") {
       assert.equal(settled.event.outcome, outcome);

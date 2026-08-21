@@ -6,7 +6,7 @@ import {
   buildRouterMessages,
   matchTrivialMessage,
   parseRouterResponse,
-  pickAgentModel
+  parseRouterUsage
 } from "../lib/agent/router.ts";
 
 function makeTextPayload(text: string) {
@@ -27,7 +27,6 @@ function main() {
   const valid = parseRouterResponse(plainJson);
   assert.ok(valid, "AC1 FAIL: 合法 JSON 文本应解析成功");
   assert.equal(valid!.intent, "tool_task");
-  assert.equal(valid!.mainModelTier, "subagent");
   assert.equal(valid!.reasoning, "工资计算任务");
 
   // 带 ```json 围栏
@@ -90,6 +89,16 @@ function main() {
   assert.equal(parseRouterResponse(null), null);
   assert.equal(parseRouterResponse("text"), null);
   assert.equal(parseRouterResponse({ content: [] }), null, "AC1 FAIL: 空 content 应返回 null");
+  assert.deepEqual(parseRouterUsage({
+    model: "actual-router",
+    usage: { input_tokens: 10, output_tokens: 2, cache_read_input_tokens: 3, cache_creation_input_tokens: 4 },
+  }, "requested-router"), {
+    modelId: "actual-router",
+    inputTokens: 10,
+    outputTokens: 2,
+    cacheReadInputTokens: 3,
+    cacheCreationInputTokens: 4,
+  }, "paid router usage must remain attributable to the actual provider model");
 
   // ── AC2: buildRouterMessages ──
   const history = [
@@ -133,16 +142,6 @@ function main() {
   // buildMessagesUrl: 网关可能带或不带 /v1
   assert.equal(buildMessagesUrl("https://api.anthropic.com"), "https://api.anthropic.com/v1/messages");
   assert.equal(buildMessagesUrl("https://gw.example.com/v1/"), "https://gw.example.com/v1/messages");
-
-  // ── AC3: pickAgentModel(复杂任务 → mainModel 推理档) ──
-  assert.equal(pickAgentModel({ intent: "complex_workflow" }, { mainModel: "deepseek-v4-pro", routerModel: "fast", subagentModel: "fast" }), "deepseek-v4-pro", "AC3 FAIL: 复杂任务应升到 mainModel");
-  assert.equal(pickAgentModel({ intent: "tool_task" }, { mainModel: "deepseek-v4-pro", routerModel: "fast", subagentModel: "fast" }), undefined, "AC3 FAIL: 普通工具任务不应 override");
-  assert.equal(pickAgentModel({ intent: "rag_qa" }, { mainModel: "deepseek-v4-pro", routerModel: "fast", subagentModel: "fast" }), undefined, "AC3 FAIL: RAG 问答不应 override");
-  assert.equal(pickAgentModel({ intent: "complex_workflow" }, {}), undefined, "AC3 FAIL: 未配模型不应 override");
-  assert.equal(pickAgentModel({ intent: "complex_workflow" }, { mainModel: "  ", routerModel: "fast", subagentModel: "fast" }), undefined);
-  // 旧 UI 把推理写在 subagentModel：迁移后 pick 仍应拿到推理模型
-  assert.equal(pickAgentModel({ intent: "complex_workflow" }, { subagentModel: "legacy-reason", routerModel: "fast" }), "legacy-reason", "AC3 FAIL: 旧 subagent 推理应经迁移进入 main");
-
 
   // ── AC5: matchTrivialMessage ──
 

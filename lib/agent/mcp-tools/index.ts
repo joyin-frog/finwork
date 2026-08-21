@@ -1,18 +1,17 @@
 import { createAnalyzeTabularTool } from "./analyze-tabular";
+import { createCreateWorkbookTool } from "./create-workbook";
 import { createSpawnSubagentTool } from "./subagent";
 import { createRememberConventionTool } from "./conventions";
 import { createRememberRoleConventionTool } from "./role-conventions";
 import { createRecordBusinessMetricsTool } from "./business-metrics";
 import { createBusinessAnalysisTool } from "./business-analysis-tool";
-import { createSearchKnowledgeTool, createQueryKnowledgeTool, createReadFileTool } from "./knowledge";
+import { createSearchKnowledgeTool } from "./knowledge";
 import { createReadDocumentTool } from "./read-document";
 import { createPatchWorkbookTool } from "./patch-workbook";
-import {
-  createCheckWorkbookTiesTool,
-  createDetectDataIssuesTool,
-  createMergeTablesTool,
-} from "./workbook-checks";
+import { createInspectDocumentStructureTool, createPatchDocumentTool } from "./document-operations";
 import { createScanSlipFolderTool } from "./scan-slip-folder";
+import { createWorkspaceFileTools } from "./workspace-files";
+import { createRunTaskPythonTool } from "./run-task-python";
 import { createKingdeeTools } from "./kingdee-tools";
 import { createFinanceTools } from "./finance-tools";
 import { createPayrollTools } from "../tools/finance/payroll";
@@ -27,6 +26,7 @@ import { createRunFilingPrecheckBatchTool } from "./filing-precheck-batch";
 import { createRunBankReconBatchTool } from "./bank-recon-batch";
 import { createUndoLastWriteTool } from "./undo-write";
 import { createProposeTransferTool } from "./propose-transfer";
+import { createResearchWebTool } from "./research";
 import type { SdkLike } from "./sdk-types";
 import {
   createFinanceToolCollector,
@@ -38,17 +38,25 @@ import type {
   SubagentExecutor,
   SubagentParallelExecutor,
 } from "@/lib/agent/subagent-contracts";
-
-type Sdk = SdkLike & { createSdkMcpServer: NonNullable<SdkLike["createSdkMcpServer"]> };
+import type { MemoryRuntimeContext } from "@/lib/memory-v2/contracts";
+import type { AgentRunContext } from "@/lib/agent/contracts";
 
 export type FinanceMcpServerOptions = {
-  /** CR-Q1：由宿主注入 TaskContract（R1 Query Pipeline 接线）；缺省则 finalize 拒绝声明。 */
+  /** CR-Q1：由宿主注入 DeliverySpec（R1 Query Pipeline 接线）；缺省则 finalize 拒绝声明。 */
   finalize?: FinalizeDeliverableToolOptions;
-  /** Runtime-owned subagent seams. Claude remains the legacy default. */
+  /** Runtime-owned subagent seams used by the Pi session. */
   subagentExecutor?: SubagentExecutor;
   subagentParallelExecutor?: SubagentParallelExecutor;
+  /** Authoritative memory boundary inherited by every spawned worker. */
+  memoryContext?: Partial<MemoryRuntimeContext> | null;
   /** 本回合用户附件的只读根；供 read_document 使用。 */
   readDocumentAllowedRoots?: string[];
+  /** Production-owned task/case/run identity inherited by nested execution. */
+  runContext?: AgentRunContext;
+  /** Parent-owned model override inherited by all nested workers. */
+  modelOverride?: string;
+  workspaceRootIds?: string[];
+  workspaceAssetIds?: string[];
 };
 
 function createFinanceWorkerTools(
@@ -67,8 +75,10 @@ function createFinanceWorkerTools(
       cidNum != null && Number.isFinite(cidNum) ? getConversationFilesDir(cidNum) : undefined,
     ...serverOptions?.finalize,
   };
+  const taskPythonReadRoots = new Set(serverOptions?.readDocumentAllowedRoots ?? []);
   return [
     createAnalyzeTabularTool(sdk),
+      createCreateWorkbookTool(sdk, { outputDir }),
       createSpawnSubagentTool(
         sdk,
         outputDir,
@@ -76,28 +86,44 @@ function createFinanceWorkerTools(
         conversationId,
         onSubagentEvent,
         serverOptions?.subagentExecutor,
+        serverOptions?.memoryContext,
+        serverOptions?.runContext,
+        serverOptions?.modelOverride,
       ),
       createSearchKnowledgeTool(sdk),
-      createQueryKnowledgeTool(sdk),
-      createReadFileTool(sdk),
       createReadDocumentTool(sdk, {
         allowedRoots: [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])],
+      }),
+      ...createWorkspaceFileTools(sdk, {
+        rootIds: serverOptions?.workspaceRootIds,
+        assetIds: serverOptions?.workspaceAssetIds,
+        runId: traceId,
+        outputDir,
+        onPreparedInput: (preparedPath) => taskPythonReadRoots.add(preparedPath),
+      }),
+      createRunTaskPythonTool(sdk, {
+        outputDir,
+        runId: traceId,
+        allowedReadRoots: () => [...taskPythonReadRoots],
       }),
       createPatchWorkbookTool(sdk, {
         outputDir,
         allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
       }),
-      createCheckWorkbookTiesTool(sdk, {
+      createInspectDocumentStructureTool(sdk, {
         outputDir,
         allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
       }),
-      createDetectDataIssuesTool(sdk),
-      createMergeTablesTool(sdk),
-      createScanSlipFolderTool(sdk),
+      createPatchDocumentTool(sdk, {
+        outputDir,
+        allowedReadRoots: serverOptions?.readDocumentAllowedRoots ?? [],
+      }),
+      createScanSlipFolderTool(sdk, [outputDir, ...(serverOptions?.readDocumentAllowedRoots ?? [])]),
       createRememberConventionTool(sdk),
       createRememberRoleConventionTool(sdk),
       createRecordBusinessMetricsTool(sdk),
       createBusinessAnalysisTool(sdk),
+      createResearchWebTool(sdk, serverOptions?.runContext),
       ...createPayrollTools(sdk, outputDir),
       ...createReimbursementTools(sdk),
       ...createSalesInvoiceTools(sdk),
@@ -118,7 +144,12 @@ function createFinanceWorkerTools(
         conversationId,
         onSubagentEvent,
         serverOptions?.subagentParallelExecutor
-          ? { run: serverOptions.subagentParallelExecutor }
+          ? {
+              run: serverOptions.subagentParallelExecutor,
+              memoryContext: serverOptions.memoryContext,
+              runContext: serverOptions.runContext,
+              modelOverride: serverOptions.modelOverride,
+            }
           : undefined,
       ),
       // 功能4第二刀: 银行对账批跑（N 个账户并行派发）
@@ -129,7 +160,12 @@ function createFinanceWorkerTools(
         conversationId,
         onSubagentEvent,
         serverOptions?.subagentParallelExecutor
-          ? { run: serverOptions.subagentParallelExecutor }
+          ? {
+              run: serverOptions.subagentParallelExecutor,
+              memoryContext: serverOptions.memoryContext,
+              runContext: serverOptions.runContext,
+              modelOverride: serverOptions.modelOverride,
+            }
           : undefined,
       ),
       // WP15: 撤销最近 agent 写操作（high 风险，confirm gate 拦截）
@@ -137,36 +173,6 @@ function createFinanceWorkerTools(
       // D2·刀8: 越权转交卡（safe，ALLOWED_TOOLS 静默放行）
     createProposeTransferTool(sdk, conversationId),
   ];
-}
-
-export async function createFinanceMcpServer(
-  sdk: Sdk,
-  outputDir: string,
-  traceId?: string,
-  conversationId?: string,
-  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
-  serverOptions?: FinanceMcpServerOptions,
-) {
-  return sdk.createSdkMcpServer({
-    name: "finance_worker",
-    version: "0.1.0",
-    tools: createFinanceWorkerTools(
-      sdk,
-      outputDir,
-      traceId,
-      conversationId,
-      onSubagentEvent,
-      serverOptions,
-    ),
-  });
-}
-
-export async function createKingdeeMcpServer(sdk: Sdk, outputDir?: string) {
-  return sdk.createSdkMcpServer({
-    name: "kingdee_worker",
-    version: "0.1.0",
-    tools: createKingdeeTools(sdk, outputDir),
-  });
 }
 
 /**
@@ -194,25 +200,4 @@ export function buildFinanceToolDefinitions(
   const kingdee = createFinanceToolCollector("kingdee_worker");
   createKingdeeTools(kingdee.sdk, outputDir);
   return [...finance.definitions, ...kingdee.definitions];
-}
-
-export async function buildFinanceMcpServers(
-  sdk: Sdk,
-  outputDir: string,
-  traceId?: string,
-  conversationId?: string,
-  onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
-  serverOptions?: FinanceMcpServerOptions,
-) {
-  return {
-    finance_worker: await createFinanceMcpServer(
-      sdk,
-      outputDir,
-      traceId,
-      conversationId,
-      onSubagentEvent,
-      serverOptions,
-    ),
-    kingdee_worker: await createKingdeeMcpServer(sdk, outputDir),
-  };
 }

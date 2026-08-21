@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import {
+  managedLibreOfficeCandidates,
   resolveLibreOffice,
   systemLibreOfficeCandidates,
 } from "../lib/runtime/libreoffice-resolver.ts";
 
 export const libreofficeResolverTestPromise = (async () => {
   // Priority: managed → system paths → PATH
+  {
+    const mac = managedLibreOfficeCandidates("darwin", "/data/Finwork/lo/current", "/app/runtimes/lo");
+    assert.ok(mac.some((candidate) => candidate.includes("LibreOffice.app/Contents/MacOS/soffice")));
+    const win = managedLibreOfficeCandidates("win32", "C:\\Finwork\\lo\\current", "C:\\app\\lo");
+    assert.ok(win.some((candidate) => candidate.endsWith("program\\soffice.exe")));
+  }
+
   {
     const r = resolveLibreOffice({
       platform: "darwin",

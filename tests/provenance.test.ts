@@ -30,8 +30,8 @@ export const provenanceTestPromise = (async () => {
   const p3 = buildReimbursementProvenance(tl([
     { type: "tool_use", name: "read_expense_policy", input: { section: "差旅" } },
     { type: "tool_result", name: "read_expense_policy", content: "第一章 差旅\n标准…(贵司真实制度,无示例标记)" },
-    { type: "tool_use", name: "read_file", input: { fileName: "差旅报销明细.xlsx" } },
-    { type: "tool_use", name: "read_file", input: { fileName: "差旅报销明细.xlsx" } },
+    { type: "tool_use", name: "search_knowledge", input: { fileName: "差旅报销明细.xlsx" } },
+    { type: "tool_use", name: "search_knowledge", input: { fileName: "差旅报销明细.xlsx" } },
     { type: "tool_use", name: "check_reimbursement_batch", input: { items: [1, 2, 3] } },
   ]));
   assert.ok(p3, "P3 FAIL: 应返回非空");

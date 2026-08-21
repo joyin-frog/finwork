@@ -72,7 +72,7 @@ export function IconButton({
           disabled={disabled}
           className={cn(
             // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
-            "inline-grid place-items-center size-7 rounded-md transition-colors disabled:pointer-events-none disabled:opacity-50",
+            "inline-grid place-items-center size-7 rounded-lg transition-colors disabled:pointer-events-none disabled:opacity-50",
             tone === "destructive"
               ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               : active

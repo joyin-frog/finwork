@@ -22,6 +22,8 @@ import type {
   SubagentTask,
 } from "@/lib/agent/subagent-contracts";
 import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
+import type { MemoryRuntimeContext } from "@/lib/memory-v2/contracts";
+import type { AgentRunContext } from "@/lib/agent/contracts";
 
 type Sdk = SdkLike;
 
@@ -33,6 +35,10 @@ export type FilingPrecheckBatchDeps = {
   run?: RunParallelFn;
   /** 注入替代 readCompanyProfile（测试用）；生产路径缺省调用真实函数 */
   readProfile?: () => Promise<CompanyProfile>;
+  /** Runtime-authoritative memory scope inherited by every batch child. */
+  memoryContext?: Partial<MemoryRuntimeContext> | null;
+  runContext?: AgentRunContext;
+  modelOverride?: string;
 };
 
 const TEMPLATE_IDS = ["vat-filing-precheck", "iit-filing-precheck"] as const;
@@ -106,6 +112,9 @@ export function createRunFilingPrecheckBatchTool(
         parentOutputDir: outputDir,
         traceId,
         conversationId,
+        memoryContext: deps?.memoryContext,
+        runContext: deps?.runContext,
+        modelOverride: deps?.modelOverride,
         onEvent: onSubagentEvent,
         signal: execution?.signal,
       });

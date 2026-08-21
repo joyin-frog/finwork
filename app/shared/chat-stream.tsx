@@ -78,6 +78,7 @@ export type StartTurnParams = {
   requestMessages: Message[];
   attachments: ChatAttachment[];
   referencedAttachments: ReferencedFile[];
+  folderRefs?: FolderRef[];
   /** 本条消息引用的技能(可选);发给后端作为"优先使用这些技能"的提示。 */
   referencedSkills?: SkillRef[];
   /** 本条消息的推理强度档位(可选,默认 auto)。 */
@@ -345,6 +346,7 @@ export function ChatStreamProvider({ children }: { children: React.ReactNode }) 
         conversationId: params.conversationId,
         attachments: params.attachments,
         referencedAttachments: params.referencedAttachments,
+        folderRefs: params.folderRefs,
         referencedSkills: params.referencedSkills,
         modelTier: params.modelTier,
         role: params.role,

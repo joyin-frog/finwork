@@ -1133,6 +1133,7 @@ dependencies = [
 name = "finance-agent"
 version = "0.1.6"
 dependencies = [
+ "getrandom 0.2.17",
  "log",
  "serde",
  "serde_json",

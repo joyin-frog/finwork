@@ -1,9 +1,9 @@
-import path from "node:path";
 import type { Hook, BeforeToolResult } from "./types";
-import { getToolRiskLevel, TOOL_REGISTRY } from "@/lib/agent/tools/registry";
+import { ALWAYS_CONFIRM_TOOL_NAMES, getToolRiskLevel, TOOL_REGISTRY } from "@/lib/agent/tools/registry";
 import { getToolSummary } from "@/lib/agent/tools/renderers";
 import { getRoleDefinition, resolveRoleScopeTools } from "@/lib/agent/roles/registry";
-import { isDeliveredPath, isInsidePath } from "@/lib/agent/tools/path-policy";
+
+export const ALWAYS_CONFIRM_TOOLS = ALWAYS_CONFIRM_TOOL_NAMES;
 
 // 高风险工具确认时,除了"做什么"还要点明"会有什么后果"(尤其不可逆/锁定类),
 // 让非技术财务在按"确认"前看清影响,而不是面对一句裸工具名。
@@ -45,72 +45,6 @@ export function createAskUserQuestionHook(): Hook {
         answers = parseMultiAnswers(raw, questions);
       }
       return { action: "allow", input: { questions, answers } };
-    },
-  };
-}
-
-export function createPathSafetyHook(): Hook {
-  return {
-    name: "path-safety",
-    async before(ctx): Promise<BeforeToolResult> {
-      if (!["Write", "Edit", "MultiEdit"].includes(ctx.toolName)) return { action: "allow" };
-      const filePath = getToolFilePath(ctx.input);
-      if (!filePath) return { action: "allow" };
-      // CR-Q1：delivered/ 不可变区，模型工具永不写
-      if (isDeliveredPath(filePath, ctx.outputDir)) {
-        return {
-          action: "deny",
-          reason: "不能写入不可变交付目录 delivered/（正式附件只读）。",
-        };
-      }
-      if (!isInsidePath(filePath, ctx.outputDir)) {
-        return {
-          action: "deny",
-          reason: `只能把生成文件写入本次会话输出目录：${ctx.outputDir}`,
-        };
-      }
-      return { action: "allow" };
-    },
-  };
-}
-
-/**
- * 历史「未接线工具」闸。Bash 已默认放行（用户可用性要求）；
- * hook 仍挂在链上，便于日后按名拒绝其它工具。
- */
-export function createUnwiredToolHook(): Hook {
-  const blocked = new Set<string>([]);
-  return {
-    name: "unwired-tool",
-    async before(ctx): Promise<BeforeToolResult> {
-      if (!blocked.has(ctx.toolName)) return { action: "allow" };
-      return {
-        action: "deny",
-        reason: `${ctx.toolName} 未接入本产品。请使用已登记的领域工具。`,
-      };
-    },
-  };
-}
-
-// Office 二进制(非文本)文件:Read/Edit 读不了(会得到"binary file"错误),改造只能走对应 Skill/领域工具。
-const BINARY_OFFICE_EXTS = new Set([".xlsx", ".xls", ".xlsm", ".docx", ".doc", ".pptx", ".ppt"]);
-
-/** read-guard:拦住对 Office 二进制文件用 Read/Edit/Write —— 一步导到正确工具,省掉"binary file"报错+空转一轮。 */
-export function createReadGuardHook(): Hook {
-  return {
-    name: "read-guard",
-    async before(ctx): Promise<BeforeToolResult> {
-      if (!["Read", "Edit", "MultiEdit", "Write"].includes(ctx.toolName)) return { action: "allow" };
-      const filePath = getToolFilePath(ctx.input);
-      if (!filePath) return { action: "allow" };
-      const ext = path.extname(filePath).toLowerCase();
-      if (!BINARY_OFFICE_EXTS.has(ext)) return { action: "allow" };
-      const kind = ext.startsWith(".xls") ? "Excel" : ext.startsWith(".doc") ? "Word" : "PPT";
-      const tool = ext.startsWith(".xls") ? "openpyxl/pandas" : ext.startsWith(".doc") ? "python-docx" : "python-pptx";
-      return {
-        action: "deny",
-        reason: `${path.basename(filePath)} 是 ${kind} 二进制文件,Read/Edit 读不了它。请用 read_document 或对应 Skill（${tool}）探查，生成或改造走领域工具;别再用 Read/Edit/Write 直接读写这个文件。`,
-      };
     },
   };
 }
@@ -205,18 +139,7 @@ export function createRoleScopeHook(roleId: string): Hook {
 
 // 无论如何都必须经用户确认的工具。
 // remember_convention：全局约定影响所有对话，仍走事前确认。
-// remember_role_convention（刀6）：角色口径静默写入 + 对话内轻提示，安全靠可见可删。
-export const ALWAYS_CONFIRM_TOOLS = new Set([
-  "remember_convention",
-  // P3: 公司画像写入需用户确认(事实数据,非口径)
-  "update_company_profile",
-]);
-
-// Bash 默认授权（不弹确认卡）；其余 high-risk 财务写操作仍确认。
-const CONFIRM_EXEMPT_TOOLS = new Set<string>([
-  "Bash",
-]);
-
+// remember_role_convention：角色口径同样跨任务生效，必须由用户逐条确认。
 /**
  * 高风险动作确认门(工具级)。迁移到 SDK 原生 skill 后,确认不再按 skill 配置,
  * 而是按工具风险等级:high-risk 工具(批量算薪/确认薪资期间/导出金蝶凭证等)一律需用户确认。
@@ -244,10 +167,19 @@ export function createRiskConfirmHook(): Hook {
           else prompt = "要我更新工作约定吗?";
           return { action: "confirm", prompt };
         }
+        if (ctx.toolName === "remember_role_convention") {
+          const input = ctx.input && typeof ctx.input === "object"
+            ? ctx.input as { text?: unknown }
+            : {};
+          const text = typeof input.text === "string" ? input.text.trim() : "";
+          return {
+            action: "confirm",
+            prompt: text
+              ? `要把这条角色口径作为跨任务长期记忆候选吗？\n「${text}」`
+              : "要提交这条角色口径作为跨任务长期记忆候选吗？",
+          };
+        }
         return { action: "confirm", prompt: buildRiskConfirmPrompt(ctx.toolName, ctx.input) };
-      }
-      if (CONFIRM_EXEMPT_TOOLS.has(ctx.toolName)) {
-        return { action: "allow" };
       }
       const riskLevel = getToolRiskLevel(ctx.toolName);
       if (riskLevel !== "high") return { action: "allow" };
@@ -271,44 +203,6 @@ function getConventionFields(input: unknown): { text: string; replaces: string }
   const o = (input && typeof input === "object" ? input : {}) as { text?: unknown; replaces?: unknown };
   const s = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   return { text: s(o.text), replaces: s(o.replaces) };
-}
-
-/**
- * 子代理边界守卫（M2·刀8）：runSubagent 路径（非专员直聊）禁止调用 propose_transfer。
- * 子代理在后台自主执行，没有前端渲染转交卡的上下文；调用后只能在结果文本里说明越权原因。
- * 参照 createRoleScopeHook 中对 spawn_subagent 的处理方式。
- */
-export function createSubagentBoundaryHook(): Hook {
-  return {
-    name: "subagent-boundary",
-    async before(ctx): Promise<BeforeToolResult> {
-      if (ctx.toolName === "propose_transfer") {
-        return {
-          action: "deny",
-          reason: "子代理不能发起转交。请在结果文本中说明 out_of_scope 并返回已完成的部分，由主对话或用户决定是否转交。",
-        };
-      }
-      return { action: "allow" };
-    },
-  };
-}
-
-export function createTimingHook(
-  onToolResult: (name: string, durationMs: number, isError: boolean) => void
-): Hook {
-  // 计时已统一在 tool-event-tracker 按 tool_use_id 配对,这里直接消费 durationMs
-  return {
-    name: "timing",
-    async after(ctx): Promise<void> {
-      onToolResult(ctx.toolName, ctx.durationMs, ctx.isError);
-    },
-  };
-}
-
-function getToolFilePath(input: unknown): string {
-  if (!input || typeof input !== "object") return "";
-  const fp = (input as { file_path?: unknown }).file_path;
-  return typeof fp === "string" ? fp : "";
 }
 
 function getToolQuestions(input: unknown) {

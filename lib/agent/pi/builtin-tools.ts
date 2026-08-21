@@ -2,11 +2,24 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import fs from "node:fs";
 import path from "node:path";
 import { isBashSandboxAvailable, wrapCommandWithSandbox } from "@/lib/agent/tools/bash-sandbox";
+import { createSandboxProcessEnvironment } from "@/lib/agent/tools/process-sandbox";
 import { resolveLibreOffice } from "@/lib/runtime/libreoffice-resolver";
 import { getPythonBinDir, getPythonVenvRoot } from "@/lib/runtime/paths";
+import type { AgentQuestion } from "@/lib/agent/contracts";
+import { createPiAskUserQuestionTool } from "@/lib/agent/pi/ask-user-tool";
+import {
+  FINWORK_BUILTIN_TOOL_NAMES,
+  type FinworkBuiltinToolName,
+} from "@/lib/agent/pi/tool-names";
+export {
+  FINWORK_BUILTIN_TOOL_NAMES,
+  FINWORK_READ_TOOL_NAMES,
+  FINWORK_WRITE_TOOL_NAMES,
+  type FinworkBuiltinToolName,
+} from "@/lib/agent/pi/tool-names";
 
 /**
- * Finwork 自行构造的 Pi 内置文件/shell 工具。
+ * Finwork 自行构造的 Pi 会话工具：受控文件/shell 工具，以及存在交互通道时的提问工具。
  *
  * 不用 Pi 的默认内置集（`noTools: "builtin"` 仍然保持开启）：默认集的 cwd 是项目根，
  * 对财务应用没有意义。这里按会话目录构造，让**缺省行为**落在会话内。
@@ -32,18 +45,9 @@ export type FinworkBuiltinRoots = {
   skillRoots?: string[];
 };
 
-/** 读类：只看不改，可及范围含技能目录。 */
-export const FINWORK_READ_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
-/** 写类：只能落在本回合输出目录。 */
-export const FINWORK_WRITE_TOOL_NAMES = ["write", "edit"] as const;
-
-export const FINWORK_BUILTIN_TOOL_NAMES = [
-  ...FINWORK_READ_TOOL_NAMES,
-  ...FINWORK_WRITE_TOOL_NAMES,
-  "bash",
-] as const;
-
-export type FinworkBuiltinToolName = (typeof FINWORK_BUILTIN_TOOL_NAMES)[number];
+export type FinworkBuiltinToolOptions = {
+  resolveUserQuestion?: (question: AgentQuestion) => Promise<string>;
+};
 
 export function isFinworkBuiltinTool(name: string): name is FinworkBuiltinToolName {
   return (FINWORK_BUILTIN_TOOL_NAMES as readonly string[]).includes(name);
@@ -55,6 +59,7 @@ export function isFinworkBuiltinTool(name: string): name is FinworkBuiltinToolNa
  */
 export async function createFinworkBuiltinTools(
   roots: FinworkBuiltinRoots,
+  options: FinworkBuiltinToolOptions = {},
 ): Promise<ToolDefinition[]> {
   const {
     createReadToolDefinition,
@@ -75,6 +80,12 @@ export async function createFinworkBuiltinTools(
     createEditToolDefinition(roots.writeRoot),
   ] as ToolDefinition[];
 
+  // Pi 本身没有模型可调用的 AskUserQuestion 内置工具。只有实时交互通道或
+  // benchmark 的人工决策 resolver 存在时才注册，避免在无人接听的通道里伪装可用。
+  if (options.resolveUserQuestion) {
+    tools.push(createPiAskUserQuestionTool(options.resolveUserQuestion));
+  }
+
   // fail-closed：没有 OS 沙箱就不给 bash。read/write/edit 的约束是结构性的
   // （构造层钉死根 + tool_call 路径校验），bash 的约束只能来自沙箱——拿不到就不注册，
   // 而不是退回正则黑名单假装有闸。
@@ -91,7 +102,7 @@ export async function createFinworkBuiltinTools(
       createBashToolDefinition(roots.writeRoot, {
         // cwd 钉死在会话输出目录：模型写 `report.md` 落在会话里，而不是项目根或用户家目录。
         // 命令本身再包一层沙箱，绝对路径与等价改写都由内核按系统调用拦。
-        spawnHook: ({ command, env }) => ({
+        spawnHook: ({ command }) => ({
           command: wrapCommandWithSandbox(command, {
             readRoot: roots.readRoot,
             readRoots: [
@@ -109,21 +120,14 @@ export async function createFinworkBuiltinTools(
             writeRoot: roots.writeRoot,
           }),
           cwd: roots.writeRoot,
-          env: {
-            ...env,
-            // Bash 与固定 worker 必须使用同一受控 Python runtime。只设置
-            // FINANCE_AGENT_PYTHON_PATH 不会改变 shell 的 python/python3 解析。
-            PATH: [
+          env: createSandboxProcessEnvironment({
+            writeRoot: roots.writeRoot,
+            executableDirs: [
               pythonBinDir,
-              // pi 会传入自己的 PATH；它可能比启动 Finwork 时的 PATH 更窄。
-              // 两者都保留，才能让评测/桌面进程显式注入的 LibreOffice 等
-              // 受控运行时继续对模型侧 Bash 可见。
-              process.env.PATH,
-              env.PATH,
-            ].filter(Boolean).join(path.delimiter),
-            ...(pythonVenvRoot ? { VIRTUAL_ENV: pythonVenvRoot } : {}),
-            FINWORK_SESSION_OUTPUT_DIR: roots.writeRoot,
-          },
+              ...(libreOffice?.ok ? [path.dirname(libreOffice.executable)] : []),
+            ],
+            extra: pythonVenvRoot ? { VIRTUAL_ENV: pythonVenvRoot } : undefined,
+          }),
         }),
       }) as ToolDefinition,
     );

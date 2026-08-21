@@ -95,7 +95,7 @@ export const ocrImageTestPromise = (async () => {
   {
     const { readFileSync } = await import("node:fs");
     const workerSource = readFileSync(workerPath, "utf-8");
-    const ocrFn = workerSource.match(/def cmd_ocr_image\(\):([\s\S]*?)(?=\ndef )/)?.[1] ?? "";
+    const ocrFn = workerSource.match(/def _ocr_image_file[^\n]*:([\s\S]*?)(?=\ndef cmd_ocr_image)/)?.[1] ?? "";
     assert.ok(
       ocrFn.includes("use_angle_cls"),
       "AC6 FAIL: cmd_ocr_image 应启用 use_angle_cls 以支持横拍/旋转单据"
@@ -108,7 +108,7 @@ export const ocrImageTestPromise = (async () => {
     const { readFileSync } = await import("node:fs");
     const workerSource = readFileSync(workerPath, "utf-8");
     // cmd_ocr_image 函数段不应有网络调用
-    const ocrFnMatch = workerSource.match(/def cmd_ocr_image\(\):([\s\S]*?)(?=\ndef )/);
+    const ocrFnMatch = workerSource.match(/def _ocr_image_file[^\n]*:([\s\S]*?)(?=\ndef cmd_ocr_image)/);
     if (ocrFnMatch) {
       const fnBody = ocrFnMatch[1];
       assert.ok(

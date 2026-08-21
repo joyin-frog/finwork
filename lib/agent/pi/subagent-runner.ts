@@ -4,8 +4,8 @@ import path from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { readAgentSettings } from "@/lib/settings/agent-settings";
 import { modelConfigFromSettings, resolveExecutionModel } from "@/lib/settings/model-config";
+import { getTaskTemplate } from "@/lib/agent/roles/task-templates";
 import { getProjectRoot } from "@/lib/runtime/paths";
-import { getRoleMemoryForPrompt } from "@/lib/db/role-memory-store";
 import * as dispatchStore from "@/lib/db/dispatch-store";
 import { getDisabledRoleIds } from "@/lib/agent/roles/availability";
 import {
@@ -19,17 +19,26 @@ import {
 } from "@/lib/agent/mcp-tools";
 import { createFinanceToolAuthorizer } from "@/lib/agent/tools/authorize";
 import { createPiFinanceTools } from "@/lib/agent/pi/tool-adapter";
+import { createFinanceCapabilityRuntime } from "@/lib/agent/tools/capability-runtime";
 import { createFinworkModelRuntime } from "@/lib/agent/pi/provider";
 import { createFinworkPiResourceLoader } from "@/lib/agent/pi/resource-loader";
 import { PiEventMapper } from "@/lib/agent/pi/event-mapper";
 import { Semaphore } from "@/lib/utils/semaphore";
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
+import { getDb } from "@/lib/db/sqlite";
+import { BusinessCaseStore } from "@/lib/case-management/store";
+import type { CaseRunBinding } from "@/lib/case-management/contracts";
 import type {
   SubagentParallelExecutor,
   SubagentResult,
   SubagentRunOptions,
   SubagentTask,
 } from "@/lib/agent/subagent-contracts";
+import {
+  loadGovernedPromptMemory,
+  parseEffectivePeriodLabel,
+  resolveMemoryRuntimeContext,
+} from "@/lib/memory-v2/prompt";
 
 const SUBAGENT_TIMEOUT_MS = 180_000;
 
@@ -43,6 +52,12 @@ export async function runPiSubagent(
 ): Promise<SubagentResult> {
   const startedAt = Date.now();
   const instanceId = randomUUID();
+  const runId = options.runContext
+    ? `sub-${options.runContext.runId}-${instanceId}`
+    : options.traceId ?? instanceId;
+  const runContext = options.runContext
+    ? { ...options.runContext, runId }
+    : undefined;
   const safeLabel = task.label.replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
   const outputDir = path.join(options.parentOutputDir, "subagents", safeLabel);
   const sessionRoot = path.join(outputDir, ".pi-session");
@@ -53,6 +68,21 @@ export async function runPiSubagent(
   let session: AgentSession | null = null;
   let settled = false;
   let aborted = options.signal?.aborted === true;
+  let bindingStarted = false;
+  let boundCapabilityIds = ["agent.turn"];
+  const bindCaseRun = (state: CaseRunBinding["state"], endedAt?: string) => {
+    if (!runContext) return;
+    new BusinessCaseStore(getDb()).attachRun({
+      caseId: runContext.caseId,
+      runId,
+      roleId: task.roleId,
+      capabilityIds: boundCapabilityIds,
+      state,
+      startedAt: new Date(startedAt).toISOString(),
+      ...(endedAt ? { endedAt } : {}),
+    }, runContext.principal, endedAt ? "子代理运行完成" : "子代理开始执行");
+    bindingStarted = true;
+  };
   const emit = (event: AgentRuntimeEvent) => {
     if (settled) return;
     options.onEvent?.(decorateSubagentEvent(event, task), instanceId);
@@ -66,6 +96,7 @@ export async function runPiSubagent(
     if (getDisabledRoleIds().includes(task.roleId)) {
       return failure(task, startedAt, `角色 "${task.roleId}"（${role.name}）已停用，无法执行任务。如需使用请在「智能体」页面重新启用。`);
     }
+    bindCaseRun("running");
 
     dispatchId = task.existingDispatchId ?? recordDispatchStart(task, options);
     if (aborted) throw new Error("Subagent execution aborted");
@@ -74,11 +105,20 @@ export async function runPiSubagent(
     if (!settings.apiKey.trim()) {
       const result = failure(task, startedAt, "API Key 未配置。");
       recordDispatchEnd(dispatchId, result, aborted);
+      bindCaseRun("failed", new Date().toISOString());
       return result;
     }
     const config = modelConfigFromSettings(settings);
     if (!config) throw new Error("模型配置不完整");
-    const modelId = resolveExecutionModel({ config, purpose: "subagent" }).modelId;
+    const executionTier = task.executionTier
+      ?? (task.taskTemplateId ? getTaskTemplate(task.taskTemplateId)?.executionTier : undefined)
+      ?? "fast";
+    const modelId = options.modelOverride
+      ?? resolveExecutionModel({
+        config,
+        purpose: "subagent",
+        tier: executionTier,
+      }).modelId;
     const { modelRuntime, model } = await createFinworkModelRuntime(settings, modelId);
     const {
       createAgentSession,
@@ -86,11 +126,21 @@ export async function runPiSubagent(
       SettingsManager,
     } = await import("@earendil-works/pi-coding-agent");
 
-    let memories: string[] = [];
-    try {
-      memories = getRoleMemoryForPrompt(task.roleId);
-    } catch (error) {
-      console.warn("[pi-subagent] 角色记忆加载失败，跳过注入：", error);
+    const explicitMemoryContext = {
+      ...(options.memoryContext ?? {}),
+      effectivePeriod: options.memoryContext?.effectivePeriod
+        ?? parseEffectivePeriodLabel(task.period),
+    };
+    const memoryContext = resolveMemoryRuntimeContext({
+      explicit: explicitMemoryContext,
+      retrievalText: [task.label, task.instructions, task.businessObject ?? ""].join("\n"),
+    });
+    const governedMemory = await loadGovernedPromptMemory({
+      roleId: task.roleId,
+      context: memoryContext,
+    });
+    if (governedMemory.status === "degraded") {
+      console.warn("[pi-subagent] governed memory unavailable; legacy fallback forbidden:", governedMemory.reason);
     }
 
     const settingsManager = SettingsManager.inMemory({
@@ -101,13 +151,16 @@ export async function runPiSubagent(
       cwd: getProjectRoot(),
       agentDir,
       settingsManager,
-      systemPrompt: buildSubagentSystemPrompt(role, memories),
+      systemPrompt: buildSubagentSystemPrompt(role, governedMemory.roleMemories),
       skillNames: role.skills,
     });
 
     const serverOptions: FinanceMcpServerOptions = {
       subagentExecutor: runPiSubagent,
       subagentParallelExecutor: runPiSubagentsParallel,
+      memoryContext,
+      runContext,
+      modelOverride: options.modelOverride,
     };
     const allowed = new Set(resolveRoleAllowedTools(task.roleId));
     const definitions = buildFinanceToolDefinitions(
@@ -117,12 +170,19 @@ export async function runPiSubagent(
       options.onEvent,
       serverOptions,
     ).filter((definition) => allowed.has(definition.id));
+    boundCapabilityIds = ["agent.turn", ...definitions.map((definition) => definition.id)];
+    bindCaseRun("running");
     const tools = createPiFinanceTools(
       definitions,
       createFinanceToolAuthorizer({
         outputDir,
         roleId: task.roleId,
         conversationId: numericConversationId(options.conversationId),
+      }),
+      createFinanceCapabilityRuntime(definitions, {
+        runId,
+        ...(runContext ? { caseId: runContext.caseId } : {}),
+        ...(runContext ? { runContext } : {}),
       }),
     );
 
@@ -180,6 +240,7 @@ export async function runPiSubagent(
       durationMs: Date.now() - startedAt,
     };
     recordDispatchEnd(dispatchId, result, aborted);
+    bindCaseRun(aborted ? "canceled" : "succeeded", new Date().toISOString());
     return result;
   } catch (error) {
     const result = failure(
@@ -188,6 +249,9 @@ export async function runPiSubagent(
       aborted ? "子 Agent 执行已取消。" : error instanceof Error ? error.message : String(error),
     );
     recordDispatchEnd(dispatchId, result, aborted);
+    if (bindingStarted) {
+      bindCaseRun(aborted ? "canceled" : "failed", new Date().toISOString());
+    }
     if (!settled) {
       emit({
         type: "run_ended",

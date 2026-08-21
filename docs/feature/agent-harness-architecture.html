@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Finwork Agent Kernel</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1020; --panel:#121a2d; --line:#31405f; --text:#edf3ff; --muted:#9cabc6; --cyan:#67e8f9; --green:#86efac; --amber:#fcd34d; --pink:#f0abfc; }
+    * { box-sizing:border-box } body { margin:0; background:radial-gradient(circle at 15% 0,#172554 0,transparent 34%),var(--bg); color:var(--text); font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"PingFang SC",sans-serif }
+    main { width:min(1220px,calc(100% - 32px)); margin:36px auto 70px } h1 { margin:0; font-size:clamp(32px,5vw,60px); letter-spacing:-.04em } h2 { margin:0 0 18px; font-size:22px } p { color:var(--muted) }
+    .eyebrow { color:var(--cyan); text-transform:uppercase; letter-spacing:.14em; font-weight:700 } .lead { max-width:760px; font-size:18px }
+    .panel { margin-top:22px; padding:24px; border:1px solid var(--line); border-radius:20px; background:color-mix(in srgb,var(--panel) 92%,transparent); box-shadow:0 18px 60px #0005 }
+    .flow { display:grid; grid-template-columns:repeat(6,1fr); align-items:stretch; gap:24px; overflow:auto; padding:4px }
+    .node { min-width:150px; padding:18px 14px; border:1px solid var(--line); border-radius:14px; background:#18233c; position:relative }
+    .node:not(:last-child)::after { content:"→"; position:absolute; right:-20px; top:50%; color:var(--cyan); transform:translateY(-50%); font-size:20px }
+    .node b { display:block; color:white; margin-bottom:5px } .node span { color:var(--muted); font-size:13px }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px } .card { padding:18px; border:1px solid var(--line); border-radius:16px; background:#10192b }
+    .card h3 { margin:0 0 8px; color:var(--cyan) } .card p { margin:0 } .green h3 { color:var(--green) } .amber h3 { color:var(--amber) } .pink h3 { color:var(--pink) }
+    .track { display:grid; grid-template-columns:1fr 40px 1fr 40px 1fr 40px 1fr; align-items:center; gap:8px } .arrow { text-align:center; color:var(--cyan); font-size:22px }
+    .truth { display:grid; grid-template-columns:repeat(2,1fr); gap:12px } .truth div { padding:14px 16px; border-left:3px solid var(--green); background:#0e1728; border-radius:8px } code { color:#bae6fd }
+    footer { margin-top:26px; color:var(--muted); text-align:center }
+    @media (max-width:900px) { .grid,.truth { grid-template-columns:1fr } .flow { grid-template-columns:repeat(6,170px) } .track { grid-template-columns:1fr; } .arrow { transform:rotate(90deg) } }
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">Current architecture · 2026-08-20</div>
+  <h1>Finwork Agent Kernel</h1>
+  <p class="lead">Pi 是唯一决策循环。Harness 不再规划第二遍，只负责授权、沙箱、资源、文件版本、确定性校验和正式交付。</p>
+
+  <section class="panel">
+    <h2>一条生产热路径</h2>
+    <div class="flow">
+      <div class="node"><b>Request</b><span>消息 / 文件 / 授权目录</span></div>
+      <div class="node"><b>Query Pipeline</b><span>会话、附件、路由</span></div>
+      <div class="node"><b>Pi Session</b><span>唯一 Agent 决策循环</span></div>
+      <div class="node"><b>Tool Executor</b><span>授权、资源、取消</span></div>
+      <div class="node"><b>Tool / Script</b><span>真实读写与计算</span></div>
+      <div class="node"><b>Check → Output</b><span>回答或不可变交付</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>任务只按结果升级</h2>
+    <div class="grid">
+      <article class="card"><h3>chat</h3><p>Pi → answer<br>不建立 Case、Plan、Evidence。</p></article>
+      <article class="card green"><h3>action</h3><p>Pi → tool → receipt → answer<br>只记录真实工具事实。</p></article>
+      <article class="card amber"><h3>deliverable</h3><p>DeliverySpec → WorkPlan → Validator → immutable delivery。</p></article>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>工具面：常驻原语 + 按需领域能力</h2>
+    <div class="grid">
+      <article class="card"><h3>Chat core</h3><p><code>read · grep · find · ls · ask</code><br>普通聊天没有写工具。</p></article>
+      <article class="card green"><h3>File work</h3><p><code>write · edit · run_task_python</code><br><code>patch_workspace_workbook</code> 内置版本、Diff 与复核。</p></article>
+      <article class="card amber"><h3>Domain</h3><p>59 → 47 个生产领域能力；每回合只暴露命中的小集合，底层步骤留在高层工具内部。</p></article>
+    </div>
+    <p><code>search_knowledge</code> 同时完成 BM25 检索和分页精读；任务特有计算走脚本，正式正确性由 Validator 判断。</p>
+  </section>
+
+  <section class="panel">
+    <h2>文件与脚本闭环</h2>
+    <div class="track">
+      <div class="card"><h3>Encrypted CAS</h3><p>asset + immutable version</p></div><div class="arrow">→</div>
+      <div class="card"><h3>Task Script</h3><p>Agent 可持续修改并在沙箱运行</p></div><div class="arrow">→</div>
+      <div class="card"><h3>Current Head</h3><p>父子版本、语义 Diff、stale 检查</p></div><div class="arrow">→</div>
+      <div class="card"><h3>Delivery</h3><p>重算、财务校验、不可变产物</p></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>一个事实，一个权威</h2>
+    <div class="truth">
+      <div><b>决策</b><br><code>Pi Session</code></div>
+      <div><b>运行事实</b><br><code>AgentRuntimeEvent journal</code></div>
+      <div><b>文件状态</b><br><code>workspace current head</code></div>
+      <div><b>工具事实</b><br><code>execution receipt</code></div>
+      <div><b>正式完成</b><br><code>validator + immutable delivery</code></div>
+      <div><b>知识与记忆</b><br><code>BM25 citations + approved relevant memory</code></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Eval：三种互斥视角，共享 Outcome</h2>
+    <div class="grid">
+      <article class="card green"><h3>Harness</h3><p>零模型、确定性验证安全和交付门。</p></article>
+      <article class="card"><h3>Agent</h3><p>固定模型运行完整 Pi + 工具 + 交付链。</p></article>
+      <article class="card pink"><h3>Model</h3><p>无工具的答案推理；不冒充 Agent 分数。</p></article>
+    </div>
+    <p>三者使用同一 Case、私有 Oracle、Outcome 和故障归因；不再有 <code>mixed</code> executor。</p>
+  </section>
+
+  <section class="panel">
+    <h2>测试只保留能保护行为的门</h2>
+    <div class="grid">
+      <article class="card"><h3>test:core</h3><p>27 个真实解析、业务、文件、安全和交付合同。</p></article>
+      <article class="card green"><h3>test:agent</h3><p>Pi、提问、取消、沙箱、上下文和压缩。</p></article>
+      <article class="card amber"><h3>test:eval-kernel</h3><p>生产 executor、30-case 合同、Oracle 和付费门禁。</p></article>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>已删除的平行实现</h2>
+    <div class="grid">
+      <article class="card"><h3>Tool</h3><p>Claude MCP wrapper、重复 hook、rollout / shadow / gateway。</p></article>
+      <article class="card green"><h3>Context</h3><p>旧 rg RAG、named mirror、memory.md API 与逐回合 migration。</p></article>
+      <article class="card amber"><h3>Eval</h3><p>旧 Golden / AS0 executable suite、重复入口与源码文字快照。</p></article>
+    </div>
+    <p>角色详情页也已切到 governed memory；设置页手工添加是明确批准，对话工具仍只能提交候选。</p>
+  </section>
+
+  <section class="panel">
+    <h2>下一批证据，不是下一批抽象</h2>
+    <div class="grid">
+      <article class="card"><h3>Win11</h3><p>MXC 真机与产品重算 Provider 矩阵。</p></article>
+      <article class="card"><h3>Soak</h3><p>大工作簿、长任务和安装包 smoke。</p></article>
+      <article class="card"><h3>Human acceptance</h3><p>真实财务任务的结果与交互物人工验收。</p></article>
+    </div>
+  </section>
+
+  <footer>判断门：删除一层后，如果安全、正确、恢复和用户结果都不变，就不保留它。</footer>
+</main></body></html>

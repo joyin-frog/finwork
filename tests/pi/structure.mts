@@ -12,13 +12,23 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const definitions = buildFinanceToolDefinitions("/tmp/finwork-pi-structure");
-// 45 → 49:新增 patch_workbook / check_workbook_ties / detect_data_issues /
-// merge_labeled_tables(无损 xlsx 编辑 + 跨表勾稽/质量检测/多表合并,见 CONTEXT.md）。
-assert.equal(definitions.length, 49, "AS0 production catalog count must stay frozen");
-assert.equal(new Set(definitions.map((item) => item.id)).size, 49, "tool ids must be unique");
+// 工具收口后，知识检索/精读合一，工作区计划与复核内置，固定工作簿检查
+// 下沉到 Validator，凭证底层步骤并入 process_voucher_batch。
+const EXPECTED_PRODUCTION_TOOL_COUNT = 47;
+assert.equal(definitions.length, EXPECTED_PRODUCTION_TOOL_COUNT, "AS0 production catalog count must stay frozen");
+assert.equal(
+  new Set(definitions.map((item) => item.id)).size,
+  EXPECTED_PRODUCTION_TOOL_COUNT,
+  "tool ids must be unique",
+);
 
 for (const id of [
   "read_document",
+  "inspect_document_structure",
+  "patch_document",
+  "create_workbook",
+  "research_web",
+  "run_task_python",
   "remember_convention",
   "analyze_tabular",
   "process_voucher_batch",
@@ -26,6 +36,11 @@ for (const id of [
 ]) {
   assert.ok(definitions.some((item) => item.id === id), `missing representative tool: ${id}`);
 }
+
+const createWorkbook = definitions.find((item) => item.id === "create_workbook")!;
+assert.match(createWorkbook.description, /生成新工作簿时必须用本工具/);
+assert.match(createWorkbook.description, /不执行 Python、Bash 或任意代码/);
+assert.deepEqual(Object.keys(createWorkbook.schema).sort(), ["outputName", "sheets"]);
 
 const allow = createFinanceToolAuthorizer({
   outputDir: "/tmp/finwork-pi-structure",
@@ -162,4 +177,4 @@ assert.match(
   /PI_SUBAGENT_INJECTED/,
 );
 
-console.log("Pi structure ✓ 49 definitions, schema/Zod, safety gates, event mapper and subagent seam");
+console.log(`Pi structure ✓ ${definitions.length} definitions, schema/Zod, safety gates, event mapper and subagent seam`);

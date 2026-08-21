@@ -11,7 +11,7 @@ export async function GET() {
     readPublicAgentSettings(),
     getSpreadsheetCapabilities().catch(() => null),
   ]);
-  const { modelConfigReady, missingModelRoles } = getModelConfigReadiness(settings);
+  const { modelConfigReady, missingModelTiers } = getModelConfigReadiness(settings);
   return NextResponse.json({
     ok: true,
     data: {
@@ -19,7 +19,7 @@ export async function GET() {
       spreadsheet,
       apiKeyConfigured: settings.apiKeyConfigured,
       modelConfigReady,
-      missingModelRoles,
+      missingModelTiers,
     },
   });
 }

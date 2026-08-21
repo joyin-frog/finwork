@@ -1,0 +1,8 @@
+[
+  {
+    "id": "synthetic-finben-1",
+    "question": "Which synthetic instrument has the lowest duration risk?",
+    "choices": ["A one-month bill", "A ten-year bond", "A perpetual bond", "A twenty-year zero-coupon bond"],
+    "answer": "A"
+  }
+]

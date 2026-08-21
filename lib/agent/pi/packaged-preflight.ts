@@ -4,6 +4,7 @@ import { getAppDataDir, getProjectRoot } from "@/lib/runtime/paths";
 import { buildFinanceToolDefinitions } from "@/lib/agent/mcp-tools";
 import { createFinanceToolAuthorizer } from "@/lib/agent/tools/authorize";
 import { createPiFinanceTools } from "@/lib/agent/pi/tool-adapter";
+import { createFinanceCapabilityRuntime } from "@/lib/agent/tools/capability-runtime";
 import { createFinworkPiResourceLoader } from "@/lib/agent/pi/resource-loader";
 import { runPiAgent } from "@/lib/agent/pi/agent-service";
 
@@ -41,6 +42,7 @@ export async function runPiPackagedPreflight(): Promise<PiPackagedPreflightResul
     const tools = createPiFinanceTools(
       definitions,
       createFinanceToolAuthorizer({ outputDir: path.join(root, "output") }),
+      createFinanceCapabilityRuntime(definitions, { runId: "pi-packaged-preflight" }),
     );
     return {
       serviceLoaded: typeof runPiAgent === "function",

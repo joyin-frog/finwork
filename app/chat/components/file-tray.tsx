@@ -42,11 +42,11 @@ export function FileTray({
           key={attachment.id}
           name={attachment.name}
           mimeType={attachment.mimeType}
-          previewSrc={attachment.dataUrl}
+          previewSrc={attachment.dataUrl || undefined}
           meta={attachment.size ? formatBytes(attachment.size) : undefined}
           // 图片点击直接看(lightbox),文件点击去预览页
           onOpen={() =>
-            isRenderableImage(attachment.name, attachment.mimeType)
+            !attachment.assetId && isRenderableImage(attachment.name, attachment.mimeType)
               ? openImage(attachment.dataUrl, attachment.name)
               : onPreviewAttachment(attachment)
           }

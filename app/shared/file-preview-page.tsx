@@ -58,7 +58,17 @@ export type KnowledgePreviewFile = {
   sizeBytes?: number;
 };
 
-export type PreviewFileSelection = ConversationPreviewFile | LocalPreviewFile | DraftPreviewFile | KnowledgePreviewFile;
+export type WorkspacePreviewFile = {
+  kind: "workspace";
+  assetId: string;
+  name: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  /** 仅系统选择器产生的当前 Webview 临时值，用于“打开方式”；不持久化、不发给 Agent。 */
+  localPath?: string;
+};
+
+export type PreviewFileSelection = ConversationPreviewFile | LocalPreviewFile | DraftPreviewFile | KnowledgePreviewFile | WorkspacePreviewFile;
 
 type LoadedPreview =
   | { kind: "markdown"; text: string; meta: PreviewMeta }
@@ -133,6 +143,16 @@ type OpenWithApp = {
   iconUrl?: string;
 };
 
+async function fetchOpenWithApps(selection: PreviewFileSelection): Promise<OpenWithApp[]> {
+  const params = new URLSearchParams({
+    name: selection.name,
+    mimeType: selection.mimeType ?? inferMimeType(selection.name),
+  });
+  const response = await fetch(`/api/open-with/apps?${params.toString()}`);
+  const payload = (await response.json()) as { ok: boolean; data?: { apps: OpenWithApp[] } };
+  return payload.ok ? payload.data?.apps ?? [] : [];
+}
+
 export function FilePreviewPage({
   selection,
   onSelectionChange,
@@ -187,6 +207,32 @@ export function FilePreviewPage({
   useEffect(() => {
     setCurrentSelection(selection);
   }, [selection]);
+
+  // 对话记录里的文件预览需要在打开时就准备好“打开方式”按钮的应用图标。
+  // 当前 API 返回的是按文件类型匹配的应用列表；优先使用其中第一个有图标的应用，
+  // 没有图标时由按钮回退到应用字母标识。
+  useEffect(() => {
+    setOpenMenuOpen(false);
+    setOpenWithApps(null);
+    if (currentSelection?.kind !== "conversation") return;
+
+    let cancelled = false;
+    setLoadingOpenWithApps(true);
+    void fetchOpenWithApps(currentSelection)
+      .then((apps) => {
+        if (!cancelled) setOpenWithApps(apps);
+      })
+      .catch(() => {
+        if (!cancelled) setOpenWithApps([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOpenWithApps(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSelection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -281,14 +327,34 @@ export function FilePreviewPage({
       ]
     });
     if (!result || Array.isArray(result)) return;
-    const nextSelection: LocalPreviewFile = {
-      kind: "local",
-      path: result,
-      name: getNameFromPath(result),
-      mimeType: inferMimeType(result)
-    };
-    setCurrentSelection(nextSelection);
-    onSelectionChange?.(nextSelection);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const token = await invoke<string>("workspace_auth_token");
+      const response = await fetch("/api/workspace/import-local", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-finwork-workspace-auth": token },
+        body: JSON.stringify({ path: result }),
+      });
+      const payload = await response.json() as {
+        ok?: boolean;
+        data?: { asset?: { assetId: string; name: string; mediaType: string; sizeBytes: number } };
+        error?: string;
+      };
+      const asset = payload.data?.asset;
+      if (!response.ok || !asset) throw new Error(payload.error ?? "文件导入失败");
+      const nextSelection: WorkspacePreviewFile = {
+        kind: "workspace",
+        assetId: asset.assetId,
+        name: asset.name,
+        mimeType: asset.mediaType,
+        sizeBytes: asset.sizeBytes,
+        localPath: result,
+      };
+      setCurrentSelection(nextSelection);
+      onSelectionChange?.(nextSelection);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "文件导入失败");
+    }
   }
 
   async function toggleOpenWithMenu() {
@@ -301,13 +367,7 @@ export function FilePreviewPage({
     if (openWithApps || loadingOpenWithApps) return;
     setLoadingOpenWithApps(true);
     try {
-      const params = new URLSearchParams({
-        name: currentSelection.name,
-        mimeType: currentSelection.mimeType ?? inferMimeType(currentSelection.name)
-      });
-      const response = await fetch(`/api/open-with/apps?${params.toString()}`);
-      const payload = (await response.json()) as { ok: boolean; data?: { apps: OpenWithApp[] } };
-      setOpenWithApps(payload.ok ? payload.data?.apps ?? [] : []);
+      setOpenWithApps(await fetchOpenWithApps(currentSelection));
     } catch {
       setOpenWithApps([]);
     } finally {
@@ -323,6 +383,13 @@ export function FilePreviewPage({
       return;
     }
     if (currentSelection.kind === "draft") return;
+    if (currentSelection.kind === "workspace") {
+      if (currentSelection.localPath && runningInTauri) {
+        const targetApp = openWith && openWith.length ? openWith : undefined;
+        await openShell(currentSelection.localPath, targetApp);
+      }
+      return;
+    }
     if (currentSelection.kind === "knowledge") return;
     if (!runningInTauri) return;
     const targetApp = openWith && openWith.length ? openWith : undefined;
@@ -337,6 +404,10 @@ export function FilePreviewPage({
       return;
     }
     if (currentSelection.kind === "draft") return;
+    if (currentSelection.kind === "workspace") {
+      if (currentSelection.localPath && runningInTauri) await openShell(getParentPath(currentSelection.localPath));
+      return;
+    }
     if (!runningInTauri) return;
     await openShell(getParentPath(currentSelection.path));
   }
@@ -434,6 +505,9 @@ export function FilePreviewPage({
   const previewAccent = currentSelection ? fileAccentColor(currentSelection.name) : "var(--primary)";
   const emptyTitle = title || "右侧现在是文件预览页";
   const emptyDescription = description || "点击顶部面板中的文件，或者用系统文件选择器打开本地文件。";
+  const openWithPreviewApp = currentSelection?.kind === "conversation"
+    ? openWithApps?.find((app) => app.iconUrl) ?? openWithApps?.[0]
+    : undefined;
 
   return (
     <section className={`preview-page-shell${docked ? " is-docked" : ""}${isMaximized ? " is-maximized" : ""}`}>
@@ -450,6 +524,15 @@ export function FilePreviewPage({
                 aria-expanded={openMenuOpen}
                 aria-haspopup="menu"
               >
+                {openWithPreviewApp?.iconUrl ? (
+                  <img className="size-4 shrink-0 rounded-sm object-contain" src={openWithPreviewApp.iconUrl} alt="" />
+                ) : openWithPreviewApp ? (
+                  <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-muted text-[10px] font-medium">
+                    {getAppGlyph(openWithPreviewApp.name)}
+                  </span>
+                ) : (
+                  <HugeiconsIcon icon={Folder02Icon} size={16} />
+                )}
                 <span>打开方式</span>
                 <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
               </button>
@@ -505,7 +588,7 @@ export function FilePreviewPage({
           {currentSelection?.kind === "conversation" && currentSelection.attachmentId ? (
             <>
               <button
-                className="preview-open-button"
+                className="preview-open-button preview-icon-button"
                 type="button"
                 onClick={() => setConfirmOpen(true)}
                 disabled={promoting}
@@ -517,8 +600,8 @@ export function FilePreviewPage({
               <ConfirmDialog
                 open={confirmOpen}
                 onOpenChange={setConfirmOpen}
-                title="加入知识库?"
-                description={`将「${currentSelection.name}」加入知识库,之后它的内容可被检索到。`}
+                title="加入知识库"
+                description={`将「${currentSelection.name}」加入知识库，之后它的内容可被检索到。`}
                 confirmLabel="加入"
                 onConfirm={() => void addCurrentToKnowledge()}
               />
@@ -526,7 +609,7 @@ export function FilePreviewPage({
           ) : null}
           {onMaximize ? (
             <button
-              className="preview-open-button"
+              className="preview-open-button preview-icon-button"
               type="button"
               onClick={onMaximize}
               aria-label={isMaximized ? "还原预览" : "放大预览"}
@@ -823,7 +906,7 @@ async function loadPreview(selection: PreviewFileSelection): Promise<LoadedPrevi
     extension,
     mimeType,
     sizeBytes: selection.sizeBytes,
-    sourceLabel: selection.kind === "local" ? "本地文件" : selection.kind === "draft" ? "草稿文件" : selection.kind === "knowledge" ? "知识库" : "对话文件"
+    sourceLabel: selection.kind === "local" ? "本地文件" : selection.kind === "draft" ? "草稿文件" : selection.kind === "knowledge" ? "知识库" : selection.kind === "workspace" ? "加密文件库" : "对话文件"
   };
 
   if (extension === "md") {
@@ -841,6 +924,9 @@ async function loadPreview(selection: PreviewFileSelection): Promise<LoadedPrevi
     }
     if (selection.kind === "draft") {
       return { kind: "image", src: selection.dataUrl, meta };
+    }
+    if (selection.kind === "workspace") {
+      return { kind: "image", src: getWorkspaceFileUrl(selection.assetId), meta };
     }
     const bytes = await loadBytes(selection);
     const src = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
@@ -886,6 +972,9 @@ async function loadPreview(selection: PreviewFileSelection): Promise<LoadedPrevi
     if (selection.kind === "draft") {
       return { kind: "pdf", src: selection.dataUrl, meta };
     }
+    if (selection.kind === "workspace") {
+      return { kind: "pdf", src: getWorkspaceFileUrl(selection.assetId), meta };
+    }
     const bytes = await loadBytes(selection);
     const src = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
     return { kind: "pdf", src, meta: { ...meta, sizeBytes: meta.sizeBytes ?? bytes.byteLength } };
@@ -898,6 +987,8 @@ async function loadPreview(selection: PreviewFileSelection): Promise<LoadedPrevi
         ? getKnowledgeFileUrl(selection.documentId)
         : selection.kind === "draft"
           ? selection.dataUrl
+          : selection.kind === "workspace"
+            ? getWorkspaceFileUrl(selection.assetId)
           : "";
     return { kind: "download", href, meta };
   }
@@ -906,6 +997,11 @@ async function loadPreview(selection: PreviewFileSelection): Promise<LoadedPrevi
 }
 
 async function loadText(selection: PreviewFileSelection) {
+  if (selection.kind === "workspace") {
+    const response = await fetch(getWorkspaceFileUrl(selection.assetId));
+    if (!response.ok) throw new Error("读取受管文件失败");
+    return response.text();
+  }
   if (selection.kind === "local") return readTextFile(selection.path);
   if (selection.kind === "draft") return selection.text ?? decodeDataUrlToText(selection.dataUrl);
   if (selection.kind === "knowledge") {
@@ -919,6 +1015,11 @@ async function loadText(selection: PreviewFileSelection) {
 }
 
 async function loadBytes(selection: PreviewFileSelection) {
+  if (selection.kind === "workspace") {
+    const response = await fetch(getWorkspaceFileUrl(selection.assetId));
+    if (!response.ok) throw new Error("读取受管文件失败");
+    return new Uint8Array(await response.arrayBuffer());
+  }
   if (selection.kind === "local") return readFile(selection.path);
   if (selection.kind === "draft") return decodeDataUrlToBytes(selection.dataUrl);
   if (selection.kind === "knowledge") {
@@ -1211,6 +1312,10 @@ function decodeDataUrlToBytes(dataUrl: string) {
 
 function getKnowledgeFileUrl(documentId: number): string {
   return `/api/knowledge/documents/${documentId}/file`;
+}
+
+function getWorkspaceFileUrl(assetId: string): string {
+  return `/api/workspace/assets/${encodeURIComponent(assetId)}/content`;
 }
 
 function getExtension(name: string) {

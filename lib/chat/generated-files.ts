@@ -10,6 +10,10 @@ export function snapshotGeneratedFiles(conversationId: number | undefined): Set<
   return new Set(listGeneratedFilePaths(conversationId));
 }
 
+export function snapshotWorkingFiles(outputDir: string | undefined): Set<string> {
+  return new Set(outputDir ? listFilesUnder(outputDir) : []);
+}
+
 /**
  * 差集追踪本回合新文件（含 working）。
  * CR-Q1：working/candidate 不得自动登记为正式 assistant 附件；
@@ -54,9 +58,17 @@ export function recordNewGeneratedFiles(
 /** 成功收尾时的清理:若本回合调用过 finalize_deliverable(写了 .finalized.json),删掉本回合在
  * generate/ 下「新建、但未被声明为最终产物」的中间/试错文件;声明清单、往次产物、会话上传输入都不删。
  * delivered/ 永不由此清理。无声明标记 → 全部保留(保守)。 */
-export function cleanupUnfinalizedFiles(conversationId: number | undefined, before: Set<string>): string[] {
-  if (!conversationId) return [];
-  const outputDir = path.join(getConversationFilesDir(conversationId), "generate");
+export function cleanupUnfinalizedFiles(
+  conversationId: number | undefined,
+  before: Set<string>,
+  explicitOutputDir?: string,
+): string[] {
+  const outputDir = explicitOutputDir
+    ? path.resolve(explicitOutputDir)
+    : conversationId
+      ? path.join(getConversationFilesDir(conversationId), "generate")
+      : "";
+  if (!outputDir) return [];
   const markerPath = path.join(outputDir, FINALIZED_MARKER);
   if (!existsSync(markerPath)) return []; // 本回合没声明最终产物 → 全留
 
@@ -71,7 +83,7 @@ export function cleanupUnfinalizedFiles(conversationId: number | undefined, befo
 
   const genRoot = path.resolve(outputDir);
   const deleted: string[] = [];
-  for (const filePath of listGeneratedFilePaths(conversationId)) {
+  for (const filePath of listFilesUnder(outputDir)) {
     const abs = path.resolve(filePath);
     if (!abs.startsWith(genRoot + path.sep)) continue;   // 只动 generate/ 下;upload/ 与 delivered/ 永不碰
     if (before.has(filePath)) continue;                   // 回合前已存在(往次产物)→ 保留
@@ -80,7 +92,7 @@ export function cleanupUnfinalizedFiles(conversationId: number | undefined, befo
   }
   try { rmSync(markerPath, { force: true }); } catch { /* ignore */ }
 
-  if (deleted.length) {
+  if (deleted.length && conversationId) {
     insertAuditLog("generated_files_cleanup", {
       conversationId,
       finalized: Array.from(declared),
@@ -126,6 +138,10 @@ export function syncGeneratedAttachments(conversationId: number) {
 
 function listGeneratedFilePaths(conversationId: number) {
   const root = getConversationFilesDir(conversationId);
+  return listFilesUnder(root);
+}
+
+function listFilesUnder(root: string) {
   if (!existsSync(root)) return [];
 
   const files: string[] = [];

@@ -25,7 +25,7 @@ function seedRoutingLog(
     "trace-seed",
     conversationId,
     "上一条消息",
-    JSON.stringify({ intent, needsRag: false, mainModelTier: "main", reasoning: "seed" }),
+    JSON.stringify({ intent, needsRag: false, reasoning: "seed" }),
     routerPath,
     100
   );

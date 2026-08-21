@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
-  ChevronRightIcon,
+  ArrowDown01Icon,
+  ArrowRight01Icon,
   Search01Icon,
   CommandLineIcon,
   File01Icon,
@@ -56,26 +57,19 @@ function conversationRelativePath(filePath: string, conversationId: string): str
 // 工具类型 → 可剥的中文动词前缀(行图标已移除,组头/renderer 文案承担类型语义)。
 // strip:剥掉类型动词前缀;relabel:剥空后用此固定文案兜底。
 const TOOL_VISUAL: Record<string, { strip?: RegExp; relabel?: string }> = {
-  analyze_tabular: { strip: /^结构化统计[:：]?\s*/ },
-  Bash:       { strip: /^执行[:：]?\s*/ },
-  Skill:      { strip: /^调用技能[:：]?\s*/ },
-  Write:      { strip: /^写入\s*/ },
-  Edit:       { strip: /^编辑\s*/ },
-  MultiEdit:  { strip: /^编辑\s*/ },
-  Read:       { strip: /^读取\s*/ },
-  read_file:  { strip: /^读取资料[:：]?\s*/ },
-  WebSearch:  { strip: /^搜索/ },
-  WebFetch:   { strip: /^获取\s*/ },
-  Grep:       { strip: /^搜索/ },
-  Glob:       { strip: /^查找文件\s*/ },
+  analyze_tabular: { strip: /^整理表格数据(?:（[^）]+）)?[:：]?\s*/ },
+  bash:       { strip: /^执行[:：]?\s*/ },
+  write:      { strip: /^写入\s*/ },
+  edit:       { strip: /^编辑\s*/ },
+  read:       { strip: /^读取\s*/ },
+  grep:       { strip: /^搜索/ },
+  find:       { strip: /^查找文件\s*/ },
+  ls:         { strip: /^查看目录\s*/ },
   search_knowledge: { strip: /^检索知识库[:：]?\s*/ },
-  query_knowledge:  { strip: /^查询知识库[:：]?\s*/ },
   AskUserQuestion:  { strip: /^询问[:：]?\s*/ },
   spawn_subagent:   { strip: /^执行子任务[:：]?\s*/ },
   // 单据→凭证系:组头已带动词(「匹配科目 ×8」),子行剥前缀只留对象,避免逐行重复
-  map_voucher_account:    { strip: /^匹配科目\s*/ },
   query_kingdee_accounts: { strip: /^查询金蝶科目[表]?\s*/ },
-  check_voucher_amount:   { strip: /^核对金额\s*/ },
   scan_slip_folder:       { strip: /^扫描单据文件夹\s*/ },
   read_document:          { strip: /^识别单据\s*/ },
 };
@@ -96,19 +90,24 @@ const STEP_ICON_BY_FAMILY: Record<string, IconSvgElement> = {
 };
 
 const TOOL_FAMILY: Record<string, keyof typeof STEP_ICON_BY_FAMILY> = {
-  search_knowledge: "search", query_knowledge: "search", Grep: "search", Glob: "search",
-  WebSearch: "search", query_kingdee_accounts: "search", map_voucher_account: "search",
-  Bash: "command", analyze_tabular: "finance",
-  Read: "read", read_file: "read", read_document: "read", WebFetch: "read", scan_slip_folder: "read",
-  Write: "write", Edit: "write", MultiEdit: "write",
-  Skill: "skill", spawn_subagent: "skill",
+  search_knowledge: "search", grep: "search", find: "search",
+  query_kingdee_accounts: "search",
+  bash: "command", analyze_tabular: "finance",
+  generate_business_analysis: "finance",
+  read: "read", ls: "read", read_document: "read", scan_slip_folder: "read",
+  write: "write", edit: "write", patch_workbook: "write", finalize_deliverable: "write",
+  spawn_subagent: "skill",
   AskUserQuestion: "ask",
-  check_voucher_amount: "finance",
 };
+
+/** 工具事件可能带有多个命名空间(例如 mcp__finance_worker__Read),图标只按最终工具名归类。 */
+function bareToolName(name: string): string {
+  return name.replace(/^.*__/, "");
+}
 
 // 有家族图标返回之,无则返回 null(是否补节点由 StepIcon 按 threaded 决定)。
 function stepIcon(name: string): IconSvgElement | null {
-  const bare = name.replace(/^\w+__/, "");
+  const bare = bareToolName(name);
   const family = TOOL_FAMILY[bare];
   return family ? STEP_ICON_BY_FAMILY[family] : null;
 }
@@ -136,10 +135,10 @@ function renderStepText(text: string): React.ReactNode {
 }
 
 // HighlightBlock:展开面板的代码高亮块(有语言才上色)
-function HighlightBlock({ lang, text }: { lang: string; text: string }) {
+function HighlightBlock({ lang, text, bare = false }: { lang: string; text: string; bare?: boolean }) {
   const md = "```" + lang + "\n" + text + "\n```";
   return (
-    <div className="md-content text-small [&_pre]:my-0 [&_pre]:max-h-64 [&_pre]:overflow-auto">
+    <div className={cn("md-content text-small [&_pre]:my-0 [&_pre]:max-h-none [&_pre]:overflow-visible", bare && "md-content-bare") }>
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={CODE_PLUGINS}>{md}</ReactMarkdown>
     </div>
   );
@@ -148,9 +147,9 @@ function HighlightBlock({ lang, text }: { lang: string; text: string }) {
 // PlainBlock:无法识别语言时的纯文本块。复用与 HighlightBlock 完全相同的 .md-content pre 容器
 // + 给 code 挂 hljs 基色(亮/暗都跟主题),使背景/字体/字色与高亮块一致,只是没有语法配色;
 // 错误输出整体走告警色。
-function PlainBlock({ text, error }: { text: string; error?: boolean }) {
+function PlainBlock({ text, error, bare = false }: { text: string; error?: boolean; bare?: boolean }) {
   return (
-    <div className="md-content text-small [&_pre]:my-0 [&_pre]:max-h-64 [&_pre]:overflow-auto">
+    <div className={cn("md-content text-small [&_pre]:my-0 [&_pre]:max-h-none [&_pre]:overflow-visible", bare && "md-content-bare") }>
       <pre><code className="hljs" style={error ? { color: "var(--tone-alarm)" } : undefined}>{text}</code></pre>
     </div>
   );
@@ -204,7 +203,7 @@ function ExpandedDetail({
     : null;
 
   return (
-    <>
+    <div className="tool-detail-scroll max-h-64 overflow-y-scroll">
       {/* spec 12: 图片缩略图（顶部） */}
       {showThumbnail && (
         <div className="mb-1.5">
@@ -229,12 +228,11 @@ function ExpandedDetail({
       {pair.input != null && (() => {
         const fmt = formatToolInput(pair.name, pair.input);
         return (
-          <div className="mb-1">
-            <span className="text-small text-muted-foreground">输入</span>
+          <div className="mb-3">
             {"lang" in fmt ? (
-              <div className="mt-0.5"><HighlightBlock lang={fmt.lang} text={fmt.text} /></div>
+              <HighlightBlock lang={fmt.lang} text={fmt.text} bare />
             ) : (
-              <div className="mt-0.5"><PlainBlock text={fmt.plain} /></div>
+              <PlainBlock text={fmt.plain} bare />
             )}
           </div>
         );
@@ -254,23 +252,22 @@ function ExpandedDetail({
               {headline !== body && (
                 <div className="mt-0.5 text-small" style={{ color: "var(--tone-alarm)" }}>{headline}</div>
               )}
-              <div className="mt-0.5"><PlainBlock text={body} error /></div>
+              <div className="mt-0.5"><PlainBlock text={body} error bare /></div>
             </div>
           );
         }
         const fmt = formatToolOutput(pair.name, sliced);
         return (
           <div>
-            <span className="text-small text-muted-foreground">输出</span>
             {"plain" in fmt ? (
-              <div className="mt-0.5"><PlainBlock text={fmt.plain} /></div>
+              <PlainBlock text={fmt.plain} bare />
             ) : (
-              <div className="mt-0.5"><HighlightBlock lang={fmt.lang} text={fmt.text} /></div>
+              <HighlightBlock lang={fmt.lang} text={fmt.text} bare />
             )}
           </div>
         );
       })()}
-    </>
+    </div>
   );
 }
 
@@ -287,7 +284,7 @@ function DetailMotion({ open, className, children }: { open: boolean; className?
   ) : null}</AnimatePresence>;
 }
 
-function ToolCallStep({ pair, degraded = false, threaded = false, conversationId }: { pair: ToolPair; degraded?: boolean; threaded?: boolean; conversationId?: number | null }) {
+function ToolCallStep({ pair, degraded = false, threaded = false, inCard = false, detailCard = false, conversationId }: { pair: ToolPair; degraded?: boolean; threaded?: boolean; inCard?: boolean; detailCard?: boolean; conversationId?: number | null }) {
   const [expanded, setExpanded] = useState(false);
   const reduce = useReducedMotion();
   // 日常:每步只一行人话、不可展开;技术模式:可点开看原始输入/输出(调试用)。
@@ -302,7 +299,7 @@ function ToolCallStep({ pair, degraded = false, threaded = false, conversationId
   const liveElapsed = useLiveElapsed(running ? pair.startedAt : undefined);
 
   return (
-    <div className="w-full">
+    <div className={cn("w-full", inCard && "px-3 py-2")}>
       <button
         className={cn(
           "group flex w-full items-center gap-2 py-1 text-body text-left transition-colors",
@@ -340,11 +337,9 @@ function ToolCallStep({ pair, degraded = false, threaded = false, conversationId
         {/* spec 2: chevron 默认隐藏，hover/focus 显现；触屏兜底 */}
         {hasDetail && (
           <motion.span
-            animate={{ rotate: reduce ? 0 : expanded ? 90 : 0 }}
-            transition={EASE_OUT_QUICK}
             className="inline-flex shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
           >
-            <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
+            <HugeiconsIcon icon={expanded ? ArrowDown01Icon : ArrowRight01Icon} size={14} className="text-muted-foreground/70" />
           </motion.span>
         )}
         {running && liveElapsed >= 1000 && (
@@ -357,7 +352,13 @@ function ToolCallStep({ pair, degraded = false, threaded = false, conversationId
 
       <ToolResultCard name={pair.name} structured={pair.structured} />
 
-      <DetailMotion open={expanded && hasDetail} className="px-2 pb-1">
+      <DetailMotion
+        open={expanded && hasDetail}
+        className={cn(
+          "mt-1 px-3 pb-1",
+          detailCard && "overflow-hidden rounded-xl border border-border bg-card py-2",
+        )}
+      >
         <ExpandedDetail pair={pair} conversationId={conversationId != null ? String(conversationId) : undefined} />
       </DetailMotion>
     </div>
@@ -377,7 +378,6 @@ function RetryGroupRow({
   conversationId?: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const reduce = useReducedMotion();
   const { label, count, recovered, items } = group;
   const displayLabel = `${label}`;  // label 已含「×N」
   void count; // count 已编码进 label
@@ -386,7 +386,7 @@ function RetryGroupRow({
   const subPairs = buildPairs(items, true);
 
   return (
-    <div className="w-full">
+    <div className="w-full px-3 py-2">
       <button
         className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer transition-colors"
         type="button"
@@ -416,20 +416,17 @@ function RetryGroupRow({
         )}
         {/* spec 2: chevron 默认隐藏，hover/focus 显现 */}
         <motion.span
-          animate={{ rotate: reduce ? 0 : expanded ? 90 : 0 }}
-          transition={EASE_OUT_QUICK}
           className="inline-flex shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
         >
-          <HugeiconsIcon icon={ChevronRightIcon} size={14} className="text-muted-foreground/70" />
+          <HugeiconsIcon icon={expanded ? ArrowDown01Icon : ArrowRight01Icon} size={14} className="text-muted-foreground/70" />
         </motion.span>
       </button>
 
       {/* 展开：组内逐步明细 */}
-      <DetailMotion open={expanded} className="py-0.5">
-            {/* fa-thread 必须挂在逐行的直接父级(节点线按 .fa-node 画);嵌套子步骤恒为 threaded */}
-            <div className="fa-thread flex flex-col gap-0.5">
+      <DetailMotion open={expanded} className="mt-1 overflow-hidden rounded-xl border border-border bg-card">
+            <div className="divide-y divide-border/70">
               {subPairs.map((p) => (
-                <ToolCallStep key={p.id} pair={p} degraded={recovered} threaded conversationId={conversationId} />
+                <ToolCallStep key={p.id} pair={p} degraded={recovered} inCard conversationId={conversationId} />
               ))}
             </div>
       </DetailMotion>
@@ -515,7 +512,7 @@ function stepDisplayText(pair: ToolPair): string {
   const summary = getToolSummary(pair.name, pair.input, pair.result, pair.isError);
   // 失败步去掉"错误："前缀——列表里靠红色表达错误,文字不再重复
   if (pair.status === "error") return summary.replace(/^错误[:：]\s*/, "");
-  const visual = toolVisual(pair.name.replace(/^\w+__/, ""));
+  const visual = toolVisual(bareToolName(pair.name));
   let text = summary;
   if (visual.strip) text = summary.replace(visual.strip, "");
   text = text.replace(/[「『」』]/g, "").trim();
@@ -550,47 +547,51 @@ export function ToolStepList({
 
   // spec 4: 将 aggregated 结果转为子步骤渲染
   const pairs = buildPairs(toolItems, !isActive);
+  const rowsInCard = !isActive && aggregated.length >= 2;
 
   // threaded = 折叠成 fa-thread 时间线的分支(见下)。仅该分支的行首无图标才补大圆点节点;
   //           顶层实时行(非 fa-thread)保持原样,无图标回落文档图标、不加圆点。
-  const threaded = !isActive && aggregated.length >= 2;
   const rows = aggregated.map((agg, idx) => {
     if (agg.kind === "retry-group") {
-      return <RetryGroupRow key={`group-${idx}`} group={agg} threaded={threaded} conversationId={conversationId} />;
+      return <RetryGroupRow key={`group-${idx}`} group={agg} conversationId={conversationId} />;
     }
     // kind:"step"
     // 从 pairs 找对应的 ToolPair（按 item.id 匹配）
     const pair = pairs.find((p) => p.id === agg.item.id);
     if (!pair) return null;
-    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} threaded={threaded} conversationId={conversationId} />;
+    return <ToolCallStep key={pair.id} pair={pair} degraded={agg.degraded} inCard={rowsInCard} detailCard={!isActive && aggregated.length === 1} conversationId={conversationId} />;
   });
 
-  // 已完成的多步段默认收成一行摘要(带对象与统计),点开才见逐步明细——密度对齐 Claude 的
-  // "一句话+折叠动作组"。进行中的段保持实时逐行,当前动作必须可见。
+  // 所有工具段默认只显示正文流中的一行摘要，点开后才在下方出现详情卡。
+  // 多步骤共享一张详情卡，卡内用分隔线区分每个步骤；避免摘要本身看起来像卡片。
   if (!isActive && aggregated.length >= 2) {
     return (
-      <details className="flex flex-col gap-0.5">
-        {/* 父行(组摘要)不带图标——图标留给子行,避免父子重复(倾向子 icon) */}
+      <details className="details-fold flex flex-col">
         <summary className="group flex w-full items-center gap-2 py-1 text-body text-left cursor-pointer list-none text-muted-foreground hover:text-foreground transition-colors">
           <span className="min-w-0 truncate">{summarizeToolSegment(toolItems)}</span>
           <HugeiconsIcon
-            icon={ChevronRightIcon}
+            icon={ArrowRight01Icon}
             size={14}
-            className="details-chevron shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+            className="details-chevron details-chevron-closed shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+          />
+          <HugeiconsIcon
+            icon={ArrowDown01Icon}
+            size={14}
+            className="details-chevron details-chevron-open shrink-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
           />
         </summary>
-        <div className="fa-thread flex flex-col gap-0.5">{rows}</div>
+        <div className="mt-1 overflow-hidden rounded-xl border border-border bg-card divide-y divide-border/70">{rows}</div>
       </details>
     );
   }
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="w-full">
       {/* 进行中的段:段摘要灰字提示 + 实时逐行 */}
       {isActive && summary && (
-        <div className="text-small text-muted-foreground/60 pb-0.5 select-none">{summary}</div>
+        <div className="px-3 pt-2.5 text-small text-muted-foreground/60 select-none">{summary}</div>
       )}
-      {rows}
+      <div className={cn("divide-y divide-border/70", isActive && summary && "mt-1")}>{rows}</div>
     </div>
   );
 }

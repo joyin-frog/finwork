@@ -64,9 +64,11 @@ function main() {
   console.log("✓ PASS: package dependencies declared");
 
   assert.ok(tauriConfig.includes("\"scope\""), "tauri.conf.json should configure asset/fs scope");
-  // 文件预览靠 capabilities 的 fs:allow-read-file "**"(读用户任选路径);plan 023 把
-  // tauri.conf.json 的 assetProtocol scope 收窄为 [](asset:// 未使用),故宽作用域在此校验。
-  assert.ok(capability.includes("\"**\""), "capability fs:allow-read-file should keep broad scope for file preview");
+  // 用户任选文件改走桌面令牌 + 加密 File Broker；Webview 本身只能读取 app data / resources。
+  assert.ok(!capability.includes("\"**\""), "capability must not grant broad filesystem reads");
+  assert.ok(capability.includes("$APPDATA/**"), "capability should keep app-data preview reads");
+  assert.ok(capability.includes("$RESOURCE/**"), "capability should keep bundled resource reads");
+  assert.ok(previewComponent.includes("/api/workspace/import-local"), "system picker should import through File Broker");
   assert.ok(capability.includes("dialog:allow-open"), "capability should allow dialog open");
   assert.ok(capability.includes("fs:allow-read-file"), "capability should allow fs reads");
   assert.ok(capability.includes("\"soffice\""), "capability should allow soffice execution");

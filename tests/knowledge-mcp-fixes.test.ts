@@ -1,18 +1,19 @@
 /**
- * TDD tests for three fixes in lib/agent/mcp-tools/knowledge.ts:
- *  1. topK clamp: topK > 5 should not throw, should clamp to 5
- *  2. search_knowledge description: must mention keyword/literal match and query_knowledge for exact match
- *  3. resolveDoc fallback: sanitized file name (e.g. "科目--新系统.txt") should resolve to matching doc
+ * Retrieval v2 MCP contract tests for lib/agent/mcp-tools/knowledge.ts:
+ *  1. topK contract: ordinary and deep retrieval share one entry with a governed cap of 20
+ *  2. search_knowledge advertises governed hybrid retrieval and immutable citations
+ *  3. sanitized file names still resolve, but content comes from ArtifactStore rather than text mirrors
  */
 import assert from "node:assert/strict";
-import { rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { rmSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import {
   initializeFinanceDatabase,
   openFinanceDatabase,
   insertKnowledgeDocument,
 } from "../lib/db/sqlite.ts";
-import { writeTextMirror } from "../lib/knowledge/storage.ts";
+import { createHash } from "node:crypto";
+import { createProductionRetrievalService } from "../lib/retrieval/index.ts";
 import type { SdkLike } from "../lib/agent/mcp-tools/sdk-types.ts";
 
 // ── mock SDK that captures name, description, schema, handler ────────────────
@@ -44,14 +45,18 @@ export const knowledgeMcpFixesTestPromise = (async () => {
 
   const db = initializeFinanceDatabase(openFinanceDatabase(path.join(baseDir, "fixes.db")));
 
-  // ── Seed: 复现生产 bug——上传原名是 .xlsx，模型却用镜像名 .txt 请求 ──
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+  const retrieval = createProductionRetrievalService({
+    db,
+    casRoot: path.join(baseDir, "artifacts", "cas"),
+  });
+
+  // ── Seed immutable Retrieval v2 artifacts ───────────────────────────────
   // sanitizeDocFileName 只去扩展名/非法字符/控制字符，连字符保留。
-  // DB: file_name="科目--新系统.xlsx", title="科目--新系统"；镜像文件 = "科目--新系统.txt"。
-  // 生产 bug: read_file("科目--新系统.txt") 与 file_name/title 都不精确相等 → 未找到，
-  // 而 query_knowledge 的 rg 能读到镜像文件。fallback 按净化 title 匹配后应命中。
+  // DB: file_name="科目--新系统.xlsx", title="科目--新系统"；调用方仍可能请求 .txt 别名。
   const docTitle = "科目--新系统";
-  const docHash = "abc123fixture";
-  writeTextMirror(docHash, "科目编码体系说明内容");
+  const docText = "科目编码体系说明内容";
+  const docHash = sha256(docText);
   const docId = insertKnowledgeDocument(
     {
       title: docTitle,
@@ -64,11 +69,19 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     },
     db
   );
+  await retrieval.indexKnowledgeDocument({
+    knowledgeDocumentId: docId,
+    title: docTitle,
+    fileName: `${docTitle}.xlsx`,
+    sourceContentHash: docHash,
+    parsedText: docText,
+    category: "general",
+  });
 
   // Also add a plain doc that matches by exact title (regression guard)
   const exactTitle = "差旅报销制度";
-  const exactHash = "def456fixture";
-  writeTextMirror(exactHash, "差旅住宿标准 500 元/晚");
+  const exactText = "差旅住宿标准 500 元/晚";
+  const exactHash = sha256(exactText);
   const exactId = insertKnowledgeDocument(
     {
       title: exactTitle,
@@ -81,17 +94,26 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     },
     db
   );
+  await retrieval.indexKnowledgeDocument({
+    knowledgeDocumentId: exactId,
+    title: exactTitle,
+    fileName: `${exactTitle}.txt`,
+    sourceContentHash: exactHash,
+    parsedText: exactText,
+    category: "general",
+  });
 
   // ── Import tool creators (after env is set) ───────────────────────────────
-  const { createSearchKnowledgeTool, createReadFileTool } = await import(
+  const { createSearchKnowledgeTool } = await import(
     "../lib/agent/mcp-tools/knowledge.ts"
   );
+  const retrievalOptions = { getRetrievalService: () => retrieval };
 
   // ── Fix 1: topK clamp ────────────────────────────────────────────────────
   // FAIL BEFORE FIX: topK:10 throws zod validation error
   {
     const { sdk, tools } = makeMockSdk();
-    createSearchKnowledgeTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
     const entry = tools.get("search_knowledge");
     assert.ok(entry, "Fix1 FAIL: search_knowledge not registered");
@@ -116,7 +138,7 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 1b: default topK=3 path still works ──────────────────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createSearchKnowledgeTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
     const { handler } = tools.get("search_knowledge")!;
     let threw = false;
@@ -129,62 +151,55 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     console.log("knowledge-mcp-fixes Fix1b: default topK=3 still works ✓");
   }
 
-  // ── Fix 2: description mentions keyword/literal match ────────────────────
+  // ── Fix 2: description exposes governed hybrid retrieval ────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createSearchKnowledgeTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
     const entry = tools.get("search_knowledge");
     assert.ok(entry, "Fix2 FAIL: search_knowledge not found");
 
     const desc = entry.desc;
-    // Must mention keyword/literal match (关键词/字面匹配 or 关键词匹配)
-    const mentionsKeywordMatch =
-      desc.includes("关键词") && (desc.includes("字面") || desc.includes("精确") || desc.includes("literal"));
+    const mentionsBm25 = desc.includes("BM25");
     assert.ok(
-      mentionsKeywordMatch,
-      `Fix2 FAIL: description should mention keyword/literal match. Got: "${desc}"`
+      mentionsBm25,
+      `Fix2 FAIL: description should mention BM25 retrieval. Got: "${desc}"`
     );
 
-    // Must NOT present itself as semantic search
     assert.ok(
-      !desc.includes("语义"),
-      `Fix2 FAIL: description should NOT mention semantic search. Got: "${desc}"`
+      desc.includes("ACL"),
+      `Fix2 FAIL: description should mention ACL enforcement. Got: "${desc}"`
     );
 
-    // Must mention that numbers/proper nouns work better
-    const mentionsNumerics = desc.includes("数字") || desc.includes("专有名词") || desc.includes("科目");
     assert.ok(
-      mentionsNumerics,
-      `Fix2 FAIL: description should hint that numbers/proper nouns work best. Got: "${desc}"`
+      desc.includes("不可变来源版本") && desc.includes("定位") && desc.includes("内容哈希"),
+      `Fix2 FAIL: description should require immutable citation evidence. Got: "${desc}"`
     );
 
     // Must mention topK cap
-    const mentionsTopKCap = desc.includes("5") && (desc.includes("最大") || desc.includes("超出") || desc.includes("clamp") || desc.includes("取 5"));
+    const mentionsTopKCap = desc.includes("20") && (desc.includes("最大") || desc.includes("最多") || desc.includes("提高到") || desc.includes("超出") || desc.includes("clamp"));
     assert.ok(
       mentionsTopKCap,
-      `Fix2 FAIL: description should state topK max is 5. Got: "${desc}"`
+      `Fix2 FAIL: description should state topK max is 20. Got: "${desc}"`
     );
 
     console.log("knowledge-mcp-fixes Fix2: description updated correctly ✓");
   }
 
-  // ── Fix 3: resolveDoc fallback for mirror name ───────────────────────────
-  // read_file("科目--新系统.txt") — rg 在 text-by-name/ 看到的镜像名，
-  // 与 DB 的 file_name("科目--新系统.xlsx")不相等 → 靠净化 title fallback 命中
+  // ── Fix 3: resolveDoc fallback for a sanitized alias ─────────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
-    const { handler } = tools.get("read_file")!;
+    const { handler } = tools.get("search_knowledge")!;
 
-    // Call with the mirror file name (what rg sees in text-by-name/)
+    // .txt alias resolves by normalized title; returned bytes come from ArtifactStore.
     const result = await handler({ fileName: "科目--新系统.txt" }) as { content: Array<{ text: string }> };
     assert.ok(result && typeof result === "object", "Fix3 FAIL: result should be an object");
     const text = result.content?.[0]?.text ?? "";
     assert.ok(
       !text.startsWith("未找到"),
-      `Fix3 FAIL: mirror name '科目--新系统.txt' should resolve to doc. Got: "${text.slice(0, 80)}"`
+      `Fix3 FAIL: sanitized alias '科目--新系统.txt' should resolve to doc. Got: "${text.slice(0, 80)}"`
     );
     assert.ok(
       text.includes("科目编码体系说明内容") || text.includes("科目"),
@@ -197,9 +212,9 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 3b: exact title match still works (regression guard) ─────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
-    const { handler } = tools.get("read_file")!;
+    const { handler } = tools.get("search_knowledge")!;
 
     const result = await handler({ fileName: exactTitle }) as { content: Array<{ text: string }> };
     const text = result.content?.[0]?.text ?? "";
@@ -218,9 +233,9 @@ export const knowledgeMcpFixesTestPromise = (async () => {
   // ── Fix 3c: file_name exact match still works ────────────────────────────
   {
     const { sdk, tools } = makeMockSdk();
-    createReadFileTool(sdk);
+    createSearchKnowledgeTool(sdk, retrievalOptions);
 
-    const { handler } = tools.get("read_file")!;
+    const { handler } = tools.get("search_knowledge")!;
 
     const result = await handler({ fileName: `${exactTitle}.txt` }) as { content: Array<{ text: string }> };
     const text = result.content?.[0]?.text ?? "";
@@ -232,10 +247,87 @@ export const knowledgeMcpFixesTestPromise = (async () => {
     console.log("knowledge-mcp-fixes Fix3c: file_name exact match still works ✓");
   }
 
+  // ── Fix 4: large documents are read in bounded, addressable line ranges ──
+  {
+    const longTitle = "长篇财务制度";
+    const longText = Array.from({ length: 450 }, (_, index) => `制度条款 ${index + 1}`).join("\n");
+    const longHash = sha256(longText);
+    const longId = insertKnowledgeDocument({
+      title: longTitle,
+      file_name: `${longTitle}.txt`,
+      mime_type: "text/plain",
+      category: "general",
+      size_bytes: Buffer.byteLength(longText),
+      chunk_count: 0,
+      content_hash: longHash,
+    }, db);
+    await retrieval.indexKnowledgeDocument({
+      knowledgeDocumentId: longId,
+      title: longTitle,
+      fileName: `${longTitle}.txt`,
+      sourceContentHash: longHash,
+      parsedText: longText,
+      category: "general",
+    });
+    const { sdk, tools } = makeMockSdk();
+    createSearchKnowledgeTool(sdk, retrievalOptions);
+    const result = await tools.get("search_knowledge")!.handler({
+      fileName: `${longTitle}.txt`,
+      startLine: 401,
+      endLine: 410,
+    }) as { content: Array<{ text: string }> };
+    const text = result.content[0]?.text ?? "";
+    assert.match(text, /第 401-410 行/);
+    assert.match(text, /401: 制度条款 401/);
+    assert.doesNotMatch(text, /400: 制度条款 400/);
+    assert.match(text, /startLine=411/);
+    console.log("knowledge-mcp-fixes Fix4: bounded line-range reading ✓");
+  }
+
+  // ── Fix 4b: one giant line can continue by stable character offset ───────
+  {
+    const giantTitle = "单行压缩制度";
+    const giantText = "A".repeat(60_000);
+    const giantHash = sha256(giantText);
+    const giantId = insertKnowledgeDocument({
+      title: giantTitle,
+      file_name: `${giantTitle}.txt`,
+      mime_type: "text/plain",
+      category: "general",
+      size_bytes: Buffer.byteLength(giantText),
+      chunk_count: 0,
+      content_hash: giantHash,
+    }, db);
+    await retrieval.indexKnowledgeDocument({
+      knowledgeDocumentId: giantId,
+      title: giantTitle,
+      fileName: `${giantTitle}.txt`,
+      sourceContentHash: giantHash,
+      parsedText: giantText,
+      category: "general",
+    });
+    const { sdk, tools } = makeMockSdk();
+    createSearchKnowledgeTool(sdk, retrievalOptions);
+    const first = await tools.get("search_knowledge")!.handler({ fileName: `${giantTitle}.txt` }) as {
+      content: Array<{ text: string }>;
+    };
+    assert.match(first.content[0]?.text ?? "", /startChar=50000/);
+    const second = await tools.get("search_knowledge")!.handler({
+      fileName: `${giantTitle}.txt`,
+      startChar: 50_000,
+      maxChars: 10_000,
+    }) as { content: Array<{ text: string }> };
+    assert.match(second.content[0]?.text ?? "", /字符 50000-59999/);
+    assert.doesNotMatch(second.content[0]?.text ?? "", /内容未读完/);
+    console.log("knowledge-mcp-fixes Fix4b: giant-line character pagination ✓");
+  }
+
   // Cleanup env (best-effort; test harness may re-run)
   delete process.env.FINANCE_AGENT_APP_DATA_DIR;
   delete process.env.FINANCE_AGENT_DB_PATH;
   delete process.env.FINANCE_AGENT_KNOWLEDGE_DIR;
+
+  db.close();
 
   console.log("knowledge-mcp-fixes: all checks passed ✓");
 })();

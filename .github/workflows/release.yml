@@ -55,18 +55,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 交叉编译 x64 mac 包:在 arm64 runner 上用 Rosetta 跑 x64 Node/npm,
+      # 交叉编译 x64 mac 包:在 arm64 runner 上用 Rosetta 跑 x64 Node/pnpm,
       # 让 next build / @vscode/ripgrep / 内嵌 node 等原生件都解析成 x64,匹配目标架构。
       - name: Ensure Rosetta (x64-on-arm64)
         if: matrix.platform == 'macos-14' && matrix.node_arch == 'x64'
         run: sudo softwareupdate --install-rosetta --agree-to-license || true
 
-      - name: Setup Node
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node runtime
         uses: actions/setup-node@v4
         with:
           node-version: 22
           architecture: ${{ matrix.node_arch }}
-          cache: npm
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -79,7 +83,7 @@ jobs:
           workspaces: src-tauri
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       # C 方案:把 Python 运行时归档随安装包发(首启解压、免 GitHub 下载)。放到 workers/,
       # prepare-tauri 会把 workers/ 拷进 next-server,getBundledPythonArchive() 生产态解析到它。
@@ -118,7 +122,7 @@ jobs:
             -S apple-tool:,apple: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-      # tauri-action 会执行 tauri.conf 的 beforeBuildCommand(npm run build && npm run tauri:prepare)
+      # tauri-action 会执行 tauri.conf 的 beforeBuildCommand（默认继续使用 pnpm）。
       # 再编译 Rust + 打包,并把 dmg/nsis 产物(含签名后的 latest.json)挂到 GitHub Release。
       #
       # Updater 签名:tauri-action 在构建时读取 TAURI_SIGNING_PRIVATE_KEY 对更新包签名,

@@ -1,0 +1,13 @@
+entry_id,date,document_no,account,debit,credit,counterparty,invoice_no
+E001,2026-07-01,V001,bank,30000,0,Customer-A,INV-1001
+E002,2026-07-01,V001,revenue,0,30000,Customer-A,INV-1001
+E003,2026-07-03,V002,travel_expense,3600,0,Employee-A,TRIP-0703
+E004,2026-07-03,V002,bank,0,3600,Employee-A,TRIP-0703
+E005,2026-07-05,V003,inventory,12000,0,Supplier-A,SUP-2001
+E006,2026-07-05,V003,accounts_payable,0,12000,Supplier-A,SUP-2001
+E007,2026-07-08,V004,sales_return,5000,0,Customer-A,INV-1002
+E008,2026-07-08,V004,accounts_receivable,0,5000,Customer-A,INV-1002
+E009,2026-07-10,V005,office_expense,800,0,Supplier-B,SUP-2002
+E010,2026-07-10,V005,bank,0,800,Supplier-B,SUP-2002
+E011,2026-07-11,V006,office_expense,800,0,Supplier-B,SUP-2002
+E012,2026-07-11,V006,bank,0,800,Supplier-B,SUP-2002

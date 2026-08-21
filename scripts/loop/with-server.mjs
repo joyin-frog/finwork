@@ -3,7 +3,7 @@
 // wrapper so the loop's server-bound checks are self-contained.
 //
 //   node scripts/loop/with-server.mjs -- node scripts/loop/api-smoke.mjs
-//   node scripts/loop/with-server.mjs --port 3997 -- npx playwright test
+//   node scripts/loop/with-server.mjs --port 3997 -- pnpm exec playwright test
 import { spawn } from "node:child_process";
 import { prepareSandbox } from "./sandbox-env.mjs";
 
@@ -46,7 +46,7 @@ const { env, appDataDir, model, apiUrl } = await prepareSandbox({ reset: false }
 console.error(`[with-server] sandbox=${appDataDir} model=${model} apiUrl=${apiUrl}`);
 console.error(`[with-server] starting next dev on :${port} ...`);
 
-const server = spawn("npx", ["next", "dev", "-p", String(port)], {
+const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "dev", "-p", String(port)], {
   env: { ...env, PORT: String(port) },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true,

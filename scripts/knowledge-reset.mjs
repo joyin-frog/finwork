@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Reset knowledge base: clear embeddings, documents, and storage dir.
- * Use after switching embedding model or full knowledge reset.
+ * Reset knowledge base: clear documents, governed retrieval data, and storage dir.
  * Usage: node scripts/knowledge-reset.mjs
  */
 
@@ -36,12 +35,10 @@ if (!existsSync(dbPath)) {
 } else {
   const db = new DatabaseSync(dbPath);
   const before = (db.prepare("SELECT COUNT(*) AS c FROM knowledge_documents").get()).c;
-  // 清 embeddings（WP12 新表，CASCADE 会跟随 knowledge_documents 删除，此处提前清以避免外键约束顺序问题）
-  db.exec("DELETE FROM knowledge_embeddings");
   db.exec("DELETE FROM knowledge_documents");
   // WP1b: 同步清 fact_obligations，防幽灵义务行（知识库文档已删，派生义务行需一并清除）
   db.exec("DELETE FROM fact_obligations");
-  console.log(`Cleared ${before} documents + embeddings.`);
+  console.log(`Cleared ${before} knowledge documents.`);
   db.close();
 }
 

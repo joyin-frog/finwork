@@ -21,7 +21,7 @@ function fmtReset(resetAt: number, kind: "5h" | "week"): string {
     : d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
 }
 
-function Ring({ pct, size = 20, stroke = 2.5 }: { pct: number; size?: number; stroke?: number }) {
+function Ring({ pct, size = 14, stroke = 2 }: { pct: number; size?: number; stroke?: number }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.max(0, Math.min(100, pct));

@@ -54,6 +54,46 @@ export function getConversationFilesDir(conversationId: number | string) {
     ?? path.join(getAppDataDir(), "files", String(conversationId));
 }
 
+/**
+ * 用户文件工作区。managed/ 是加密内容寻址存储；runs/ 只放按回合解密的短期工作副本。
+ * 它与旧 conversation files 分离，避免聊天删除时误删仍被其它任务引用的资产。
+ */
+export function getFileWorkspaceDir() {
+  return process.env.FINANCE_AGENT_FILE_WORKSPACE_DIR
+    ?? path.join(getAppDataDir(), "file-workspace");
+}
+
+export function getFileWorkspaceKeyPath() {
+  return process.env.FINANCE_AGENT_FILE_WORKSPACE_KEY_FILE
+    ?? path.join(getAppDataDir(), "file-workspace-key");
+}
+
+export function getRunFileWorkspaceDir(runId: string) {
+  return path.join(getFileWorkspaceDir(), "runs", runId);
+}
+
+/**
+ * 单次执行的明文工作面。inputs 只读，work 是 Agent 唯一写入区，outputs
+ * 只放通过交付门后的最终物化副本；整个 runRoot 都按短期保留策略回收。
+ */
+export function getRunFileWorkspacePaths(runId: string) {
+  const root = getRunFileWorkspaceDir(runId);
+  return {
+    root,
+    inputs: path.join(root, "inputs"),
+    work: path.join(root, "work"),
+    outputs: path.join(root, "outputs"),
+  };
+}
+
+/**
+ * 可丢弃资源工作区。它与用户文件目录严格分离，只允许资源治理层做两阶段回收。
+ */
+export function getResourceWorkspaceDir() {
+  return process.env.FINANCE_AGENT_RESOURCE_WORKSPACE_DIR
+    ?? path.join(getAppDataDir(), "resource-workspaces");
+}
+
 /** Pi 会话只允许落在 Finwork app-data；禁止回落到 ~/.pi 默认目录。 */
 export function getPiSessionDir() {
   return process.env.FINANCE_AGENT_PI_SESSION_DIR ?? path.join(getAppDataDir(), "pi-sessions");
@@ -72,6 +112,12 @@ export function getBundledPythonDir() {
 /** 按需安装的 Python 运行时目录(装进 app 自有数据目录,免管理员);见 python-installer.ts。 */
 export function getInstalledPythonDir() {
   return path.join(getAppDataDir(), "python-runtime");
+}
+
+/** Product-managed Office compatibility runtime. It is optional and never model-controlled. */
+export function getManagedLibreOfficeDir() {
+  return process.env.FINWORK_MANAGED_LIBREOFFICE_DIR
+    ?? path.join(getAppDataDir(), "runtimes", "libreoffice", "current");
 }
 
 /** 随安装包内嵌的 Python 归档(C 方案:打包带 tar,首启解压、免 GitHub 下载)。
@@ -135,16 +181,12 @@ export function getKnowledgeTextDir() {
   return process.env.FINANCE_AGENT_KNOWLEDGE_TEXT_DIR ?? path.join(getAppDataDir(), "knowledge-text");
 }
 
-export function getMemoryPath() {
-  return process.env.FINANCE_AGENT_MEMORY_PATH ?? path.join(getAppDataDir(), "memory.md");
-}
-
 export function getProfilePath() {
   return process.env.FINANCE_AGENT_PROFILE_PATH ?? path.join(getAppDataDir(), "profile.json");
 }
 
 /** 主 Agent 系统提示「静态前缀(A 段)」的用户可编辑覆盖文件;存在即优先于仓库默认与内置常量。
- *  跟 memory.md 一样放应用数据目录,打包后也能改、改完下条消息即生效(无需重新编译)。 */
+ *  放在应用数据目录,打包后也能改、改完下条消息即生效(无需重新编译)。 */
 export function getSystemPromptPath() {
   return process.env.FINANCE_AGENT_SYSTEM_PROMPT_PATH ?? path.join(getAppDataDir(), "system-prompt.md");
 }

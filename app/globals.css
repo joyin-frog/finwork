@@ -3,6 +3,10 @@
 @import "shadcn/tailwind.css";
 @import "./styles/tokens.css";
 
+/* Tailwind v4 会自动扫描项目文件；规范/测试中的示例 class 不是运行时样式源。 */
+@source not "../docs";
+@source not "../tests";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -12,6 +16,7 @@
     --font-mono: var(--font-mono);
     --font-heading: var(--font-geist-sans);
     --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
     --color-tone-alarm: var(--tone-alarm);
     --color-tone-warn: var(--tone-warn);
     --color-tone-notice: var(--tone-notice);
@@ -50,13 +55,16 @@
     --color-background: var(--background);
     --color-scrim-modal: var(--scrim-modal);
     --color-scrim-blocking: var(--scrim-blocking);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+    /* 圆角档位:0 / 4 / 8 / 12 / 16 / pill；旧 Tailwind 别名映射到最近档位。 */
+    --radius-0: 0rem;
+    --radius-4: 0.25rem;
+    --radius-8: 0.5rem;
+    --radius-12: 0.75rem;
+    --radius-16: 1rem;
+    --radius-sm: var(--radius-4);
+    --radius-md: var(--radius-8);
+    --radius-lg: var(--radius-12);
+    --radius-xl: var(--radius-16);
     /* 密度 spacing 工具类:生成 p-page / gap-section / gap-card 等(Tailwind v4 --spacing-* 机制);
        值走 :root 定义的密度 token,linear 风格下自动缩减一档,默认风格零变化。 */
     --spacing-page: var(--page-pad);
@@ -92,9 +100,9 @@
   --text-title--line-height: 1.35;
   --text-title--font-weight: 600;
 
-  --text-body: 0.875rem;
-  --text-body--line-height: 1.6;
-  --text-body--font-weight: 400;
+  --text-body: 0.8125rem;
+  --text-body--line-height: 20px;
+  --text-body--font-weight: 500;
     
   --text-small: 0.8125rem;
   --text-small--line-height: 1.3;
@@ -113,9 +121,13 @@
 :root {
     /* ════ 几何、排版、密度 token；颜色见 app/styles/tokens.css ════ */
     /* chip 圆角（0.25rem = 4px）：承接试点里裸 rounded 8 处，像素不变 */
-    --radius-chip: 0.25rem;
+    --radius-chip: var(--radius-4);
+    /* 微型图表标记/提示箭头圆角（2px） */
+    --radius-micro: 0.125rem;
+    /* 胶囊与状态标签使用的完全圆角 */
+    --radius-pill: 999px;
     /* ── 外壳几何 token(单一来源):所有依赖侧栏宽度/红绿灯净空的定位一律引用它们,禁止再写镜像常量 ── */
-    --nav-width: 13.5rem;    /* 侧栏展开默认宽度(216px)。首帧兜底；运行期由 app-nav useEffect 用实时 navWidth 覆盖 */
+    --nav-width: 15.625rem;  /* 侧栏展开默认宽度(250px)。首帧兜底；运行期由 app-nav useEffect 用实时 navWidth 覆盖 */
     --tl-inset: 5rem;        /* macOS 红绿灯净空;Windows 平台规则覆写为 0.5rem */
     --window-chrome-height: 2.5rem; /* Windows 独立品牌标题栏高度(40px);侧栏与内容从其下方开始,mac 不消费 */
     /* 密度 token:间距随风格切换的旋钮。默认值与既有 Tailwind class 严格等值(p-4=1rem 等),保证默认风格像素零变化 */
@@ -125,7 +137,8 @@
     --section-gap: 1.5rem;     /* 页面区块间距(原 gap-6) */
     --card-gap: 1rem;          /* 卡片网格间距(原 gap-4) */
 
-    --radius: 0.7rem;
+    /* 兼容少量第三方组件；业务组件使用上面的离散档位。 */
+    --radius: var(--radius-12);
     --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
     --font-mono: var(--font-jetbrains), "SF Mono", Consolas, monospace;
 
@@ -203,14 +216,15 @@
   --doc-shadow: 0 2px 16px oklch(0 0 0 / 40%);
 }
 
-/* 页面标题栏统一底线:伪元素画线,两端留缝 0.75rem,比原 border-bottom 更淡(混入 40% transparent)。
+/* 页面标题栏统一底线:伪元素画线,横向铺满,比原 border-bottom 更淡(混入 40% transparent)。
    ::after 在 bottom:0 盒内不溢出;overflow-x-auto 的 header 已 relative,安全。 */
-.app-page-header { position: relative; }
+.app-page-header { position: relative; min-height: 46px; }
 .app-page-header::after {
-  content: ""; position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0; height: 1px;
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
   background: color-mix(in srgb, var(--border), transparent 40%);
   pointer-events: none;
 }
+.app-page-header.no-divider::after { display: none; }
 
 /* 内容滚动区顶部渐隐:靠近上方标题栏时内容淡出(fade,非 blur)。挂在各页主内容滚动容器上。 */
 .content-fade-top {
@@ -218,15 +232,28 @@
   mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
 }
 
-/* 纯图标按钮统一尺寸:容器 32px + 图标 16px,全站唯一标准。
+/* 纯图标按钮统一尺寸:容器 28px + 图标 16px,全站主要标准。
    只管尺寸,不管 flex/圆角等布局——那些由调用处的 Tailwind 类负责,保持可组合。 */
 .icon-btn {
-  width: 2rem;
-  height: 2rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-12);
 }
 .icon-btn svg:not([class*="size-"]) {
   width: 1rem;
   height: 1rem;
+}
+
+/* 侧栏内联重命名输入框自动聚焦,焦点提示保持轻量,避免与整行选中底色叠成重阴影。 */
+.sidebar-rename-input:focus-visible {
+  border-color: color-mix(in oklch, var(--ring) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--ring) 20%, transparent);
+}
+
+.sidebar-rename-input {
+  height: 30px;
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
 }
 
 /* Thinking pulse animation for chat assistant turn */
@@ -237,7 +264,7 @@
 
 .think-pulse {
   width: 8px; height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
   position: relative;
   flex: 0 0 8px;
@@ -247,7 +274,7 @@
   content: "";
   position: absolute;
   inset: -4px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
   opacity: 0.18;
   animation: think-breathe 1.6s ease-in-out infinite;
@@ -268,9 +295,9 @@
 }
 
 /* Rotate chevron inside open details */
-details[open] > summary .details-chevron {
-  transform: rotate(90deg); /* ChevronRight:闭合朝右 → 展开转 90° 朝下 */
-}
+/* 折叠控件统一使用 ArrowRight(闭合) / ArrowDown(展开),不依赖旋转来表达状态。 */
+details.details-fold:not([open]) .details-chevron-open { display: none; }
+details.details-fold[open] .details-chevron-closed { display: none; }
 
 /* 消息工具条触屏设备始终可见(hover 媒体不支持时 opacity-0 逻辑失效)。
    Tailwind group-hover: 在 (hover: none) 设备上不触发,需显式覆盖。 */
@@ -282,7 +309,7 @@ details[open] > summary .details-chevron {
 }
 
 /* ---------- 统一 markdown 渲染（chat 气泡 + 答案；自管排版，不依赖 @tailwindcss/typography）----------
-   气泡与答案完全共用这套（已删 fa-answer 衬线层）；尺寸/间距全用上面的 --text-*/--lh-* token。
+   气泡与答案完全共用这套（已删 fa-answer 衬线层）；尺寸/间距全用上面的排版 token。
    颜色跟随主题变量（foreground/muted/border/primary），明暗自动。 */
 .md-content {
   font-family: var(--font-sans);
@@ -291,7 +318,7 @@ details[open] > summary .details-chevron {
   color: var(--foreground);
 }
 /* 正文字号兜底:上面的 .md-content 基规则在构建里被丢了(font-size 没生效,正文回落到
-   preflight 16px);用双类提高优先级、独立成条,确保正文走 --text-body(14px)token。 */
+   preflight 16px);用双类提高优先级、独立成条,确保正文走 --text-body(13px)token。 */
 .md-content.md-content {
   font-size: var(--text-body);
   font-weight: var(--text-body--font-weight);
@@ -359,6 +386,34 @@ details[open] > summary .details-chevron {
    code 自带 1em padding + 主题底色(#fafafa/#282c34),叠在 pre 的 padding+底上 → 一圈色差的缝。
    这里用 !important 只保留主题“配色”、去掉它的盒子(padding/背景),代码块只剩 pre 一层框、无缝。 */
 .md-content pre code.hljs { background: none !important; padding: 0 !important; }
+/* 工具步骤展开详情不再使用代码卡片,仅保留 hljs 的语法颜色。 */
+.md-content-bare pre {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+/* 工具详情的输入与输出共用一个滚动容器,滚动条常显,避免用户误以为内容被截断。 */
+.tool-detail-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: var(--sb-thumb) transparent;
+}
+.tool-detail-scroll::-webkit-scrollbar {
+  width: 12px;
+}
+.tool-detail-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tool-detail-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--sb-thumb) !important;
+}
+.tool-detail-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--sb-thumb-hover) !important;
+}
 
 /* 表格：只横线、铺满、无竖线/无表头底色（更关注文字）。外层 TableBlock 加复制按钮。 */
 .md-content table {
@@ -426,7 +481,7 @@ html button.composer-send-button.stop {
   gap: 5px;
   width: fit-content;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.625rem;
   font-weight: 500;
   white-space: nowrap;
@@ -436,7 +491,7 @@ html button.composer-send-button.stop {
 .fa-tone-pill::before {
   content: "";
   width: 5px; height: 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--tone);
   flex-shrink: 0;
 }
@@ -447,7 +502,7 @@ html button.composer-send-button.stop {
 .fa-tone-dot {
   display: inline-block;
   width: 6px; height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--tone);
   flex-shrink: 0;
 }
@@ -457,7 +512,7 @@ html button.composer-send-button.stop {
 .fa-pulse {
   position: relative;
   width: 8px; height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
   flex-shrink: 0;
 }
@@ -465,7 +520,7 @@ html button.composer-send-button.stop {
   content: "";
   position: absolute;
   inset: -4px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
   opacity: 0.18;
   animation: fa-think-breathe 1.6s ease-in-out infinite;
@@ -580,7 +635,7 @@ html button.composer-send-button.stop {
    注意:::-webkit-scrollbar-thumb 的 transition 在 WebKit 上有效。 */
 ::-webkit-scrollbar-thumb {
   background-color: transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 2px solid transparent;
   background-clip: padding-box;
   transition: background-color var(--motion-slow) ease;
@@ -690,7 +745,7 @@ html button.composer-send-button.stop {
 
 /* ── Linear 风格（亮）── 布局反转:侧栏平铺、主内容浮起卡 */
 [data-style='linear'] {
-  --radius: 0.625rem;                           /* 派生 md=8px(按钮)/xl=14px,贴近 Linear 8/12 谱 */
+  --radius: var(--radius-12);                   /* 现代模式同样使用 0/4/8/12/16 六档 */
   /* 密度收紧(间距与明暗无关,直接挂在 data-style 上) */
   --surface-pad: 0.75rem;
   --surface-pad-sm: 0.5rem;
@@ -713,20 +768,43 @@ html button.composer-send-button.stop {
   margin: 0;
 }
 [data-style='linear'] .app-main {
-  margin: 0.25rem 0.375rem 0.375rem 0; /* 上方保留呼吸感，右下略收；左侧贴合侧栏，拖拽区域即分隔线 */
-  border-radius: var(--radius-xl);   /* 0.625rem x 1.4 = ~14px,走 token 不写死 */
+  margin: 0;                         /* 现代模式主内容贴满工作区，不保留上下页缝隙 */
+  border-radius: 0;                  /* 直角内容区，取消浮起卡片感 */
   border: 1px solid var(--border);
+  border-top: 0;                     /* Windows 标题栏底边已承担顶部内容分隔线 */
   background: var(--background);
-  box-shadow: var(--elevation-1);    /* 有意不用 --elevation-inset:现代侧栏平铺且无侧栏阴影;inset 留给默认风格的休眠语义 */
+  box-shadow: none;                  /* 只用边界分隔侧栏与内容，不再制造卡片阴影 */
 }
 [data-style='linear'] .app-titlebar {
   background: var(--sidebar);   /* Windows 品牌标题栏与现代外壳共用同一表面色 */
   border-bottom: 1px solid var(--border);
 }
+/* 现代模式的所有预览容器都平铺到主内容中:去掉四周描边(含左侧边界),
+   避免与 .app-main 的主内容边界线重叠。覆盖对话、知识库等预览入口。 */
+[data-style='linear'] .preview-page-shell.is-docked {
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  box-shadow: none;
+}
+/* 资料页 / 知识库 / 文件库使用 preview-card-frame 包裹预览。 */
+[data-style='linear'] .preview-card-frame {
+  margin: 0;
+  border-radius: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  box-shadow: none;
+}
+[data-style='linear'] .preview-sidebar,
+[data-style='linear'] .preview-page-shell {
+  border-right: 0;
+}
 /* ── Linear 风格（暗）── 只改变深度策略，颜色仍完全继承 .dark */
 html.dark[data-style='linear'] {
-  /* 暗色深度弃投影、靠描边:elevation 大幅减弱 */
-  --elevation-1: 0 0 0 1px oklch(1 0 0 / 4%);
+  /* 暗色现代模式不额外叠加卡片描边，避免表面显得发硬 */
+  --elevation-1: none;
   --elevation-2: 0 4px 12px -4px oklch(0 0 0 / 50%);
   --elevation-3: 0 12px 32px -8px oklch(0 0 0 / 60%);
 }

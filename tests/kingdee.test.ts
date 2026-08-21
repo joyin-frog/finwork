@@ -68,7 +68,7 @@ export const kingdeeTestPromise = (async () => {
 
   console.log("kingdee: 科目表数据驱动(示例兜底 / 导入清洗 / 校验对照真表 / import 工具 / 维度保留)✓");
 
-  // ── T6: build_voucher_sheet 描述不含 "run_python"（防回归）──
+  // ── T6: 凭证底层步骤不再注册，批量工具描述明确内部闭环 ──
   const descsT6 = new Map<string, string>();
   const schemasT7 = new Map<string, unknown>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,13 +81,11 @@ export const kingdeeTestPromise = (async () => {
   };
   createKingdeeTools(mockSdkT6T7);
 
-  const bvsDesc = descsT6.get("build_voucher_sheet");
-  assert.ok(bvsDesc !== undefined, "T6 FAIL: build_voucher_sheet 未注册");
-  assert.ok(
-    !bvsDesc!.includes("run_python"),
-    `T6 FAIL: build_voucher_sheet 描述不应含 run_python，实际：${bvsDesc}`
-  );
-  console.log("kingdee: T6 build_voucher_sheet 描述防回归 ✓");
+  for (const removed of ["build_voucher_sheet", "build_voucher_lines", "check_voucher_amount", "map_voucher_account", "summarize_vouchers"]) {
+    assert.ok(!descsT6.has(removed), `T6 FAIL: ${removed} 不应再暴露给模型`);
+  }
+  assert.match(descsT6.get("process_voucher_batch") ?? "", /勾稽.*科目映射.*分录构造.*汇总/);
+  console.log("kingdee: T6 low-level voucher steps merged into process_voucher_batch ✓");
 
   // ── T7: 超长摘要（>100 字符）被 export_kingdee_draft schema 拒绝，错误含「精简」──
   const exportDraftSch = schemasT7.get("export_kingdee_draft") as Parameters<typeof z.object>[0];

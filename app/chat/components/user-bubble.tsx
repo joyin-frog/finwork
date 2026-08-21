@@ -7,7 +7,7 @@ import { Undo03Icon } from "@hugeicons/core-free-icons";
 import { CopyIcon, SuccessIcon } from "@/lib/icons";
 import { messageTimestamp } from "@/app/chat/message-timestamp";
 import { AttachmentCard, ImageLightbox, useImageLightbox, isRenderableImage } from "@/app/chat/attachment-card";
-import { FolderCard, openLocalFolder } from "@/app/chat/folder-card";
+import { FolderCard, openLocalFolder, openWorkspaceRoot } from "@/app/chat/folder-card";
 import {
   formatBytes,
   getConversationFileUrl,
@@ -42,14 +42,17 @@ export function UserBubble({
   const { lightbox, openImage, closeImage } = useImageLightbox();
   // 无对应 DisplayFile 的遗留 imageDataUrls(仅在没有 files 时兜底展示)
   const legacyImages = files.length ? [] : (message.imageDataUrls ?? []);
-  const { folders } = splitFolderPathLines(message.content);
+  const legacyFolders = splitFolderPathLines(message.content).folders;
+  const folders = message.workspaceRoots?.length
+    ? message.workspaceRoots
+    : legacyFolders.map((folder) => ({ ...folder, rootId: "" }));
   const displayText = getDisplayContent(message);
   const hasAttachments = files.length > 0 || legacyImages.length > 0 || folders.length > 0;
 
   async function copyMessage() {
     const text = getDisplayContent(message);
     if (!text.trim() && !folders.length) return;
-    const copyText = [text.trim(), ...folders.map((f) => f.path)].filter(Boolean).join("\n");
+    const copyText = [text.trim(), ...folders.map((f) => f.path ?? f.name)].filter(Boolean).join("\n");
     try {
       await navigator.clipboard.writeText(copyText);
       setCopied(true);
@@ -67,10 +70,10 @@ export function UserBubble({
         <div className="flex flex-wrap gap-2 justify-end">
           {folders.map((folder) => (
             <FolderCard
-              key={folder.path}
+              key={folder.rootId || folder.path}
               name={folder.name}
-              path={folder.path}
-              onOpen={() => void openLocalFolder(folder.path)}
+              path={folder.path ?? ""}
+              onOpen={() => void (folder.path ? openLocalFolder(folder.path) : openWorkspaceRoot(folder.rootId))}
             />
           ))}
           {files.map((file) => {
@@ -102,7 +105,7 @@ export function UserBubble({
         </div>
       ) : null}
       {displayText.trim() ? (
-        <div className={cn(surfaceVariants({ level: "page", edge: "none", shape: "overlay" }), "md-content bg-primary/8 px-4 py-2")}>
+        <div className={cn(surfaceVariants({ level: "page", edge: "none", shape: "overlay" }), "md-content bg-muted px-4 py-2 dark:bg-sidebar")}>
           <MarkdownMessage content={displayText} conversationId={conversationId} files={files} onPreviewFile={onPreviewFile} />
         </div>
       ) : null}

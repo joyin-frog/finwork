@@ -1,8 +1,9 @@
-import type { QualityProfile } from "@/lib/agent/run-contract";
+import type { QualityProfile, DeliverySpec } from "@/lib/agent/run-contract";
 import type { ValidatorResult } from "../types";
 import { validateGenericFile } from "./generic-file";
 import { validateDocxFile } from "./docx";
 import { validateXlsxFile } from "./xlsx";
+import { validateFinancialConsolidation } from "./financial-consolidation";
 
 export type ValidatorInput = {
   filePath: string;
@@ -12,9 +13,12 @@ export type ValidatorInput = {
   /** 绑定校验时的候选 hash；变化则失效 */
   expectedSha256?: string;
   needsRecalc?: boolean;
+  /** 正式交付必须有真实重算 Provider；普通诊断可保留 best_effort。 */
+  recalcPolicy?: "required" | "best_effort";
   needsRender?: boolean;
   /** Profile 要求公式缓存非空（公式型交付） */
   requireFormulaCache?: boolean;
+  expectationSnapshot?: DeliverySpec["expectationSnapshot"];
 };
 
 export type DeliverableValidator = {
@@ -67,7 +71,7 @@ const SPREADSHEET_MIMES = new Set([
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-/** 注册通用 file + xlsx validators（幂等）。financial_consolidation 复用 xlsx 门；领域断言归 Q2。 */
+/** 注册通用 file + xlsx validators（幂等）。 */
 export function ensureBuiltinValidatorsRegistered(): void {
   if (registry.some((v) => v.id === "generic_file")) return;
 
@@ -90,15 +94,9 @@ export function ensureBuiltinValidatorsRegistered(): void {
     validate: async (input) => validateXlsxFile(input),
   });
 
-  // Q1：consolidation profile 走同一 xlsx 结构/重算门；财务勾稽留给 Q2 注册覆盖。
   registerValidator({
-    id: "xlsx_financial_consolidation_base",
+    id: "xlsx_financial_consolidation",
     matches: (mime, profile) => SPREADSHEET_MIMES.has(mime) && profile === "financial_consolidation",
-    validate: async (input) =>
-      validateXlsxFile({
-        ...input,
-        requireFormulaCache: input.requireFormulaCache ?? true,
-        needsRecalc: input.needsRecalc ?? true,
-      }),
+    validate: async (input) => validateFinancialConsolidation(input),
   });
 }

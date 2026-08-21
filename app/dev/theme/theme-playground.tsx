@@ -36,7 +36,7 @@ const DARK: Record<ColorKey, Oklch> = {
 
 const DEFAULT_RADIUS = 0.875;
 const DEFAULT_ROOT = 16;
-const DEFAULT_LH = { tight: 1.4, snug: 1.55, body: 1.7 }; // .md-content 行距(标题/代码/正文),对应 globals 的 --lh-*
+const DEFAULT_LH = { tight: 1.4, snug: 1.55, body: 1.7 }; // .md-content 行距(标题/代码/正文),对应 globals 的行距 token
 const DEFAULT_TIERS: Tier[] = [
   { key: "figure", label: "figure 大数/金额", px: 30, weight: 500, lh: 1.05, tracking: -0.01 },
   { key: "display", label: "display 主问句", px: 24, weight: 600, lh: 1.15, tracking: -0.015 },
@@ -421,7 +421,7 @@ export function ThemePlayground() {
             <Field label="正文行距 body" value={lh.body} min={1.3} max={2} step={0.05} onChange={(v) => setLh({ ...lh, body: v })} />
             <Field label="代码行距 snug" value={lh.snug} min={1.2} max={1.9} step={0.05} onChange={(v) => setLh({ ...lh, snug: v })} />
             <Field label="标题行距 tight" value={lh.tight} min={1.1} max={1.6} step={0.05} onChange={(v) => setLh({ ...lh, tight: v })} />
-            <p className="text-caption text-muted-foreground">对话答案/markdown 的行距(globals 的 --lh-*)。圆角已并入全局 radius:代码块/行内码现跟 --radius 阶走(代码块 --radius-md、行内码 --radius-sm)。</p>
+            <p className="text-caption text-muted-foreground">对话答案/markdown 的行距（globals 的行距 token）。圆角已并入全局 radius:代码块/行内码现跟 --radius 阶走(代码块 --radius-md、行内码 --radius-sm)。</p>
           </section>
 
           <section className="flex flex-col gap-2">
@@ -481,7 +481,7 @@ export function ThemePlayground() {
                   <Button size="sm" variant="outline">次按钮</Button>
                   <Button size="sm" variant="ghost">幽灵</Button>
                 </div>
-                <input className="w-56 rounded-md border border-input bg-input/20 px-3 py-2 text-body outline-none" placeholder="输入框示例" />
+                <input className="w-56 rounded-md border border-input bg-input px-3 py-2 text-body outline-none" placeholder="输入框示例" />
                 <span className="font-mono text-body tabular-nums">等宽数字 0123456789 · ¥1,234,567.89</span>
               </div>
             </div>

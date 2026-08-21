@@ -1,0 +1,22 @@
+[
+  {
+    "uid": "synthetic-tatqa-doc-1",
+    "table": {
+      "uid": "synthetic-tatqa-table-1",
+      "table": [["Year", "Cash"], ["2025", "100"], ["2026", "125"]]
+    },
+    "paragraphs": [
+      { "uid": "paragraph-1", "order": 1, "text": "The table contains synthetic cash balances." }
+    ],
+    "questions": [
+      {
+        "uid": "synthetic-tatqa-question-1",
+        "question": "What is the increase in cash?",
+        "answer": "25",
+        "answer_type": "arithmetic",
+        "derivation": "125 - 100",
+        "rel_paragraphs": ["paragraph-1"]
+      }
+    ]
+  }
+]

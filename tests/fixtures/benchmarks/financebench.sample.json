@@ -1,0 +1,13 @@
+[
+  {
+    "financebench_id": "synthetic-financebench-1",
+    "question": "According to the synthetic filing, what was operating income?",
+    "answer": "30",
+    "evidence": [
+      { "id": "filing-note-1", "text": "The synthetic filing reports operating income of 30." }
+    ],
+    "citations": [
+      { "source_id": "filing-note-1", "locator": "note 1", "quote": "operating income of 30" }
+    ]
+  }
+]

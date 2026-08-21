@@ -1,0 +1,13 @@
+[
+  {
+    "id": "synthetic-convfinqa-1",
+    "pre_text": ["A synthetic company has assets of 200 and liabilities of 50."],
+    "post_text": [],
+    "table": [["Metric", "Value"], ["Assets", "200"], ["Liabilities", "50"]],
+    "qa": {
+      "question": ["What is equity?", "If equity rises by 10, what is the new equity?"],
+      "answer": ["150", "160"],
+      "program": ["subtract(200, 50)", "add(150, 10)"]
+    }
+  }
+]

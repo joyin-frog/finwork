@@ -60,6 +60,8 @@ python scripts/accept_changes.py input.docx output.docx
 
 优先使用产品 Python Runtime 已预装的 `python-docx` 生成 .docx，然后调用 `finalize_deliverable` 验证和渲染。不要运行 `npm install` / `pip install`，也不要依赖全局 Node 模块。
 
+> Finwork Agent 运行时：Bash 只允许写当前会话输出目录，`/tmp` 不可写。不要在 Bash 中运行本 Skill 的 `validate.py`、`soffice.py` 或创建额外渲染目录；生成文件后直接调用 `finalize_deliverable`，由产品受控运行时完成可打开性、正文和正式交付验证。下面的独立校验命令仅供仓库维护者在普通终端中使用。
+
 ```python
 from docx import Document
 from docx.shared import Pt
@@ -90,9 +92,9 @@ Packer.toBuffer(doc).then(buffer => fs.writeFileSync("doc.docx", buffer));
 ```
 
 ### 验证
-创建文件后，进行验证。如果验证失败，解压，修复 XML，然后重新打包。
+普通终端中创建文件后可运行独立校验。如果验证失败，解压、自动修复 XML，再重新打包。Finwork Agent 内不要运行此命令，使用 `finalize_deliverable`。
 ```bash
-python scripts/office/validate.py doc.docx
+python scripts/office/validate.py doc.docx --auto-repair
 ```
 
 ### 页面尺寸

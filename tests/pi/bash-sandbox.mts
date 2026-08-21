@@ -61,16 +61,14 @@ function runSandboxed(command: string): { ok: boolean; output: string } {
     !/\(subpath "\/tmp\//.test(profile),
     `B-1 FAIL: profile 里出现未解析的 /tmp 路径\n${profile}`,
   );
-  assert.match(profile, /\(deny file-read\* \(subpath /, "B-1 FAIL: 应含家目录读拒绝规则");
+  assert.ok(!profile.split("\n").includes("(allow file-read*)"), "B-1 FAIL: 不得全盘放开读取");
+  assert.match(profile, /\(allow file-read-data \(literal "\/"\)\)/, "B-1 FAIL: 启动所需的根目录项应精确放行");
 
-  // 顺序就是机制：SBPL 后匹配的规则覆盖先匹配的。生产上会话目录在 app-data，
-  // 也就是**家目录内部**——靠「先拒家目录、再放行会话目录」这个次序才读得到。
-  // 实测过嵌套放行确实生效；这里锁住次序，防止有人重排规则后静默失效。
-  const denyHome = profile.indexOf("(deny file-read*");
+  // 默认拒绝后只允许任务根和明确的系统运行时；会话路径即使位于家目录中也能精确放行。
   const allowSession = profile.indexOf("(allow file-read* (subpath");
   const allowWrite = profile.indexOf("(allow file-write* (subpath");
-  assert.ok(denyHome > 0 && allowSession > denyHome, "B-1 FAIL: 会话读放行必须排在家目录拒绝之后");
-  assert.ok(allowWrite > denyHome, "B-1 FAIL: 写放行必须排在家目录拒绝之后");
+  assert.ok(allowSession > 0, "B-1 FAIL: 应有精确的会话读放行");
+  assert.ok(allowWrite > allowSession, "B-1 FAIL: 写放行必须在默认拒绝之后");
 }
 
 // ── B-2 正常用法不能被沙箱打断 ──

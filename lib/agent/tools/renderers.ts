@@ -21,17 +21,13 @@ export function skillLabel(id: string): string {
 }
 
 const summaries: Record<string, SummaryFn> = {
-  Read:       (i) => `读取 ${shortPath(str(i, "file_path"))}`,
-  Write:      (i) => `写入 ${shortPath(str(i, "file_path"))}`,
-  Edit:       (i) => `编辑 ${shortPath(str(i, "file_path"))}`,
-  MultiEdit:  (i) => `编辑 ${shortPath(str(i, "file_path"))}`,
-  Glob:       (i) => `查找文件 ${str(i, "pattern")}`,
-  Grep:       (i) => `搜索「${str(i, "pattern")}」`,
-  Bash:       (i) => { const cmd = str(i, "command"); return cmd ? `执行：${cmd.slice(0, 60)}` : "执行命令"; },
-  WebSearch:  (i) => `搜索「${str(i, "query")}」`,
-  WebFetch:   (i) => `获取 ${str(i, "url").slice(0, 60)}`,
-  Monitor:    () => "监控进程",
-  Skill:      (i) => { const n = str(i, "command") || str(i, "name") || str(i, "skill"); return n ? `调用【${skillLabel(n)}】技能` : "调用技能"; },
+  read:       (i) => `读取 ${shortPath(str(i, "path"))}`,
+  write:      (i) => `写入 ${shortPath(str(i, "path"))}`,
+  edit:       (i) => `编辑 ${shortPath(str(i, "path"))}`,
+  find:       (i) => `查找文件 ${str(i, "pattern")}`,
+  grep:       (i) => `搜索「${str(i, "pattern")}」`,
+  ls:         (i) => { const p = str(i, "path"); return p ? `查看目录 ${shortPath(p)}` : "查看目录"; },
+  bash:       (i) => bashSummary(i),
 
   AskUserQuestion: (i) => {
     const qs = (i as { questions?: Array<{ question?: string }> })?.questions;
@@ -41,22 +37,46 @@ const summaries: Record<string, SummaryFn> = {
   analyze_tabular: (i) => {
     const rows = Array.isArray((i as Record<string, unknown>)?.rows) ? (i as Record<string, unknown>).rows as unknown[] : [];
     const groups = Array.isArray((i as Record<string, unknown>)?.groupBy) ? (i as Record<string, unknown>).groupBy as unknown[] : [];
-    return `结构化统计${groups.length ? `（按 ${groups.join("、")} 分组）` : ""}：${rows.length} 行`;
+    return `整理表格数据${groups.length ? `（按 ${groups.join("、")} 分组）` : ""}：${rows.length} 行`;
+  },
+  create_workbook: (i) => {
+    const sheets = arrayLen(i, "sheets");
+    const outputName = str(i, "outputName");
+    return `创建工作簿${outputName ? `：${outputName}` : ""}${sheets ? `（${sheets} 张表）` : ""}`;
   },
 
   // ─── 财务工具(finance_worker) ───
-  search_knowledge: (i) => { const q = str(i, "query"); return q ? `检索知识库：${q.slice(0, 24)}` : "检索知识库"; },
-  query_knowledge: (i) => {
-    const c = str(i, "command");
-    if (!c) return "查询知识库";
-    // 优先提取 rg 模式(rg '...' 或 rg "..." 形式);否则截断命令
-    const rgMatch = c.match(/\brg\s+['"](.*?)['"]/);
-    const display = rgMatch ? `(rg) ${rgMatch[1].slice(0, 32)}` : c.slice(0, 32);
-    return `查询知识库：${display}`;
+  search_knowledge: (i) => {
+    const file = str(i, "fileName");
+    const query = str(i, "query");
+    return file ? `精读知识库：${file}` : query ? `检索知识库：${query.slice(0, 24)}` : "检索知识库";
   },
-  read_file: (i) => { const f = str(i, "fileName"); return f ? `读取资料：${f}` : "读取资料"; },
+  list_workspace_files: (i) => {
+    const query = str(i, "query");
+    return query ? `搜索已授权文件：${query.slice(0, 32)}` : "查看已授权文件";
+  },
+  read_workspace_file: () => "读取已授权文件",
+  patch_workspace_workbook: (i) => {
+    const output = str(i, "outputName");
+    return output ? `更新工作簿：${output}` : "更新受管工作簿";
+  },
+  run_task_python: (i) => {
+    const script = str(i, "scriptPath").split(/[\\/]/).at(-1);
+    return script ? `运行任务脚本：${script}` : "运行任务脚本";
+  },
+  research_web: (i) => {
+    const subject = str(i, "legalName");
+    const topics = Array.isArray((i as Record<string, unknown>)?.topics)
+      ? (i as Record<string, unknown>).topics as unknown[]
+      : [];
+    return subject
+      ? `联网尽调：${subject}${topics.length ? `（${topics.length} 个维度）` : ""}`
+      : "执行可复核联网尽调";
+  },
+  inspect_document_structure: (i) => { const f = str(i, "sourcePath").split(/[\\/]/).at(-1); return f ? `检查文档结构：${f}` : "检查文档结构"; },
+  patch_document: (i) => { const f = str(i, "outputName"); return f ? `修改文档：${f}` : "修改文档"; },
   remember_convention: (i) => { const t = str(i, "text"); const r = str(i, "replaces"); return t ? (r ? `更新约定「${t.slice(0, 40)}」` : `记住约定「${t.slice(0, 40)}」`) : (r ? `取消约定「${r.slice(0, 40)}」` : "更新工作约定"); },
-  remember_role_convention: (i) => { const t = str(i, "text"); const role = getRoleDefinition(str(i, "roleId"))?.name; return t ? `记住口径「${t.slice(0, 40)}」${role ? ` → ${role}` : ""}` : "记录角色口径"; },
+  remember_role_convention: (i) => { const t = str(i, "text"); const role = getRoleDefinition(str(i, "roleId"))?.name; return t ? `提交口径候选「${t.slice(0, 40)}」${role ? ` → ${role}` : ""}` : "提交角色口径候选"; },
   propose_transfer: (i) => { const role = getRoleDefinition(str(i, "targetRoleId"))?.name ?? str(i, "targetRoleId"); const s = str(i, "taskSummary"); return s ? `建议转交「${role}」：${s.slice(0, 30)}` : `建议转交给${role}`; },
   record_business_metrics: (i) => {
     const rows = Array.isArray((i as Record<string, unknown>)?.rows) ? (i as Record<string, unknown>).rows as unknown[] : [];
@@ -69,6 +89,7 @@ const summaries: Record<string, SummaryFn> = {
     if (hasBudget || hasPrior) return "生成经营分析表(四能力×三基准)";
     return "生成经营分析表(偿债/盈利/营运/发展)";
   },
+  patch_workbook: () => "更新工作簿",
   spawn_subagent: (i) => {
     // 新参数 role(角色 id);历史会话事件里存的是旧参数 skill,保留兼容渲染
     const roleName = getRoleDefinition(str(i, "role"))?.name;
@@ -166,8 +187,8 @@ const summaries: Record<string, SummaryFn> = {
       if (f && typeof f === "object" && "name" in (f as object)) return String((f as { name: unknown }).name);
       return String(f);
     }).filter(Boolean);
-    if (names.length === 1) return `确定交付 ${names[0]}`;
-    return names.length ? `确定交付 ${names.length} 个文件` : "确定最终交付";
+    if (names.length === 1) return `确认交付文件 ${names[0]}`;
+    return names.length ? `确认交付文件 ${names.length} 个` : "确认交付文件";
   },
 
   // ─── 金蝶工具(kingdee_worker) ───
@@ -190,18 +211,6 @@ const summaries: Record<string, SummaryFn> = {
     const name = p ? p.split(/[/\\]/).pop() : "";
     return name ? `识别单据 ${name}` : "识别单据";
   },
-  check_voucher_amount: (i) => {
-    const total = num(i, "totalYuan");
-    return `核对金额${total != null ? ` ¥${total.toLocaleString("zh-CN")}` : "(大写/小写勾稽)"}`;
-  },
-  map_voucher_account: (i) => { const t = str(i, "text"); return t ? `匹配科目「${t.slice(0, 20)}」` : "匹配科目"; },
-  build_voucher_lines: (i) => {
-    const exp = arrayLen(i, "expenses");
-    const adv = num(i, "advanceYuan");
-    return `生成分录${exp ? `(${exp} 项费用)` : ""}${adv ? " · 含预借款冲销" : ""}`;
-  },
-  build_voucher_sheet: (i) => { const n = arrayLen(i, "vouchers"); return `生成对照清单${n ? `(${n} 张凭证)` : ""}`; },
-  summarize_vouchers: (i) => { const n = arrayLen(i, "results"); return `汇总凭证${n ? `(${n} 张)` : ""}`; },
   process_voucher_batch: (i) => { const n = arrayLen(i, "slips"); return `批量处理${n ? `${n} 笔业务` : "单据"}`; },
   export_voucher_list: (i) => { const n = arrayLen(i, "vouchers"); return `导出凭证清单${n ? `(${n} 笔)` : ""}`; },
 };
@@ -251,20 +260,20 @@ export function getToolSummary(
   if (isError && result) {
     return `错误：${summarizeToolError(result)}`;
   }
-  const bare = toolName.replace(/^\w+__/, "");
+  const bare = toolName.replace(/^.*__/, "");
   const fn = summaries[bare] ?? summaries[toolName];
   return fn ? fn(input, result, isError) : formatToolLabel(toolName);
 }
 
 /** 该工具是否有专门的摘要文案(用于校验财务工具不落入英文兜底)。 */
 export function hasToolSummary(toolName: string): boolean {
-  const bare = toolName.replace(/^\w+__/, "");
+  const bare = toolName.replace(/^.*__/, "");
   return Boolean(summaries[bare] ?? summaries[toolName]);
 }
 
 export function formatToolLabel(name: string): string {
   return name
-    .replace(/^\w+__/, "")
+    .replace(/^.*__/, "")
     .replace(/[_-]/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -291,4 +300,23 @@ function shortPath(p: string): string {
   if (!p) return "";
   const parts = p.replace(/\\/g, "/").split("/");
   return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : p;
+}
+
+/** Bash 事件的输入历史上有 command / code / 纯字符串三种形态,统一提炼成可读动作。 */
+function bashSummary(input: unknown): string {
+  const raw = str(input, "command") || str(input, "code") || str(input, "cmd") || (typeof input === "string" ? input : "");
+  if (!raw) return "执行命令";
+
+  const command = raw.replace(/\s+/g, " ").trim();
+  if (/\bpython(?:3)?\b/.test(command)) {
+    const intent = pythonCodeIntent(raw);
+    return intent ? `执行 Python：${intent}` : "执行 Python 脚本";
+  }
+  if (/\b(?:rg|grep)\b/.test(command)) return `搜索内容：${command.slice(0, 52)}`;
+  if (/\bmkdir\b/.test(command) && /\bls\b/.test(command)) return "准备输出目录并查看文件";
+  if (/\bmkdir\b/.test(command)) return `创建目录：${command.slice(0, 52)}`;
+  if (/\b(?:cat|head|tail)\b/.test(command)) return `读取文件内容：${command.slice(0, 48)}`;
+  if (/\b(?:ls|find)\b/.test(command)) return `查看文件：${command.slice(0, 48)}`;
+  if (/\b(?:git)\b/.test(command)) return `检查 Git 状态：${command.slice(0, 44)}`;
+  return `执行：${command.slice(0, 60)}`;
 }

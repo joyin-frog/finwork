@@ -27,6 +27,8 @@ def build_workbook(path):
     bs.append(["存货", 9, 1000, 900, "流动负债合计", 41, 6000, 5500])
     bs.append(["流动资产合计", 15, 5000, 4500, "负债合计", None, 6000, 5500])
     bs.append(["资产总计", None, 10000, 9000, "所有者权益合计", None, 4000, 3500])
+    # 后续总计名称也以“所有者权益合计”结尾，locator 必须保留首次精确科目行，不能被覆盖。
+    bs.append([None, None, None, None, "负债和所有者权益合计", None, 10000, 9000])
 
     # 利润表:行次在第2列、本月在第3列、本年累计在第4列、上年同期在第5列(本年累计应被优先取)
     is_ = wb.create_sheet("利润表")
@@ -80,10 +82,16 @@ def main():
         f"BS 合计(科目名兜底)取数错: {bs}")
     chk(is_ and is_["revenue"] == 8000 and is_["cost"] == 5000 and is_["netProfit"] == 500,
         f"IS 应取本年累计(非本月): {is_}")
-    chk(is_ and is_["sellingExpense"] == 100 and is_["adminExpense"] == 600 and is_["rdExpense"] == 400 and is_["financeExpense"] == 200,
+    chk(is_ and is_["sellingExpense"] == 100 and is_["adminExpense"] == 600 and is_["rdExpense"] == 0 and is_["financeExpense"] == 200,
         f"IS 费用行次取数错: {is_}")
+    chk(bs and bs.get("prior", {}).get("totalAssets") == 9000 and bs.get("prior", {}).get("equity") == 3500,
+        f"BS 期初数取数错: {bs}")
     chk(prior.get("revenue") == 6000 and prior.get("netProfit") == 420, f"IS 上年同期取数错: {prior}")
     chk(cf and cf["operatingCashFlow"] == 1900 and cf["netCashIncrease"] == 2000, f"CF 科目名取数错: {cf}")
+    chk(out["sourceCells"].get("incomeStatement.revenue") == {"sheet": "利润表", "range": "E3"},
+        f"IS 单元格来源错: {out['sourceCells'].get('incomeStatement.revenue')}")
+    chk(out["sourceCells"].get("balanceSheet.equity") == {"sheet": "资产负债表", "range": "G8"},
+        f"BS 权益单元格来源错: {out['sourceCells'].get('balanceSheet.equity')}")
 
     if fails:
         print("FAIL:\n" + "\n".join(fails))

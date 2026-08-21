@@ -10,6 +10,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { FileTypeIcon } from "@/app/shared/file-type-icon";
 import { FILE_TYPE_COLORS } from "@/lib/files/file-type-colors";
 
@@ -76,7 +78,7 @@ export function AttachmentCard({
       </button>
       {onRemove ? (
         <button type="button" className="attach-card-close" onClick={onRemove} aria-label={`移除 ${name}`}>
-          &times;
+          <HugeiconsIcon icon={Cancel01Icon} size={14} aria-hidden="true" />
         </button>
       ) : null}
     </span>
@@ -98,7 +100,9 @@ export function ImageLightbox({ src, alt, onClose }: { src: string; alt: string;
   if (!mounted) return null;
   return createPortal(
     <div className="image-lightbox" role="dialog" aria-modal="true" aria-label={alt} onClick={onClose}>
-      <button type="button" className="image-lightbox-close" onClick={(e) => { e.stopPropagation(); onClose(); }} aria-label="关闭">&times;</button>
+      <button type="button" className="image-lightbox-close" onClick={(e) => { e.stopPropagation(); onClose(); }} aria-label="关闭">
+        <HugeiconsIcon icon={Cancel01Icon} size={18} aria-hidden="true" />
+      </button>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img className="image-lightbox-img" src={src} alt={alt} onClick={(e) => e.stopPropagation()} />
     </div>,

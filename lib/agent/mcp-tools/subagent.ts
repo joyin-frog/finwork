@@ -6,6 +6,8 @@ import { TASK_TEMPLATES, expandTaskTemplate } from "@/lib/agent/roles/task-templ
 import type { AgentRuntimeEvent } from "@/lib/agent/runtime-events";
 import type { SubagentExecutor } from "@/lib/agent/subagent-contracts";
 import type { FinanceToolExecutionContext } from "@/lib/agent/tools/finance-definition";
+import type { MemoryRuntimeContext } from "@/lib/memory-v2/contracts";
+import type { AgentRunContext } from "@/lib/agent/contracts";
 
 type Sdk = SdkLike;
 
@@ -16,6 +18,9 @@ export function createSpawnSubagentTool(
   conversationId?: string,
   onSubagentEvent?: (event: AgentRuntimeEvent, instanceId: string) => void,
   subagentExecutor?: SubagentExecutor,
+  memoryContext?: Partial<MemoryRuntimeContext> | null,
+  runContext?: AgentRunContext,
+  modelOverride?: string,
 ) {
   // 从 ROLE_REGISTRY 按 available 过滤，再经 listDispatchableRoleIds 排除用户停用的角色
   const dispatchableIds = listDispatchableRoleIds();
@@ -70,6 +75,10 @@ ${ROLE_CHEATSHEET}
         .string()
         .nullish()
         .describe("任务期间，格式 YYYY-MM；task_template 指定时必填"),
+      complexity: z
+        .enum(["standard", "complex"])
+        .default("standard")
+        .describe("成本档：单次检索/读取/结构化检查用 standard；跨文件综合、公式恢复或复杂交付物用 complex"),
     },
     async (args: {
       role: string;
@@ -78,6 +87,7 @@ ${ROLE_CHEATSHEET}
       label: string;
       task_template?: string | null;
       period?: string | null;
+      complexity: "standard" | "complex";
     }, execution?: FinanceToolExecutionContext) => {
       if (!subagentExecutor) {
         return {
@@ -131,6 +141,7 @@ ${ROLE_CHEATSHEET}
             taskTemplateId: args.task_template,
             businessObject: template.objectLabel,
             period: args.period,
+            executionTier: template.executionTier ?? "fast",
           },
           {
             parentOutputDir: outputDir,
@@ -138,6 +149,9 @@ ${ROLE_CHEATSHEET}
             conversationId,
             onEvent: onSubagentEvent,
             signal: execution?.signal,
+            memoryContext,
+            runContext,
+            modelOverride,
           }
         );
         const text = [
@@ -157,6 +171,7 @@ ${ROLE_CHEATSHEET}
           instructions: args.instructions,
           files: args.files ?? undefined,
           label: args.label,
+          executionTier: args.complexity === "complex" ? "reasoning" : "fast",
         },
         {
           parentOutputDir: outputDir,
@@ -164,6 +179,9 @@ ${ROLE_CHEATSHEET}
           conversationId,
           onEvent: onSubagentEvent,
           signal: execution?.signal,
+          memoryContext,
+          runContext,
+          modelOverride,
         }
       );
       const text = [

@@ -10,10 +10,7 @@
  *   RS-T5b: reimbursement receiptId 存在
  *   RS-T5c: reconciliation receiptId 存在
  *   RS-T5d: tax_calculator 仅落库（structuredContent 一字不动）
- * RS-T6: voucher receipt 形状（value=合计、steps 数=行数）
- *   RS-T6a: check_voucher_amount ok=true 产 receipt+receiptId
- *   RS-T6b: check_voucher_amount ok=false 不产 receipt
- *   RS-T6c: process_voucher_batch structuredContent 含 receipt+receiptId
+ * RS-T6: process_voucher_batch receipt 形状（value=合计、steps 数=行数）
  * RS-T7: 分析 provenance 段存在
  * RS-T8: payroll 草稿回填 receipt_id
  *   RS-T8a: 草稿行 receipt_id 指向 calc_receipts 行，basis.asOf 与期间一致
@@ -218,33 +215,7 @@ export const receiptStoreTestPromise = (async () => {
   assert.ok(taxReceiptRow.c > 0, "RS-T5d FAIL: tax_calculator 应已落库 calc_receipts");
 
   // ── RS-T6: voucher receipt 形状 ────────────────────────────────────────────
-  // RS-T6a: check_voucher_amount ok=true 产 receipt+receiptId
-  const checkAmountResult = await captured["check_voucher_amount"]({
-    lineItemsYuan: [100, 200, 300],
-    totalYuan: 600,
-  });
-  assert.ok(!checkAmountResult.isError, `RS-T6a FAIL: check_voucher_amount 不应报错`);
-  const checkSC = checkAmountResult.structuredContent as { ok?: boolean; receipt?: { value: number; steps: unknown[] }; receiptId?: number };
-  assert.ok(checkSC.ok === true, `RS-T6a FAIL: check_voucher_amount 应 ok=true`);
-  assert.ok(checkSC.receipt, `RS-T6a FAIL: ok=true 时应有 receipt`);
-  assert.equal(checkSC.receipt!.value, 60000, `RS-T6a FAIL: receipt.value 应为 60000 分（= 600 * 100），实际: ${checkSC.receipt!.value}`);
-  assert.equal(checkSC.receipt!.steps.length, 3, `RS-T6a FAIL: steps 数应等于 lineItems 行数 3，实际: ${checkSC.receipt!.steps.length}`);
-  assert.ok(
-    typeof checkSC.receiptId === "number" && checkSC.receiptId > 0,
-    `RS-T6a FAIL: check_voucher_amount receiptId 应为正整数，实际: ${JSON.stringify(checkSC)}`
-  );
-
-  // RS-T6b: check_voucher_amount ok=false（不平衡）不产 receipt
-  const checkAmountBad = await captured["check_voucher_amount"]({
-    lineItemsYuan: [100, 200],
-    totalYuan: 999, // 不匹配
-  });
-  // 不报错，但无 receipt（ok=false）
-  const badSC = checkAmountBad.structuredContent as { ok?: boolean; receipt?: unknown };
-  assert.ok(badSC.ok === false, `RS-T6b FAIL: 不平衡时 ok 应为 false`);
-  assert.ok(!badSC.receipt, `RS-T6b FAIL: ok=false 时不应产 receipt，实际: ${JSON.stringify(badSC)}`);
-
-  // RS-T6c: process_voucher_batch structuredContent 含 receipt+receiptId
+  // process_voucher_batch 的内部勾稽结果形成统一 receipt。
   const batchResult = await captured["process_voucher_batch"]({
     slips: [
       {
@@ -292,15 +263,38 @@ export const receiptStoreTestPromise = (async () => {
       financeExpense: 5000,
       netProfit: 105000,
     },
+    cashFlow: {
+      operatingCashFlow: -120000,
+      investingCashFlow: -10000,
+      financingCashFlow: 150000,
+      netCashIncrease: 20000,
+    },
+    sourceCells: {
+      "balanceSheet.totalAssets": { sheet: "资产负债表", range: "B37" },
+      "incomeStatement.revenue": { sheet: "利润表", range: "D5" },
+      "cashFlow.operatingCashFlow": { sheet: "现金流量表", range: "I12" },
+    },
     asOf: "2026-03-31",
     source: "2026年3月报表",
   });
   assert.ok(!analysisResult.isError, `RS-T7 FAIL: 经营分析不应报错，实际: ${JSON.stringify(analysisResult)}`);
-  const analysisSC = analysisResult.structuredContent as { provenance?: { caliberVersion: string; asOf: string; sources: unknown[] } };
+  const analysisSC = analysisResult.structuredContent as {
+    provenance?: {
+      caliberVersion: string;
+      asOf: string;
+      sources: unknown[];
+      workbookFacts: Array<{ field: string; value: number; locator: { kind: string; sheet: string; range: string } }>;
+    };
+  };
   assert.ok(analysisSC.provenance, `RS-T7 FAIL: structuredContent 应含 provenance 段`);
   assert.ok(analysisSC.provenance!.caliberVersion, `RS-T7 FAIL: provenance.caliberVersion 应存在`);
   assert.ok(analysisSC.provenance!.asOf, `RS-T7 FAIL: provenance.asOf 应存在`);
   assert.ok(Array.isArray(analysisSC.provenance!.sources), `RS-T7 FAIL: provenance.sources 应为数组`);
+  assert.deepEqual(analysisSC.provenance!.workbookFacts, [
+    { field: "balanceSheet.totalAssets", value: 300000, locator: { kind: "sheet_range", sheet: "资产负债表", range: "B37" } },
+    { field: "incomeStatement.revenue", value: 500000, locator: { kind: "sheet_range", sheet: "利润表", range: "D5" } },
+    { field: "cashFlow.operatingCashFlow", value: -120000, locator: { kind: "sheet_range", sheet: "现金流量表", range: "I12" } },
+  ]);
   // content 尾部含溯源行（中文）
   const analysisText = analysisResult.content[0].text as string;
   assert.ok(analysisText.includes("口径"), `RS-T7 FAIL: content 应含溯源说明（含"口径"），实际末尾: ${analysisText.slice(-200)}`);

@@ -1,4 +1,9 @@
 import type { AgentAttachment, AgentIntent, AgentMessage } from "./contracts";
+import {
+  FINWORK_ASK_USER_TOOL_NAME,
+  FINWORK_READ_TOOL_NAMES,
+  FINWORK_WRITE_TOOL_NAMES,
+} from "./pi/tool-names";
 
 type ContextProfile = {
   skills: string[];
@@ -7,42 +12,40 @@ type ContextProfile = {
 
 export type AgentContextPolicy = {
   profiles: string[];
-  /** undefined means retain the full enabled Skill listing. */
+  /** Explicit Skill listing. Empty means no request-specific Skills. */
   skillNames?: string[];
-  /** undefined means retain the full production tool catalog. */
+  /** Explicit finance-tool listing. Unknown requests use a minimal empty pack. */
   toolIds?: string[];
+  /** Explicit Pi built-in listing; Harness internals never need model visibility. */
+  builtinToolIds?: string[];
 };
 
 const finance = (name: string) => name;
 const kingdee = (name: string) => name;
 
-const FILE_TOOLS = [
-  finance("read_document"),
-  finance("read_file"),
-  finance("analyze_tabular"),
-  // 改用户已有的工作簿必须走它;不放进白名单模型就只能退回 openpyxl 重写,
-  // 而那会清空整册公式缓存(实测 1164 → 0)。
-  finance("patch_workbook"),
-  // 勾稽/查异常/合并汇总:不放行的话模型只能自己写脚本判断,结果不可复现。
-  finance("check_workbook_ties"),
-  finance("detect_data_issues"),
-  finance("merge_labeled_tables"),
+const FILE_READ_TOOLS = [
+  finance("list_workspace_files"),
+  finance("read_workspace_file"),
+];
+const FILE_EXECUTION_TOOLS = [
+  finance("run_task_python"),
+];
+const FILE_WRITE_TOOLS = [
+  finance("create_workbook"),
+  // 该工具现在自己维护唯一候选头、内部计划、diff 和 review 证据。
+  finance("patch_workspace_workbook"),
   finance("finalize_deliverable"),
 ];
 const KNOWLEDGE_TOOLS = [
   finance("search_knowledge"),
-  finance("query_knowledge"),
-  finance("read_file"),
-  finance("read_document"),
 ];
-const HANDOFF_TOOLS = [finance("propose_transfer")];
+const DEFAULT_BUILTIN_TOOLS = [...FINWORK_READ_TOOL_NAMES, FINWORK_ASK_USER_TOOL_NAME];
+const FILE_BUILTIN_TOOLS = [...DEFAULT_BUILTIN_TOOLS, ...FINWORK_WRITE_TOOL_NAMES];
 
 const PROFILES: Record<string, ContextProfile> = {
   payroll: {
     skills: ["payroll-calc", "xlsx"],
     tools: [
-      ...FILE_TOOLS,
-      ...HANDOFF_TOOLS,
       finance("calculate_payroll_batch"),
       finance("confirm_payroll_period"),
       finance("query_payroll_status"),
@@ -53,9 +56,7 @@ const PROFILES: Record<string, ContextProfile> = {
   reimbursement: {
     skills: ["reimbursement-check", "xlsx"],
     tools: [
-      ...FILE_TOOLS,
       ...KNOWLEDGE_TOOLS,
-      ...HANDOFF_TOOLS,
       finance("check_reimbursement_batch"),
       finance("record_reimbursement_invoices"),
       finance("read_expense_policy"),
@@ -64,8 +65,6 @@ const PROFILES: Record<string, ContextProfile> = {
   receivables: {
     skills: ["receivables-ledger", "xlsx"],
     tools: [
-      ...FILE_TOOLS,
-      ...HANDOFF_TOOLS,
       finance("query_receivables"),
       finance("query_invoice_ledger"),
       finance("query_sales_invoices"),
@@ -76,8 +75,6 @@ const PROFILES: Record<string, ContextProfile> = {
   bank: {
     skills: ["xlsx"],
     tools: [
-      ...FILE_TOOLS,
-      ...HANDOFF_TOOLS,
       finance("reconcile_bank_statement"),
       finance("run_bank_recon_batch"),
     ],
@@ -85,16 +82,10 @@ const PROFILES: Record<string, ContextProfile> = {
   voucher: {
     skills: ["kingdee-draft", "xlsx"],
     tools: [
-      ...FILE_TOOLS,
-      ...HANDOFF_TOOLS,
       finance("scan_slip_folder"),
       kingdee("query_kingdee_accounts"),
       kingdee("import_kingdee_accounts"),
-      kingdee("check_voucher_amount"),
-      kingdee("map_voucher_account"),
-      kingdee("summarize_vouchers"),
-      kingdee("build_voucher_lines"),
-      kingdee("build_voucher_sheet"),
+      // 金额勾稽、科目映射、分录构造、汇总都由批处理能力内部完成。
       kingdee("process_voucher_batch"),
       kingdee("validate_kingdee_voucher"),
       kingdee("export_kingdee_draft"),
@@ -104,8 +95,6 @@ const PROFILES: Record<string, ContextProfile> = {
   business: {
     skills: ["business-analysis", "finance-analysis", "xlsx"],
     tools: [
-      ...FILE_TOOLS,
-      ...HANDOFF_TOOLS,
       finance("generate_business_analysis"),
       finance("record_business_metrics"),
     ],
@@ -113,9 +102,7 @@ const PROFILES: Record<string, ContextProfile> = {
   filing: {
     skills: ["filing-precheck", "tax-incentive", "rnd-deduction-check", "xlsx"],
     tools: [
-      ...FILE_TOOLS,
       ...KNOWLEDGE_TOOLS,
-      ...HANDOFF_TOOLS,
       finance("run_filing_precheck_batch"),
       finance("emit_checklist"),
       finance("tax_calculator"),
@@ -125,9 +112,7 @@ const PROFILES: Record<string, ContextProfile> = {
   tax: {
     skills: ["tax-incentive", "rnd-deduction-check", "xlsx"],
     tools: [
-      ...FILE_TOOLS,
       ...KNOWLEDGE_TOOLS,
-      ...HANDOFF_TOOLS,
       finance("tax_calculator"),
       finance("update_company_profile"),
       finance("emit_checklist"),
@@ -136,7 +121,6 @@ const PROFILES: Record<string, ContextProfile> = {
   document: {
     skills: ["contract-extract", "docx", "pdf"],
     tools: [
-      ...FILE_TOOLS,
       ...KNOWLEDGE_TOOLS,
       finance("record_document_metadata"),
     ],
@@ -203,13 +187,15 @@ const REQUESTED_OUTPUT_SKILLS: Array<[RegExp, string]> = [
  * Conservative, deterministic progressive disclosure.
  *
  * A recognized domain gets only its Skill listings and tools. Unknown or
- * ambiguous general work returns undefined sets, preserving the complete
- * catalog instead of guessing. Multiple recognized domains are unioned.
+ * ambiguous work receives the minimal built-in pack and no finance catalog;
+ * it never falls back to exposing every registered tool. Multiple recognized
+ * domains are unioned.
  */
 export function resolveAgentContextPolicy(input: {
   messages: AgentMessage[];
   attachments?: AgentAttachment[];
   intent?: AgentIntent;
+  artifactWrite?: boolean;
 }): AgentContextPolicy {
   const current = [...input.messages].reverse().find((message) => message.role === "user")?.content ?? "";
   const profiles = new Set<string>();
@@ -233,6 +219,7 @@ export function resolveAgentContextPolicy(input: {
       profiles: ["voucher_export_confirmation"],
       skillNames: [...new Set(["kingdee-draft", ...fileSkills])],
       toolIds: [kingdee("export_kingdee_draft")],
+      builtinToolIds: fileSkills.size > 0 ? FILE_BUILTIN_TOOLS : DEFAULT_BUILTIN_TOOLS,
     };
   }
 
@@ -241,16 +228,35 @@ export function resolveAgentContextPolicy(input: {
       profiles: ["voucher_batch"],
       skillNames: [...new Set(["kingdee-draft", ...fileSkills])],
       toolIds: [kingdee("process_voucher_batch")],
+      builtinToolIds: fileSkills.size > 0 ? FILE_BUILTIN_TOOLS : DEFAULT_BUILTIN_TOOLS,
     };
   }
 
   if (profiles.size === 0 && fileSkills.size === 0) {
-    return { profiles: [] };
+    return {
+      profiles: [],
+      skillNames: [],
+      toolIds: [],
+      builtinToolIds: DEFAULT_BUILTIN_TOOLS,
+    };
   }
 
   const skills = new Set(fileSkills);
   const tools = new Set<string>();
-  if (fileSkills.size > 0) FILE_TOOLS.forEach((tool) => tools.add(tool));
+  if (fileSkills.size > 0) {
+    FILE_READ_TOOLS.forEach((tool) => tools.add(tool));
+    FILE_EXECUTION_TOOLS.forEach((tool) => tools.add(tool));
+    if (input.artifactWrite !== false) FILE_WRITE_TOOLS.forEach((tool) => tools.add(tool));
+    const hasLegacyPathAttachment = (input.attachments ?? []).some((attachment) => !attachment.assetId);
+    if (hasLegacyPathAttachment) {
+      tools.add(finance("read_document"));
+      if (input.artifactWrite !== false && fileSkills.has("xlsx")) tools.add(finance("patch_workbook"));
+      if (input.artifactWrite !== false && (fileSkills.has("docx") || fileSkills.has("pdf"))) {
+        tools.add(finance("inspect_document_structure"));
+        tools.add(finance("patch_document"));
+      }
+    }
+  }
   for (const profileName of profiles) {
     const profile = PROFILES[profileName];
     profile.skills.forEach((skill) => skills.add(skill));
@@ -260,5 +266,6 @@ export function resolveAgentContextPolicy(input: {
     profiles: [...profiles],
     skillNames: [...skills],
     toolIds: [...tools],
+    builtinToolIds: fileSkills.size > 0 ? FILE_BUILTIN_TOOLS : DEFAULT_BUILTIN_TOOLS,
   };
 }

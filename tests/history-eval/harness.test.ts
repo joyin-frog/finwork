@@ -5,7 +5,7 @@ import path from "node:path";
 import { HISTORICAL_FINANCE_CASES } from "./cases";
 import { checkMinimumDeliverables } from "./minimum-deliverable";
 
-const contract = HISTORICAL_FINANCE_CASES.find((item) => item.id === "HISTORY-003")!.taskContract;
+const contract = HISTORICAL_FINANCE_CASES.find((item) => item.id === "HISTORY-003")!.deliverySpec;
 const root = mkdtempSync(path.join(os.tmpdir(), "history-harness-test-"));
 try {
   assert.equal(checkMinimumDeliverables(contract, root).ok, false);

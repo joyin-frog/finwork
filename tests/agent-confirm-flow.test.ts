@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { runBeforeHooks } from "../lib/agent/hooks/chain.ts";
-import { createRiskConfirmHook, createUnwiredToolHook } from "../lib/agent/hooks/built-in.ts";
+import { createRiskConfirmHook } from "../lib/agent/hooks/built-in.ts";
 import {
   answerPendingQuestion,
   cancelPendingQuestions,
@@ -21,7 +21,7 @@ function ctxFor(toolName: string, resolveUserQuestion?: (q: { question: string }
 }
 
 export const agentConfirmFlowTestPromise = (async () => {
-  const chain = [createUnwiredToolHook(), createRiskConfirmHook()];
+  const chain = [createRiskConfirmHook()];
 
   // ── AC1: 有 resolver 时 confirm 等待回答;肯定→allow,取消/空→deny ──
   const allowed = await runBeforeHooks(chain, ctxFor(CONFIRM_TOOL, async () => "确认"));
@@ -51,12 +51,23 @@ export const agentConfirmFlowTestPromise = (async () => {
     const r = await runBeforeHooks(chain, ctxFor(tool, undefined));
     assert.equal(r.behavior, "deny", `AC1b FAIL: 高风险工具 ${tool} 无确认通道应拒绝(即需确认)`);
   }
-  // remember_role_convention:刀6 静默写入；remember_convention 仍挂确认门
+  // 两类跨会话记忆都必须经过确认门
   assert.equal(
     (await runBeforeHooks(chain, ctxFor("remember_role_convention", undefined))).behavior,
-    "allow",
-    "AC1b FAIL: remember_role_convention 应静默放行"
+    "deny",
+    "AC1b FAIL: remember_role_convention 无确认通道应拒绝"
   );
+  let roleMemoryPrompt = "";
+  assert.equal(
+    (await runBeforeHooks(chain, ctxFor("remember_role_convention", async (question) => {
+      roleMemoryPrompt = question.question;
+      return "确认";
+    }))).behavior,
+    "allow",
+    "AC1b FAIL: remember_role_convention 经用户明确确认后应放行"
+  );
+  assert.match(roleMemoryPrompt, /跨任务长期记忆候选/,
+    "AC1b FAIL: 角色记忆确认卡必须明确说明跨任务影响");
   assert.equal(
     (await runBeforeHooks(chain, ctxFor("remember_convention", undefined))).behavior,
     "deny",

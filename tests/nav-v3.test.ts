@@ -44,20 +44,10 @@ export const navV3TestPromise = (async () => {
   // ── JOY-10 v2: 全应用标签 reducer + 路由映射 ─────────────────────────
   {
     const empty: AppTabsState = { tabs: [], activeKey: null, latestTitlesById: {} };
-    const files = pageTabFromRoute("/files", "?view=grid");
-    assert.deepEqual(files, {
-      kind: "page",
-      key: "page:files",
-      pageKind: "files",
-      title: "文件",
-      href: "/files?view=grid",
-    }, "JOY-10 v2 FAIL: 页面路由应映射为带最新 href 的单例标签");
     assert.equal(pageTabFromRoute("/chat/recent", "?id=7"), null, "JOY-10 v2 FAIL: recent 必须等 DB 标题后由 ChatPage 注册");
     assert.equal(appTabKeyFromRoute("/chat/recent", "?id=7"), "conversation:7", "JOY-10 v2 FAIL: 视觉激活态应以 recent 路由为事实源");
-    assert.equal(appTabKeyFromRoute("/files", "?view=grid"), "page:files", "JOY-10 v2 FAIL: 视觉激活态应以页面路由为事实源");
 
     const selectionTabs = [
-      files!,
       { kind: "conversation" as const, key: "conversation:9" as const, conversationId: 9, title: "真实标题", href: "/chat/recent?id=9" },
     ];
     assert.equal(
@@ -66,25 +56,12 @@ export const navV3TestPromise = (async () => {
       "JOY-10 v2.1 FAIL: chat-new 原位升级后、路由 replace 提交前应保持真实会话标签选中"
     );
     assert.equal(
-      resolveSelectedAppTabKey("page:files", "conversation:9", selectionTabs),
-      "page:files",
-      "JOY-10 v2.1 FAIL: 已存在的 routeKey 必须优先于 reducer activeKey"
-    );
-    assert.equal(
-      resolveSelectedAppTabKey("page:knowledge", "page:files", selectionTabs),
+      resolveSelectedAppTabKey("page:knowledge", "conversation:9", selectionTabs),
       null,
       "JOY-10 v2.1 FAIL: 普通页面路由尚未建签时不得错误高亮旧标签"
     );
 
-    const filesOpened = appTabsReducer(empty, { type: "openPage", tab: files! });
-    const filesUpdated = appTabsReducer(filesOpened, {
-      type: "openPage",
-      tab: { ...files!, href: "/files?view=list" },
-    });
-    assert.equal(filesUpdated.tabs.length, 1, "JOY-10 v2 FAIL: 同类页面只能有一个标签");
-    assert.equal(filesUpdated.tabs[0].href, "/files?view=list", "JOY-10 v2 FAIL: 页面单例应保留最新 href");
-
-    const newChat = appTabsReducer(filesUpdated, {
+    const newChat = appTabsReducer(empty, {
       type: "openPage",
       tab: { kind: "page", key: "page:chat-new", pageKind: "chat-new", title: "新对话", href: "/chat/new" },
     });
@@ -92,7 +69,7 @@ export const navV3TestPromise = (async () => {
       type: "upgradeChatNew",
       tab: { kind: "conversation", key: "conversation:9", conversationId: 9, title: "新对话", href: "/chat/recent?id=9" },
     });
-    assert.deepEqual(upgraded.tabs.map((tab) => tab.key), ["page:files", "conversation:9"], "JOY-10 v2 FAIL: chat:new 应原位升级为真实会话");
+    assert.deepEqual(upgraded.tabs.map((tab) => tab.key), ["conversation:9"], "JOY-10 v2 FAIL: chat:new 应原位升级为真实会话");
     assert.equal(upgraded.activeKey, "conversation:9", "JOY-10 v2 FAIL: 升级后应激活真实会话");
 
     const existingConversation = appTabsReducer(upgraded, {
@@ -107,8 +84,8 @@ export const navV3TestPromise = (async () => {
       type: "upgradeChatNew",
       tab: { kind: "conversation", key: "conversation:10", conversationId: 10, title: "权威标题", href: "/chat/recent?id=10" },
     });
-    assert.deepEqual(dedupedUpgrade.tabs.map((tab) => tab.key), ["page:files", "conversation:9", "conversation:10"], "JOY-10 v2 FAIL: 升级到已有会话时应去重");
-    assert.equal(dedupedUpgrade.tabs[2].title, "权威标题", "JOY-10 v2 FAIL: 去重升级应刷新权威标题");
+    assert.deepEqual(dedupedUpgrade.tabs.map((tab) => tab.key), ["conversation:9", "conversation:10"], "JOY-10 v2 FAIL: 升级到已有会话时应去重");
+    assert.equal(dedupedUpgrade.tabs[1].title, "权威标题", "JOY-10 v2 FAIL: 去重升级应刷新权威标题");
 
     const activatedMiddle = appTabsReducer(dedupedUpgrade, { type: "activate", key: "conversation:9" });
     const closedMiddle = appTabsReducer(activatedMiddle, { type: "close", key: "conversation:9" });
@@ -258,12 +235,14 @@ export const navV3TestPromise = (async () => {
     assert.equal(opened2.activeKey, "page:agents:bookkeeper", "F3 FAIL: 新开标签应激活自己");
   }
 
-  // ── 抛光: 侧栏角色行使用中性 Hugeicons，只在有事时显示状态点 ──
+  // ── 抛光: 六个岗位统一 User02Icon，用岗位 tone 背景区分，只在有事时显示状态点 ──
   {
     const navSrc = src("app/shared/app-nav.tsx");
     const roleRowBody = navSrc.slice(navSrc.indexOf("function renderRoleRow"), navSrc.indexOf("function renderConversationRow"));
-    assert.ok(roleRowBody.includes("roleNavIcon"), "抛光 FAIL: 侧栏角色行应走 roleNavIcon 中性图标");
-    assert.ok(!roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 侧栏角色行不应再上岗位 tone 字标");
+    assert.ok(roleRowBody.includes("icon={User02Icon}"), "抛光 FAIL: 侧栏角色行应统一使用 User02Icon");
+    assert.ok(roleRowBody.includes("size={14}"), "抛光 FAIL: 侧栏角色图标应为 14px");
+    assert.ok(roleRowBody.includes("ROLE_UI[r.roleId"), "抛光 FAIL: 岗位差异应由 ROLE_UI tone 背景表达");
+    assert.ok(roleRowBody.includes('style={{ "--tone": `var(${roleTone})` }'), "抛光 FAIL: 岗位 tone 应写入语义背景变量");
     assert.ok(!roleRowBody.includes('borderRadius: "50%"'), "抛光 FAIL: 侧栏角色不应再用圆形字标");
     assert.ok(!roleRowBody.includes("r.name.slice(0, 1)"), "抛光 FAIL: 侧栏角色不应再取名称首字");
     assert.ok(!navSrc.includes("ROLE_NAV_ICONS"), "抛光 FAIL: 不得再维护与 ROLE_UI 脱节的 ROLE_NAV_ICONS");

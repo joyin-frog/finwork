@@ -20,12 +20,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run eval:ar14:context
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run typecheck
 
   build:
     if: inputs.run_build
@@ -34,19 +34,19 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
       - name: Cache Next build
         uses: actions/cache@v4
         with:
           path: .next/cache
-          key: nextcache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**/*.{ts,tsx,js,jsx,css}', 'lib/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}') }}
+          key: nextcache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('app/**/*.{ts,tsx,js,jsx,css}', 'lib/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}') }}
           restore-keys: |
-            nextcache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nextcache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nextcache-${{ runner.os }}-
-      - run: bash scripts/ci-cancel-aware.sh npm run build
-      - run: npm run eval:ar13:pi-only
+      - run: bash scripts/ci-cancel-aware.sh pnpm run build
 
   unit:
     if: inputs.run_unit
@@ -55,9 +55,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Setup Python worker venv
@@ -65,9 +66,8 @@ jobs:
           python -m venv workers/.venv
           workers/.venv/bin/python -m pip install --upgrade pip
           workers/.venv/bin/python -m pip install -r requirements.txt
-      # npm test 现在串起 test:pi(Pi 边界层)+ all.test.ts,两者仍是独立进程,见 package.json。
-      - run: bash scripts/ci-cancel-aware.sh npm test
-      - run: bash scripts/ci-cancel-aware.sh npm run eval:golden:ci
+      # 三个明确门：生产合同、Pi Agent 边界、Eval/Oracle 内核。
+      - run: bash scripts/ci-cancel-aware.sh pnpm test
 
   windows_smoke:
     if: inputs.run_windows_smoke
@@ -76,34 +76,35 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: x86_64-pc-windows-msvc }
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - name: Cache Next build
         uses: actions/cache@v4
         with:
           path: .next/cache
-          key: nextcache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**/*.{ts,tsx,js,jsx,css}', 'lib/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}') }}
+          key: nextcache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('app/**/*.{ts,tsx,js,jsx,css}', 'lib/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}') }}
           restore-keys: |
-            nextcache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nextcache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nextcache-${{ runner.os }}-
       # 组装「用户机上真正跑的那份」next-server：next build → prepare-tauri（拷内嵌 node / SDK 原生 CLI /
       # ripgrep / 完整 .next/server 覆盖；并跑打包期硬校验：node:sqlite 可用、SDK 二进制存在）。
-      - run: npm run build
-      - run: npm run tauri:prepare
-      - name: Pi-only packaged preflight
-        run: npm run eval:ar14:packaged
-      # 校验 Rust 外壳在 Windows 能编译（含 KILL_ON_JOB_CLOSE 的 Job Object FFI，mac 上被 cfg 隔离编不到）。
-      - name: Cargo check (Windows shell, incl. Job Object FFI)
+      - run: pnpm run build
+      - run: pnpm run tauri:prepare
+      - name: Validate packaged Microsoft MXC contract
+        run: node scripts/windows-mxc-contract-smoke.mjs
+      # 校验 Rust 外壳在 Windows 能编译；动态 Python 的隔离边界由上面的官方 MXC runner 提供。
+      - name: Cargo check (Windows shell)
         working-directory: src-tauri
         run: cargo check
-      # 启动组装好的 next-server，打一圈路由，扫描有无「漏 chunk / 平台二进制缺失 / stdio 编码」等致命签名。
+      # 启动组装好的 next-server，执行 Pi preflight 并打一圈路由，扫描有无致命签名。
       - name: Packaged runtime smoke
         run: node scripts/windows-smoke.mjs
 
@@ -114,9 +115,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: Setup Python worker venv
@@ -128,19 +130,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: pw-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             pw-${{ runner.os }}-
       - name: Install Playwright (chromium)
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
       # 聊天是产品本体:chat.spec 设为"必过核心门",红了即阻塞合并。
       - name: E2E core (chat) — required
-        run: bash scripts/ci-cancel-aware.sh npx playwright test e2e/mock/chat.spec.ts
+        run: bash scripts/ci-cancel-aware.sh pnpm exec playwright test e2e/mock/chat.spec.ts
       # 外围用例(知识库/搜索/预览/遥测/页面等)非阻塞:跑、报告、但不卡合并;
       # 个别 flaky 也不会拦住聊天主干。失败仍会在 UI 上以警告显示、并上传 trace。
       - name: E2E peripheral — non-blocking
         id: e2e_peripheral
-        run: bash scripts/ci-cancel-aware.sh npx playwright test --grep-invert "^chat:"
+        run: bash scripts/ci-cancel-aware.sh pnpm exec playwright test --grep-invert "^chat:"
         continue-on-error: true
       # continue-on-error 会把外围步骤的 conclusion 变成 success(outcome 仍是 failure),
       # 故除了 job 级 failure(),还要显式判外围步骤的 outcome,否则软失败的 trace/报告不会上传、没法排障。

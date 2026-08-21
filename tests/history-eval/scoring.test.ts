@@ -38,13 +38,13 @@ const reply = HISTORICAL_FINANCE_CASES.find((item) => item.id === "HISTORY-005")
 const replyArtifact = artifact("document", docxMime, {
   text: `${"正式经营回复：研发投入、现金情况及待确认事项。".repeat(20)} 520 300 120 80`,
 });
-assert.equal(verifyDeliveryContract(reply.taskContract, [replyArtifact]).passed, true);
+assert.equal(verifyDeliveryContract(reply.deliverySpec, [replyArtifact]).passed, true);
 const replyScore = scoreArtifactAssertions(reply, [replyArtifact], false);
 assert.equal(replyScore.criticalPassed, true);
 assert.equal(replyScore.deterministicScore, 1);
 assert.equal(
   verifyDeliveryContract(
-    reply.taskContract,
+    reply.deliverySpec,
     [artifact("workbook", xlsxMime, { sheetCount: 1 })],
   ).passed,
   false,
@@ -62,7 +62,7 @@ const forecastArtifacts = [
     text: "预测依据、年度假设及需要管理层确认的事项。",
   }),
 ];
-assert.equal(verifyDeliveryContract(forecast.taskContract, forecastArtifacts).passed, true);
+assert.equal(verifyDeliveryContract(forecast.deliverySpec, forecastArtifacts).passed, true);
 assert.equal(
   scoreArtifactAssertions(forecast, forecastArtifacts, false).criticalPassed,
   true,
@@ -196,7 +196,7 @@ const latestEvidence: CompletionEvidence = {
   reportId: "latest",
 };
 assert.deepEqual(
-  selectLatestCompletionEvidence(reply.taskContract, [latestEvidence, oldEvidence]),
+  selectLatestCompletionEvidence(reply.deliverySpec, [latestEvidence, oldEvidence]),
   [latestEvidence],
 );
 

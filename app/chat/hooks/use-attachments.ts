@@ -68,8 +68,12 @@ export function useAttachments({
       return true;
     });
     if (!nextFiles.length) return;
-    const prepared = await Promise.all(nextFiles.map(readAttachment));
-    setAttachments((current) => [...current, ...prepared]);
+    try {
+      const prepared = await Promise.all(nextFiles.map(readAttachment));
+      setAttachments((current) => [...current, ...prepared]);
+    } catch (error) {
+      toast.error("文件添加失败", { description: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   function removeAttachment(id: string) {

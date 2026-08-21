@@ -20,6 +20,7 @@ import { DatabaseSync } from "node:sqlite";
 import { openFinanceDatabase, initializeFinanceDatabase } from "../lib/db/sqlite.ts";
 import { LATEST_VERSION, getUserVersion, runMigrations, MIGRATIONS } from "../lib/db/migrations.ts";
 import { initializeSchema } from "../lib/db/schema.ts";
+import { createManualMemoryConflictKey } from "../lib/memory-v2/manual.ts";
 import goldenSchema from "./fixtures/golden-schema.json";
 
 // rehearseMigrations is exported only after implementation; safe lazy read
@@ -288,5 +289,71 @@ export const dbMigrationDisciplineTestPromise = (async () => {
     console.log("T6 PASS: v23 session rename 保留存量 locator ✓");
   }
 
-  console.log("db-migration-discipline: all 6 checks passed ✓");
+  // ─────────────────────────────────────────────────────────────────────────────
+  // T7: v39 重建历史手工记忆冲突键与双向关系，且重复执行幂等
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    const db = new DatabaseSync(":memory:");
+    runMigrations(db, ":memory:", () => null);
+    const insert = db.prepare(`
+      INSERT INTO memory_records_v2
+        (memory_id, kind, scope_json, scope_tenant_id, scope_principal_id,
+         entity_refs_json, content_json, conflict_key, source_evidence_json,
+         confidence, sensitivity, approval_status, supersedes_json, conflicts_with_json,
+         created_at, owner_json, content_hash, lifecycle_status)
+      VALUES (?, 'semantic', ?, 'local', 'local-user', '[]', ?, ?, '["evidence-1"]',
+              1, 'internal', ?, '[]', '[]', ?, ?, ?, 'active')
+    `);
+    const scope = JSON.stringify({ tenantId: "local", principalId: "local-user" });
+    const owner = JSON.stringify({ id: "local-user", type: "user", tenantId: "local" });
+    insert.run(
+      "manual-old-a",
+      scope,
+      JSON.stringify({ topic: " 月结  报表口径 ", summary: "采用审定数" }),
+      "legacy-random-key-a",
+      "candidate",
+      "2026-08-01T00:00:00.000Z",
+      owner,
+      "content-a",
+    );
+    insert.run(
+      "manual-old-b",
+      scope,
+      JSON.stringify({ topic: "月结 报表口径", summary: "采用账面数" }),
+      "legacy-random-key-b",
+      "approved",
+      "2026-08-02T00:00:00.000Z",
+      owner,
+      "content-b",
+    );
+
+    const expectedKey = createManualMemoryConflictKey("semantic", "月结 报表口径");
+    const migrate = () => {
+      db.exec("PRAGMA user_version = 38");
+      runMigrations(db, ":memory:", () => null);
+    };
+    migrate();
+    const rows = db.prepare(`
+      SELECT memory_id, conflict_key, conflicts_with_json
+      FROM memory_records_v2
+      WHERE memory_id IN ('manual-old-a','manual-old-b')
+      ORDER BY memory_id
+    `).all() as Array<{ memory_id: string; conflict_key: string; conflicts_with_json: string }>;
+    assert.deepEqual(rows.map((row) => row.conflict_key), [expectedKey, expectedKey]);
+    assert.deepEqual(JSON.parse(rows[0].conflicts_with_json), ["manual-old-b"]);
+    assert.deepEqual(JSON.parse(rows[1].conflicts_with_json), ["manual-old-a"]);
+    const relationCount = () => (db.prepare(`
+      SELECT COUNT(*) AS count FROM memory_relations_v2
+      WHERE relation = 'conflicts_with'
+        AND from_memory_id IN ('manual-old-a','manual-old-b')
+        AND to_memory_id IN ('manual-old-a','manual-old-b')
+    `).get() as { count: number }).count;
+    assert.equal(relationCount(), 2, "T7 FAIL: 应创建两条对称冲突关系");
+    migrate();
+    assert.equal(relationCount(), 2, "T7 FAIL: 重复迁移不应产生重复冲突关系");
+    db.close();
+    console.log("T7 PASS: v39 重建历史手工记忆冲突关系且幂等 ✓");
+  }
+
+  console.log("db-migration-discipline: all 7 checks passed ✓");
 })();

@@ -22,26 +22,13 @@ import {
   hasActiveKnowledgePathLease,
   writeTextMirror,
 } from "./storage";
-import { chunkText } from "./chunker";
-import { embedTexts, storeEmbeddings, deleteEmbeddings, type EmbedRunner } from "./embeddings";
-import { EMBED_MODEL } from "./embed-model";
+import {
+  getProductionRetrievalService,
+  type ProductionRetrievalService,
+} from "@/lib/retrieval/production";
 
-/** 建立语义索引（切块 → embed → 落库），任何失败静默降级不阻断入库 */
-async function buildSemanticIndex(
-  documentId: number,
-  text: string,
-  runner?: EmbedRunner
-): Promise<void> {
-  try {
-    const db = getDb();
-    const chunks = chunkText(text);
-    if (chunks.length === 0) return;
-    const vectors = await embedTexts(chunks, runner);
-    if (!vectors || vectors.length === 0) return;
-    storeEmbeddings(db, documentId, chunks, vectors, EMBED_MODEL);
-  } catch (err) {
-    console.warn("[knowledge/pipeline] 语义索引建立失败（降级，不影响入库）:", err instanceof Error ? err.message : String(err));
-  }
+function retrievalService(): ProductionRetrievalService {
+  return getProductionRetrievalService();
 }
 
 export async function ingestDocument(params: {
@@ -53,10 +40,8 @@ export async function ingestDocument(params: {
   sizeBytes: number;
   storagePath?: string;
   onProgress?: (stage: string, percent: number) => void;
-  /** 可注入 embed runner（测试用）；未提供则走真实 worker */
-  embedRunner?: EmbedRunner;
 }): Promise<{ documentId: number; chunkCount: number }> {
-  const { filePath, title, fileName, mimeType, category, sizeBytes, storagePath, onProgress, embedRunner } = params;
+  const { filePath, title, fileName, mimeType, category, sizeBytes, storagePath, onProgress } = params;
 
   onProgress?.("计算文件哈希", 5);
   const fileBuffer = readFileSync(filePath);
@@ -69,33 +54,41 @@ export async function ingestDocument(params: {
 
   if (!text.trim()) throw new Error("文档内容为空，无法建立索引");
 
-  // Write text mirror for ripgrep search
-  onProgress?.("写入搜索索引", 60);
+  // 文本镜像只服务预览与旧数据迁移；生产检索的权威源是不可变 Artifact。
+  onProgress?.("写入预览文本", 55);
   writeTextMirror(contentHash, text);
 
   if (oldDoc) {
     const hashChanged = oldDoc.content_hash !== contentHash;
     const nextStoragePath = storagePath ?? oldDoc.storage_path;
-    if (hashChanged) {
-      try {
-        const db = getDb();
-        deleteEmbeddings(db, oldDoc.id);
-      } catch {
-        // 降级
-      }
-    }
-    updateKnowledgeDocumentMetadata(oldDoc.id, {
-      title,
-      file_name: fileName,
-      mime_type: mimeType,
-      category: resolvedCategory,
-      size_bytes: sizeBytes,
-      content_hash: contentHash,
-      storage_path: nextStoragePath,
-    });
-    // chunk_count is kept as column but always 0 now
     const db = getDb();
-    db.prepare("UPDATE knowledge_documents SET chunk_count = 0 WHERE id = ?").run(oldDoc.id);
+
+    onProgress?.("建立受控检索索引", 75);
+    try {
+      await retrievalService().indexKnowledgeDocument({
+        knowledgeDocumentId: oldDoc.id,
+        title,
+        fileName,
+        sourceContentHash: contentHash,
+        parsedText: text,
+        category: resolvedCategory,
+        beforeActivate: () => {
+          updateKnowledgeDocumentMetadata(oldDoc.id, {
+            title,
+            file_name: fileName,
+            mime_type: mimeType,
+            category: resolvedCategory,
+            size_bytes: sizeBytes,
+            content_hash: contentHash,
+            storage_path: nextStoragePath,
+          });
+          db.prepare("UPDATE knowledge_documents SET chunk_count = 0 WHERE id = ?").run(oldDoc.id);
+        },
+      });
+    } catch (error) {
+      if (hashChanged && countKnowledgeDocumentsByContentHash(contentHash, db) === 0) deleteTextMirror(contentHash);
+      throw error;
+    }
 
     // DB 已切换到新副本后再清理旧路径；历史共享/外部路径由 containment 守卫拒删。
     if (
@@ -115,12 +108,6 @@ export async function ingestDocument(params: {
       deleteTextMirror(oldDoc.content_hash);
     }
 
-    // 建立语义索引（hash 变化则重嵌；hash 不变则 embeddings 已存在，保留不动）
-    if (hashChanged) {
-      onProgress?.("建立语义索引", 85);
-      await buildSemanticIndex(oldDoc.id, text, embedRunner);
-    }
-
     onProgress?.("完成", 100);
     return { documentId: oldDoc.id, chunkCount: 0 };
   }
@@ -138,9 +125,21 @@ export async function ingestDocument(params: {
     storage_path: storagePath ?? "",
   });
 
-  // 建立语义索引
-  onProgress?.("建立语义索引", 90);
-  await buildSemanticIndex(documentId, text, embedRunner);
+  onProgress?.("建立受控检索索引", 85);
+  try {
+    await retrievalService().indexKnowledgeDocument({
+      knowledgeDocumentId: documentId,
+      title,
+      fileName,
+      sourceContentHash: contentHash,
+      parsedText: text,
+      category: resolvedCategory,
+    });
+  } catch (error) {
+    deleteKnowledgeDocument(documentId);
+    if (countKnowledgeDocumentsByContentHash(contentHash, getDb()) === 0) deleteTextMirror(contentHash);
+    throw error;
+  }
 
   onProgress?.("完成", 100);
   return { documentId, chunkCount: 0 };
@@ -149,10 +148,10 @@ export async function ingestDocument(params: {
 export function deleteDocument(documentId: number): void {
   const db = getDb();
   const doc = getKnowledgeDocumentById(documentId);
+  // 先吊销检索 ACL/缓存，再删除业务行；吊销失败时禁止继续删除。
+  getProductionRetrievalService().revokeKnowledgeDocument(documentId);
   // WP1b 写钩子：删文档前先清 fact_obligations 行（防悬空义务）
   db.prepare("DELETE FROM fact_obligations WHERE source_document_id = ?").run(documentId);
-  // CASCADE 通常已处理 embeddings，兜底显式清（存量无 CASCADE 路径）
-  deleteEmbeddings(db, documentId);
   deleteKnowledgeDocument(documentId);
   if (
     doc?.content_hash &&

@@ -171,7 +171,7 @@ export const businessAnalysisV2TestPromise = (async () => {
   ok(md.includes("盈利能力"), "MD含盈利能力");
   ok(md.includes("营运能力"), "MD含营运能力");
   ok(md.includes("发展能力"), "MD含发展能力");
-  ok(md.includes("本期") && md.includes("同比") && md.includes("预算对比"), "MD含三基准表头");
+  ok(md.includes("本期") && md.includes("基准对比") && md.includes("预算对比"), "MD含三基准表头");
   ok(md.includes("数据信任链"), "MD含数据信任链");
 
   // ─── 11. 分母≤0 时不可算(资产负债率) ───
@@ -184,6 +184,24 @@ export const businessAnalysisV2TestPromise = (async () => {
   const zeroDtar = zeroReport.sections.find(s => s.title === "偿债能力")
     ?.metrics.find(m => m.name === "资产负债率")?.columns.current;
   ok(zeroDtar?.includes("不可算"), `总资产=0时资产负债率应不可算,实际:${zeroDtar}`);
+
+  // ─── 12. 中期口径：周转率与 ROE 年化，杜邦与直接 ROE 一致 ───
+  const q1 = buildBusinessAnalysisV2({
+    bs,
+    is: { ...is, prior: undefined },
+    periodMonths: 3,
+    meta: { asOf: "2026-03-31", source: "一季度报表", caliber: "本年累计·未审计" },
+  });
+  const q1Receivables = q1.sections.find(s => s.title === "营运能力")
+    ?.metrics.find(m => m.name === "应收账款周转率");
+  ok(q1Receivables?.columns.current.includes("15.48"), `一季度应收周转率应按4倍年化,实际:${q1Receivables?.columns.current}`);
+  ok(q1Receivables?.basis.includes("按 3 个月累计数年化"), "一季度周转率必须披露年化口径");
+  const q1Roe = q1.sections.find(s => s.title === "盈利能力")
+    ?.metrics.find(m => m.name === "ROE")?.columns.current;
+  const q1Dupont = q1.sections.find(s => s.title === "盈利能力")
+    ?.metrics.find(m => m.name === "杜邦ROE")?.columns.current;
+  equal(q1Roe?.match(/-?\d+(?:\.\d+)?%/)?.[0], q1Dupont?.match(/-?\d+(?:\.\d+)?%/)?.[0], "杜邦 ROE 必须与直接 ROE 同口径一致");
+  ok(q1.footnotes.some(note => note.includes("周转率与ROE按12/3年化")), "脚注必须披露中期年化口径");
 
   console.log("business-analysis-v2 tests passed");
 })();

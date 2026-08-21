@@ -86,8 +86,8 @@
 .attach-card {
   position: relative;
   display: inline-flex;
-  width: 132px;
-  height: 132px;
+  width: 120px;
+  height: 120px;
 }
 
 .attach-card-main {
@@ -96,7 +96,7 @@
   height: 100%;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--card);
   cursor: pointer;
@@ -136,7 +136,7 @@
 }
 
 .attach-card-meta {
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.2;
   color: var(--text-2);
 }
@@ -146,7 +146,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.03em;
 }
@@ -161,10 +161,9 @@
   height: 20px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--card);
   color: var(--text-2);
-  font-size: 14px;
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.12s;
@@ -198,7 +197,7 @@
   max-width: min(92vw, 1200px);
   max-height: 88vh;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: default;
 }
 
@@ -211,10 +210,9 @@
   width: 36px;
   height: 36px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, white 14%, transparent);
   color: white;
-  font-size: 26px;
   line-height: 1;
   cursor: pointer;
 }
@@ -232,7 +230,7 @@
   overflow: hidden auto;
   padding: 4px;             /* 让 hover 高亮成圆角内嵌块 */
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
 }
@@ -246,7 +244,7 @@
   min-height: 34px;
   padding: 6px 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text);
   font-size: var(--text-small); /* 原继承 body(14px)偏大,降到 13px */
@@ -268,7 +266,7 @@
 .mention-popup small,
 .mention-empty {
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .mention-empty {
@@ -285,7 +283,7 @@
   overflow: hidden auto;
   padding: 6px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
 }
@@ -297,7 +295,7 @@
   width: 100%;
   padding: 10px 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -403,7 +401,7 @@
   margin-bottom: 16px;
   padding: 20px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: inset 0 1px 0 var(--surface-hover);
 }
@@ -422,14 +420,14 @@
 
 .context-card-head p {
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 700;
 }
 
 .context-card-head h2 {
   margin-top: 5px;
   color: var(--text);
-  font-size: 16px;
+  font-size: var(--text-title);
 }
 
 .context-meta {
@@ -443,7 +441,7 @@
   align-items: center;
   min-height: 28px;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-body);
 }
 
 .file-browser {
@@ -458,7 +456,7 @@
   overflow: visible;        /* 放行卡片投影(顶 / 左)与圆角 */
 }
 
-/* 停靠态浮起卡片(对话页 / 资料页共用,经组件 docked 入参挂在 shell 上):
+/* 停靠态浮起卡片(对话页 / 知识库页共用,经组件 docked 入参挂在 shell 上):
    与左侧栏卡片一致 —— 四周留 4px 缝 + 整圈描边 + 12px 圆角 + 1 档柔影,浮在平铺主区上。
    上下缝用 margin + height: calc 一起收掉,避免撑出容器。独立 /preview 整页不传 docked、保持满铺。 */
 .preview-page-shell.is-docked {
@@ -468,12 +466,13 @@
   border: 1px solid var(--border);
   box-shadow: var(--elevation-1);
   overflow: hidden;          /* 裁住四角圆角 */
+  background: var(--surface);
 }
 
 /* 全屏放大:新设计下主区是平铺底层,放大态仍保持浮起卡片(圆角 + 缝 + 整圈描边),不再去卡壳。
    宽度由 JS(maximizeSidebar)把预览列撑到内容区满宽,这里无需覆盖 .is-docked。 */
 
-/* 预览列「卡片框」:用在资料页 / 对话文件页的预览列容器上。那两页的预览列里可能是文件预览、
+/* 预览列「卡片框」:用在知识库页 / 对话记录预览列容器上。两处预览列里可能是文件预览、
    也可能是空态(选择文档预览)/ 无法预览 / 元数据 / 搜索结果,统统包进同一张卡——所以卡放在列容器上,
    不放在 FilePreviewPage 上(对话页预览列只有 FilePreviewPage,空态在它内部,仍走 .is-docked)。
    视觉与 .is-docked 一致;作为 row 的 flex 子项,高度靠 stretch + 上下 margin 自适应,不写 height。 */
@@ -501,6 +500,13 @@
   background: var(--surface);
 }
 
+/* 暗色文件面板是独立的浮层表面(#393939)，不与普通卡片(#2e2e2e)混用。 */
+.dark .preview-page-shell.is-docked {
+  --surface: var(--popover);
+  --surface-2: var(--muted);
+  --surface-hover: var(--accent);
+}
+
 .preview-page-head {
   padding: 0;
 }
@@ -511,11 +517,10 @@
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  /* 上 1px / 下 6px:卡片缝 4px + 描边 1px 已垫在上方,再加 1px 后 32px 按钮行的中线
-     恰与左列 h-11 标题行中线(22px)持平,分隔线也落在 44px 与左标题行底边对齐 */
-  padding: 1px 14px 6px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);  /* 白色标题区,下方 border-bottom 为分隔横线,紧接灰色表格区 */
+  min-height: 46px;
+  /* 统一 46px 标题节奏,让右侧预览标题与左侧导航、主内容标题对齐。 */
+  padding: 0 14px;
+  background: var(--background);  /* 标题区与下方预览内容无额外横线分隔 */
 }
 
 /* 空态/加载态分支的收起入口(资料页/知识库页):与 .preview-head-card 内按钮同一视觉基线,
@@ -531,24 +536,26 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.35;
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  font-weight: var(--text-body--font-weight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .preview-open-button {
-  min-height: 32px;
+  width: auto;
+  height: 28px;
+  min-height: 28px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-12);
   background: transparent;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
 }
 
@@ -562,6 +569,12 @@
   background: var(--control-hover);
 }
 
+.preview-open-button.preview-icon-button {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
 .preview-meta-row {
   display: flex;
   flex-wrap: wrap;
@@ -572,10 +585,11 @@
 .preview-meta-row span {
   padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--control-bg);
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--text-meta);
+  line-height: var(--text-meta--line-height);
   font-weight: 700;
 }
 
@@ -587,7 +601,7 @@
   overflow: auto;
   padding: 16px;
   border-radius: 0;
-  background: var(--surface);
+  background: var(--background);
 }
 
 .preview-empty-state,
@@ -611,7 +625,7 @@
 
 .preview-download-name {
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
 }
 
@@ -619,10 +633,10 @@
   display: inline-block;
   padding: 8px 20px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-hover, var(--surface));
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
   text-decoration: none;
   transition: background 0.15s, border-color 0.15s;
@@ -679,8 +693,8 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--doc-paper-text);
-  font-size: 14px;
-  line-height: 1.8;
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
 }
 
 .docx-preview-container {
@@ -696,11 +710,11 @@
   width: min(860px, 100%);
   margin-bottom: 18px;
   padding: 56px 64px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--doc-paper-bg);
   color: var(--doc-paper-text);
-  font-size: 16px;
-  line-height: 1.85;
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
   word-break: break-word;
   box-shadow: var(--doc-shadow);
 }
@@ -741,14 +755,14 @@
 .preview-image-stage img {
   max-width: 100%;
   max-height: min(72vh, 920px);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
 }
 
 .preview-pdf-toolbar button {
   min-height: 32px;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text);
 }
@@ -793,7 +807,7 @@
   min-height: 42px;
   max-width: min(320px, 38vw);
   padding: 0 16px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--control-bg);
   color: var(--text);
 }
@@ -803,13 +817,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 620;
 }
 
 .preview-excel-file-badge {
   color: rgba(245, 242, 238, 0.56);
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 700;
   letter-spacing: 0.08em;
 }
@@ -836,10 +850,11 @@
   min-height: 26px;
   padding: 0 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--text-small);
+  line-height: var(--text-small--line-height);
   font-weight: 500;
 }
 
@@ -872,11 +887,11 @@
   justify-content: center;
   min-height: 24px;
   padding: 0 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border, rgba(128, 128, 128, 0.18));
   background: var(--doc-paper-bg, rgba(255, 255, 255, 0.06));
   color: var(--doc-paper-text);
-  font-size: 12px;
+  font-size: var(--text-meta);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -886,18 +901,25 @@
   align-items: center;
   justify-content: center;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 600;
   font-style: italic;
 }
 
 .preview-excel-formula-value {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border: 1px solid var(--doc-grid-line);
+  border-radius: var(--radius-sm);
+  background: var(--doc-paper-bg);
   color: var(--doc-paper-text);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 400;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
 }
@@ -941,7 +963,7 @@
   z-index: 2;
   background: var(--doc-grid-bg);
   color: var(--doc-paper-text);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 600;
   text-align: center;
 }
@@ -1009,7 +1031,7 @@
   border-right: 1px solid var(--doc-grid-line);
   border-bottom: 1px solid var(--doc-grid-line);
   color: var(--doc-paper-text);
-  font-size: 13px;
+  font-size: var(--text-small);
   vertical-align: middle;
   white-space: nowrap;
   overflow: hidden;
@@ -1071,7 +1093,8 @@
   justify-content: center;
   gap: 10px;
   color: var(--doc-paper-text);
-  font-size: 12px;
+  font-size: var(--text-meta);
+  line-height: var(--text-meta--line-height);
   font-weight: 700;
 }
 
@@ -1085,7 +1108,7 @@
 
 .preview-pdf-native {
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -1099,7 +1122,7 @@
 .file-group h3 {
   margin: 0 0 10px;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 
 .sidebar-file {
@@ -1112,7 +1135,7 @@
   margin-bottom: 8px;
   padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface-hover);
   color: var(--text);
   text-align: left;
@@ -1134,20 +1157,18 @@
 }
 
 .sidebar-file strong {
-  font-size: 13px;
+  font-size: var(--text-small);
+  line-height: var(--text-small--line-height);
   font-weight: 650;
 }
 
 .sidebar-file small,
 .file-empty {
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--text-meta);
+  line-height: var(--text-meta--line-height);
 }
 
 .file-empty {
   margin: 0;
 }
-
-/* ── 对话内查找高亮(CSS Custom Highlight API) ── */
-::highlight(find-all)    { background: color-mix(in srgb, var(--primary) 22%, transparent); }
-::highlight(find-active) { background: color-mix(in srgb, var(--primary) 45%, transparent); }

@@ -39,6 +39,7 @@ const highlightDarkCSS = prefixCssScope(
   fs.readFileSync(path.join(getProjectRoot(), "node_modules/highlight.js/styles/atom-one-dark.css"), "utf-8"),
   "html.dark"
 );
+const findHighlightCSS = `::highlight(find-all){background:color-mix(in srgb,var(--primary) 22%,transparent)}::highlight(find-active){background:color-mix(in srgb,var(--primary) 45%,transparent)}`;
 
 export const metadata: Metadata = {
   title: "Finwork",
@@ -64,7 +65,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
-        <style dangerouslySetInnerHTML={{ __html: `${highlightLightCSS}\n${highlightDarkCSS}` }} />
+        <style dangerouslySetInnerHTML={{ __html: `${highlightLightCSS}\n${highlightDarkCSS}\n${findHighlightCSS}` }} />
         <script
           dangerouslySetInnerHTML={{
             __html: `try{var s=localStorage.getItem("app-style");if(s==="default")document.documentElement.dataset.style="default"}catch(e){}`,

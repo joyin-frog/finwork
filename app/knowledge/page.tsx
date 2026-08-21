@@ -6,17 +6,15 @@ import { isTauri } from "@tauri-apps/api/core";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowDown01Icon, ArrowUp01Icon, LayoutAlignRightIcon, PanelRightIcon, Add01Icon, Search01Icon, Cancel01Icon, Clock01Icon, Edit01Icon, Archive01Icon, Archive02Icon, Delete02Icon, Folder02Icon, DatabaseIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowUp01Icon, LayoutAlignRightIcon, PanelRightIcon, Add01Icon, Cancel01Icon, Clock01Icon, Edit01Icon, Archive01Icon, Archive02Icon, Delete02Icon, Folder02Icon, DatabaseIcon } from "@hugeicons/core-free-icons";
 import { SuccessCircleIcon } from "@/lib/icons";
 import { FilePreviewPage, type KnowledgePreviewFile } from "@/app/shared/file-preview-page";
 import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
-import { ResourceTabs } from "@/app/shared/resource-tabs";
 import { FilterChipGroup } from "@/app/shared/filter-chip-group";
 import { ResourceCard, type ResourceCardMenuItem } from "@/app/shared/resource-card";
 import { PageSearchBar } from "@/app/shared/page-search-dialog";
-import { ShortcutHint } from "@/app/shared/shortcut-hint";
 import { usePreviewResize } from "@/app/shared/use-preview-resize";
 import { ResizablePreviewPanel } from "@/app/shared/resizable-preview-panel";
 import { Button } from "@/components/ui/button";
@@ -245,7 +243,7 @@ function KnowledgePageContent() {
   const [overwriteTarget, setOverwriteTarget] = useState<{ existingId: number; existingTitle: string } | null>(null);
 
   // AC2: sidebar resize via shared hook
-  // 列表列至少留 360:头部(对话文件｜知识库 + 文档数 + 收起)在更窄时会换行。
+  // 列表列至少留 360:头部(知识库 + 文档数 + 收起)在更窄时会换行。
   const { collapsed: sidebarCollapsed, previewW: sidebarW, dragging, mainRef, beginResize, toggle: toggleSidebar, open: openSidebar, resetWidth, maximize, maximized } = usePreviewResize(360);
 
   const addingRef = useRef(false);
@@ -668,19 +666,19 @@ function KnowledgePageContent() {
               <span className="text-caption text-muted-foreground whitespace-nowrap">第 {hitIndex + 1}/{hitLines.length} 个匹配</span>
               {/* eslint-disable-next-line no-restricted-syntax */}
               <button
-                className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                className="size-7 flex items-center justify-center border border-border rounded-lg text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                 onClick={() => navHit(-1)}
                 title="上一个匹配"
               >
-                <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
+                <HugeiconsIcon icon={ArrowUp01Icon} size={16} />
               </button>
               {/* eslint-disable-next-line no-restricted-syntax */}
               <button
-                className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                className="size-7 flex items-center justify-center border border-border rounded-lg text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                 onClick={() => navHit(1)}
                 title="下一个匹配"
               >
-                <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
+                <HugeiconsIcon icon={ArrowDown01Icon} size={16} />
               </button>
               <span className="flex-1" />
               {/* eslint-disable-next-line no-restricted-syntax */}
@@ -744,19 +742,19 @@ function KnowledgePageContent() {
                 ) : null}
                 {/* eslint-disable-next-line no-restricted-syntax */}
                 <button
-                  className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  className="size-7 flex items-center justify-center border border-border rounded-lg text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                   onClick={() => navHit(-1)}
                   title="上一个匹配 (↑)"
                 >
-                  <HugeiconsIcon icon={ArrowUp01Icon} size={14} />
+                  <HugeiconsIcon icon={ArrowUp01Icon} size={16} />
                 </button>
                 {/* eslint-disable-next-line no-restricted-syntax */}
                 <button
-                  className="size-7 flex items-center justify-center border border-border rounded-md text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  className="size-7 flex items-center justify-center border border-border rounded-lg text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                   onClick={() => navHit(1)}
                   title="下一个匹配 (↓)"
                 >
-                  <HugeiconsIcon icon={ArrowDown01Icon} size={14} />
+                  <HugeiconsIcon icon={ArrowDown01Icon} size={16} />
                 </button>
               </>
             ) : (
@@ -826,15 +824,14 @@ function KnowledgePageContent() {
           <>
 
           {/* Topbar —— 只跨列表列,不横跨预览:预览卡浮在右侧、脱离标题栏。窄列时各项不换行,真放不下横向滚动(不露滚动条)。 */}
-          <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <header className="app-page-header no-divider relative flex items-center gap-3 pr-5 h-11 shrink-0 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <DragHandle />
             <SidebarToggle />
-            <ResourceTabs active="knowledge" />
             <div className="ml-auto flex items-center gap-2 shrink-0">
               {/* eslint-disable-next-line no-restricted-syntax */}
               <button
                 type="button"
-                className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", reindexing && "opacity-40 cursor-not-allowed")}
+                className={cn("inline-grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", reindexing && "opacity-40 cursor-not-allowed")}
                 onClick={() => void doReindex()}
                 disabled={reindexing}
                 title={reindexing ? "重建中…" : "重建语义索引"}
@@ -842,18 +839,6 @@ function KnowledgePageContent() {
               >
                 <HugeiconsIcon icon={DatabaseIcon} size={16} />
               </button>
-              <ShortcutHint label="搜索" combo="mod+f">
-                {/* eslint-disable-next-line no-restricted-syntax */}
-                <button
-                  type="button"
-                  className={cn("inline-grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", query && "bg-accent text-foreground")}
-                  onClick={() => setSearchOpen(true)}
-                  aria-label="搜索"
-                >
-                  <HugeiconsIcon icon={Search01Icon} size={16} />
-                </button>
-              </ShortcutHint>
-              <span className="text-meta text-muted-foreground whitespace-nowrap shrink-0">{docs.length} 份文档</span>
               {sidebarCollapsed ? (
                 // eslint-disable-next-line no-restricted-syntax
                 <button
@@ -870,38 +855,48 @@ function KnowledgePageContent() {
             </div>
           </header>
 
-          <FilterChipGroup
-            value={showArchived ? "__archived" : filterCat}
-            options={[
-              ...chips.map(({ key, label }) => ({ value: key, label, count: catCounts[key] ?? 0 })),
-              ...(archivedCount > 0 ? [{ value: "__archived", label: "已归档", count: archivedCount }] : []),
-            ]}
-            onValueChange={(value) => {
-              if (value === "__archived") {
-                setShowArchived(true);
-                return;
-              }
-              setShowArchived(false);
-              setFilterCat(value);
-            }}
-            ariaLabel="知识库分类"
-          />
+          <div className="flex min-h-0 flex-1 w-full flex-col">
+            {/* 标题说明与搜索栏固定在滚动区上方,内容滚动时搜索栏保持可见。 */}
+            <div className="w-full max-w-[800px] mx-auto shrink-0">
+              <div className="px-4 pt-5 pb-2">
+                <h1 className="text-display font-semibold">知识库</h1>
+                <p className="mt-1 text-body text-muted-foreground">管理可检索的文档，让专员在对话中引用可靠资料。</p>
+              </div>
+              <PageSearchBar
+                open={searchOpen}
+                onOpenChange={setSearchOpen}
+                value={query}
+                onValueChange={(value) => {
+                  setQuery(value);
+                  if (!value) { setResults(null); setSearchError(""); }
+                }}
+                onSubmit={() => void doSearch()}
+                placeholder="搜索知识库…"
+                label="搜索知识库"
+                alwaysVisible
+                className="border-b-0 px-4"
+              />
+            </div>
 
-          <PageSearchBar
-            open={searchOpen}
-            onOpenChange={setSearchOpen}
-            value={query}
-            onValueChange={(value) => {
-              setQuery(value);
-              if (!value) { setResults(null); setSearchError(""); }
-            }}
-            onSubmit={() => void doSearch()}
-            placeholder="搜索知识库…"
-            label="搜索知识库"
-          />
-
-          {/* Doc grid / search results */}
-          <div className="content-fade-top flex-1 overflow-y-auto">
+            {/* Doc grid / search results */}
+            <div className="content-fade-top flex-1 overflow-y-auto">
+              <div className="w-full max-w-[800px] mx-auto">
+              <FilterChipGroup
+                value={showArchived ? "__archived" : filterCat}
+                options={[
+                  ...chips.map(({ key, label }) => ({ value: key, label, count: catCounts[key] ?? 0 })),
+                  ...(archivedCount > 0 ? [{ value: "__archived", label: "已归档", count: archivedCount }] : []),
+                ]}
+                onValueChange={(value) => {
+                  if (value === "__archived") {
+                    setShowArchived(true);
+                    return;
+                  }
+                  setShowArchived(false);
+                  setFilterCat(value);
+                }}
+                ariaLabel="知识库分类"
+              />
             {isSearchMode ? (
               <SearchResults
                 results={results}
@@ -988,6 +983,8 @@ function KnowledgePageContent() {
               )}
               </>
             )}
+              </div>
+            </div>
           </div>
           </>
         }

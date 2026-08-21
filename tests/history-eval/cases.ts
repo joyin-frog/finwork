@@ -1,4 +1,4 @@
-import type { TaskContract } from "@/lib/agent/run-contract";
+import type { DeliverySpec } from "@/lib/agent/run-contract";
 
 export type HistoricalArtifactAssertion = {
   id: string;
@@ -40,7 +40,7 @@ export type HistoricalFinanceCase = {
   realInput?: string;
   fixtureFiles?: string[];
   historicalToolCalls: number;
-  taskContract: TaskContract;
+  deliverySpec: DeliverySpec;
   artifactAssertions: HistoricalArtifactAssertion[];
   judgeRubric: string;
 };
@@ -103,7 +103,7 @@ function noImpossibleShare(deliverableId: string): HistoricalArtifactAssertion {
 function workbookContract(
   qualityProfile: "generic" | "financial_consolidation" = "generic",
   options: { needsRecalc?: boolean; needsRender?: boolean } = {},
-): TaskContract {
+): DeliverySpec {
   const consolidation = qualityProfile === "financial_consolidation";
   return {
     version: 1,
@@ -122,7 +122,7 @@ function workbookContract(
   };
 }
 
-function documentContract(): TaskContract {
+function documentContract(): DeliverySpec {
   return {
     version: 1,
     taskKind: "text",
@@ -133,7 +133,7 @@ function documentContract(): TaskContract {
   };
 }
 
-function forecastContract(): TaskContract {
+function forecastContract(): DeliverySpec {
   return {
     version: 1,
     taskKind: "spreadsheet",
@@ -162,7 +162,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
     fixtureFiles: ["history001/合并报表-第二季度.xlsx", "history001/都森电子Q2_Datapack.xlsx"],
     input: "把下面视为已经从目标财务报表和 Q2 数据包读取出的结构化数据。请说明如何把 Q2 数据誊抄到目标表的 2026Q2 列，只修改该列；其他期间、公式和格式保持不变，并计算该列的数据分析。完成后说明修改范围和校验结果。合成约束：目标表有 2025Q4、2026Q1、2026Q2 三列，Q2 数据包含收入 120000、成本 70000、费用 18000、利润 32000。",
     historicalToolCalls: 78,
-    taskContract: workbookContract("generic", {
+    deliverySpec: workbookContract("generic", {
       // 该任务的首要约束是除 P 列外字节/语义不漂移；全簿重算会改写
       // 外部链接公式缓存，因此只渲染候选，确定性断言单独检查 P 列结果。
       needsRecalc: false,
@@ -216,7 +216,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
     fixtureFiles: ["dusen20260721/合并模版.xlsx", "dusen20260721/母公司最新科目余额表.xlsx", "dusen20260721/子公司最新科目余额表.xlsx", "dusen20260721/母公司第二季度季报.xlsx", "dusen20260721/子公司第二季度报表.xlsx", "dusen20260721/调整及抵消数据点.docx"],
     input: "请根据以下合成数据编制母子公司合并报表：母公司实收资本 1000000、长期股权投资 300000；子公司实收资本 300000、母子公司内部应收应付 180000；母公司支付采购款 381122.95、子公司收到销售款 381122.95；母公司收到其他经营现金 3925000、子公司支付其他经营现金 3925000。要求列示长投权益、内部往来和两组现金流抵消分录，说明合并净额不因内部抵消改变，并保留数据推导链。",
     historicalToolCalls: 85,
-    taskContract: workbookContract("financial_consolidation"),
+    deliverySpec: workbookContract("financial_consolidation"),
     artifactAssertions: [
       { id: "eliminations", description: "包含两组现金流金额和抵消说明", deliverableId: "workbook", kind: "contains_all", values: ["381122.95", "3925000", "抵消"], realValues: ["3811229.5", "39250000", "抵消"], critical: true, weight: 3 },
       { id: "consolidation-trace", description: "包含长投、内部往来或补充分录推导", deliverableId: "workbook", kind: "contains_any", values: ["长期股权投资", "内部往来", "补充分录", "调整分录"], critical: true },
@@ -254,7 +254,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
     fixtureFiles: ["个税/微信图片_20260521101029_8856_16.png", "个税/新建 XLSX 工作表.backup-20260521-个税写入前.xlsx"],
     input: "请按综合所得年度税率表计算三名员工的月度个税，并在结果中列出可复核公式。合成数据：A 税前月薪 22000、个人社保公积金 2500、专项附加扣除 2000；B 为 18500、1900、1000；C 为 14500、1500、1500。口径：全年应纳税所得额=月薪×12-个人扣除×12-专项附加-60000，月度个税=MAX(全年应纳税所得额×税率-速算扣除数,0)/12。",
     historicalToolCalls: 34,
-    taskContract: workbookContract("generic", {
+    deliverySpec: workbookContract("generic", {
       needsRecalc: true,
       needsRender: true,
     }),
@@ -310,7 +310,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
     fixtureFiles: ["dusen20260530/文件通知.pdf", "dusen20260530/需做表格.xlsx"],
     input: "根据以下已读取的制度规则，设计一个 Excel 公式方案：用户只填写 B 列金额，就能自动计算所有限额；覆盖事务费、工资费、管理费和固定资产折旧费，公式必须是真正可计算的 Excel 公式，而不是中文说明，并兼容常见办公软件。合成规则：事务费限额=收入×1%，工资费限额=收入×20%，管理费限额=收入×10%，折旧费限额=固定资产原值×5%。请同时说明各公式的依据。",
     historicalToolCalls: 44,
-    taskContract: workbookContract(),
+    deliverySpec: workbookContract(),
     artifactAssertions: [
       {
         id: "fee-items",
@@ -351,7 +351,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
     fixtureFiles: ["dusen20260508/都森电子_Datapack有修改.xlsx", "dusen20260508/2026年第一季度科目余额表.xlsx", "dusen20260508/2025年第一季度科目余额表.xlsx", "dusen20260508/2026年预算表.xlsx", "dusen20260508/钧石回复.docx"],
     input: "根据下面已整理的四张合成 Excel 表数据和问题文档，回答对方提出的财务问题，并整理成正式、可直接发送的回复话术：收入 520、成本 300、研发费用 120、期末现金 80；对方问题是‘请说明本期经营情况、研发投入和现金情况，并指出还需确认什么’。要求每个结论能追溯到字段，区分事实、计算和待确认事项，最后给出正式版文本。",
     historicalToolCalls: 24,
-    taskContract: documentContract(),
+    deliverySpec: documentContract(),
     artifactAssertions: [
       { id: "reply-topics", description: "正式回复覆盖经营、研发、现金和待确认事项", deliverableId: "document", kind: "contains_all", values: ["经营", "研发", "现金", "确认"], critical: true, weight: 3 },
       { id: "reply-facts", description: "合成回复引用关键数据", deliverableId: "document", kind: "contains_all", values: ["520", "300", "120", "80"], realValues: ["2026", "研发"], critical: true, weight: 2 },
@@ -378,7 +378,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
     fixtureFiles: ["dusen/合并模板.xlsx", "dusen/都森2026年第一季度科目余额表.xlsx", "dusen/都森（江西）第一季度科目余额表.xlsx", "dusen/都森第一季度财务报表.xlsx", "dusen/都森（江西）第一季度财务报表.xlsx"],
     input: "把下面视为已经读取的多 Sheet 财务工作簿摘要，分析资产负债表、利润表、现金流量表和科目余额表：资产 1000、负债 600、权益 400、收入 520、成本 300、期间费用 120、利润 100、期末现金 80，科目余额表借贷合计均为 1600。要求给出资产、负债、权益、收入、利润、现金和关键变动的结论，展示核心数字如何从各 Sheet 得到，并指出公式错误、勾稽不平或需要人工复核的项目。",
     historicalToolCalls: 101,
-    taskContract: workbookContract("financial_consolidation"),
+    deliverySpec: workbookContract("financial_consolidation"),
     artifactAssertions: [
       { id: "multi-sheet", description: "产物覆盖资产负债表、利润表和现金流", deliverableId: "workbook", kind: "contains_all", values: ["资产负债表", "利润表", "现金流"], critical: true, weight: 2 },
       { id: "traceability", description: "产物包含抵消、调整或来源说明", deliverableId: "workbook", kind: "contains_any", values: ["抵消", "调整分录", "补充分录", "合并说明"], critical: true },
@@ -416,7 +416,7 @@ export const HISTORICAL_FINANCE_CASES: HistoricalFinanceCase[] = [
     fixtureFiles: ["dusen2/子公司落地协议.docx", "dusen2/子公司落地协议关键点.xlsx", "dusen2/都森2026-2030年预测表.xlsx"],
     input: "根据一份落地协议摘要和母公司预测表，为新成立子公司编制 2026—2028 年研发费用、固定资产和营业收入预测，并给出数据依据、年度假设、计算过程和需要管理层确认的前提。合成母公司基准为：2026 收入 1000、研发 120、固定资产净增 80；2027 收入 1300、研发 160、固定资产净增 100；2028 收入 1700、研发 220、固定资产净增 130。",
     historicalToolCalls: 41,
-    taskContract: forecastContract(),
+    deliverySpec: forecastContract(),
     artifactAssertions: [
       { id: "forecast-years", description: "工作簿覆盖 2026—2028", deliverableId: "workbook", kind: "contains_all", values: ["2026", "2027", "2028"], critical: true },
       { id: "forecast-metrics", description: "工作簿覆盖营收、研发和固定资产", deliverableId: "workbook", kind: "contains_all", values: ["营收", "研发", "固定资产"], critical: true, weight: 2 },

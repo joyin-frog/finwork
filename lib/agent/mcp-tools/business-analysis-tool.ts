@@ -57,8 +57,8 @@ const canonicalISSchema = z.object({
   revenue:        z.number().finite().describe("营业收入(元)"),
   cost:           z.number().finite().describe("营业成本(元)"),
   sellingExpense: z.number().finite().describe("销售费用(元)"),
-  adminExpense:   z.number().finite().describe("管理费用(元)"),
-  rdExpense:      z.number().finite().describe("研发费用(元)"),
+  adminExpense:   z.number().finite().describe("管理费用总额(元)，包含其下属的‘其中：研究费用’"),
+  rdExpense:      z.number().finite().describe("独立列报的研发费用(元)；若只有管理费用下‘其中：研究费用’，必须传 0，禁止与管理费用重复计入"),
   financeExpense: z.number().finite().describe("财务费用(元)"),
   netProfit:      z.number().finite().describe("净利润(元)"),
   prior: z.object({
@@ -72,6 +72,13 @@ const canonicalISSchema = z.object({
   }).nullish().describe("上年同期数(损益表内含时从该列读取);无则省略,工具标「无基准」"),
 }).describe("利润表科目(已归一到元)");
 
+const canonicalCashFlowSchema = z.object({
+  operatingCashFlow: z.number().finite().describe("经营活动产生的现金流量净额(元)"),
+  investingCashFlow: z.number().finite().describe("投资活动产生的现金流量净额(元)"),
+  financingCashFlow: z.number().finite().describe("筹资活动产生的现金流量净额(元)"),
+  netCashIncrease: z.number().finite().describe("现金及现金等价物净增加额(元)"),
+}).nullish().describe("现金流量表核心净额；用于统一登记格子级事实，不改变经营指标计算口径");
+
 const budgetSchema = z.object({
   revenue:     z.number().finite().nullish().describe("预算营收(元,已归一)"),
   cost:        z.number().finite().nullish().describe("预算营业成本(元)"),
@@ -80,6 +87,35 @@ const budgetSchema = z.object({
   equity:      z.number().finite().nullish().describe("预算净资产(元)"),
 }).nullish().describe("预算数(传入前必须归一到「元」;预算通常为「万元」时×10000再传)");
 
+const sourceCellsSchema = z.record(
+  z.string().min(1).max(100),
+  z.object({
+    sheet: z.string().trim().min(1).max(255),
+    range: z.string().regex(/^\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?$/i),
+  }).strict(),
+).nullish().describe(
+  "工作簿字段来源，键使用 balanceSheet.totalAssets / incomeStatement.revenue / cashFlow.operatingCashFlow 等 canonical 字段；分析上传报表时必须传入，用于 Sheet+Cell 证据落账",
+);
+
+function inferPeriodMonths(input: {
+  periodMonths?: number | null;
+  asOf?: string | null;
+  source?: string | null;
+  caliber?: string | null;
+}): number | undefined {
+  if (input.periodMonths != null) return input.periodMonths;
+  const context = `${input.source ?? ""} ${input.caliber ?? ""}`;
+  if (/一季度|q1|第一季度/i.test(context)) return 3;
+  if (/二季度|q2|第二季度|半年度|上半年/i.test(context)) return 6;
+  if (/三季度|q3|第三季度|前三季度/i.test(context)) return 9;
+  if (/年度|全年|q4|第四季度/i.test(context)) return 12;
+  if (/本年累计|年初至今|ytd/i.test(context) && input.asOf) {
+    const month = Number(input.asOf.match(/^\d{4}-(\d{2})/)?.[1]);
+    if (Number.isInteger(month) && month >= 1 && month <= 12) return month;
+  }
+  return undefined;
+}
+
 /** 经营分析表生成工具:比率全部走确定性死公式,模型只负责提数+复述,不心算。 */
 export function createBusinessAnalysisTool(sdk: Sdk) {
   return sdk.tool(
@@ -87,11 +123,13 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
     [
       "根据资产负债表和利润表确定性计算偿债、盈利、营运、发展及杜邦指标，返回三基准分析表。",
       "调用前确认关键科目、截止日、单位和结算状态；金额统一为元，万元先乘 10000。",
+      "来自上传工作簿时必须传 sourceCells；管理费用下‘其中：研究费用’已包含在管理费用中，rdExpense 必须传 0。",
       "不得传入客户实名等敏感明细。缺基准或不可计算时保留空缺状态，不编造。",
     ].join("\n"),
     {
       balanceSheet: jsonCoercible(canonicalBSSchema),
       incomeStatement: jsonCoercible(canonicalISSchema),
+      cashFlow: jsonCoercible(canonicalCashFlowSchema),
       budget: jsonCoercible(budgetSchema),
       priorPeriod: jsonCoercible(z.object({
         bs: z.object({
@@ -107,6 +145,9 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
           netProfit: z.number().finite().nullish(),
         }).nullish(),
       }).nullish().describe("上期快照(用于跨期同比;若已在 balanceSheet.prior/incomeStatement.prior 中提供则此处可省)")),
+      periodMonths: z.number().int().min(1).max(12).nullish()
+        .describe("损益表本年累计覆盖月数；一季度填3、半年填6、前三季度填9、全年填12。用于周转率和ROE年化"),
+      sourceCells: sourceCellsSchema,
       asOf:    z.string().nullish().describe("数据截止日,如 2025-12-31"),
       source:  z.string().nullish().describe("数据来源,如「2025年12月资产负债表+利润表」"),
       caliber: z.string().nullish().describe("口径,如「期末数·未审计」"),
@@ -115,14 +156,21 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
     async (args: {
       balanceSheet: z.infer<typeof canonicalBSSchema>;
       incomeStatement: z.infer<typeof canonicalISSchema>;
+      cashFlow?: z.infer<typeof canonicalCashFlowSchema>;
       budget?: z.infer<typeof budgetSchema>;
       priorPeriod?: PriorPeriodArg;
+      periodMonths?: number | null;
+      sourceCells?: z.infer<typeof sourceCellsSchema>;
       asOf?: string | null;
       source?: string | null;
       caliber?: string | null;
       status?: "草稿" | "已确认" | "已锁定" | null;
     }) => {
       try {
+        const workbookBacked = /\.(?:xlsx|xlsm|xls|csv|tsv)\b|工作簿|财务?报表/i.test(args.source ?? "");
+        if (workbookBacked && Object.keys(args.sourceCells ?? {}).length === 0) {
+          throw new Error("分析上传工作簿时必须传 sourceCells，以便为关键字段登记 Sheet+Cell 证据");
+        }
         // 组装 canonical 类型(Zod infer 兼容)
         const bs: CanonicalBalanceSheet = {
           cash:               args.balanceSheet.cash,
@@ -194,6 +242,7 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
           is,
           budget,
           priorPeriod,
+          periodMonths: inferPeriodMonths(args),
           meta: {
             asOf:    args.asOf ?? undefined,
             source:  args.source ?? undefined,
@@ -226,17 +275,35 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
         } catch {
           // fact_metrics 不可达时降级，不阻断
         }
+        const factValues: Record<string, number> = {
+          ...flattenFinancialFacts("balanceSheet", bs),
+          ...flattenFinancialFacts("incomeStatement", is),
+          ...flattenFinancialFacts("cashFlow", args.cashFlow),
+        };
+        const workbookFacts = Object.entries(args.sourceCells ?? {}).flatMap(([field, locator]) => {
+          const value = factValues[field];
+          return locator && value !== undefined
+            ? [{ field, value, locator: { kind: "sheet_range" as const, ...locator } }]
+            : [];
+        });
         const provenance = {
-          sources: [{
-            table: "fact_metrics",
-            ...(metricsMonths ? { months: metricsMonths } : {}),
-            recordCount: metricsRecordCount,
-          }],
+          sources: [
+            ...(workbookFacts.length > 0
+              ? [{ kind: "workbook" as const, logicalName: args.source ?? "上传工作簿", factCount: workbookFacts.length }]
+              : []),
+            ...(metricsRecordCount > 0
+              ? [{ kind: "fact_metrics" as const, table: "fact_metrics", ...(metricsMonths ? { months: metricsMonths } : {}), recordCount: metricsRecordCount }]
+              : []),
+          ],
+          workbookFacts,
           caliberVersion,
           asOf: provenanceAsOf,
         };
         // content 尾部加溯源说明（中文）
-        const provenanceLine = `\n\n> 数据口径：${caliberVersion}；截至 ${provenanceAsOf}；事实库 fact_metrics 共 ${metricsRecordCount} 条记录。`;
+        const provenanceSource = workbookFacts.length > 0
+          ? `工作簿 ${args.source ?? "上传工作簿"}，已登记 ${workbookFacts.length} 个单元格来源`
+          : `事实库 fact_metrics 共 ${metricsRecordCount} 条记录`;
+        const provenanceLine = `\n\n> 数据口径：${caliberVersion}；截至 ${provenanceAsOf}；来源：${provenanceSource}。`;
 
         return {
           content: [{ type: "text" as const, text: md + provenanceLine }],
@@ -252,4 +319,15 @@ export function createBusinessAnalysisTool(sdk: Sdk) {
       }
     }
   );
+}
+
+function flattenFinancialFacts(prefix: string, value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object") return {};
+  const result: Record<string, number> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    const field = `${prefix}.${key}`;
+    if (typeof nested === "number" && Number.isFinite(nested)) result[field] = nested;
+    else if (nested && typeof nested === "object") Object.assign(result, flattenFinancialFacts(field, nested));
+  }
+  return result;
 }

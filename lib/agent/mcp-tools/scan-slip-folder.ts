@@ -1,4 +1,4 @@
-import { existsSync, statSync, readdirSync } from "node:fs";
+import { existsSync, statSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod/v4";
 import { groupSlipFiles } from "@/lib/domain/slip-grouping";
@@ -25,7 +25,7 @@ function walkFiles(root: string, dir = "", acc: string[] = [], depth = 0): strin
  * scan_slip_folder:扫描单据文件夹,自动识别结构分组(一组 = 一张凭证的材料)。
  * 一级子文件夹各成一组,根目录散文件/多页 PDF 各自一组。两种组织与混用都支持。
  */
-export function createScanSlipFolderTool(sdk: SdkLike) {
+export function createScanSlipFolderTool(sdk: SdkLike, allowedRoots: string[] = []) {
   return sdk.tool(
     "scan_slip_folder",
     "扫描单据文件夹自动分组:一级子文件夹各成一组(一笔),根目录散文件/多页PDF各自一组(一组=一张凭证的全部材料)。处理整个文件夹的单据时先调它拿分组,再对每组的文件逐个 read_document、聚合成一张凭证。返回每组的绝对路径列表。",
@@ -35,10 +35,17 @@ export function createScanSlipFolderTool(sdk: SdkLike) {
       if (!folderPath || !existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
         return { content: [{ type: "text" as const, text: `文件夹不存在或不是目录:${folderPath}` }], isError: true as const };
       }
-      const rel = walkFiles(folderPath);
+      const resolved = realpathSync(path.resolve(folderPath));
+      const roots = allowedRoots.flatMap((root) => {
+        try { return [realpathSync(path.resolve(root))]; } catch { return []; }
+      });
+      if (!roots.some((root) => resolved === root || resolved.startsWith(root + path.sep))) {
+        return { content: [{ type: "text" as const, text: "读取失败:文件夹不在本回合安全范围内" }], isError: true as const };
+      }
+      const rel = walkFiles(resolved);
       const groups = groupSlipFiles(rel).map((g) => ({
         group: g.group,
-        files: g.files.map((f) => path.join(folderPath, f)),
+        files: g.files.map((f) => path.join(resolved, f)),
       }));
       const text = groups.length
         ? `识别到 ${groups.length} 组(每组=一张凭证):\n` +
