@@ -23,7 +23,8 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
   const ui = ROLE_UI[card.roleId as keyof typeof ROLE_UI];
   const tone = ui?.tone ?? "--tone-neutral";
   const isDisabled = !card.available || card.userDisabled;
-  const isBlocked = card.blockedReason != null && card.blockedReason !== "";
+  const isBlocked =
+    (card.blockedReason != null && card.blockedReason !== "") || card.reviewPending === true;
   const isRunning = card.status === "running";
   const [toggling, setToggling] = useState(false);
 
@@ -61,7 +62,15 @@ export function AgentCard({ card, selected = false, compact = false, onClick, on
       ].filter(Boolean).join(" ")}
       onClick={onClick}
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && onClick?.()}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
+      role="button"
+      aria-pressed={selected}
       aria-label={`${card.name} 智能体卡片`}
     >
       {/* 顶部行：头像 + 名称/域/状态 + 右上角开关，Surface 作为容器 */}

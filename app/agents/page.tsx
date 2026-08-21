@@ -35,6 +35,7 @@ type AgentRosterItem = {
   lastSummary?: string | null;
   status?: string | null;
   blockedReason?: string | null;
+  reviewPending?: boolean;
   conversationId?: string | null;
   invoiceStats?: InvoiceStats;
 };
@@ -144,7 +145,10 @@ export default function AgentsPage() {
   // 卡片首页按当前状态排序：进行中/待拍板的角色优先，其余角色保持注册表顺序。
   const cards: RoleCard[] = roster
     ? [...roster]
-        .map((item) => ({ ...item, isActive: item.status === "running" || Boolean(item.blockedReason) }))
+        .map((item) => ({
+          ...item,
+          isActive: item.status === "running" || Boolean(item.blockedReason) || item.reviewPending === true,
+        }))
         .sort((a, b) => Number(b.isActive) - Number(a.isActive))
     : [];
 
@@ -154,7 +158,7 @@ export default function AgentsPage() {
       : null;
 
   const runningCount = roster?.filter((item) => item.status === "running").length ?? 0;
-  const pendingCount = roster?.filter((item) => Boolean(item.blockedReason)).length ?? 0;
+  const pendingCount = roster?.filter((item) => Boolean(item.blockedReason) || item.reviewPending === true).length ?? 0;
   const enabledCount = roster?.filter((item) => item.available && !item.userDisabled).length ?? 0;
 
   function renderCardGroup(items: RoleCard[]) {

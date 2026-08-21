@@ -71,6 +71,19 @@ export const agentBoardTestPromise = (async () => {
   }
   console.log("B2: blocked → active ✓");
 
+  // B2a: review pending 角色进 active 组
+  {
+    const items: RosterItem[] = [
+      makeItem({ roleId: "r1", reviewPending: true }),
+      makeItem({ roleId: "r2" }),
+    ];
+    const { active, rest } = partitionRoles(items);
+    assert.equal(active.length, 1, "B2a FAIL: review pending 角色应在 active 组");
+    assert.equal(active[0].roleId, "r1", "B2a FAIL: review pending 角色 id 不对");
+    assert.equal(rest.length, 1, "B2a FAIL: idle 角色应在 rest 组");
+  }
+  console.log("B2a: review pending → active ✓");
+
   // B3: available:false 角色置 rest 末尾
   {
     const items: RosterItem[] = [

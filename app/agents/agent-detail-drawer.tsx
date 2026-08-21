@@ -66,7 +66,8 @@ export function AgentDetailDrawer({
   const ui = ROLE_UI[card.roleId as keyof typeof ROLE_UI];
   const tone = ui?.tone ?? "--tone-neutral";
   const isRunning = card.status === "running";
-  const isBlocked = card.blockedReason != null && card.blockedReason !== "";
+  const isBlocked =
+    (card.blockedReason != null && card.blockedReason !== "") || card.reviewPending === true;
 
   // 找出有文件产物的派发（label 以文件扩展名结尾的，视作 finalize_deliverable 输出）
   const fileDispatches =
