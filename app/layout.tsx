@@ -50,7 +50,10 @@ export const viewport: Viewport = {
   themeColor: "#ffffff",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+  modal,
+}: Readonly<{ children: React.ReactNode; modal: React.ReactNode }>) {
   return (
     <html
       lang="zh-CN"
@@ -79,7 +82,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <UserIdentityProvider>
               <ChatStreamProvider>
                 <CloseGuard />
-                <AppShell>{children}</AppShell>
+                <AppShell>
+                  {children}
+                  {modal}
+                </AppShell>
               </ChatStreamProvider>
             </UserIdentityProvider>
           </NavStateProvider>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { Dialog as DialogPrimitive } from "radix-ui";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { PageSearchBar } from "@/app/shared/page-search-dialog";
 import type { PublicAgentSettings } from "@/lib/settings/agent-settings";
 import { CONFIG_TABS, type ConfigTabKey } from "@/app/config/tabs";
@@ -16,15 +18,21 @@ import { DragHandle } from "@/app/shared/window-controls";
 import { SidebarToggle } from "@/app/shared/sidebar-toggle";
 import { useUserIdentity } from "@/app/shared/user-identity";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { surfaceVariants } from "@/components/ui/surface";
 
 type SettingsTab = ConfigTabKey;
 
 export default function SkillCenter({
   initialAgentSettings,
   initialTab = "general",
+  presentation = "page",
+  onClose,
 }: {
   initialAgentSettings: PublicAgentSettings;
   initialTab?: SettingsTab | string;
+  presentation?: "page" | "modal";
+  onClose?: () => void;
 }) {
   const [agentSettings, setAgentSettings] = useState(initialAgentSettings);
   const [apiUrl, setApiUrl] = useState(initialAgentSettings.apiUrl);
@@ -105,15 +113,26 @@ export default function SkillCenter({
   const activeTabMeta = CONFIG_TABS.find((t) => t.key === activeTab) ?? CONFIG_TABS[0];
   const filteredTabs = CONFIG_TABS.filter((t) => t.label.includes(query.trim()));
 
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* 页头:复用全站 header 模式(h-11 + app-page-header 统一底线),含拖拽区与侧栏收起按钮 */}
-      <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
-        <DragHandle />
-        <SidebarToggle />
-        <h1 className="text-title font-semibold">设置</h1>
-      </header>
-      <div className="flex flex-1 overflow-hidden">
+  const settingsBody = (
+    <div className="flex h-full flex-col overflow-hidden">
+      {presentation === "page" ? (
+        /* 页头:复用全站 header 模式(h-11 + app-page-header 统一底线),含拖拽区与侧栏收起按钮 */
+        <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
+          <DragHandle />
+          <SidebarToggle />
+          <h1 className="text-title font-semibold">设置</h1>
+        </header>
+      ) : (
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
+          <DialogPrimitive.Title className="flex-1 font-heading text-title">设置</DialogPrimitive.Title>
+          <DialogPrimitive.Close asChild>
+            <Button variant="ghost" size="icon" aria-label="关闭设置">
+              <HugeiconsIcon icon={Cancel01Icon} size={18} />
+            </Button>
+          </DialogPrimitive.Close>
+        </header>
+      )}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left sidebar: shares the outer box with content, just a vertical divider — no gap, no separate corners */}
         <aside className="w-52 shrink-0 flex flex-col border-r border-border overflow-hidden">
           <PageSearchBar
@@ -200,6 +219,25 @@ export default function SkillCenter({
         </div>
       </div>
     </div>
+  );
+
+  if (presentation === "page") return settingsBody;
+
+  return (
+    <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) onClose?.(); }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-scrim-modal data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
+        <DialogPrimitive.Content
+          aria-label="设置"
+          className={cn(
+            "fixed left-1/2 top-1/2 z-50 flex h-[min(720px,calc(100vh-3rem))] w-[min(920px,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden text-popover-foreground outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            surfaceVariants({ level: "overlay", edge: "hairline", shape: "overlay" }),
+          )}
+        >
+          {settingsBody}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
 

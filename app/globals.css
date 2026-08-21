@@ -773,7 +773,7 @@ html button.composer-send-button.stop {
   border: 1px solid var(--border);
   border-top: 0;                     /* Windows 标题栏底边已承担顶部内容分隔线 */
   background: var(--background);
-  box-shadow: none;                  /* 只用边界分隔侧栏与内容，不再制造卡片阴影 */
+  box-shadow: var(--elevation-inset); /* 日间模式只向左投影，主内容从侧栏背板上浮起 */
 }
 [data-style='linear'] .app-titlebar {
   background: var(--sidebar);   /* Windows 品牌标题栏与现代外壳共用同一表面色 */

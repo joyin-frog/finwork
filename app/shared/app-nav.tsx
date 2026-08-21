@@ -1,9 +1,9 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trackFeature } from "@/lib/telemetry/track";
 import {
@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { VerticalResizeDivider } from "@/app/shared/vertical-resize-divider";
-import { ROLE_LABELS, ROLE_UI } from "@/lib/domain/role-ui";
+import { ROLE_LABELS } from "@/lib/domain/role-ui";
 import {
   ConversationStatusMark,
   resolveConversationStatus,
@@ -55,6 +55,7 @@ import {
   PinIcon,
   PinOffIcon,
   ChatAddIcon,
+  BubbleChatIcon,
   Settings02Icon,
   Delete02Icon,
   NoteIcon,
@@ -169,10 +170,8 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   const {
     collapsed, setCollapsed,
     navWidth, setNavWidth,
-    agentsOpen, setAgentsOpen,
     pinnedOpen, setPinnedOpen,
     recentOpen, setRecentOpen,
-    agentRoster, agentPendingCount,
     conversations, hasMore, loaded, loadError, fetchConversations,
     deleteTarget,
     renamingId, renameDraft, setRenameDraft,
@@ -181,11 +180,6 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   } = useNavState();
   const [dragging, setDragging] = useState(false);
   const reduce = useReducedMotion();
-  const pathname = usePathname();
-  const currentRoleId = pathname.startsWith("/agents/")
-    ? pathname.slice("/agents/".length).split("/")[0]
-    : null;
-
   // Keep --nav-width token in sync with runtime navWidth so the tabbar lead tracks it.
   useEffect(() => {
     document.documentElement.style.setProperty("--nav-width", navWidth + "px");
@@ -239,11 +233,12 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
   const pinnedConversations = conversations.filter((c) => c.pinned);
   const recentConversations = conversations.filter((c) => !c.pinned);
   const hasPinned = pinnedConversations.length > 0;
+  const teamSpace = active === "agents";
 
-  // 内容高度变化后重算上下边缘渐隐（折叠开合、花名册加载等）。
+  // 内容高度变化后重算上下边缘渐隐（折叠开合、会话加载等）。
   useEffect(() => {
     updateScrollEdges();
-  }, [agentRoster.length, conversations.length, agentsOpen, pinnedOpen, recentOpen, hasPinned, updateScrollEdges]);
+  }, [conversations.length, pinnedOpen, recentOpen, hasPinned, updateScrollEdges]);
 
   async function handleConfirmDelete() {
     const result = await confirmDelete();
@@ -267,52 +262,6 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       <span className="flex size-5 shrink-0 items-center justify-center">
         <HugeiconsIcon icon={icon} size={14} aria-hidden="true" />
       </span>
-    );
-  }
-
-  function renderRoleRow(r: { roleId: string; name: string; available: boolean; userDisabled: boolean; status: string | null; blockedReason: string | null; reviewPending: boolean }) {
-    const isActive = currentRoleId === r.roleId;
-    const isRunning = r.status === "running";
-    const isBlocked = (r.blockedReason != null && r.blockedReason !== "") || r.reviewPending;
-    const disabled = !r.available || r.userDisabled;
-    const roleTone = ROLE_UI[r.roleId as keyof typeof ROLE_UI]?.tone ?? "--tone-neutral";
-    // 六个岗位统一使用用户图标；岗位差异由语义色背景表达，状态点只在进行中/待拍板时出现。
-    const dotTone = isRunning ? "var(--color-primary)" : isBlocked ? "var(--tone-notice)" : null;
-    const dotLabel = isRunning ? "在忙" : "待拍板";
-    return (
-      <Link
-        key={r.roleId}
-        href={`/agents/${r.roleId}`}
-        title={r.name}
-        className={cn(
-          // 正文阶默认 400；悬停只换底色，不加深字色。选中态加 medium。
-          "group relative flex items-center gap-2 rounded-md pl-2 pr-2 min-h-[30px] text-body transition-colors",
-          isActive
-              ? "bg-primary/10 text-foreground font-medium"
-              : disabled
-                ? "text-muted-foreground/50 hover:bg-foreground/10"
-                : "text-sidebar-foreground hover:bg-foreground/10 hover:text-foreground"
-        )}
-      >
-        <span className="relative shrink-0 flex size-5 items-center justify-center">
-          <span
-            className={cn("fa-toned flex size-5 items-center justify-center rounded-md", disabled && "opacity-50")}
-            style={{ "--tone": `var(${roleTone})` } as CSSProperties}
-          >
-            <HugeiconsIcon icon={User02Icon} size={14} aria-hidden="true" />
-          </span>
-          {dotTone && (
-            <span
-              className={cn("fa-tone-dot absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar", isRunning && "fa-dot-pulse")}
-              style={{ "--tone": dotTone } as CSSProperties}
-              title={dotLabel}
-              aria-label={dotLabel}
-              role="status"
-            />
-          )}
-        </span>
-        <span className="flex-1 min-w-0 truncate">{r.name}</span>
-      </Link>
     );
   }
 
@@ -469,27 +418,72 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
 
         <>
           <div className="flex flex-col gap-0 px-3 pb-5 shrink-0">
-            <Link href="/chat/new" onClick={() => trackFeature("nav.chat")} className={cn(navLinkClass(active === "chat" && chatActive === "new"), "group")}>
-              {active === "chat" && chatActive === "new" && <NavActivePill reduce={reduce} />}
-              <NavGlyph icon={ChatAddIcon} />
-              <span>新对话</span>
-              <NavShortcut combo="mod+n" />
-            </Link>
-            <Link href="/cockpit" onClick={() => trackFeature("nav.cockpit")} className={navLinkClass(active === "cockpit")}>
-              {active === "cockpit" && <NavActivePill reduce={reduce} />}
-              <NavGlyph icon={DashboardSquare02Icon} />
-              <span>总览</span>
-            </Link>
-            <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "knowledge")}>
-              {active === "knowledge" && <NavActivePill reduce={reduce} />}
-              <NavGlyph icon={LibraryIcon} />
-              <span>知识库</span>
-            </Link>
-            <Link href="/skills" onClick={() => trackFeature("nav.skills")} className={navLinkClass(active === "skills")}>
-              {active === "skills" && <NavActivePill reduce={reduce} />}
-              <NavGlyph icon={NoteIcon} />
-              <span>技能</span>
-            </Link>
+            <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1" aria-label="工作空间切换">
+              <Link
+                href="/chat/new"
+                onClick={() => trackFeature("nav.chat")}
+                className={cn(
+                  "flex min-h-[28px] items-center justify-center rounded-md px-2 text-meta transition-colors",
+                  !teamSpace ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+                aria-current={!teamSpace ? "page" : undefined}
+              >
+                对话
+              </Link>
+              <Link
+                href="/agents"
+                onClick={() => trackFeature("nav.agents")}
+                className={cn(
+                  "flex min-h-[28px] items-center justify-center rounded-md px-2 text-meta transition-colors",
+                  teamSpace ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+                aria-current={teamSpace ? "page" : undefined}
+              >
+                团队
+              </Link>
+            </div>
+
+            {teamSpace ? (
+              <>
+                <span
+                  className={cn(navLinkClass(false), "cursor-default text-muted-foreground/60")}
+                  aria-disabled="true"
+                  title="聊天页面暂未设计"
+                >
+                  <NavGlyph icon={BubbleChatIcon} />
+                  <span>聊天</span>
+                </span>
+                <Link href="/agents" onClick={() => trackFeature("nav.agents")} className={navLinkClass(active === "agents")}>
+                  {active === "agents" && <NavActivePill reduce={reduce} />}
+                  <NavGlyph icon={User02Icon} />
+                  <span>智能体</span>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/chat/new" onClick={() => trackFeature("nav.chat")} className={cn(navLinkClass(active === "chat" && chatActive === "new"), "group")}>
+                  {active === "chat" && chatActive === "new" && <NavActivePill reduce={reduce} />}
+                  <NavGlyph icon={ChatAddIcon} />
+                  <span>新对话</span>
+                  <NavShortcut combo="mod+n" />
+                </Link>
+                <Link href="/cockpit" onClick={() => trackFeature("nav.cockpit")} className={navLinkClass(active === "cockpit")}>
+                  {active === "cockpit" && <NavActivePill reduce={reduce} />}
+                  <NavGlyph icon={DashboardSquare02Icon} />
+                  <span>总览</span>
+                </Link>
+                <Link href="/knowledge" onClick={() => trackFeature("nav.knowledge")} className={navLinkClass(active === "knowledge")}>
+                  {active === "knowledge" && <NavActivePill reduce={reduce} />}
+                  <NavGlyph icon={LibraryIcon} />
+                  <span>知识库</span>
+                </Link>
+                <Link href="/skills" onClick={() => trackFeature("nav.skills")} className={navLinkClass(active === "skills")}>
+                  {active === "skills" && <NavActivePill reduce={reduce} />}
+                  <NavGlyph icon={NoteIcon} />
+                  <span>技能</span>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* 一级导航以下共用一条滚动条；scrollbar-gutter 固定右槽，选中框左右恒为 12px。 */}
@@ -505,37 +499,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
               data-nav-scroll=""
               className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pl-3"
             >
-              {/* 智能体目录常驻侧栏（可折叠，默认展开）；徽标是唯一的“有事”信号。 */}
-              <div data-nav-agent-directory="always" className="flex flex-col gap-1">
-                <SectionFoldHeader
-                  label="智能体"
-                  open={agentsOpen}
-                  onToggle={() => setAgentsOpen(!agentsOpen)}
-                  trailing={
-                    agentPendingCount > 0 ? (
-                      <span
-                        className="fa-toned text-meta font-medium px-1.5 tabular-nums"
-                        style={{ "--tone": "var(--tone-notice)", borderRadius: "999px" } as CSSProperties}
-                        title={`${agentPendingCount} 位专员等你拍板`}
-                      >
-                        {agentPendingCount}
-                      </span>
-                    ) : null
-                  }
-                />
-                <CollapsibleSectionMotion open={agentsOpen} reduce={reduce}>
-                  {agentRoster.length === 0 ? (
-                    <span className="flex items-center gap-2 pl-2 pr-2 py-1 text-meta text-muted-foreground">
-                      <span className="size-5 shrink-0" aria-hidden />
-                      加载中…
-                    </span>
-                  ) : (
-                    agentRoster.map(renderRoleRow)
-                  )}
-                </CollapsibleSectionMotion>
-              </div>
-
-              {hasPinned && (
+              {!teamSpace && hasPinned && (
                 <div className="flex flex-col gap-1">
                   <SectionFoldHeader label="置顶" open={pinnedOpen} onToggle={() => setPinnedOpen(!pinnedOpen)} />
                   <CollapsibleSectionMotion open={pinnedOpen} reduce={reduce}>
@@ -546,7 +510,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                 </div>
               )}
 
-              <div className="flex flex-col gap-1">
+              {!teamSpace && <div className="flex flex-col gap-1">
                 <SectionFoldHeader label="最近" open={recentOpen} onToggle={() => setRecentOpen(!recentOpen)} />
                 <CollapsibleSectionMotion open={recentOpen} reduce={reduce}>
                     {recentConversations.length === 0 && loaded ? (
@@ -567,7 +531,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
                       </AnimatePresence>
                     )}
                 </CollapsibleSectionMotion>
-              </div>
+              </div>}
             </nav>
           </div>
 
