@@ -115,7 +115,7 @@ export default function AgentWorkspacePage() {
       className="h-full min-h-0 gap-0"
     >
       {/* 顶栏：拖拽 + 侧栏开关 + 角色身份 + 派任务——只跨列表列，不横跨预览（同知识库） */}
-      <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
+      <header className="app-page-header relative flex items-center gap-3 pr-5 shrink-0">
         <DragHandle />
         <SidebarToggle />
         {role && (

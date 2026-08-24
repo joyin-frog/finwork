@@ -394,9 +394,9 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
         // relative 是拖拽条绝对定位的上下文。
         "relative app-side flex flex-col shrink-0",
         collapsed ? "overflow-visible pointer-events-none" : "overflow-hidden",
-        // 展开时做成浮起卡片:四周留 4px 缝 + 圆角 + 描边 + 1 档柔影;折叠(width→0)时全部去掉,避免露出碎片。
+        // 展开时保留左右/底部 4px 缝；顶部贴齐工作区，让 mac 红绿灯、侧栏按钮和页面按钮共享同一水平中线。
         // eslint-disable-next-line no-restricted-syntax -- 容器 Surface 收敛（WP8b），bg-sidebar 必须保留覆盖 Surface 默认底色
-        !collapsed && cn(surfaceVariants({ level: "panel", edge: "hairline", shape: "panel" }), "bg-sidebar m-1")
+        !collapsed && cn(surfaceVariants({ level: "panel", edge: "hairline", shape: "panel" }), "bg-sidebar mx-1 mb-1")
       )}
       style={{ width: collapsed ? 0 : navWidth }}
     >
@@ -411,7 +411,7 @@ export function AppNav({ active, chatActive }: { active: NavActive; chatActive?:
       >
       {/* 顶栏:左侧为 macOS 红绿灯预留(DragHandle 拖拽区);右侧放收起按钮(展开态才在侧栏里)。
           Windows 无红绿灯,靠 .app-nav-topbar 的平台样式改为靠左,不留左上角空档(见 globals.css)。 */}
-      <div className="app-nav-topbar relative h-[46px] shrink-0 flex items-center justify-end pr-2">
+      <div className="app-nav-topbar relative shrink-0 flex items-center justify-end pr-2">
         <DragHandle />
         <NavTopControls />
       </div>

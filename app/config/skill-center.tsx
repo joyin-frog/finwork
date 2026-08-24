@@ -117,7 +117,7 @@ export default function SkillCenter({
     <div className="flex h-full flex-col overflow-hidden">
       {presentation === "page" ? (
         /* 页头:复用全站 header 模式(h-11 + app-page-header 统一底线),含拖拽区与侧栏收起按钮 */
-        <header className="app-page-header relative flex items-center gap-3 pr-5 h-11 shrink-0">
+        <header className="app-page-header relative flex items-center gap-3 pr-5 shrink-0">
           <DragHandle />
           <SidebarToggle />
           <h1 className="text-title font-semibold">设置</h1>

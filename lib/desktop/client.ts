@@ -36,6 +36,7 @@ export interface FinworkDesktopBridge {
   readTextFile(filePath: string): Promise<string>;
   openPath(target: string, application?: string): Promise<void>;
   openExternal(url: string): Promise<void>;
+  setNativeTheme(theme: "light" | "dark" | "system"): Promise<void>;
   window: {
     minimize(): Promise<void>;
     toggleMaximize(): Promise<void>;

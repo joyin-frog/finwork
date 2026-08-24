@@ -10,6 +10,7 @@ const {
   BrowserWindow,
   dialog,
   ipcMain,
+  nativeTheme,
   shell,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
@@ -30,6 +31,7 @@ const BUILTIN_TELEMETRY_TOKEN = typeof __FINWORK_TELEMETRY_TOKEN__ === "string" 
 
 const SPLASH_URL = "data:text/html,<!doctype html><html><head><meta charset='utf-8'><style>html,body{margin:0;height:100%;background:rgb(250,250,250)}.wrap{height:100%;display:flex;align-items:center;justify-content:center}.spin{width:28px;height:28px;border:3px solid rgb(225,225,228);border-top-color:rgb(90,90,100);border-radius:999px;animation:r .8s linear infinite}@keyframes r{to{transform:rotate(360deg)}}</style></head><body><div class='wrap'><div class='spin'></div></div></body></html>";
 const SERVER_ERROR_URL = "data:text/html,<!doctype html><html><head><meta charset='utf-8'><style>html,body{margin:0;height:100%;background:rgb(250,250,250);font-family:system-ui;color:rgb(45,45,50)}.wrap{height:100%;display:flex;align-items:center;justify-content:center}.card{text-align:center;max-width:460px;padding:32px}.title{font-size:20px;font-weight:600;margin-bottom:12px}.body{font-size:14px;line-height:1.7;color:rgb(95,95,105)}</style></head><body><div class='wrap'><div class='card'><div class='title'>Finwork 服务未能恢复</div><div class='body'>请完全退出 Finwork 后重新打开。诊断信息已写入应用日志。</div></div></div></body></html>";
+const WINDOW_BACKGROUND = { light: "#ffffff", dark: "#262626" };
 
 let mainWindow = null;
 let serverProcess = null;
@@ -138,6 +140,12 @@ function registerIpc() {
     if (!isAllowedExternalUrl(url)) throw new Error("Unsupported external URL");
     await shell.openExternal(url);
   }));
+  ipcMain.handle("desktop:set-native-theme", guardIpc(async (_event, theme) => {
+    if (theme !== "light" && theme !== "dark" && theme !== "system") throw new Error("Unsupported native theme");
+    nativeTheme.themeSource = theme;
+    const useDarkBackground = theme === "dark" || (theme === "system" && nativeTheme.shouldUseDarkColors);
+    mainWindow?.setBackgroundColor(useDarkBackground ? WINDOW_BACKGROUND.dark : WINDOW_BACKGROUND.light);
+  }));
   ipcMain.handle("desktop:window-minimize", guardIpc(async (event) => currentWindow(event)?.minimize()));
   ipcMain.handle("desktop:window-toggle-maximize", guardIpc(async (event) => {
     const win = currentWindow(event);
@@ -213,6 +221,8 @@ async function openPathWithApplication(target, application) {
 function createMainWindow(initialUrl) {
   const isWindows = process.platform === "win32";
   const isMac = process.platform === "darwin";
+  const developmentIcon = app.isPackaged ? undefined : path.join(__dirname, "..", "src-tauri", "icons", "icon.png");
+  if (isMac && developmentIcon && app.dock) app.dock.setIcon(developmentIcon);
   const win = new BrowserWindow({
     title: "Finwork",
     width: 1280,
@@ -220,10 +230,11 @@ function createMainWindow(initialUrl) {
     minWidth: 1024,
     minHeight: 720,
     show: false,
+    icon: developmentIcon,
     frame: !isWindows,
     titleBarStyle: isMac ? "hiddenInset" : "default",
-    trafficLightPosition: isMac ? { x: 12, y: 24 } : undefined,
-    backgroundColor: "#fafafa",
+    trafficLightPosition: isMac ? { x: 12, y: 16 } : undefined,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND.dark : WINDOW_BACKGROUND.light,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

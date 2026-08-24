@@ -23,6 +23,8 @@ const required = [
   nodeBinary,
   pythonArchive,
   runtimeLock,
+  path.join(server, "runtime-assets", "highlight", "atom-one-light.css"),
+  path.join(server, "runtime-assets", "highlight", "atom-one-dark.css"),
 ];
 for (const file of required) {
   if (!existsSync(file)) throw new Error(`Packaged resource is missing: ${file}`);

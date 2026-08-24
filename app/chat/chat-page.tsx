@@ -1065,7 +1065,7 @@ export default function ChatPage({
             }}
           >
             {/* 标题栏只跨聊天列,不再横跨预览:预览开时这两个按钮正好落在卡片左缘,预览关时回到最右。 */}
-            <header className="app-page-header relative flex items-center justify-between gap-3 pr-5 h-11 shrink-0">
+            <header className="app-page-header relative flex items-center justify-between gap-3 pr-5 shrink-0">
               <DragHandle />
               <SidebarToggle />
               {sessionRole && (

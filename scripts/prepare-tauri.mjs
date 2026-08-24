@@ -97,6 +97,19 @@ await cp(staticDir, path.join(serverResourceDir, ".next", "static"), { recursive
 // SSR/路由 500、前端只见"网络错误"。用完整的 .next/server 覆盖 standalone 的不全子集,确保 server
 // chunk 齐全(同一次 build 的产物,叠加是超集,安全)。
 await cp(path.join(nextDir, "server"), path.join(serverResourceDir, ".next", "server"), { recursive: true });
+// layout.tsx 在 SSR 时读取 highlight.js 的明暗主题 CSS。Next 的 outputFileTracingIncludes
+// 在 Windows 会受上面的绝对路径 trace 缺陷影响，CSS 可能没有进入 standalone，导致聊天页
+// 运行时 ENOENT 并落入错误边界。这里把两个运行时文件显式复制，并由 resource smoke 校验。
+// electron-builder ignores nested directories named node_modules even under
+// extraResources, so keep runtime-only assets in an explicit product folder.
+const highlightStylesDir = path.join(serverResourceDir, "runtime-assets", "highlight");
+await mkdir(highlightStylesDir, { recursive: true });
+for (const theme of ["atom-one-light.css", "atom-one-dark.css"]) {
+  await cp(
+    path.join(root, "node_modules", "highlight.js", "styles", theme),
+    path.join(highlightStylesDir, theme),
+  );
+}
 // SDK 原生 skill 的内置 plugin:生产态 getBundledPluginRoot() = next-server/agent-skills。
 await cp(agentSkillsDir, path.join(serverResourceDir, "agent-skills"), { recursive: true });
 // 系统提示静态前缀(A 段):生产态 getBundledSystemPromptPath() = next-server/lib/agent/SYSTEM_PROMPT.md。
