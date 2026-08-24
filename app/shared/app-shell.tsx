@@ -12,6 +12,7 @@ import { IsMacProvider } from "@/app/shared/use-is-mac";
 import { useDetectPlatform, WindowTitleBar } from "@/app/shared/window-controls";
 import { FirstRunGate } from "@/app/shared/first-run-gate";
 import { useNavState } from "@/app/shared/nav-state";
+import { getDesktop } from "@/lib/desktop/client";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -24,6 +25,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.navCollapsed = String(collapsed);
   }, [collapsed]);
+
+  // Electron 的窗口边框/标题栏属于原生界面；跟随应用主题可避免系统浅色模式下
+  // 暗色 Finwork 顶部仍残留一条浅色原生边缘。Tauri 适配器保持无操作兼容。
+  useEffect(() => {
+    if (resolvedTheme !== "light" && resolvedTheme !== "dark") return;
+    void getDesktop()?.setNativeTheme(resolvedTheme);
+  }, [resolvedTheme]);
 
   // 启动触发遥测上报:fire-and-forget,失败静默,节流由 reporter 内部保证(每天最多一次)。
   useEffect(() => {

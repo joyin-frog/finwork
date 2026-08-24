@@ -71,6 +71,7 @@ export function getTauriDesktop(): FinworkDesktopBridge | null {
       const { open } = await import("@tauri-apps/plugin-shell");
       await open(url);
     },
+    setNativeTheme: async () => {},
     window: {
       minimize: async () => (await import("@tauri-apps/api/window")).getCurrentWindow().minimize(),
       toggleMaximize: async () => (await import("@tauri-apps/api/window")).getCurrentWindow().toggleMaximize(),

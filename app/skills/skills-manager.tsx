@@ -50,7 +50,7 @@ export function SkillsManager() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <header className="app-page-header no-divider relative flex items-center gap-3 pr-5 h-11 shrink-0">
+      <header className="app-page-header no-divider relative flex items-center gap-3 pr-5 shrink-0">
         <DragHandle />
         <SidebarToggle />
         <div className="ml-auto flex items-center gap-2 shrink-0">

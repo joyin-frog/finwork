@@ -44,8 +44,18 @@ try {
     };
   });
   origin = evidence.origin;
+  await page.goto(`${origin}/chat/new`);
+  await page.getByRole("button", { name: "搜索" }).click();
+  await page.getByPlaceholder("搜索文件与对话…").waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "收起菜单" }).click();
+  await page.getByRole("button", { name: "展开菜单" }).waitFor();
+  await page.getByRole("button", { name: "展开菜单" }).click();
+  await page.getByRole("button", { name: "打开文件面板" }).click();
+  await page.getByRole("dialog", { name: "文件面板" }).waitFor();
+  await page.getByRole("button", { name: "关闭文件面板" }).click();
   await page.screenshot({ path: screenshotPath, fullPage: false });
-  console.log(JSON.stringify({ ...evidence, screenshotPath, appDataDir }, null, 2));
+  console.log(JSON.stringify({ ...evidence, headerControlsInteractive: true, screenshotPath, appDataDir }, null, 2));
   if (!evidence.health.ok || !evidence.cockpit.ok || evidence.tokenLength !== 64) process.exitCode = 1;
 } finally {
   await electronApp.close();
