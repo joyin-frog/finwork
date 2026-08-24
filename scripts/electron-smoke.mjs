@@ -1,5 +1,5 @@
 import { _electron as electron } from "playwright";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -25,6 +25,10 @@ const electronApp = await electron.launch({
 let origin = "";
 try {
   const page = await electronApp.firstWindow({ timeout: 120_000 });
+  page.on("pageerror", (pageError) => console.error("Electron renderer pageerror:", pageError));
+  page.on("console", (message) => {
+    if (message.type() === "error") console.error("Electron renderer console:", message.text());
+  });
   // The packaged smoke verifies desktop chrome, not onboarding. Keep the
   // first-run gate from covering the header controls in a fresh CI profile.
   await page.addInitScript(() => {
@@ -83,6 +87,8 @@ try {
     })).catch(() => null);
     console.error("Electron smoke page diagnostic:", JSON.stringify(diagnostic));
   }
+  const nextServerLog = await readFile(path.join(appDataDir, "logs", "next-server.log"), "utf8").catch(() => "");
+  if (nextServerLog) console.error("Electron next-server log tail:\n", nextServerLog.slice(-12_000));
   throw error;
 } finally {
   await electronApp.close();
