@@ -4,6 +4,7 @@ pmOnFail: ignore
 
 allowBuilds:
   '@google/genai': true
+  electron-winstaller: false
   esbuild: true
   node-pty: false
   protobufjs: true

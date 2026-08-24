@@ -22,21 +22,23 @@ Data is stored locally in a dedicated data directory; see the platform-specific 
 
 ## Run from source
 
-Source development requires Node.js 22+ and pnpm 11. Desktop development also requires Rust and the platform C toolchain. This repository uses pnpm only, with `pnpm-lock.yaml` as the sole dependency lockfile.
+Source development requires Node.js 22+ and pnpm 11. This repository uses pnpm only, with `pnpm-lock.yaml` as the sole dependency lockfile.
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The first-run guide installs the required Python components and helps configure an API key and model. Without an API key, the interface remains available in local mock mode.
+`pnpm dev` starts the Next.js development server and opens an Electron window. The first-run guide installs the required Python components and helps configure an API key and model. Without an API key, the interface remains available in local mock mode.
 
-Desktop development and builds:
+For browser-only frontend/API development or desktop packaging:
 
 ```bash
-pnpm tauri:dev
-pnpm tauri:build
+pnpm web:dev
+pnpm electron:build
 ```
+
+`pnpm electron:dev` remains available as an explicit desktop-development alias. During the migration window, use `pnpm tauri:dev` to verify the legacy shell.
 
 ## Data locations
 

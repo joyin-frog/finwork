@@ -12,19 +12,19 @@ function main() {
   const packageJson = fs.readFileSync(
     path.join(import.meta.dirname, "../package.json"), "utf-8"
   );
-  const tauriConfig = fs.readFileSync(
-    path.join(import.meta.dirname, "../src-tauri/tauri.conf.json"), "utf-8"
+  const desktopClient = fs.readFileSync(
+    path.join(import.meta.dirname, "../lib/desktop/client.ts"), "utf-8"
   );
-  const capability = fs.readFileSync(
-    path.join(import.meta.dirname, "../src-tauri/capabilities/default.json"), "utf-8"
+  const electronMain = fs.readFileSync(
+    path.join(import.meta.dirname, "../electron/main.cjs"), "utf-8"
   );
-  const cargoToml = fs.readFileSync(
-    path.join(import.meta.dirname, "../src-tauri/Cargo.toml"), "utf-8"
+  const electronPreload = fs.readFileSync(
+    path.join(import.meta.dirname, "../electron/preload.cjs"), "utf-8"
   );
 
-  assert.ok(previewComponent.includes("@tauri-apps/plugin-dialog"), "preview page should use plugin-dialog");
-  assert.ok(previewComponent.includes("@tauri-apps/plugin-fs"), "preview page should use plugin-fs");
-  assert.ok(previewComponent.includes("@tauri-apps/plugin-shell"), "preview page should use plugin-shell for open-with actions");
+  assert.ok(previewComponent.includes("@/lib/desktop/client"), "preview page should use the neutral desktop bridge");
+  assert.ok(previewComponent.includes("requireDesktop().openDialog"), "preview page should use the native Electron picker");
+  assert.ok(previewComponent.includes("requireDesktop().openPath"), "preview page should use the native Electron shell bridge");
   assert.ok(previewComponent.includes("DocxPreviewWrapper"), "preview page should render docx via docx-preview");
   assert.ok(previewComponent.includes("wb.xlsx.load"), "preview page should parse excel via exceljs");
   assert.ok(!previewComponent.includes('from "xlsx"'), "preview page should no longer depend on the vulnerable xlsx lib");
@@ -57,24 +57,20 @@ function main() {
   assert.ok(previewRoute.includes("独立预览页"), "preview route should exist as standalone page");
   console.log("✓ PASS: standalone preview route exists");
 
-  assert.ok(packageJson.includes("@tauri-apps/plugin-dialog"), "package.json should include plugin-dialog");
-  assert.ok(packageJson.includes("@tauri-apps/plugin-fs"), "package.json should include plugin-fs");
+  assert.ok(packageJson.includes("electron-updater"), "package.json should include electron-updater");
+  assert.ok(packageJson.includes("electron-builder"), "package.json should include electron-builder");
   assert.ok(packageJson.includes("mammoth"), "package.json should include mammoth");
   assert.ok(packageJson.includes("react-pdf"), "package.json should include react-pdf");
   console.log("✓ PASS: package dependencies declared");
 
-  assert.ok(tauriConfig.includes("\"scope\""), "tauri.conf.json should configure asset/fs scope");
-  // 用户任选文件改走桌面令牌 + 加密 File Broker；Webview 本身只能读取 app data / resources。
-  assert.ok(!capability.includes("\"**\""), "capability must not grant broad filesystem reads");
-  assert.ok(capability.includes("$APPDATA/**"), "capability should keep app-data preview reads");
-  assert.ok(capability.includes("$RESOURCE/**"), "capability should keep bundled resource reads");
+  assert.ok(desktopClient.includes("FinworkDesktopBridge"), "renderer contract should be typed");
+  assert.ok(electronMain.includes("contextIsolation: true"), "renderer should use context isolation");
+  assert.ok(electronMain.includes("nodeIntegration: false"), "renderer must not receive Node integration");
+  assert.ok(electronMain.includes("sandbox: true"), "renderer should stay sandboxed");
+  assert.ok(electronMain.includes("senderIsTrusted"), "IPC handlers should validate their sender");
+  assert.ok(!electronPreload.includes("ipcRenderer.send,"), "preload must not expose raw ipcRenderer methods");
   assert.ok(previewComponent.includes("/api/workspace/import-local"), "system picker should import through File Broker");
-  assert.ok(capability.includes("dialog:allow-open"), "capability should allow dialog open");
-  assert.ok(capability.includes("fs:allow-read-file"), "capability should allow fs reads");
-  assert.ok(capability.includes("\"soffice\""), "capability should allow soffice execution");
-  assert.ok(cargoToml.includes("tauri-plugin-dialog"), "Cargo.toml should include tauri dialog plugin");
-  assert.ok(cargoToml.includes("tauri-plugin-fs"), "Cargo.toml should include tauri fs plugin");
-  console.log("✓ PASS: Tauri permissions/plugins declared");
+  console.log("✓ PASS: Electron preload and IPC boundaries declared");
 
   console.log("\n✅ All file preview tests passed!");
 }

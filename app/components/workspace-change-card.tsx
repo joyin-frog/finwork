@@ -69,8 +69,8 @@ export function WorkspaceChangeCard({ data }: { data: WorkspaceChangeCardData })
   async function decide(decision: "approved" | "rejected") {
     setSubmitting(true);
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const token = await invoke<string>("workspace_auth_token");
+      const { workspaceAuthToken } = await import("@/lib/desktop/client");
+      const token = await workspaceAuthToken();
       const response = await fetch(`/api/workspace/changesets/${encodeURIComponent(data.changesetId)}`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-finwork-workspace-auth": token },

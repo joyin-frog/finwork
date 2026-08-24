@@ -1,8 +1,8 @@
 // 按需安装 Python 运行时到 app 数据目录(免管理员、不弹系统授权框)。
 // 设计:把"下载/解压/pip"做成可注入步骤,编排逻辑可单测;真实下载 URL 与网络是残留项(需目标机器验证)。
 //
-// ⚠ 残留:resolvePythonAssetUrl 的 release tag/资产名需核实 python-build-standalone 最新发布;
-//   defaultInstallSteps 的真实下载/解压未在无头环境验证。
+// Runtime tag/asset names are pinned to the same astral-sh/python-build-standalone
+// release verified and embedded by the desktop release workflow.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -127,7 +127,7 @@ export function resolvePythonAssetUrl(platform: NodeJS.Platform = process.platfo
   const triple = tripleMap[`${platform}-${arch}`];
   if (!triple) throw new Error(`暂不支持的平台:${platform}-${arch}(高级分析组件需手动安装)`);
   const asset = `cpython-${VER}+${TAG}-${triple}-install_only.tar.gz`;
-  return `https://github.com/indygreg/python-build-standalone/releases/download/${TAG}/${asset}`;
+  return `https://github.com/astral-sh/python-build-standalone/releases/download/${TAG}/${asset}`;
 }
 
 /**
@@ -294,7 +294,7 @@ export const defaultInstallSteps: InstallSteps = {
     // 有 platform lock 时强制 --require-hashes（构建/设置页修复与 lock 同源）。
     const indexUrl = process.env.FINANCE_AGENT_PIP_INDEX_URL?.trim() || "https://pypi.tuna.tsinghua.edu.cn/simple";
     const args = ["-m", "pip", "install", "-i", indexUrl];
-    if (opts?.requireHashes) args.push("--require-hashes");
+    if (opts?.requireHashes) args.push("--require-hashes", "--only-binary=:all:");
     args.push("-r", requirementsOrLockPath);
     await execFileAsync(pythonPath, args, pythonSpawnEnv());
   }

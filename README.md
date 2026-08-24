@@ -22,21 +22,23 @@
 
 ## 从源码运行
 
-需要 Node.js 22+ 和 pnpm 11；开发桌面版还需要 Rust 及对应平台的 C 工具链。仓库只使用 pnpm，并以 `pnpm-lock.yaml` 为唯一依赖锁文件。
+需要 Node.js 22+ 和 pnpm 11。仓库只使用 pnpm，并以 `pnpm-lock.yaml` 为唯一依赖锁文件。
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-浏览器打开 [http://localhost:3000](http://localhost:3000)。首次启动向导会安装所需的 Python 组件，并引导配置 API Key 和模型；未配置 API Key 时，界面仍可通过本地模拟模式运行。
+`pnpm dev` 会启动 Next.js 开发服务并打开 Electron 窗口。首次启动向导会安装所需的 Python 组件，并引导配置 API Key 和模型；未配置 API Key 时，界面仍可通过本地模拟模式运行。
 
-桌面开发与打包：
+只调试浏览器前端/API 或构建桌面安装包时：
 
 ```bash
-pnpm tauri:dev
-pnpm tauri:build
+pnpm web:dev
+pnpm electron:build
 ```
+
+`pnpm electron:dev` 保留为桌面开发命令的显式别名；迁移期间如需验证旧壳，可运行 `pnpm tauri:dev`。
 
 ## 数据位置
 

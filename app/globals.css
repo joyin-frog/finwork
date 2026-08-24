@@ -698,6 +698,14 @@ html button.composer-send-button.stop {
   background: var(--background);
   border-bottom: 1px solid var(--border);
 }
+
+[data-electron-drag-region] {
+  -webkit-app-region: drag;
+}
+
+.app-titlebar-btn {
+  -webkit-app-region: no-drag;
+}
 /* 三键点击几何:44px 宽 x 贴满栏高、直角贴边——最大化态下屏幕右上角像素可命中关闭(Fitts)。
    特异性 (0,2,0) 压过 .icon-btn / Tailwind 工具类,尺寸不随图标缩小。 */
 .app-titlebar .app-titlebar-btn {

@@ -1,37 +1,40 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { MinusSignIcon, SquareIcon, Copy01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { getDesktop } from "@/lib/desktop/client";
 
 /**
- * 把所在 header 容器标记为 Tauri 窗口拖拽区:空白/间隙处可拖动 + 双击最大化/还原。
- * Tauri 以「鼠标按下的精确目标」判定拖拽区,故子元素(按钮等)点击命中自身、不触发拖拽。
+ * 把所在 header 容器标记为 Electron 窗口拖拽区。
  */
 export function DragHandle() {
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const parent = ref.current?.parentElement;
     if (!parent) return;
+    parent.setAttribute("data-electron-drag-region", "");
     parent.setAttribute("data-tauri-drag-region", "");
-    return () => parent.removeAttribute("data-tauri-drag-region");
+    return () => {
+      parent.removeAttribute("data-electron-drag-region");
+      parent.removeAttribute("data-tauri-drag-region");
+    };
   }, []);
   return <span ref={ref} className="hidden" aria-hidden />;
 }
 
 /**
  * 开发期视觉预览:在 mac / 普通浏览器 `npm run dev` 里也把 Windows 自绘标题栏渲染出来,方便调布局/样式
- * (Next 热更新、随改随看、免打包)。三键在无 Tauri 环境点了不做事——只用于对位、间距、分隔线、图标等纯视觉。
+ * (Next 热更新、随改随看、免打包)。三键在无桌面壳环境点了不做事——只用于对位、间距、分隔线、图标等纯视觉。
  * 触发:地址栏加 ?winchrome=1(写入 localStorage 持久生效),?winchrome=0 关闭。
- * 双重护栏:仅在「非生产构建」且「非真 Tauri」时生效,绝不影响打包端(打包端走真实 UA 判定)。
+ * 双重护栏:仅在「非生产构建」且「非真 Electron」时生效,绝不影响打包端。
  */
 export function useWinChromePreview() {
   const [on, setOn] = useState(false);
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
-    if (typeof window === "undefined" || "__TAURI_INTERNALS__" in window) return;
+    if (typeof window === "undefined" || getDesktop()) return;
     try {
       const q = new URLSearchParams(window.location.search).get("winchrome");
       if (q === "1") localStorage.setItem("dev:winchrome", "1");
@@ -49,33 +52,33 @@ export function useDetectPlatform() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     let platform: "macos" | "windows" | "linux" | "web" = "web";
-    if ("__TAURI_INTERNALS__" in window) {
-      const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-      platform = /Mac/i.test(ua) ? "macos" : /Win/i.test(ua) ? "windows" : "linux";
+    const desktop = getDesktop();
+    if (desktop) {
+      platform = desktop.platform === "darwin" ? "macos" : desktop.platform === "win32" ? "windows" : "linux";
     }
     if (preview) platform = "windows"; // dev 预览:让 data-platform 相关样式(侧栏靠左等)也一并生效
     document.documentElement.dataset.platform = platform;
   }, [preview]);
 }
 
-/** 仅 Windows + Tauri 为真:此时窗口无边框(见 lib.rs 的 decorations(false)),需 Web 自绘标题栏控制。 */
+/** 仅 Windows + Electron 为真:此时窗口无边框,需 Web 自绘标题栏控制。 */
 export function useIsWindowsApp() {
   const [isWin, setIsWin] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setIsWin("__TAURI_INTERNALS__" in window && /Win/i.test(navigator.userAgent));
+    setIsWin(getDesktop()?.platform === "win32");
   }, []);
   return isWin;
 }
 
 /**
- * Windows 自绘标题栏:无边框窗(见 lib.rs 的 decorations(false))下横贯全窗的拖拽条,
+ * Windows 自绘标题栏:Electron frame:false 无边框窗下横贯全窗的拖拽条,
  * 左侧显示品牌,三键(最小化 / 最大化↔还原 / 关闭)固定在右端。高度/表面/分隔线由 globals.css 的
  * .app-titlebar(消费 --window-chrome-height)与风格映射决定,组件不写死窗口几何。
  *
- * 仅 Windows+Tauri 渲染(mac 用系统红绿灯、linux 原生框、web 无);非 Windows 返回 null,
+ * 仅 Windows+Electron 渲染(mac 用系统红绿灯、linux 原生框、web 无);非 Windows 返回 null,
  * 作为 app-shell flex 列的首个子项不占高度 → mac/linux/web 布局零影响。
- * 整条 data-tauri-drag-region 可拖动 + 双击最大化(Tauri 内建,勿再绑 onDoubleClick 造成双触发);
+ * 整条 data-electron-drag-region 可拖动;
  * 三键是其子元素,按下命中自身不触发拖拽。侧栏收起(width 0 + inert)时本条恰横贯全窗宽,独自承接顶部拖动。
  * 三键点击几何走 .app-titlebar-btn(44px 宽 x 贴满栏高、直角):关闭按钮触达窗口右上角,
  * 最大化态下甩鼠标到屏幕角落即可命中(Fitts)。
@@ -84,40 +87,34 @@ export function useIsWindowsApp() {
 export function WindowTitleBar() {
   const isWin = useIsWindowsApp();
   const preview = useWinChromePreview();
-  const hasWindow = isWin; // 只有真 Tauri 才有 getCurrentWindow 可用;dev 预览无窗口 API
+  const desktop = getDesktop();
+  const hasWindow = isWin && Boolean(desktop);
   const [maximized, setMaximized] = useState(false);
 
   // 同步最大化态用于切换中键图标:还原态=单方框(Square),最大化态=双框叠放(Copy01,即 Windows 还原图标)。
   // onResized 覆盖最大化/还原/边缘缩放触发的尺寸变化;非 Windows 不订阅。
   useEffect(() => {
     if (!hasWindow) return;
-    const win = getCurrentWindow();
-    let unlisten: (() => void) | undefined;
-    void win.isMaximized().then(setMaximized);
-    void win
-      .onResized(() => {
-        void win.isMaximized().then(setMaximized);
-      })
-      .then((fn) => {
-        unlisten = fn;
-      });
-    return () => unlisten?.();
-  }, [hasWindow]);
+    if (!desktop) return;
+    void desktop.window.isMaximized().then(setMaximized);
+    return desktop.window.onMaximizedChanged(setMaximized);
+  }, [desktop, hasWindow]);
 
   if (!isWin && !preview) return null;
-  const win = hasWindow ? getCurrentWindow() : null;
+  const win = hasWindow ? desktop?.window : null;
   return (
     <div
+      data-electron-drag-region
       data-tauri-drag-region
       // relative z-[60]:让顶栏叠在全屏模态(如设置 fixed inset-0 z-50)之上,任何时候都能最小化/关窗。
       className="app-titlebar relative z-[60] flex shrink-0 items-center justify-between"
       role="group"
       aria-label="窗口控制"
     >
-      <div data-tauri-drag-region className="app-titlebar-brand flex min-w-0 items-center gap-2">
+      <div data-electron-drag-region data-tauri-drag-region className="app-titlebar-brand flex min-w-0 items-center gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element -- 复用 app metadata 的正式 SVG 品牌资产 */}
-        <img data-tauri-drag-region src="/icon.svg" alt="" className="size-[18px] shrink-0" />
-        <span data-tauri-drag-region className="truncate text-[13px] font-semibold tracking-[-0.01em]">Finwork</span>
+        <img data-electron-drag-region data-tauri-drag-region src="/icon.svg" alt="" className="size-[18px] shrink-0" />
+        <span data-electron-drag-region data-tauri-drag-region className="truncate text-[13px] font-semibold tracking-[-0.01em]">Finwork</span>
       </div>
       <div className="flex h-full shrink-0 items-center">
         <Button

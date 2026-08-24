@@ -1,4 +1,6 @@
-# Runbook: 签名发版(Tauri 更新器 + macOS 公证)
+# Runbook: 签名发版（旧 Tauri 流程，停止使用）
+
+> 桌面发行主路径已切换到 Electron。当前流程、Secrets 和更新元数据见 [updater-signing.md](updater-signing.md)。本页仅在迁移回滚窗口内保留，不能用于新版本发布。
 
 本文档面向仓库维护者,覆盖从密钥生成到验证自动更新的完整流程。
 所有真实密钥/证书/凭证**仅存放在本地文件系统 + GitHub Secrets**,绝不提交到仓库。

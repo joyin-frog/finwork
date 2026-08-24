@@ -895,13 +895,12 @@ export default function ChatPage({
   // 主机路径只留在当前 Webview 展示态，不进聊天正文，也不发给 Agent。
   async function pickReceiptFolder() {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const folder = await open({ directory: true, multiple: false, title: "选择文件夹" });
+      const { requireDesktop, workspaceAuthToken } = await import("@/lib/desktop/client");
+      const folder = await requireDesktop().openDialog({ directory: true, multiple: false, title: "选择文件夹" });
       if (!folder || typeof folder !== "string") return;
       const path = folder.trim();
       if (!path) return;
-      const { invoke } = await import("@tauri-apps/api/core");
-      const workspaceAuth = await invoke<string>("workspace_auth_token");
+      const workspaceAuth = await workspaceAuthToken();
       const response = await fetch("/api/workspace/roots", {
         method: "POST",
         headers: { "content-type": "application/json", "x-finwork-workspace-auth": workspaceAuth },
@@ -1078,7 +1077,7 @@ export default function ChatPage({
                   {sessionRole.name.slice(0, 1)}
                 </span>
               )}
-              <h1 data-tauri-drag-region className="flex-1 min-w-0 text-body truncate">
+              <h1 data-electron-drag-region className="flex-1 min-w-0 text-body truncate">
                 {sessionRole ? `${sessionRole.name} · 专员会话` : displayTitle}
               </h1>
               {sessionRole && (

@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import { isTrustedLocalMutation } from "../lib/api/local-request.ts";
 
 function makeReq(opts: {
-  host: string;
+  host?: string;
   origin?: string;
   fetchSite?: string;
+  nextUrlHost?: string;
 }): Parameters<typeof isTrustedLocalMutation>[0] {
-  const { host, origin, fetchSite } = opts;
-  const headers = new Headers({ host });
+  const { host, origin, fetchSite, nextUrlHost = host ?? "localhost:3000" } = opts;
+  const headers = new Headers();
+  if (host !== undefined) headers.set("host", host);
   if (origin !== undefined) headers.set("origin", origin);
   if (fetchSite !== undefined) headers.set("sec-fetch-site", fetchSite);
-  const url = new URL(`http://${host}/api/settings/app`);
+  const url = new URL(`http://${nextUrlHost}/api/settings/app`);
   return { headers, nextUrl: url } as unknown as Parameters<typeof isTrustedLocalMutation>[0];
 }
 
@@ -18,12 +20,25 @@ export const localRequestTestPromise = (async () => {
   // CLI / Tauri：无浏览器头，直连回环
   assert.equal(isTrustedLocalMutation(makeReq({ host: "localhost:3000" })), true, "localhost 无头应通过");
   assert.equal(isTrustedLocalMutation(makeReq({ host: "127.0.0.1:3000" })), true, "127.0.0.1 无头应通过");
+  assert.equal(isTrustedLocalMutation(makeReq({})), true, "Next 内部构造的回环请求应通过");
 
   // 浏览器正常 same-origin
   assert.equal(
     isTrustedLocalMutation(makeReq({ host: "localhost:3000", origin: "http://localhost:3000", fetchSite: "same-origin" })),
     true,
     "浏览器 same-origin localhost 应通过"
+  );
+
+  // Electron + Next dev：真实 Host/Origin 均为 127，但 NextRequest.nextUrl 被规范化为 localhost。
+  assert.equal(
+    isTrustedLocalMutation(makeReq({ host: "127.0.0.1:3000", nextUrlHost: "localhost:3000", origin: "http://127.0.0.1:3000", fetchSite: "same-origin" })),
+    true,
+    "同协议同端口的回环别名应通过"
+  );
+  assert.equal(
+    isTrustedLocalMutation(makeReq({ host: "127.0.0.1:3000", origin: "http://localhost:3999", fetchSite: "same-origin" })),
+    false,
+    "其他本地端口的 Origin 必须拒绝"
   );
 
   // DNS 重绑定：Sec-Fetch-Site 和 Origin 都看起来合法，但 hostname 不是回环

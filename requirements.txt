@@ -16,4 +16,12 @@ Pillow==12.2.0
 pdf2image==1.17.0
 markitdown[pptx]==0.1.1
 rapidocr-onnxruntime==1.4.4
-onnxruntime==1.27.0
+# 1.20+ dropped Intel macOS wheels; 1.19.2 is the last CPython 3.12 universal2 line
+# and keeps OCR available on every release target (macOS arm64/x64 + Windows x64).
+onnxruntime==1.19.2
+# Electron 43 still runs on macOS 12. Keep native scientific/PDF wheels on
+# releases that cover Monterey as well as Intel macOS and Windows x64.
+numpy==1.26.4
+scipy==1.14.1
+opencv-python==4.10.0.84
+pypdfium2==4.30.0

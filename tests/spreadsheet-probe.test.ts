@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   getSpreadsheetCapabilities,
@@ -15,10 +15,33 @@ import {
 } from "../lib/runtime/python-installer.ts";
 
 export const spreadsheetProbeTestPromise = (async () => {
-  // Lock / stamp consistency
+  // Every packaged release target needs its own resolved wheel set. A single
+  // host lock can pass local tests while making another release un-installable.
   {
-    const lockPath = resolveRuntimeLockPath("darwin", "arm64");
-    assert.ok(existsSync(lockPath), `tracked platform lock should exist: ${lockPath}`);
+    const targets: Array<[NodeJS.Platform, string]> = [
+      ["darwin", "arm64"],
+      ["darwin", "x64"],
+      ["win32", "x64"],
+    ];
+    const requiredPins = [
+      "formulas==1.3.4",
+      "numpy==1.26.4",
+      "onnxruntime==1.19.2",
+      "opencv-python==4.10.0.84",
+      "pypdfium2==4.30.0",
+      "rapidocr-onnxruntime==1.4.4",
+      "scipy==1.14.1",
+    ];
+
+    for (const [platform, arch] of targets) {
+      const lockPath = resolveRuntimeLockPath(platform, arch);
+      assert.ok(existsSync(lockPath), `tracked platform lock should exist: ${lockPath}`);
+      const lock = readFileSync(lockPath, "utf8");
+      for (const pin of requiredPins) {
+        assert.match(lock, new RegExp(`^${pin.replaceAll(".", "\\.")} \\\\`, "m"), `${path.basename(lockPath)} should contain ${pin}`);
+      }
+    }
+
     const stamp = computePythonRuntimeStamp({ platform: "darwin", arch: "arm64" });
     assert.ok(stamp.startsWith(`${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}+`), "stamp should include lock hash suffix");
     assert.notEqual(stamp, `${PYTHON_RUNTIME_VER}+${PYTHON_RUNTIME_TAG}`, "stamp without lock is only for missing lock");

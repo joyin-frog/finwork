@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { readFile, readTextFile } from "@tauri-apps/plugin-fs";
-import { isTauri } from "@tauri-apps/api/core";
-import { open as openShell } from "@tauri-apps/plugin-shell";
+import { isDesktop, requireDesktop, workspaceAuthToken } from "@/lib/desktop/client";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -200,7 +197,7 @@ export function FilePreviewPage({
   const [loadingOpenWithApps, setLoadingOpenWithApps] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const runningInTauri = useMemo(() => isTauri(), []);
+  const runningInDesktop = useMemo(() => isDesktop(), []);
   const needsPdfViewer = currentSelection ? getExtension(currentSelection.name) === "pdf" : false;
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -320,7 +317,7 @@ export function FilePreviewPage({
   }, [currentSelection]);
 
   async function pickLocalFile() {
-    const result = await openDialog({
+    const result = await requireDesktop().openDialog({
       multiple: false,
       filters: [
         { name: "预览文件", extensions: ["md", "txt", "png", "jpg", "jpeg", "gif", "webp", "xlsx", "xls", "csv", "docx", "pdf", "pptx", "ppt"] }
@@ -328,8 +325,7 @@ export function FilePreviewPage({
     });
     if (!result || Array.isArray(result)) return;
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const token = await invoke<string>("workspace_auth_token");
+      const token = await workspaceAuthToken();
       const response = await fetch("/api/workspace/import-local", {
         method: "POST",
         headers: { "content-type": "application/json", "x-finwork-workspace-auth": token },
@@ -384,16 +380,14 @@ export function FilePreviewPage({
     }
     if (currentSelection.kind === "draft") return;
     if (currentSelection.kind === "workspace") {
-      if (currentSelection.localPath && runningInTauri) {
-        const targetApp = openWith && openWith.length ? openWith : undefined;
-        await openShell(currentSelection.localPath, targetApp);
+      if (currentSelection.localPath && runningInDesktop) {
+        await requireDesktop().openPath(currentSelection.localPath);
       }
       return;
     }
     if (currentSelection.kind === "knowledge") return;
-    if (!runningInTauri) return;
-    const targetApp = openWith && openWith.length ? openWith : undefined;
-    await openShell(currentSelection.path, targetApp);
+    if (!runningInDesktop) return;
+    await requireDesktop().openPath(currentSelection.path);
   }
 
   async function revealCurrentFile() {
@@ -405,11 +399,11 @@ export function FilePreviewPage({
     }
     if (currentSelection.kind === "draft") return;
     if (currentSelection.kind === "workspace") {
-      if (currentSelection.localPath && runningInTauri) await openShell(getParentPath(currentSelection.localPath));
+      if (currentSelection.localPath && runningInDesktop) await requireDesktop().openPath(getParentPath(currentSelection.localPath));
       return;
     }
-    if (!runningInTauri) return;
-    await openShell(getParentPath(currentSelection.path));
+    if (!runningInDesktop) return;
+    await requireDesktop().openPath(getParentPath(currentSelection.path));
   }
 
   // 加入知识库:重操作,放在预览之后(用户看过内容再决定)。复用文件库 promote(attach:<id>),
@@ -559,7 +553,7 @@ export function FilePreviewPage({
                     <HugeiconsIcon icon={Folder02Icon} size={16} />
                     <span>在文件夹中显示</span>
                   </button>
-                  {runningInTauri ? (
+                  {runningInDesktop ? (
                     // eslint-disable-next-line no-restricted-syntax -- 交互元素豁免，WP8a 规则
                     <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground" onClick={() => void pickLocalFile()}>
                       <HugeiconsIcon icon={Folder02Icon} size={16} />
@@ -578,8 +572,8 @@ export function FilePreviewPage({
               className="preview-open-button"
               type="button"
               onClick={() => void pickLocalFile()}
-              disabled={!runningInTauri}
-              title={runningInTauri ? "打开本地文件" : "仅 Tauri 桌面端支持系统文件选择器"}
+              disabled={!runningInDesktop}
+              title={runningInDesktop ? "打开本地文件" : "仅 Finwork 桌面端支持系统文件选择器"}
             >
               <HugeiconsIcon icon={Folder02Icon} size={16} />
               <span>打开文件</span>
@@ -1002,7 +996,7 @@ async function loadText(selection: PreviewFileSelection) {
     if (!response.ok) throw new Error("读取受管文件失败");
     return response.text();
   }
-  if (selection.kind === "local") return readTextFile(selection.path);
+  if (selection.kind === "local") return requireDesktop().readTextFile(selection.path);
   if (selection.kind === "draft") return selection.text ?? decodeDataUrlToText(selection.dataUrl);
   if (selection.kind === "knowledge") {
     const res = await fetch(getKnowledgeFileUrl(selection.documentId));
@@ -1020,7 +1014,7 @@ async function loadBytes(selection: PreviewFileSelection) {
     if (!response.ok) throw new Error("读取受管文件失败");
     return new Uint8Array(await response.arrayBuffer());
   }
-  if (selection.kind === "local") return readFile(selection.path);
+  if (selection.kind === "local") return requireDesktop().readFile(selection.path);
   if (selection.kind === "draft") return decodeDataUrlToBytes(selection.dataUrl);
   if (selection.kind === "knowledge") {
     const res = await fetch(getKnowledgeFileUrl(selection.documentId));

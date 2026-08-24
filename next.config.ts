@@ -13,6 +13,9 @@ const appVersion = (() => {
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Electron 开发窗口固定从 127.0.0.1 加载，而 Next dev 默认以 localhost
+  // 初始化；显式允许该回环别名，避免未来 Next 主版本阻断 HMR/静态资源。
+  allowedDevOrigins: ["127.0.0.1"],
   output: "standalone",
   env: { NEXT_PUBLIC_APP_VERSION: appVersion },
   outputFileTracingRoot: path.join(__dirname),
