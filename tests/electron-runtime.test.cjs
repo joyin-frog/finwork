@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { createReadAccessPolicy } = require("../electron/file-access.cjs");
 const {
   generateWorkspaceAuthToken,
   isAllowedExternalUrl,
@@ -77,4 +78,32 @@ test("external URL allowlist excludes executable and script schemes", () => {
   assert.equal(isAllowedExternalUrl("mailto:test@example.com"), true);
   assert.equal(isAllowedExternalUrl("file:///tmp/test"), false);
   assert.equal(isAllowedExternalUrl("javascript:alert(1)"), false);
+});
+
+test("renderer file reads require app-root or picker-granted paths", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "finwork-electron-read-scope-"));
+  const appRoot = path.join(dir, "app-data");
+  const outsideRoot = path.join(dir, "outside");
+  fs.mkdirSync(appRoot);
+  fs.mkdirSync(outsideRoot);
+  const appFile = path.join(appRoot, "settings.json");
+  const pickedFile = path.join(outsideRoot, "picked.txt");
+  const secretFile = path.join(outsideRoot, "secret.txt");
+  fs.writeFileSync(appFile, "app");
+  fs.writeFileSync(pickedFile, "picked");
+  fs.writeFileSync(secretFile, "secret");
+
+  const policy = createReadAccessPolicy();
+  await policy.grant(appRoot, { directory: true });
+  await policy.grant(pickedFile);
+  assert.equal(await policy.assertReadable(appFile), fs.realpathSync(appFile));
+  assert.equal(await policy.assertReadable(pickedFile), fs.realpathSync(pickedFile));
+  await assert.rejects(policy.assertReadable(secretFile), /outside the authorized/);
+
+  if (process.platform !== "win32") {
+    const escape = path.join(appRoot, "escape.txt");
+    fs.symlinkSync(secretFile, escape);
+    await assert.rejects(policy.assertReadable(escape), /outside the authorized/);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
 });

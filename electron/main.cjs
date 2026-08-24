@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const http = require("node:http");
+const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 const {
@@ -12,6 +13,7 @@ const {
   shell,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { createReadAccessPolicy, pathIsWithin } = require("./file-access.cjs");
 const {
   generateBootId,
   generateWorkspaceAuthToken,
@@ -38,6 +40,7 @@ let forceClosing = false;
 let trustedOrigin = "http://127.0.0.1:3000";
 let workspaceAuthToken = "";
 let restartAttempted = false;
+let readAccessPolicy = null;
 
 function stopProcessTree(child) {
   if (!child) return;
@@ -103,6 +106,7 @@ function registerIpc() {
       properties,
     });
     if (result.canceled) return null;
+    await readAccessPolicy.grant(result.filePaths, { directory: Boolean(options.directory) });
     return options.multiple ? result.filePaths : (result.filePaths[0] || null);
   }));
   ipcMain.handle("desktop:save-dialog", guardIpc(async (event, options = {}) => {
@@ -114,15 +118,19 @@ function registerIpc() {
     return result.canceled ? null : (result.filePath || null);
   }));
   ipcMain.handle("desktop:read-file", guardIpc(async (_event, filePath) => {
-    if (typeof filePath !== "string" || !path.isAbsolute(filePath)) throw new Error("Expected an absolute file path");
-    return fs.promises.readFile(filePath);
+    const authorizedPath = await readAccessPolicy.assertReadable(filePath);
+    return fs.promises.readFile(authorizedPath);
   }));
   ipcMain.handle("desktop:read-text-file", guardIpc(async (_event, filePath) => {
-    if (typeof filePath !== "string" || !path.isAbsolute(filePath)) throw new Error("Expected an absolute file path");
-    return fs.promises.readFile(filePath, "utf8");
+    const authorizedPath = await readAccessPolicy.assertReadable(filePath);
+    return fs.promises.readFile(authorizedPath, "utf8");
   }));
-  ipcMain.handle("desktop:open-path", guardIpc(async (_event, target) => {
+  ipcMain.handle("desktop:open-path", guardIpc(async (_event, target, application) => {
     if (typeof target !== "string" || !path.isAbsolute(target)) throw new Error("Expected an absolute local path");
+    if (application) {
+      await openPathWithApplication(target, application);
+      return;
+    }
     const error = await shell.openPath(target);
     if (error) throw new Error(error);
   }));
@@ -165,6 +173,41 @@ function registerIpc() {
   autoUpdater.on("download-progress", (progress) => {
     mainWindow?.webContents.send("desktop:updater-progress", Math.max(0, Math.min(100, Math.round(progress.percent || 0))));
   });
+}
+
+function spawnDetached(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { detached: true, stdio: "ignore", windowsHide: true });
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+    child.once("error", reject);
+  });
+}
+
+async function openPathWithApplication(target, application) {
+  if (process.platform === "win32" && application === "__choose__") {
+    await spawnDetached("rundll32.exe", ["shell32.dll,OpenAs_RunDLL", target]);
+    return;
+  }
+  if (typeof application !== "string" || !path.isAbsolute(application)) {
+    throw new Error("Expected an absolute application path");
+  }
+  const canonicalApplication = await fs.promises.realpath(application);
+  const allowedRoots = process.platform === "darwin"
+    ? ["/Applications", "/System/Applications", path.join(os.homedir(), "Applications")]
+    : process.platform === "win32"
+      ? [process.env.LOCALAPPDATA, process.env.ProgramFiles, process.env["ProgramFiles(x86)"]].filter(Boolean)
+      : [];
+  const allowed = allowedRoots.some((root) => pathIsWithin(canonicalApplication, root));
+  const expectedExtension = process.platform === "darwin" ? ".app" : ".exe";
+  if (!allowed || path.extname(canonicalApplication).toLowerCase() !== expectedExtension) {
+    throw new Error("Application path is outside the allowed desktop application roots");
+  }
+  if (process.platform === "darwin") await spawnDetached("/usr/bin/open", ["-a", canonicalApplication, target]);
+  else if (process.platform === "win32") await spawnDetached(canonicalApplication, [target]);
+  else throw new Error("Selecting a custom application is unsupported on this platform");
 }
 
 function createMainWindow(initialUrl) {
@@ -286,6 +329,8 @@ async function start() {
   trustedOrigin = `http://127.0.0.1:${port}`;
   const appDataDir = resolveAppDataDir({ isPackaged: app.isPackaged });
   fs.mkdirSync(appDataDir, { recursive: true });
+  readAccessPolicy = createReadAccessPolicy();
+  await readAccessPolicy.grant([appDataDir, process.resourcesPath], { directory: true });
   const bootId = generateBootId();
   workspaceAuthToken = generateWorkspaceAuthToken();
   writeWorkspaceAuthToken(path.join(appDataDir, "workspace-auth-token"), workspaceAuthToken);

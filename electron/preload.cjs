@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld("finworkDesktop", {
     return Uint8Array.from(bytes);
   },
   readTextFile: (filePath) => ipcRenderer.invoke("desktop:read-text-file", filePath),
-  openPath: (target) => ipcRenderer.invoke("desktop:open-path", target),
+  openPath: (target, application) => ipcRenderer.invoke("desktop:open-path", target, application),
   openExternal: (url) => ipcRenderer.invoke("desktop:open-external", url),
   window: {
     minimize: () => ipcRenderer.invoke("desktop:window-minimize"),

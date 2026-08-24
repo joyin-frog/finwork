@@ -381,13 +381,13 @@ export function FilePreviewPage({
     if (currentSelection.kind === "draft") return;
     if (currentSelection.kind === "workspace") {
       if (currentSelection.localPath && runningInDesktop) {
-        await requireDesktop().openPath(currentSelection.localPath);
+        await requireDesktop().openPath(currentSelection.localPath, openWith || undefined);
       }
       return;
     }
     if (currentSelection.kind === "knowledge") return;
     if (!runningInDesktop) return;
-    await requireDesktop().openPath(currentSelection.path);
+    await requireDesktop().openPath(currentSelection.path, openWith || undefined);
   }
 
   async function revealCurrentFile() {

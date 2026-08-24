@@ -68,6 +68,9 @@ function main() {
   assert.ok(electronMain.includes("nodeIntegration: false"), "renderer must not receive Node integration");
   assert.ok(electronMain.includes("sandbox: true"), "renderer should stay sandboxed");
   assert.ok(electronMain.includes("senderIsTrusted"), "IPC handlers should validate their sender");
+  assert.ok(electronMain.includes("readAccessPolicy.assertReadable"), "desktop file reads should enforce native path grants");
+  assert.ok(previewComponent.includes("openPath(currentSelection.localPath, openWith || undefined)"), "workspace open-with should preserve the selected application");
+  assert.ok(previewComponent.includes("openPath(currentSelection.path, openWith || undefined)"), "local open-with should preserve the selected application");
   assert.ok(!electronPreload.includes("ipcRenderer.send,"), "preload must not expose raw ipcRenderer methods");
   assert.ok(previewComponent.includes("/api/workspace/import-local"), "system picker should import through File Broker");
   console.log("✓ PASS: Electron preload and IPC boundaries declared");

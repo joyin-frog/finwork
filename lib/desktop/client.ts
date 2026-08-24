@@ -34,7 +34,7 @@ export interface FinworkDesktopBridge {
   saveDialog(options?: DesktopSaveDialogOptions): Promise<string | null>;
   readFile(filePath: string): Promise<Uint8Array<ArrayBuffer>>;
   readTextFile(filePath: string): Promise<string>;
-  openPath(target: string): Promise<void>;
+  openPath(target: string, application?: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   window: {
     minimize(): Promise<void>;

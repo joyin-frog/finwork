@@ -63,9 +63,9 @@ export function getTauriDesktop(): FinworkDesktopBridge | null {
       const { readTextFile } = await import("@tauri-apps/plugin-fs");
       return readTextFile(filePath);
     },
-    openPath: async (target) => {
+    openPath: async (target, application) => {
       const { open } = await import("@tauri-apps/plugin-shell");
-      await open(target);
+      await open(target, application || undefined);
     },
     openExternal: async (url) => {
       const { open } = await import("@tauri-apps/plugin-shell");
