@@ -1,96 +1,48 @@
-# 自动更新 & 签名配置指南
+# Electron 签名发布与自动更新
 
-## 概览
+Finwork 桌面发行主路径使用 electron-builder + electron-updater。设置页只负责检查更新；发现新版本后仍需用户明确确认，才会下载、安装并重启。
 
-Finwork 集成 [Tauri updater 插件](https://tauri.app/plugin/updater/),支持:
-- 启动后"检查更新"按钮(设置 → 常规 → 应用更新)
-- 发现新版本时展示版本号和更新日志
-- **人工审核门**:用户确认后才下载安装,绝不静默更新
+## 发布产物
 
-签名密钥由**你自己生成**,私钥留本机 + GitHub Secret,代码中只存公钥。
+推送与 `package.json.version` 一致的 tag（例如 `v0.2.0`）会触发 `.github/workflows/release.yml`，生成：
 
----
+- macOS：arm64 / x64 的 DMG、ZIP、合并后的 `latest-mac.yml` 与 blockmap；
+- Windows：x64 NSIS 安装器、`latest.yml` 与 blockmap；
+- GitHub draft release：人工验收后再发布。draft 不会被客户端当成 latest 更新。
 
-## 一次性配置(首次发版前完成)
+两个 macOS 架构先独立签名与打包，再由 `scripts/merge-electron-release.mjs` 合并更新元数据并统一上传，避免并行任务互相覆盖 `latest-mac.yml`。
 
-### 1. 生成签名密钥对
-
-```bash
-pnpm tauri signer generate -- -w ~/.tauri/finance-agent.key
-```
-
-交互式输入密码短语(passphrase),记住它。命令输出两个文件:
-- `~/.tauri/finance-agent.key`        私钥(不要上传,不要提交)
-- `~/.tauri/finance-agent.key.pub`    公钥(公开的,需填入 tauri.conf.json)
-
-### 2. 将公钥填入 tauri.conf.json
-
-打开 `src-tauri/tauri.conf.json`,找到:
-
-```jsonc
-"pubkey": "PLACEHOLDER_FILL_AFTER_RUNNING_npm_run_tauri_signer_generate"
-```
-
-替换为你的公钥文件内容(一行 base64 字符串):
+本地目录包验证：
 
 ```bash
-cat ~/.tauri/finance-agent.key.pub
+pnpm run build
+pnpm run electron:prepare
+CSC_IDENTITY_AUTO_DISCOVERY=false pnpm exec electron-builder --config electron-builder.yml --dir
 ```
 
-将输出粘贴进去。
+## GitHub Secrets
 
-### 3. 将 endpoint 替换为真实 GitHub 仓库地址
+macOS 正式分发必须配置：
 
-同在 `tauri.conf.json` 找到:
+- `APPLE_CERTIFICATE`：Developer ID Application `.p12` 的 base64 内容；
+- `APPLE_CERTIFICATE_PASSWORD`：`.p12` 密码；
+- `APPLE_ID`：Apple ID；
+- `APPLE_PASSWORD`：app-specific password；
+- `APPLE_TEAM_ID`：开发者 Team ID。
 
-```
-"https://github.com/OWNER/REPO/releases/latest/download/latest.json"
-```
+Windows 正式分发必须配置：
 
-将 `OWNER` 和 `REPO` 替换为你的 GitHub 用户名和仓库名。
+- `WINDOWS_CERT`：代码签名证书文件、URL 或 base64 内容（electron-builder 的 `CSC_LINK` 格式）；
+- `WINDOWS_CERT_PASSWORD`：证书密码。
 
-### 4. 将私钥和密码添加到 GitHub Secrets
+tag 发布工作流会把上述凭证作为硬门禁：缺少任一项会直接失败，不会生成可供误发布的未签名 draft。macOS 构建后还会执行 `codesign`、notarization staple 与 Gatekeeper 校验；Windows 会验证主程序和 NSIS 安装器的 Authenticode 状态。需要内部未签名验证时，只能使用本地 `CSC_IDENTITY_AUTO_DISCOVERY=false` 构建命令。
 
-仓库 → Settings → Secrets and variables → Actions → New repository secret:
+## 安全边界
 
-| Secret 名 | 值 |
-|---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | `~/.tauri/finance-agent.key` 文件的完整内容 |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 步骤 1 设置的密码短语 |
+- 更新地址固定为 GitHub `joyin-frog/finwork` release provider；
+- renderer 不直接接触 electron-updater，只能调用 preload 暴露的 `check / download / install` 三个动作；
+- 下载前保留人工确认门；
+- macOS 依赖 Developer ID 签名与公证，Windows 依赖 Authenticode；
+- 发布前确认 `latest*.yml`、安装器和 blockmap 属于同一版本。
 
----
-
-## 发版流程
-
-```bash
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-GitHub Actions 自动:
-1. 为 macOS(arm64/x64)和 Windows 构建安装包
-2. 使用 `TAURI_SIGNING_PRIVATE_KEY` 对每个包签名
-3. 生成 `latest.json`(含版本号、下载 URL、各平台签名)
-4. 将 `latest.json` 和安装包上传到 GitHub Release 草稿
-
-审核草稿 → 发布 Release → 用户端「检查更新」即可发现新版本。
-
----
-
-## 用户侧更新流程
-
-1. 打开 Finwork → 设置 → 常规 → 应用更新
-2. 点「检查更新」
-3. 若有新版本,显示版本号和更新日志
-4. 用户点「确认安装」→ 下载 + 校验签名 → 安装 → 应用重启
-5. 取消则忽略(下次手动再检查)
-
-**没有静默自动更新**——每次都需要用户手动触发并确认。
-
----
-
-## 安全注意事项
-
-- 私钥只存在 `~/.tauri/` 和 GitHub Secret 里,绝不提交到仓库
-- 每次更新包都有 Tauri updater 的 Ed25519 签名校验,防篡改
-- GitHub Secret 在 Actions 日志里自动掩码,不会泄露
+旧 Tauri Ed25519 updater key 不再用于 Electron 更新通道，可在回滚窗口结束后删除对应 Secrets。

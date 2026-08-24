@@ -49,7 +49,9 @@ async function injectUpdaterPubkey() {
   }
 }
 
-await injectUpdaterPubkey();
+if (process.env.FINWORK_SKIP_TAURI_UPDATER !== "1") {
+  await injectUpdaterPubkey();
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // § B  Next.js 产物打包到 Tauri resources
@@ -61,6 +63,7 @@ const standaloneDir = path.join(nextDir, "standalone");
 const staticDir = path.join(nextDir, "static");
 const agentSkillsDir = path.join(root, "agent-skills");
 const workersDir = path.join(root, "workers");
+const runtimeLockDir = path.join(root, "runtime-lock");
 const libreOfficeRuntimeSource = process.env.FINWORK_LIBREOFFICE_RUNTIME_DIR
   ? path.resolve(process.env.FINWORK_LIBREOFFICE_RUNTIME_DIR)
   : path.join(root, "vendor", "libreoffice-runtime");
@@ -107,6 +110,8 @@ await cp(workersDir, path.join(serverResourceDir, "workers"), {
 });
 // 安装器首启 pip 读 getProjectRoot()/requirements.txt;生产态 projectRoot = next-server,故把根 requirements 拷过去。
 await cp(path.join(root, "requirements.txt"), path.join(serverResourceDir, "requirements.txt"));
+// 同一路径下还必须有平台锁；缺失会让安装器静默退回未锁定 requirements.txt，丢失哈希校验与可复现性。
+await cp(runtimeLockDir, path.join(serverResourceDir, "runtime-lock"), { recursive: true });
 
 // Optional product-managed LibreOffice provider. Release CI supplies a platform-specific,
 // license-audited runtime at FINWORK_LIBREOFFICE_RUNTIME_DIR; development builds may omit it.

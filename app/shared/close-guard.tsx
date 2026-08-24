@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect, useState } from "react";
 import { ConfirmDialog } from "@/app/shared/confirm-dialog";
 import { useChatStream } from "@/app/shared/chat-stream";
+import { getDesktop } from "@/lib/desktop/client";
 
 /**
  * 桌面版关窗守卫：有活动流时拦截关窗请求，弹应用内确认。
- * 仅在 Tauri 环境挂载；浏览器版返回 null，零行为变化。
+ * 仅在桌面壳环境挂载；浏览器版返回 null，零行为变化。
  *
  * 实现要点：
  * - onCloseRequested 只注册一次（effect[]），通过 ref 读取最新 hasActiveTurns，避免闭包捕获旧值。
@@ -19,34 +18,24 @@ export function CloseGuard() {
   const { hasActiveTurns } = useChatStream();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // ref 持最新值，监听器（注册一次）通过 ref 读取，不需要重注册
-  const hasActiveTurnsRef = useRef(hasActiveTurns);
-  hasActiveTurnsRef.current = hasActiveTurns;
+  useEffect(() => {
+    const desktop = getDesktop();
+    if (!desktop) return;
+    void desktop.window.setCloseGuard(hasActiveTurns);
+    return () => {
+      void desktop.window.setCloseGuard(false);
+    };
+  }, [hasActiveTurns]);
 
   useEffect(() => {
-    if (!isTauri()) return;
-
-    const win = getCurrentWindow();
-    let unlisten: (() => void) | undefined;
-
-    void win
-      .onCloseRequested((event) => {
-        if (hasActiveTurnsRef.current) {
-          event.preventDefault();
-          setConfirmOpen(true);
-        }
-      })
-      .then((fn) => {
-        unlisten = fn;
-      });
-
-    return () => unlisten?.();
+    const desktop = getDesktop();
+    if (!desktop) return;
+    return desktop.window.onCloseRequested(() => setConfirmOpen(true));
   }, []);
 
   function handleConfirm() {
     setConfirmOpen(false);
-    // preventDefault 之后必须 destroy 才能真正关窗；再次 close() 可能再次进入守卫。
-    void getCurrentWindow().destroy();
+    void getDesktop()?.window.forceClose();
   }
 
   function handleOpenChange(open: boolean) {

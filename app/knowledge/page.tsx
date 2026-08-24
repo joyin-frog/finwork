@@ -2,8 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { isTauri } from "@tauri-apps/api/core";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { getDesktop } from "@/lib/desktop/client";
 import { toast } from "sonner";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowDown01Icon, ArrowUp01Icon, LayoutAlignRightIcon, PanelRightIcon, Add01Icon, Cancel01Icon, Clock01Icon, Edit01Icon, Archive01Icon, Archive02Icon, Delete02Icon, Folder02Icon, DatabaseIcon } from "@hugeicons/core-free-icons";
@@ -540,11 +539,12 @@ function KnowledgePageContent() {
   async function handleDownload(doc: DocRow) {
     try {
       let destPath: string | null = null;
-      if (isTauri()) {
-        destPath = await saveDialog({ defaultPath: doc.file_name });
+      const desktop = getDesktop();
+      if (desktop) {
+        destPath = await desktop.saveDialog({ defaultPath: doc.file_name });
       }
       if (!destPath) return;
-      // 经 Tauri 保存框另存,走 storage_path 绝对路径(不外发,仅本机)
+      // 经桌面保存框另存,走 storage_path 绝对路径(不外发,仅本机)
       const res = await fetch(`/api/knowledge/documents/${doc.id}/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

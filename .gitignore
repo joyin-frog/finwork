@@ -60,3 +60,6 @@ plans/
 .cursor/
 # AS0 Phase B evidence may contain model responses and runtime traces.
 /artifacts/evals/
+.electron-app/
+dist-electron/
+workers/python-runtime.tar.gz

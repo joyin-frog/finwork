@@ -73,19 +73,26 @@ jobs:
     if: inputs.run_windows_smoke
     name: Windows packaged smoke
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
-      - uses: dtolnay/rust-toolchain@stable
-        with: { targets: x86_64-pc-windows-msvc }
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
+      - name: Bundle and verify Windows Python runtime archive
+        shell: bash
+        run: |
+          PY_TAG=20240814
+          PY_VER=3.12.5
+          ASSET="cpython-${PY_VER}+${PY_TAG}-x86_64-pc-windows-msvc-shared-install_only.tar.gz"
+          BASE="https://github.com/astral-sh/python-build-standalone/releases/download/${PY_TAG}"
+          curl -fSL "$BASE/$ASSET" -o workers/python-runtime.tar.gz
+          curl -fSL "$BASE/$ASSET.sha256" -o workers/python-runtime.tar.gz.sha256
+          EXPECTED=$(node -e "process.stdout.write(require('fs').readFileSync('workers/python-runtime.tar.gz.sha256','utf8').trim().split(/\\s+/)[0])")
+          ACTUAL=$(node -e "const fs=require('fs'),c=require('crypto');process.stdout.write(c.createHash('sha256').update(fs.readFileSync('workers/python-runtime.tar.gz')).digest('hex'))")
+          test "$EXPECTED" = "$ACTUAL"
+          rm workers/python-runtime.tar.gz.sha256
       - name: Cache Next build
         uses: actions/cache@v4
         with:
@@ -94,19 +101,29 @@ jobs:
           restore-keys: |
             nextcache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nextcache-${{ runner.os }}-
-      # 组装「用户机上真正跑的那份」next-server：next build → prepare-tauri（拷内嵌 node / SDK 原生 CLI /
+      # 组装「用户机上真正跑的那份」next-server：next build → prepare-electron（拷内嵌 node / SDK 原生 CLI /
       # ripgrep / 完整 .next/server 覆盖；并跑打包期硬校验：node:sqlite 可用、SDK 二进制存在）。
       - run: pnpm run build
-      - run: pnpm run tauri:prepare
+      - run: pnpm run electron:prepare
       - name: Validate packaged Microsoft MXC contract
         run: node scripts/windows-mxc-contract-smoke.mjs
-      # 校验 Rust 外壳在 Windows 能编译；动态 Python 的隔离边界由上面的官方 MXC runner 提供。
-      - name: Cargo check (Windows shell)
-        working-directory: src-tauri
-        run: cargo check
+      - name: Package Electron shell (Windows directory)
+        run: pnpm exec electron-builder --config electron-builder.yml --win --x64 --dir
+      - name: Verify packaged Node, Python, runtime lock and worker dependencies
+        run: node scripts/electron-resource-smoke.mjs dist-electron/win-unpacked/resources --install-python-deps
       # 启动组装好的 next-server，执行 Pi preflight 并打一圈路由，扫描有无致命签名。
       - name: Packaged runtime smoke
         run: node scripts/windows-smoke.mjs
+      - name: Launch packaged Electron and verify preload/health
+        run: node scripts/electron-smoke.mjs dist-electron/win-unpacked/Finwork.exe dist-electron/windows-electron-smoke.png
+      - name: Upload Windows Electron smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-electron-smoke
+          path: dist-electron/windows-electron-smoke.png
+          if-no-files-found: ignore
+          retention-days: 7
 
   e2e:
     if: inputs.run_e2e

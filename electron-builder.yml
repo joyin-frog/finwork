@@ -1,0 +1,42 @@
+appId: com.gyro.financeagent
+productName: Finwork
+asar: true
+npmRebuild: false
+afterSign: scripts/electron-after-sign.cjs
+directories:
+  app: .electron-app
+  output: dist-electron
+files:
+  - "**/*"
+  - "!node_modules/**/*"
+extraResources:
+  - from: src-tauri/resources/next-server
+    to: next-server
+  - from: src-tauri/resources/node
+    to: node
+  - from: src-tauri/resources/parent-watch.cjs
+    to: parent-watch.cjs
+mac:
+  category: public.app-category.finance
+  icon: src-tauri/icons/icon.icns
+  target:
+    - dmg
+    - zip
+win:
+  icon: src-tauri/icons/icon.ico
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+linux:
+  icon: src-tauri/icons
+  category: Office
+  target:
+    - AppImage
+publish:
+  provider: github
+  owner: joyin-frog
+  repo: finwork
+  releaseType: draft

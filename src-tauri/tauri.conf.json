@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "dist",
     "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "node scripts/run-package-script.mjs dev -- --port 3000",
-    "beforeBuildCommand": "node scripts/run-package-script.mjs build tauri:prepare"
+    "beforeDevCommand": "pnpm run web:dev --port 3000",
+    "beforeBuildCommand": "pnpm run build && pnpm run tauri:prepare"
   },
   "app": {
     "security": {

@@ -27,7 +27,7 @@ flowchart TD
   Tools --> Tax["薪税计算引擎"]
   Tools --> Adapter["金蝶预留适配器"]
   Adapter --> Kingdee["金蝶 API"]
-  Tauri["Tauri 2 Desktop Shell"] --> UI
+  Electron["Electron Desktop Shell"] --> UI
 ```
 
 ## 关键原则
@@ -72,7 +72,7 @@ Windows source development: %LOCALAPPDATA%\Finwork\finance-agent.db
 Linux: ${XDG_DATA_HOME:-~/.local/share}/Finwork/finance-agent.db
 ```
 
-Windows 桌面发行版由 Tauri 宿主从可执行文件位置计算数据目录，并通过 `FINANCE_AGENT_APP_DATA_DIR` 传给内置 Node 服务，确保数据库、文件、知识库、Python 运行时和宿主日志落在同一目录。一般情况下，数据目录与安装目录同盘但不在 `$INSTDIR` 内，因此卸载程序不会随安装文件一起删除它；若安装目录位于 `PROGRAMFILES`、`PROGRAMFILES(X86)` 或 `ProgramW6432` 指向的受保护目录下，则回退到 `%LOCALAPPDATA%\Finwork`，避免普通用户无写权限。
+Windows 桌面发行版由 Electron 宿主从可执行文件位置计算数据目录，并通过 `FINANCE_AGENT_APP_DATA_DIR` 传给内置 Node 服务，确保数据库、文件、知识库、Python 运行时和宿主日志落在同一目录。一般情况下，数据目录与安装目录同盘但不在 `$INSTDIR` 内，因此卸载程序不会随安装文件一起删除它；若安装目录位于 `PROGRAMFILES`、`PROGRAMFILES(X86)` 或 `ProgramW6432` 指向的受保护目录下，则回退到 `%LOCALAPPDATA%\Finwork`，避免普通用户无写权限。
 
 可通过 `FINANCE_AGENT_APP_DATA_DIR` 或 `FINANCE_AGENT_DB_PATH` 覆盖。该文件属于本地运行数据，不应写入安装目录或项目目录。
 
@@ -150,23 +150,25 @@ export_kingdee_draft(batch)
 | 中 | 报销异常判断、字段映射确认 | 展示依据，由财务确认 |
 | 高 | 薪税最终结果、金蝶推送、历史数据覆盖 | 必须二次确认并审计 |
 
-## Tauri 2 适配状态
+## Electron 桌面壳
 
-仓库已包含 `src-tauri/`，用于 Windows 和 macOS 桌面壳：
+桌面发行主路径已切到 Electron，Windows、macOS 与 Linux 复用同一套安全 preload 合同：
 
-- `pnpm tauri:dev`：开发模式，Tauri 打开 `http://localhost:3000`，由 Next dev server 提供页面和 API。
-- `pnpm tauri:build`：生产打包入口，会先执行 Next standalone build 并准备 `src-tauri/resources/next-server`。
-- 打包机必须安装 Rust toolchain，使 `cargo --version` 可用；macOS 还需要 Xcode Command Line Tools，Windows 需要 Microsoft C++ Build Tools / Windows SDK。
+- `pnpm dev`：默认启动 Next dev server 与 Electron 窗口；`pnpm electron:dev` 是同一路径的显式别名。
+- `pnpm web:dev`：仅启动浏览器前端/API，供局部调试和自动化测试使用。
+- `pnpm electron:build`：生成 Next standalone、组装内嵌运行时并用 electron-builder 打包。
+- `pnpm tauri:dev`：迁移窗口内保留的旧壳回滚验证入口，不再作为默认发行路径。
+- renderer 开启 `contextIsolation`、sandbox，禁用 `nodeIntegration`；文件、窗口、更新能力只经白名单 preload API 暴露。
 
 当前生产打包的关键约束：
 
 - Next App Router API routes 依赖 Node 运行时、`node:sqlite`、文件系统和 Claude Agent SDK。
-- Tauri 的 `frontendDist` 只能稳定加载静态前端资源，不能自动托管 Next API routes。
-- 当前已把 Next standalone server、静态资源、样式、技能种子和 Python worker 准备为 Tauri resource。
-- 生产版本还需要补齐 Windows/macOS Node runtime sidecar，或继续把 API routes 迁移到 Rust commands。
+- Electron 主进程启动独立内嵌 Node sidecar 托管 Next API routes，并负责健康检查、单次崩溃重启与退出回收。
+- Next standalone、静态资源、样式、技能种子、Python worker、ripgrep 与 MXC runner 仍复用既有资源组装规则。
+- 自动更新由 electron-updater 处理，用户确认后才下载、安装并重启。
 
 本轮已经完成的跨平台基础：
 
 - 运行数据不再默认写入 `process.cwd()/data`。
 - SQLite、Claude 设置、技能编辑和 Python demo 数据都支持应用数据目录和环境变量覆盖。
-- Tauri 工程使用独立 bundle identifier `com.gyro.financeagent`，窗口尺寸按桌面工作台调整。
+- Electron 使用 app id `com.gyro.financeagent`，保持既有产品标识和数据目录规则。
