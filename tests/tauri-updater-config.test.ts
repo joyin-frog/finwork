@@ -11,6 +11,7 @@ export const tauriUpdaterConfigTestPromise = (async () => {
   const tauriConfig = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
   const main = readFileSync("electron/main.cjs", "utf8");
   const preload = readFileSync("electron/preload.cjs", "utf8");
+  const electronSmoke = readFileSync("scripts/electron-smoke.mjs", "utf8");
   const appShell = readFileSync("app/shared/app-shell.tsx", "utf8");
   const appNav = readFileSync("app/shared/app-nav.tsx", "utf8");
   const globals = readFileSync("app/globals.css", "utf8");
@@ -64,6 +65,7 @@ export const tauriUpdaterConfigTestPromise = (async () => {
   assert.ok(globals.includes(":is(button, a, input, textarea, select"), "interactive header controls must be excluded from Electron drag regions");
   assert.ok(globals.includes("--app-header-height: 2.875rem"), "all desktop header geometry must share one 46px token");
   assert.ok(appNav.includes('"bg-sidebar mx-1 mb-1"'), "classic sidebar controls must share the page-header top origin");
+  assert.ok(electronSmoke.includes('sessionStorage.setItem("fa-firstrun-ready", "1")'), "packaged header smoke must not be covered by first-run onboarding");
 
   console.log("electron-updater-config: builder, signing, publication and manual gate contracts passed ✓");
 })();

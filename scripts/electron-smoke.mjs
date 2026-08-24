@@ -25,6 +25,12 @@ const electronApp = await electron.launch({
 let origin = "";
 try {
   const page = await electronApp.firstWindow({ timeout: 120_000 });
+  // The packaged smoke verifies desktop chrome, not onboarding. Keep the
+  // first-run gate from covering the header controls in a fresh CI profile.
+  await page.addInitScript(() => {
+    sessionStorage.setItem("fa-firstrun-ready", "1");
+    sessionStorage.setItem("fa-firstrun-key-prompted", "1");
+  });
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 120_000 });
   await page.waitForLoadState("domcontentloaded");
   const evidence = await page.evaluate(async () => {

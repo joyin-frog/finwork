@@ -28,6 +28,10 @@ const electronApp = await electron.launch({
 
 try {
   const page = await electronApp.firstWindow({ timeout: 120_000 });
+  await page.addInitScript(() => {
+    sessionStorage.setItem("fa-firstrun-ready", "1");
+    sessionStorage.setItem("fa-firstrun-key-prompted", "1");
+  });
   await page.goto(`${origin}/chat/new`);
   await page.waitForLoadState("domcontentloaded");
 
