@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("finworkDesktop", {
   readTextFile: (filePath) => ipcRenderer.invoke("desktop:read-text-file", filePath),
   openPath: (target, application) => ipcRenderer.invoke("desktop:open-path", target, application),
   openExternal: (url) => ipcRenderer.invoke("desktop:open-external", url),
+  setNativeTheme: (theme) => ipcRenderer.invoke("desktop:set-native-theme", theme),
   window: {
     minimize: () => ipcRenderer.invoke("desktop:window-minimize"),
     toggleMaximize: () => ipcRenderer.invoke("desktop:window-toggle-maximize"),

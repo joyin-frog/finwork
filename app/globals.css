@@ -129,7 +129,8 @@
     /* ── 外壳几何 token(单一来源):所有依赖侧栏宽度/红绿灯净空的定位一律引用它们,禁止再写镜像常量 ── */
     --nav-width: 15.625rem;  /* 侧栏展开默认宽度(250px)。首帧兜底；运行期由 app-nav useEffect 用实时 navWidth 覆盖 */
     --tl-inset: 5rem;        /* macOS 红绿灯净空;Windows 平台规则覆写为 0.5rem */
-    --window-chrome-height: 2.5rem; /* Windows 独立品牌标题栏高度(40px);侧栏与内容从其下方开始,mac 不消费 */
+    --app-header-height: 2.875rem; /* 页头/侧栏顶栏/窗口控制统一为 46px */
+    --window-chrome-height: var(--app-header-height); /* Windows 独立品牌标题栏与业务页头同高 */
     /* 密度 token:间距随风格切换的旋钮。默认值与既有 Tailwind class 严格等值(p-4=1rem 等),保证默认风格像素零变化 */
     --surface-pad: 1rem;       /* 卡片内边距(原 p-4) */
     --surface-pad-sm: 0.75rem; /* 紧凑卡内边距(原 p-3) */
@@ -218,7 +219,7 @@
 
 /* 页面标题栏统一底线:伪元素画线,横向铺满,比原 border-bottom 更淡(混入 40% transparent)。
    ::after 在 bottom:0 盒内不溢出;overflow-x-auto 的 header 已 relative,安全。 */
-.app-page-header { position: relative; min-height: 46px; }
+.app-page-header { position: relative; height: var(--app-header-height); min-height: var(--app-header-height); }
 .app-page-header::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
   background: color-mix(in srgb, var(--border), transparent 40%);
@@ -701,10 +702,20 @@ html button.composer-send-button.stop {
 
 [data-electron-drag-region] {
   -webkit-app-region: drag;
+  user-select: none;
 }
 
+/* Electron 的 drag 区会吞掉所有指针事件；页头里的按钮、链接与输入控件必须显式挖成 no-drag。 */
+[data-electron-drag-region] :is(button, a, input, textarea, select, [role="button"], [role="menuitem"], [contenteditable="true"]),
 .app-titlebar-btn {
   -webkit-app-region: no-drag;
+}
+.app-nav-topbar {
+  height: var(--app-header-height);
+}
+/* 窗口自身已提供顶部边缘；侧栏 Surface 再画 1px 顶边会把内部按钮中心下推 1px。 */
+.app-side {
+  border-top-width: 0;
 }
 /* 三键点击几何:44px 宽 x 贴满栏高、直角贴边——最大化态下屏幕右上角像素可命中关闭(Fitts)。
    特异性 (0,2,0) 压过 .icon-btn / Tailwind 工具类,尺寸不随图标缩小。 */
