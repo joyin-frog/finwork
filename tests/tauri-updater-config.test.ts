@@ -12,6 +12,8 @@ export const tauriUpdaterConfigTestPromise = (async () => {
   const main = readFileSync("electron/main.cjs", "utf8");
   const preload = readFileSync("electron/preload.cjs", "utf8");
   const electronSmoke = readFileSync("scripts/electron-smoke.mjs", "utf8");
+  const prepareTauri = readFileSync("scripts/prepare-tauri.mjs", "utf8");
+  const electronResourceSmoke = readFileSync("scripts/electron-resource-smoke.mjs", "utf8");
   const appShell = readFileSync("app/shared/app-shell.tsx", "utf8");
   const appNav = readFileSync("app/shared/app-nav.tsx", "utf8");
   const globals = readFileSync("app/globals.css", "utf8");
@@ -68,6 +70,8 @@ export const tauriUpdaterConfigTestPromise = (async () => {
   assert.ok(electronSmoke.includes('sessionStorage.setItem("fa-firstrun-ready", "1")'), "packaged header smoke must not be covered by first-run onboarding");
   assert.ok(electronSmoke.includes('page.locator(".app-shell").waitFor'), "packaged interaction smoke must wait for the Electron app shell");
   assert.ok(electronSmoke.includes('a[href="/chat/new"]'), "packaged interaction smoke must navigate through the app instead of racing Electron with page.goto");
+  assert.ok(prepareTauri.includes('"atom-one-light.css", "atom-one-dark.css"'), "desktop resource preparation must explicitly copy runtime highlight themes");
+  assert.ok(electronResourceSmoke.includes('"highlight.js", "styles", "atom-one-light.css"'), "packaged resource smoke must reject missing highlight themes");
 
   console.log("electron-updater-config: builder, signing, publication and manual gate contracts passed ✓");
 })();
