@@ -66,6 +66,8 @@ export const tauriUpdaterConfigTestPromise = (async () => {
   assert.ok(globals.includes("--app-header-height: 2.875rem"), "all desktop header geometry must share one 46px token");
   assert.ok(appNav.includes('"bg-sidebar mx-1 mb-1"'), "classic sidebar controls must share the page-header top origin");
   assert.ok(electronSmoke.includes('sessionStorage.setItem("fa-firstrun-ready", "1")'), "packaged header smoke must not be covered by first-run onboarding");
+  assert.ok(electronSmoke.includes('page.locator(".app-shell").waitFor'), "packaged interaction smoke must wait for the Electron app shell");
+  assert.ok(electronSmoke.includes('a[href="/chat/new"]'), "packaged interaction smoke must navigate through the app instead of racing Electron with page.goto");
 
   console.log("electron-updater-config: builder, signing, publication and manual gate contracts passed ✓");
 })();

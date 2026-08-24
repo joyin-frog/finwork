@@ -32,7 +32,12 @@ try {
     sessionStorage.setItem("fa-firstrun-key-prompted", "1");
   });
   await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 120_000 });
-  await page.waitForLoadState("domcontentloaded");
+  // Reload the app-owned entry URL so the init script applies before React
+  // mounts. Navigating a packaged BrowserWindow directly with page.goto can
+  // race Electron's own initial load on Windows and leave the smoke on an
+  // unrendered document.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator(".app-shell").waitFor({ timeout: 120_000 });
   const evidence = await page.evaluate(async () => {
     const desktop = window.finworkDesktop;
     if (!desktop) throw new Error("window.finworkDesktop bridge is missing");
@@ -50,19 +55,35 @@ try {
     };
   });
   origin = evidence.origin;
-  await page.goto(`${origin}/chat/new`);
+  // Write an early screenshot too: failures in the interaction assertions
+  // should still leave a useful artifact in CI.
+  await page.screenshot({ path: screenshotPath, fullPage: false });
   await page.getByRole("button", { name: "搜索" }).click();
   await page.getByPlaceholder("搜索文件与对话…").waitFor();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "收起菜单" }).click();
   await page.getByRole("button", { name: "展开菜单" }).waitFor();
   await page.getByRole("button", { name: "展开菜单" }).click();
+  await page.locator('a[href="/chat/new"]').first().click();
+  await page.waitForURL(`${origin}/chat/new`);
   await page.getByRole("button", { name: "打开文件面板" }).click();
   await page.getByRole("dialog", { name: "文件面板" }).waitFor();
   await page.getByRole("button", { name: "关闭文件面板" }).click();
   await page.screenshot({ path: screenshotPath, fullPage: false });
   console.log(JSON.stringify({ ...evidence, headerControlsInteractive: true, screenshotPath, appDataDir }, null, 2));
   if (!evidence.health.ok || !evidence.cockpit.ok || evidence.tokenLength !== 64) process.exitCode = 1;
+} catch (error) {
+  const page = electronApp.windows()[0];
+  if (page) {
+    await page.screenshot({ path: screenshotPath, fullPage: false }).catch(() => {});
+    const diagnostic = await page.evaluate(() => ({
+      url: location.href,
+      title: document.title,
+      body: document.body?.innerText.slice(0, 500) ?? "",
+    })).catch(() => null);
+    console.error("Electron smoke page diagnostic:", JSON.stringify(diagnostic));
+  }
+  throw error;
 } finally {
   await electronApp.close();
 }
