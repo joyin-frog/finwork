@@ -100,7 +100,9 @@ await cp(path.join(nextDir, "server"), path.join(serverResourceDir, ".next", "se
 // layout.tsx 在 SSR 时读取 highlight.js 的明暗主题 CSS。Next 的 outputFileTracingIncludes
 // 在 Windows 会受上面的绝对路径 trace 缺陷影响，CSS 可能没有进入 standalone，导致聊天页
 // 运行时 ENOENT 并落入错误边界。这里把两个运行时文件显式复制，并由 resource smoke 校验。
-const highlightStylesDir = path.join(serverResourceDir, "node_modules", "highlight.js", "styles");
+// electron-builder ignores nested directories named node_modules even under
+// extraResources, so keep runtime-only assets in an explicit product folder.
+const highlightStylesDir = path.join(serverResourceDir, "runtime-assets", "highlight");
 await mkdir(highlightStylesDir, { recursive: true });
 for (const theme of ["atom-one-light.css", "atom-one-dark.css"]) {
   await cp(

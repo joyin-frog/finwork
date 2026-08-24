@@ -71,7 +71,7 @@ export const tauriUpdaterConfigTestPromise = (async () => {
   assert.ok(electronSmoke.includes('page.locator(".app-shell").waitFor'), "packaged interaction smoke must wait for the Electron app shell");
   assert.ok(electronSmoke.includes('a[href="/chat/new"]'), "packaged interaction smoke must navigate through the app instead of racing Electron with page.goto");
   assert.ok(prepareTauri.includes('"atom-one-light.css", "atom-one-dark.css"'), "desktop resource preparation must explicitly copy runtime highlight themes");
-  assert.ok(electronResourceSmoke.includes('"highlight.js", "styles", "atom-one-light.css"'), "packaged resource smoke must reject missing highlight themes");
+  assert.ok(electronResourceSmoke.includes('"runtime-assets", "highlight", "atom-one-light.css"'), "packaged resource smoke must reject missing highlight themes");
 
   console.log("electron-updater-config: builder, signing, publication and manual gate contracts passed ✓");
 })();

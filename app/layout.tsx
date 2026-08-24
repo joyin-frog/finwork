@@ -31,14 +31,15 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const highlightLightCSS = prefixCssScope(
-  fs.readFileSync(path.join(getProjectRoot(), "node_modules/highlight.js/styles/atom-one-light.css"), "utf-8"),
-  "html:not(.dark)"
-);
-const highlightDarkCSS = prefixCssScope(
-  fs.readFileSync(path.join(getProjectRoot(), "node_modules/highlight.js/styles/atom-one-dark.css"), "utf-8"),
-  "html.dark"
-);
+function readHighlightTheme(theme: "atom-one-light.css" | "atom-one-dark.css") {
+  const projectRoot = getProjectRoot();
+  const bundledTheme = path.join(projectRoot, "runtime-assets", "highlight", theme);
+  const developmentTheme = path.join(projectRoot, "node_modules", "highlight.js", "styles", theme);
+  return fs.readFileSync(fs.existsSync(bundledTheme) ? bundledTheme : developmentTheme, "utf-8");
+}
+
+const highlightLightCSS = prefixCssScope(readHighlightTheme("atom-one-light.css"), "html:not(.dark)");
+const highlightDarkCSS = prefixCssScope(readHighlightTheme("atom-one-dark.css"), "html.dark");
 const findHighlightCSS = `::highlight(find-all){background:color-mix(in srgb,var(--primary) 22%,transparent)}::highlight(find-active){background:color-mix(in srgb,var(--primary) 45%,transparent)}`;
 
 export const metadata: Metadata = {
